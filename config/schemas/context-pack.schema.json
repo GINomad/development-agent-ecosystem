@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent context pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "recipient", "createdAtUtc", "sources", "acceptedKnowledge", "openQuestions", "heldScope"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "recipient": { "type": "string", "minLength": 1 },
+    "createdAtUtc": { "type": "string", "format": "date-time" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "acceptedKnowledge": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "openQuestions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "heldScope": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "location", "revision", "reason"],
+      "properties": {
+        "kind": { "enum": ["task", "comment", "code", "test", "knowledge", "review", "pipeline", "history"] },
+        "location": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
+

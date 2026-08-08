@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Review result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "reviewedRevision", "requirementsRevision", "findings", "heldScopeViolations", "agentProcessFindings", "summary"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "reviewedRevision": { "type": "string", "minLength": 1 },
+    "requirementsRevision": { "type": "string", "minLength": 1 },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "heldScopeViolations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "agentProcessFindings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "summary": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "category", "location", "evidence", "impact", "correctionDirection", "decisionStatus"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+        "severity": { "enum": ["critical", "high", "medium", "low"] },
+        "category": { "enum": ["correctness", "security", "regression", "testing", "maintainability", "requirements", "knowledge", "agent-process"] },
+        "location": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "impact": { "type": "string", "minLength": 1 },
+        "correctionDirection": { "type": "string", "minLength": 1 },
+        "decisionStatus": { "const": "proposed" }
+      }
+    }
+  }
+}
+

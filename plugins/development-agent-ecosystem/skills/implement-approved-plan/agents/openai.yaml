@@ -1,0 +1,5 @@
+interface:
+  display_name: "Implement Approved Plan"
+  short_description: "Implement ready scope and preserve held work"
+  default_prompt: "Use $implement-approved-plan to implement only the ready requirements and verify the result."
+

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Keep Task Knowledge"
+  short_description: "Curate evidence-backed task context and history"
+  default_prompt: "Use $keep-task-knowledge to reconstruct this task and prepare verified context for the next agent."
+

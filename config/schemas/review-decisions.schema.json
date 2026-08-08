@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Human review decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "decisions"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["findingId", "decision", "decidedAtUtc", "decidedBy", "note"],
+        "properties": {
+          "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+          "decision": { "enum": ["approved", "rejected", "deferred"] },
+          "decidedAtUtc": { "type": "string", "format": "date-time" },
+          "decidedBy": { "type": "string", "minLength": 1 },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.codex/pr-review-monitor/config.schema.json",
+  "title": "Multi-provider PR Review Agent configuration",
+  "type": "object",
+  "required": ["version", "schedule", "review", "credentialProfiles", "repositories"],
+  "properties": {
+    "version": { "const": 2 },
+    "schedule": {
+      "type": "object",
+      "required": ["pollIntervalMinutes", "dailyTime"],
+      "properties": {
+        "pollIntervalMinutes": { "type": "integer", "minimum": 5, "maximum": 1440 },
+        "dailyTime": { "type": "string", "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["excludeSelfAuthored", "skillPaths", "promptPaths", "mcp"],
+      "properties": {
+        "excludeSelfAuthored": { "type": "boolean" },
+        "skillPaths": { "type": "array", "items": { "type": "string" } },
+        "promptPaths": { "type": "array", "items": { "type": "string" } },
+        "mcp": {
+          "type": "object",
+          "required": ["mode", "allowedServers"],
+          "properties": {
+            "mode": { "enum": ["disabled", "allowlist"] },
+            "allowedServers": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "credentialProfiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "provider", "mode"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "provider": { "enum": ["azure-devops", "github"] },
+          "mode": { "enum": ["azure-cli", "gh-cli", "environment"] },
+          "cliPath": { "type": "string" },
+          "environmentVariable": { "type": "string" }
+        }
+      }
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "enabled", "provider", "url", "reviewer", "credentialProfile"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "enabled": { "type": "boolean" },
+          "provider": { "enum": ["azure-devops", "github"] },
+          "url": { "type": "string", "format": "uri" },
+          "reviewer": { "type": "string", "minLength": 1 },
+          "credentialProfile": { "type": "string", "minLength": 1 },
+          "includeAuthors": { "type": "array", "items": { "type": "string" } },
+          "excludeAuthors": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

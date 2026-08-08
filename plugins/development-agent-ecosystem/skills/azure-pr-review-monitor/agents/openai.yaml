@@ -1,0 +1,4 @@
+interface:
+  display_name: "Multi-provider PR Review Monitor"
+  short_description: "Reviews changed Azure DevOps and GitHub PRs"
+  default_prompt: "Use $azure-pr-review-monitor to check configured repositories for changed pull requests assigned to me and summarize actionable findings."

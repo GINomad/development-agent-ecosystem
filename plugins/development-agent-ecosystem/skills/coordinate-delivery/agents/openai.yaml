@@ -1,0 +1,5 @@
+interface:
+  display_name: "Coordinate Delivery"
+  short_description: "Orchestrate gated evidence-first delivery"
+  default_prompt: "Use $coordinate-delivery to run this task through analysis, implementation, review, and pipeline checks."
+
