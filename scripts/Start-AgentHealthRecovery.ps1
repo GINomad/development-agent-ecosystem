@@ -82,11 +82,11 @@ $arguments = @(
     '--json',
     '--output-schema', $schemaPath,
     '-o', $resultPath,
-    $healthPrompt
+    '-'
 )
 
 try {
-    & codex @arguments 2>&1 | ForEach-Object {
+    $healthPrompt | & codex @arguments 2>&1 | ForEach-Object {
         $line = [string]$_
         [IO.File]::AppendAllText($logPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
         Write-Output $line
@@ -121,4 +121,3 @@ catch {
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus failed -Stage health_recovery -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     throw
 }
-

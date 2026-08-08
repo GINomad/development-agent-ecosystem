@@ -102,12 +102,12 @@ $arguments = @(
     '-c', "agents.max_concurrent_threads_per_session=$([int]$config.runtime.maxConcurrentAgents)",
     '--json',
     '-o', $finalResponsePath,
-    $prompt
+    '-'
 )
 try {
     $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-    & codex @arguments 2>&1 | ForEach-Object {
+    $prompt | & codex @arguments 2>&1 | ForEach-Object {
         $line = [string]$_
         [IO.File]::AppendAllText($codexLogPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
         Write-Output $line
