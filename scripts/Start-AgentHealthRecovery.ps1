@@ -47,6 +47,13 @@ if (Test-Path -LiteralPath $attemptsPath -PathType Leaf) {
         try { $attempts.Add(($line | ConvertFrom-Json)) } catch { }
     }
 }
+$successfulAttempt = @($attempts | Where-Object { $_.failureSignature -eq $signature -and $_.type -eq 'recovery-completed' -and [string]$_.status -eq 'repaired' } | Select-Object -Last 1)
+if ($successfulAttempt.Count) {
+    $message = "Failure signature $signature was already repaired and validated. Resume the workflow when ready."
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus completed -Stage health_recovered -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    return [pscustomobject]@{ Status='already-repaired'; TaskId=$TaskId; FailureSignature=$signature; ResultPath=[string]$successfulAttempt[0].resultPath }
+}
 $attemptCount = @($attempts | Where-Object {
     $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
     $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and

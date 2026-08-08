@@ -47,7 +47,7 @@ Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
-foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks/run','/health-recovery/elevated','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
+foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks/run','/health-recovery/elevated','already-repaired','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
