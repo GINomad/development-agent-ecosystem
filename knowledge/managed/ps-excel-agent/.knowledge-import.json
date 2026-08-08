@@ -1,8 +1,8 @@
 {
     "sourceId":  "ps-excel-agent-initial",
     "sourceRoot":  "C:\\Repos\\AI Knowledge\\ps_excel_agent",
-    "managedRoot":  "C:\\Repos\\ps-excel-agent\\development-agent-ecosystem\\knowledge\\managed\\ps-excel-agent",
-    "importedAtUtc":  "2026-08-08T09:26:38.9084049Z",
+    "managedRoot":  "C:\\Repos\\development-agent-ecosystem\\knowledge\\managed\\ps-excel-agent",
+    "importedAtUtc":  "2026-08-08T10:24:25.6820118Z",
     "entries":  [
                     {
                         "relativePath":  "coding-knowledge.md",

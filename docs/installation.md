@@ -22,7 +22,7 @@ Open `config/agents.json` and verify:
 ## 2. Install the plugin and agents
 
 ```powershell
-cd C:\Repos\ps-excel-agent\development-agent-ecosystem
+cd C:\Repos\development-agent-ecosystem
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 ```
 
