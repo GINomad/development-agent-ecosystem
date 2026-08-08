@@ -36,6 +36,13 @@
       "enabled": true,
       "maxAttemptsPerFailureSignature": 1,
       "workspace": "${REPO_ROOT}",
+      "sandboxMode": "workspace-write",
+      "elevatedFallback": {
+        "enabled": true,
+        "requiresDashboardApproval": true,
+        "sandboxMode": "danger-full-access",
+        "maxAttemptsPerFailureSignature": 1
+      },
       "allowProductCodeChanges": false,
       "allowExternalWrites": false
     }

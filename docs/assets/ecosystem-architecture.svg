@@ -112,7 +112,7 @@
     <rect x="642" y="940" width="315" height="135" rx="22" fill="#172d35" stroke="#4b8375"/>
     <text x="677" y="982" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
     <text x="677" y="1017" class="box-title">Health Check Agent</text>
-    <text x="677" y="1049" class="box-copy">Auto pickup · one bounded recovery attempt</text>
+    <text x="677" y="1049" class="box-copy">Auto pickup · approval-gated OS bypass</text>
   </g>
 
   <!-- Right-side gates and storage -->

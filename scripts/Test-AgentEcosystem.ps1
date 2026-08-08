@@ -47,18 +47,18 @@ Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
-foreach ($marker in @('/api/tasks','/comments','/api/health-checks/run','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1')) {
+foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks/run','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
-foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','runHealthCheck')) {
+foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
 foreach ($scriptName in @('Get-AgentTasks.ps1','Add-TaskComment.ps1','Set-AgentTaskStatus.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
-Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent status, comments, and resume controls'
+Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent status, comments, resume controls, and safe artifact previews'
 
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
@@ -67,10 +67,12 @@ $healthAgent = @($config.agents | Where-Object id -eq 'health_check') | Select-O
 if (-not $healthAgent) { throw 'Health Check Agent is missing from the canonical configuration.' }
 if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
+if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
+if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
 foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
-Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); productWrites=false; externalWrites=false"
+Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); sandbox=workspace-write; elevated=approval-gated; productWrites=false; externalWrites=false"
 
 $skillFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills') -Recurse -Filter 'SKILL.md' -File)
 foreach ($file in $skillFiles) {

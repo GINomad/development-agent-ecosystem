@@ -58,6 +58,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-strong); 
 .button.primary:hover { background: var(--accent-strong); }
 .button.secondary { background: transparent; color: var(--text); }
 .button.secondary:hover { border-color: #506078; background: rgba(255,255,255,.025); }
+.button.danger { background: transparent; color: #ffb0b9; border-color: rgba(255, 112, 126, .55); }
+.button.danger:hover { background: rgba(255, 112, 126, .08); border-color: #ff707e; }
 .button:disabled { cursor: not-allowed; opacity: .52; }
 .text-button { color: var(--muted); border: 0; background: transparent; padding: 6px; }
 .muted { color: var(--muted); line-height: 1.5; margin-top: -8px; }
@@ -109,8 +111,15 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .timeline-event time, .timeline-event small, .artifact-item span { color: var(--muted); font-size: .68rem; }
 .timeline-event p { margin: 7px 0; color: #d0d9e4; font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere; }
 .event-user-comment { border-color: rgba(139, 240, 198, .5); }
+.artifact-item { width: 100%; color: inherit; text-align: left; cursor: pointer; }
+.artifact-item:hover, .artifact-item:focus-visible { border-color: var(--accent-strong); background: rgba(70, 215, 164, .055); outline: none; }
 .artifact-item strong, .artifact-item span { display: block; overflow-wrap: anywhere; }
 .artifact-item span { margin-top: 5px; }
+.artifact-viewer { margin-top: 16px; border: 1px solid rgba(139, 240, 198, .35); border-radius: 12px; background: #080c11; overflow: hidden; }
+.artifact-viewer-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.artifact-viewer-header h4 { margin: 0 0 5px; color: var(--accent); overflow-wrap: anywhere; }
+.artifact-viewer-header p { margin: 0; color: var(--muted); font-size: .7rem; }
+.artifact-viewer pre { margin: 0; padding: 14px; max-height: 520px; overflow: auto; color: #cbd8e7; white-space: pre-wrap; word-break: break-word; font: .78rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .activity-card pre { margin: 0; padding: 15px; border-radius: 11px; min-height: 74px; max-height: 280px; overflow: auto; background: #080c11; color: #c5d1df; white-space: pre-wrap; word-break: break-word; font: .82rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 @media (max-width: 780px) {
   .shell { width: min(100% - 22px, 1120px); padding-top: 24px; }

@@ -14,6 +14,7 @@ From the dashboard:
 - in manual mode, enter a task ID or URL, or select a task from the assigned-task inbox;
 - add an optional instruction for the current run;
 - track active or completed tasks, every agent status, generated artifacts, and the append-only event timeline;
+- select any supported text artifact to preview JSON, JSONL, Markdown, text, logs, TOML, YAML, XML, HTML source, or CSV in the read-only viewer (limited to 1 MiB);
 - add a task comment to clarify requirements, answer an open question, pause scope, or redirect the next in-scope step;
 - resume an existing task without creating a duplicate history directory;
 - attach a Reviewer note to a repository, PR, or task;
@@ -32,6 +33,8 @@ Health recovery runs in three bounded phases:
 3. an ecosystem-only recovery coordinator when source repair is supported by evidence.
 
 The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It runs once per failure signature, validates the exact repair plus `Test-AgentEcosystem.ps1`, and exposes its `running`, `waiting`, `completed`, or `failed` state on the task dashboard. A successful recovery changes the task to `interrupted`, ready for an explicit **Resume workflow**.
+
+If the sandboxed agent is blocked by Windows process-creation error 1260, select **Approve elevated repair** on the task card and confirm the warning. This authorizes one `danger-full-access` retry for that task and failure signature. The launcher still requires a clean ecosystem worktree, starts in the exact ecosystem root without additional writable directories, and keeps product/external writes disabled. The OS does not enforce the repository boundary during that single elevated attempt.
 
 Manual health check:
 

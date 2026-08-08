@@ -104,6 +104,7 @@
               <div class="actions">
                 <button class="button primary" id="sendTaskComment">Send comment</button>
                 <button class="button secondary" id="resumeTask">Resume workflow</button>
+                <button class="button danger" id="approveElevatedRecovery">Approve elevated repair</button>
               </div>
             </div>
 
@@ -117,6 +118,16 @@
                 <div class="artifact-list" id="taskArtifacts"></div>
               </div>
             </div>
+            <section class="artifact-viewer hidden" id="artifactViewer" aria-live="polite">
+              <div class="artifact-viewer-header">
+                <div>
+                  <h4 id="artifactTitle">Artifact preview</h4>
+                  <p id="artifactMeta"></p>
+                </div>
+                <button class="text-button" id="closeArtifactViewer" type="button">Close</button>
+              </div>
+              <pre id="artifactContent"></pre>
+            </section>
           </div>
         </div>
       </div>
