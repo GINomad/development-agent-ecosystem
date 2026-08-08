@@ -14,6 +14,29 @@ Every `Start-DevelopmentWorkflow.ps1` invocation:
 
 To change agent behavior, edit the canonical JSON, a prompt, or a repository skill. Generated TOML files are not a source of truth.
 
+## Adding repositories
+
+Add one object to `repositories[]` for each local repository. Repository IDs must be unique. The dashboard and Review Monitor load every enabled entry from this array on their next start; no code change is required.
+
+```json
+{
+  "id": "azure-project-repository",
+  "enabled": true,
+  "provider": "azure-devops",
+  "url": "https://dev.azure.com/organization/project/_git/repository",
+  "organizationUrl": "https://dev.azure.com/organization",
+  "project": "project",
+  "repository": "repository",
+  "reviewer": "reviewer@example.com",
+  "credentialProfile": "azure-default",
+  "localWorkspace": "C:/Repos/repository",
+  "includeAuthors": [],
+  "excludeAuthors": []
+}
+```
+
+`localWorkspace` must point to an existing Git working copy whose `origin` matches `url`. Multiple Azure DevOps organizations may reuse one Azure CLI credential profile when the signed-in identity has access to each organization.
+
 ## Manual and automate modes
 
 - `manual`: the UI or CLI requires a task selector. It can be an Azure Boards ID, URL, or an explicit task description.
