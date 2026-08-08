@@ -78,7 +78,6 @@ $arguments = @(
     'exec',
     '-C', $workspace,
     '-s', 'workspace-write',
-    '-c', "agents.max_concurrent_threads_per_session=$([int]$config.runtime.maxConcurrentAgents)",
     '--json',
     '--output-schema', $schemaPath,
     '-o', $resultPath,
