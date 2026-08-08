@@ -178,6 +178,9 @@ function renderTaskDetail(task) {
   resume.disabled = task.status === 'running';
   resume.textContent = task.status === 'running' ? 'Workflow is running' : 'Resume workflow';
   document.querySelector('#resumeElevatedWorkflow').disabled = task.status === 'running';
+  const executionPolicyNotice = document.querySelector('#executionPolicyNotice');
+  const policyBlocked = /CreateProcessWithLogonW|error\s*1260|Windows sandbox/i.test(`${task.lastMessage || ''} ${task.agentStatuses?.knowledge_keeper?.message || ''}`);
+  executionPolicyNotice.classList.toggle('hidden', !policyBlocked);
   const elevated = document.querySelector('#approveElevatedRecovery');
   const healthStatus = task.agentStatuses?.health_check?.status;
   elevated.disabled = !['waiting', 'failed'].includes(healthStatus) || !taskArtifactItems.some(artifact => artifact.name.startsWith('agent-failure-'));

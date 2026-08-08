@@ -53,8 +53,16 @@ if (-not $Workspace -or -not (Test-Path -LiteralPath $Workspace -PathType Contai
 if (-not (Test-Path -LiteralPath (Join-Path $Workspace '.git'))) { throw "Workspace is not a Git repository: $Workspace" }
 
 $knowledgeImport = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
-$sync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install
+$syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
+if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
+$sync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
 $task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -RepositoryId $RepositoryId -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
+$agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
+$requirementsAgentName = 'development_requirements_analyst' + $agentProfileSuffix
+$developerAgentName = 'development_implementer' + $agentProfileSuffix
+$reviewerAgentName = 'development_reviewer' + $agentProfileSuffix
+$pipelineAgentName = 'development_pipeline_monitor' + $agentProfileSuffix
+$healthAgentName = 'development_health_check' + $agentProfileSuffix
 
 $knowledgeAgent = @($config.agents | Where-Object { $_.id -eq 'knowledge_keeper' }) | Select-Object -First 1
 $knowledgePrompt = [Collections.Generic.List[string]]::new()
@@ -85,7 +93,7 @@ Live task control:
 - Do not retry an identical failed execution more than $([int]$config.runtime.executionGuard.maxIdenticalFailures) times. On the third failure, stop immediately, persist the failure evidence, and hand it to development_health_check. Do not enter a wait loop after the retry limit.
 - In elevated-approved mode, the user approved an OS-sandbox bypass for this task session. Every role may use the available local tools despite error 1260, but this does not authorize external writes, requirement assumptions, unapproved review fixes, or work outside the target workspace and ecosystem root.
 
-Use the custom agents development_requirements_analyst, development_implementer, development_reviewer, development_pipeline_monitor, and development_health_check according to the configured gates. Dispatch development_health_check when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+Use the custom agents $requirementsAgentName, $developerAgentName, $reviewerAgentName, $pipelineAgentName, and $healthAgentName according to the configured gates. In host-compatible mode every selected subagent uses the current-user execution profile installed by Health Check; do not fall back to the standard sandboxed agent names. Dispatch $healthAgentName when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
 
 $($knowledgePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@
@@ -149,11 +157,16 @@ catch {
     $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and [bool]$guardResult.guardTriggered) { [string]$guardResult.failureDetail } elseif (Test-Path -LiteralPath $codexLogPath -PathType Leaf) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureMessage }
     $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
     $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId knowledge_keeper -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $hostCompatibilityReady = $false
     if ([bool]$config.health.enabled -and [bool]$config.health.checkOnWorkflowFailure) {
-        try { & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        try {
+            & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $postHealthTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $hostCompatibilityReady = [string]$postHealthTask.currentStage -eq 'os_policy_compatibility_ready'
+        }
         catch { Write-Warning "Health check also failed: $($_.Exception.Message)" }
     }
-    if ([bool]$config.health.automaticRecovery.enabled) {
+    if ([bool]$config.health.automaticRecovery.enabled -and -not $hostCompatibilityReady) {
         try { & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
         catch { Write-Warning "Automatic health recovery failed: $($_.Exception.Message)" }
     }

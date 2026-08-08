@@ -103,6 +103,11 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .comment-panel label { margin-top: 0; }
 .comment-panel .actions { margin-top: 10px; }
 .hint { color: var(--muted); font-size: .74rem; line-height: 1.45; }
+.policy-notice { margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(255, 211, 122, .45); border-radius: 10px; background: rgba(255, 211, 122, .055); color: #f4d995; font-size: .76rem; line-height: 1.45; }
+.action-guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 12px 0 0; }
+.action-guide > div { padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(8, 12, 17, .62); }
+.action-guide dt { color: #e5edf7; font-size: .75rem; font-weight: 800; }
+.action-guide dd { margin: 5px 0 0; color: var(--muted); font-size: .7rem; line-height: 1.45; }
 .detail-columns { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(180px, .8fr); gap: 16px; }
 .timeline, .artifact-list { display: grid; align-content: start; gap: 8px; max-height: 360px; overflow: auto; color: var(--muted); }
 .timeline-event, .artifact-item { border: 1px solid var(--line); background: #0b1017; border-radius: 10px; padding: 10px; }
