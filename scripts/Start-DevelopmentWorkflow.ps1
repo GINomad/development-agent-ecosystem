@@ -99,7 +99,6 @@ $arguments = @(
     '-C', [IO.Path]::GetFullPath($Workspace),
     '--add-dir', (Get-EcosystemRoot),
     '-s', 'workspace-write',
-    '-c', "agents.max_concurrent_threads_per_session=$([int]$config.runtime.maxConcurrentAgents)",
     '--json',
     '-o', $finalResponsePath,
     '-'
@@ -107,12 +106,19 @@ $arguments = @(
 try {
     $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-    $prompt | & codex @arguments 2>&1 | ForEach-Object {
-        $line = [string]$_
-        [IO.File]::AppendAllText($codexLogPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-        Write-Output $line
+    $nativeErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $prompt | & codex @arguments 2>&1 | ForEach-Object {
+            $line = [string]$_
+            [IO.File]::AppendAllText($codexLogPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+            Write-Output $line
+        }
+        $codexExitCode = $LASTEXITCODE
     }
-    $codexExitCode = $LASTEXITCODE
+    finally {
+        $ErrorActionPreference = $nativeErrorActionPreference
+    }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
