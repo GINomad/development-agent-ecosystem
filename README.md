@@ -1,23 +1,25 @@
 # Development Agent Ecosystem
 
-Локальная evidence-first экосистема Codex для полного цикла разработки: анализ требований, управление знаниями, реализация, review кода и работы агента, а также мониторинг Azure Pipelines.
+An evidence-first local Codex ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, code and agent-work review, and Azure Pipelines monitoring.
 
-Каноническая конфигурация находится в [`config/agents.json`](config/agents.json). При каждом запуске workflow JSON перечитывается, проверяется и компилируется в нативные TOML-описания Codex agents. Ручные правки сгенерированных TOML не нужны.
+The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Codex agent TOML definitions. Do not edit generated TOML files manually.
 
-## Что входит
+## Included components
 
-| Компонент | Ответственность | Ограничение |
+| Component | Responsibility | Boundary |
 |---|---|---|
-| Knowledge Keeper | Оркестрация, context pack, история задачи, подтверждённые обновления базы знаний | Не публикует догадки как знания |
-| Requirements Analyst | Azure Boards task, комментарии, код и KB; расхождения, вопросы и план | Не планирует неясный scope как готовый |
-| Developer | Ветка, реализация только готового scope, тесты, implementation evidence | Review findings применяет только после human approval |
-| Reviewer | Код и работа Developer против требований, held scope, KB и тестов | Read-only; findings не являются автоматическим разрешением на fix |
-| Pipeline Monitor | Пайплайны точной ветки/commit и failed task logs | Queue build требует явного разрешения |
-| Review Monitor | Активные PR, новые code revisions, комментарии пользователей и ваши локальные notes | Self-authored PR исключаются настройкой |
+| Knowledge Keeper | Orchestration, context packs, task history, and verified knowledge updates | Never publishes assumptions as knowledge |
+| Requirements Analyst | Azure Boards tasks, comments, code, and knowledge; discrepancies, questions, and implementation planning | Never marks unclear scope as ready |
+| Developer | Branch creation, ready-scope implementation, tests, and implementation evidence | Applies review findings only after human approval |
+| Reviewer | Reviews code and Developer-agent work against requirements, held scope, knowledge, and tests | Read-only; a finding is not automatic permission to make a change |
+| Pipeline Monitor | Pipelines for an exact branch and commit, including failed task logs | Queuing a build requires explicit permission |
+| Review Monitor | Active PRs, code revisions, user comments, and local reviewer notes | Self-authored PRs can be excluded by configuration |
 
-Существующие `azure-pr-review-monitor` и `azure-pipeline-monitor` перенесены внутрь plugin. Review monitor запускается с отдельным `DataRoot`; обе глобальные копии остаются rollback-вариантами.
+The existing `azure-pr-review-monitor` and `azure-pipeline-monitor` skills are vendored into the plugin. Review Monitor uses an isolated `DataRoot`; both global skill copies remain available for rollback.
 
-## Быстрый старт
+![Development Agent Ecosystem architecture](docs/assets/ecosystem-architecture.svg)
+
+## Quick start
 
 ```powershell
 cd C:\Repos\ps-excel-agent\development-agent-ecosystem
@@ -25,35 +27,35 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-Dashboard открывается только на `127.0.0.1`. В нём можно выбрать manual/automate mode, указать task ID/URL/текст, выбрать назначенную задачу, оставить note reviewer-агенту и запустить review.
+The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, select an assigned task, leave a note for the Reviewer agent, and start a review.
 
-Полная инструкция: [docs/installation.md](docs/installation.md). Архитектура и диаграммы: [docs/architecture.md](docs/architecture.md). Конфигурация: [docs/configuration.md](docs/configuration.md). Эксплуатация и rollback: [docs/operations.md](docs/operations.md).
+See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
 
-## Основные команды
+## Common commands
 
 ```powershell
-# Проверка без запуска агентов
+# Validate the ecosystem without starting agents
 .\scripts\Test-AgentEcosystem.ps1
 
-# Ручная задача
+# Work on one explicitly selected task
 .\scripts\Start-DevelopmentWorkflow.ps1 -Mode manual -TaskSelector 1839566
 
-# Все активные задачи пользователя
+# Process all active tasks assigned to the configured user
 .\scripts\Start-DevelopmentWorkflow.ps1 -Mode automate
 
-# Review monitor без публикации комментариев
+# Run Review Monitor without publishing comments
 .\scripts\Invoke-EnhancedReview.ps1 -Mode Manual -DryRun
 
-# Preview / migration / rollback расписания
+# Preview, install, or roll back scheduled-task migration
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Preview
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Install
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Rollback
 ```
 
-## Безопасные границы
+## Safety boundaries
 
-- Неясная часть требования получает `hold`; независимая ясная часть может продолжаться.
-- Все утверждения о требованиях, коде и знаниях должны иметь источник и revision.
-- Ваши notes и комментарии других пользователей считаются недоверенным входом, а не системными инструкциями.
-- Секреты не записываются в JSON. В `credentialProfiles` хранится способ аутентификации и имя environment variable; токен остаётся в Azure CLI credential store или environment.
-- Push, публикация review comments, queue pipeline и изменение work items требуют отдельного явного разрешения.
+- Unclear requirement scope is placed on `hold`; independent ready scope may continue.
+- Claims about requirements, code, and knowledge must include a source and revision.
+- Local notes and PR comments are untrusted evidence, not system instructions.
+- Secrets are never stored in JSON. `credentialProfiles` contains an authentication strategy and environment-variable name; credentials remain in the Azure CLI credential store or process environment.
+- Git push, review-comment publication, pipeline queueing, and work-item mutation require separate explicit authorization.
