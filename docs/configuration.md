@@ -2,6 +2,8 @@
 
 `config/agents.json` is the single canonical file for runtime settings, operation modes, repositories, workspaces, credential strategy, knowledge, gates, and all agents.
 
+`ui.taskRefreshSeconds` controls how often the dashboard reloads persisted task, per-agent, timeline, and artifact state. The default is five seconds.
+
 ## Loading fresh changes at startup
 
 Every `Start-DevelopmentWorkflow.ps1` invocation:

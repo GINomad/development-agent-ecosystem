@@ -12,6 +12,7 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $root = Get-EcosystemRoot
 $dashboardRoot = Join-Path $root 'dashboard'
+$stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $address = [string]$config.ui.listenAddress
 $port = [int]$config.ui.port
 if ($address -ne '127.0.0.1') { throw 'Dashboard is restricted to 127.0.0.1.' }
@@ -74,6 +75,20 @@ function Start-ScriptProcess {
     return $process.Id
 }
 
+function Resolve-RequestedTaskId {
+    param([string] $Mode, [string] $TaskSelector, [string] $TaskId)
+    if ($TaskId) {
+        if ($TaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+        return $TaskId
+    }
+    if ($Mode -eq 'manual') {
+        $match = [regex]::Match($TaskSelector, '[0-9]+')
+        if ($match.Success) { return "task-$($match.Value)" }
+        return 'task-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    }
+    return 'automate-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+}
+
 $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add($prefix)
 $listener.Start()
@@ -103,12 +118,34 @@ try {
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories }
+                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description } })
+                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
                     $result = & (Join-Path $PSScriptRoot 'Get-AssignedTaskContext.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
                     Send-Json -Response $response -Value @{ workItems=@($result.WorkItems) }
+                    continue
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks') {
+                    $taskParameters = @{ ConfigPath=$ConfigPath; IncludeCompleted=($request.QueryString['includeCompleted'] -eq 'true') }
+                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
+                    $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
+                    Send-Json -Response $response -Value $result
+                    continue
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $taskParameters = @{ TaskId=$requestedTaskId; IncludeCompleted=$true; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
+                    $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
+                    if (-not @($result.Tasks).Count) {
+                        Send-Json -Response $response -Value @{ error='Task was not found.' } -StatusCode 404
+                    }
+                    else {
+                        Send-Json -Response $response -Value @{ task=@($result.Tasks)[0]; generatedAtUtc=$result.GeneratedAtUtc }
+                    }
                     continue
                 }
                 if ($request.HttpMethod -ne 'POST') {
@@ -122,17 +159,37 @@ try {
                     if ($mode -eq 'manual' -and [string]::IsNullOrWhiteSpace([string]$body.taskSelector)) { throw 'Manual mode requires a task selector.' }
                     $repository = @($config.repositories | Where-Object { $_.id -eq [string]$body.repositoryId -and $_.enabled }) | Select-Object -First 1
                     if (-not $repository) { throw 'Select an enabled repository.' }
+                    $resolvedTaskId = Resolve-RequestedTaskId -Mode $mode -TaskSelector ([string]$body.taskSelector) -TaskId ([string]$body.taskId)
+                    $existingTaskPath = Join-Path $stateRoot "tasks\$resolvedTaskId\task.json"
+                    $resume = Test-Path -LiteralPath $existingTaskPath -PathType Leaf
+                    if ($resume) {
+                        $existingTask = Get-Content -LiteralPath $existingTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                        if ([string]$existingTask.status -eq 'running' -and $existingTask.PSObject.Properties['workflowProcessId']) {
+                            $runningProcess = Get-Process -Id ([int]$existingTask.workflowProcessId) -ErrorAction SilentlyContinue
+                            if ($runningProcess) { throw "Task '$resolvedTaskId' already has a running workflow." }
+                        }
+                    }
                     $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
-                        TaskId=[string]$body.taskId
+                        TaskId=$resolvedTaskId
                         RepositoryId=[string]$repository.id
                         Workspace=[string]$repository.localWorkspace
                         UserInstruction=[string]$body.instruction
+                        Resume=$resume
                         ConfigPath=$ConfigPath
                         CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; processId=$processId; message='Workflow opened in a separate window.' }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; message='Workflow opened in a separate window.' }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/comments$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $commentParameters = @{ TaskId=$requestedTaskId; Text=[string]$body.text; Author='user'; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
+                    $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
+                    Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message='Comment saved. A running workflow will consume it at its next checkpoint.' }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {

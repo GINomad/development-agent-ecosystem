@@ -19,7 +19,7 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, task creation/resume, knowledge import, and Keeper launch |
 | `scripts/Invoke-EnhancedReview.ps1` | Active PR comments, local notes, discussion hashing, and vendored Review Monitor invocation |
-| `dashboard` | Loopback operator UI for manual/automate selection, task input, notes, and review launch |
+| `dashboard` | Loopback operator UI for manual/automate selection, persistent task and per-agent status, workflow comments, notes, and review launch |
 | `knowledge/managed` | Versioned managed knowledge with seed-import provenance |
 | `%LOCALAPPDATA%/Codex/development-agent-ecosystem` | Mutable task ledgers, review prompts, notes, reports, and scheduler backups |
 
@@ -104,11 +104,13 @@ sequenceDiagram
 Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Codex/development-agent-ecosystem/tasks/<task-id>`:
 
 - `task.json`: task identity and current state;
-- `task-ledger.jsonl`: append-only communication and events from every agent;
+- `task-ledger.jsonl`: append-only communication, workflow and agent status, and user intervention comments;
 - `context-pack.json`: context selected by Knowledge Keeper;
 - `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
 - `implementation-plan.json` and `implementation-result.json`;
 - `review-result.json` and `review-decisions.json`;
 - `pipeline-result.json` and `knowledge-update.json`.
+
+`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable history. The dashboard polls the loopback API every five seconds, while Knowledge Keeper rereads unacknowledged user comments at every handoff checkpoint. Comments never bypass unresolved-requirement, review-approval, or external-write gates.
 
 Schemas are stored under `config/schemas`. Knowledge Keeper may publish only evidence-backed claims with all required evidence fields.

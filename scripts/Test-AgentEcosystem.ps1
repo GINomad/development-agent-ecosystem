@@ -44,6 +44,21 @@ $jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root 'plugins\development-agen
 foreach ($file in $jsonFiles) { $null = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json }
 Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 
+$dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
+$dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
+$dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
+foreach ($marker in @('/api/tasks','/comments','Get-AgentTasks.ps1','Add-TaskComment.ps1')) {
+    if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
+}
+foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask')) {
+    if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
+    if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
+}
+foreach ($scriptName in @('Get-AgentTasks.ps1','Add-TaskComment.ps1','Set-AgentTaskStatus.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
+}
+Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent status, comments, and resume controls'
+
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
 

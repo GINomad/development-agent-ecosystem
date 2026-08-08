@@ -29,7 +29,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, select an assigned task, leave a note for the Reviewer agent, and start a review.
+The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and per-agent status after a page reload, add an intervention comment to a running workflow, resume stopped work, leave a note for the Reviewer agent, and start a review.
 
 See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
 

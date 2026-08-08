@@ -62,11 +62,12 @@
     "ui": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["listenAddress", "port", "openBrowser"],
+      "required": ["listenAddress", "port", "openBrowser", "taskRefreshSeconds"],
       "properties": {
         "listenAddress": { "const": "127.0.0.1" },
         "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
-        "openBrowser": { "type": "boolean" }
+        "openBrowser": { "type": "boolean" },
+        "taskRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 }
       }
     },
     "review": {
