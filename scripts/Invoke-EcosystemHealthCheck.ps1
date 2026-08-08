@@ -143,8 +143,8 @@ try {
 
             $codexLogPath = Join-Path $taskRoot 'workflow-codex.jsonl'
             if ($taskStatus -eq 'failed') {
-                $failureEvent = @($ledgerEvents | Where-Object { $_.type -eq 'workflow-status' -and $_.summary -match '(?i)failed|exited|error' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
-                $failureSummary = if ($failureEvent.Count) { [string]$failureEvent[0].summary } else { [string]$task.lastMessage }
+                $failureEvent = @($ledgerEvents | Where-Object { $_.type -eq 'workflow-status' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+                $failureSummary = if (-not [string]::IsNullOrWhiteSpace([string]$task.lastMessage)) { [string]$task.lastMessage } elseif ($failureEvent.Count) { [string]$failureEvent[0].summary } else { 'Workflow failed without a persisted summary.' }
                 $lastDiagnostic = if (Test-Path -LiteralPath $codexLogPath) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureSummary }
                 $failureEvidence = @($taskPath, $ledgerPath)
                 if (Test-Path -LiteralPath $codexLogPath) { $failureEvidence += $codexLogPath }
