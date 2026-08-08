@@ -22,7 +22,7 @@ The existing `azure-pr-review-monitor` and `azure-pipeline-monitor` skills are v
 ## Quick start
 
 ```powershell
-cd C:\Repos\ps-excel-agent\development-agent-ecosystem
+cd C:\Repos\development-agent-ecosystem
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
