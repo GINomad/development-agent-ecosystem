@@ -7,6 +7,7 @@ $failure = [ordered]@{
         aggregated_output = 'windows sandbox: CreateProcessWithLogonW failed: 1260'
     }
 } | ConvertTo-Json -Compress
+Write-Output (@{ type='item.completed'; item=@{ id='message'; type='agent_message'; text='Supervisor must ignore completed items without a status property.' } } | ConvertTo-Json -Compress)
 1..3 | ForEach-Object {
     Write-Output $failure
     Start-Sleep -Milliseconds 150

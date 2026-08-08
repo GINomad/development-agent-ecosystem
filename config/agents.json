@@ -20,7 +20,8 @@
       "sandboxMode": "danger-full-access",
       "installCompatibleAgentsOnDetection": true,
       "agentProfileSuffix": "_host_compatible",
-      "compatibilityPromptPath": "${REPO_ROOT}/prompts/common/os-policy-compatibility.md"
+      "compatibilityPromptPath": "${REPO_ROOT}/prompts/common/os-policy-compatibility.md",
+      "launchStrategy": "in-process-runspace"
     }
   },
   "operation": {

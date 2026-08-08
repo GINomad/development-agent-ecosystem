@@ -47,14 +47,15 @@
         "elevatedFallback": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath"],
+          "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath", "launchStrategy"],
           "properties": {
             "enabled": { "type": "boolean" },
             "requiresDashboardApproval": { "const": true },
             "sandboxMode": { "const": "danger-full-access" },
             "installCompatibleAgentsOnDetection": { "const": true },
             "agentProfileSuffix": { "type": "string", "pattern": "^_[a-z0-9_]+$" },
-            "compatibilityPromptPath": { "type": "string", "minLength": 1 }
+            "compatibilityPromptPath": { "type": "string", "minLength": 1 },
+            "launchStrategy": { "const": "in-process-runspace" }
           }
         }
       }
