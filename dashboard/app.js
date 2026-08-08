@@ -65,9 +65,9 @@ document.querySelector("#loadTasks").addEventListener("click", async () => {
       const button = document.createElement("button");
       button.className = "task-item";
       const title = document.createElement("strong");
-      title.textContent = `#${item.id} · ${item.title}`;
+      title.textContent = `#${item.id} - ${item.title}`;
       const meta = document.createElement("span");
-      meta.textContent = `${item.type} · ${item.state}`;
+      meta.textContent = `${item.type} - ${item.state}`;
       button.append(title, meta);
       button.addEventListener("click", () => {
         document.querySelector('[data-mode="manual"]').click();
@@ -110,11 +110,11 @@ document.querySelector("#clearActivity").addEventListener("click", () => { activ
     config.repositories.forEach(item => {
       const option = document.createElement("option");
       option.value = item.id;
-      option.textContent = `${item.repository} · ${item.provider}`;
+      option.textContent = `${item.repository} - ${item.provider}`;
       repository.append(option);
     });
     document.querySelector(`[data-mode="${config.mode}"]`).click();
-    document.querySelector("#connectionStatus").textContent = "Local · ready";
+    document.querySelector("#connectionStatus").textContent = "Local - ready";
     document.querySelector("#connectionStatus").classList.add("online");
   } catch (error) {
     document.querySelector("#connectionStatus").textContent = "Connection error";

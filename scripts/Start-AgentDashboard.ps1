@@ -122,7 +122,7 @@ try {
                     if ($mode -eq 'manual' -and [string]::IsNullOrWhiteSpace([string]$body.taskSelector)) { throw 'Manual mode requires a task selector.' }
                     $repository = @($config.repositories | Where-Object { $_.id -eq [string]$body.repositoryId -and $_.enabled }) | Select-Object -First 1
                     if (-not $repository) { throw 'Select an enabled repository.' }
-                    $pid = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
+                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
                         TaskId=[string]$body.taskId
@@ -132,7 +132,7 @@ try {
                         ConfigPath=$ConfigPath
                         CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; processId=$pid; message='Workflow opened in a separate window.' }
+                    Send-Json -Response $response -Value @{ status='started'; processId=$processId; message='Workflow opened in a separate window.' }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {
@@ -149,13 +149,13 @@ try {
                     continue
                 }
                 if ($path -eq '/api/reviews/start') {
-                    $pid = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -Parameters @{
+                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -Parameters @{
                         RepositoryId=[string]$body.repositoryId
                         TaskId=[string]$body.taskId
                         ConfigPath=$ConfigPath
                         CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; processId=$pid; message='Review opened in a separate window.' }
+                    Send-Json -Response $response -Value @{ status='started'; processId=$processId; message='Review opened in a separate window.' }
                     continue
                 }
                 Send-Json -Response $response -Value @{ error='API route not found.' } -StatusCode 404
@@ -174,7 +174,7 @@ try {
                 continue
             }
             $contentType = if ($file.EndsWith('.css')) { 'text/css; charset=utf-8' } elseif ($file.EndsWith('.js')) { 'application/javascript; charset=utf-8' } else { 'text/html; charset=utf-8' }
-            $content = Get-Content -LiteralPath $file -Raw
+            $content = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)
             if ($file.EndsWith('index.html')) { $content = $content.Replace('__SESSION_TOKEN__', $token) }
             Send-Bytes -Response $response -Bytes ((New-Object Text.UTF8Encoding($false)).GetBytes($content)) -ContentType $contentType
         }
