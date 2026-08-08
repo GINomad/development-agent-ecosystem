@@ -1,0 +1,5 @@
+interface:
+  display_name: "Monitor Delivery Pipelines"
+  short_description: "Track exact-commit Azure pipeline runs"
+  default_prompt: "Use $monitor-delivery-pipelines to monitor all Azure builds for this exact pushed commit."
+

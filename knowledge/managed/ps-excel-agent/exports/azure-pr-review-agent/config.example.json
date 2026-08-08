@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "schedule": {
+    "pollIntervalMinutes": 60,
+    "dailyTime": "11:00"
+  },
+  "review": {
+    "excludeSelfAuthored": true,
+    "skillPaths": [],
+    "promptPaths": [],
+    "mcp": {
+      "mode": "disabled",
+      "allowedServers": []
+    }
+  },
+  "credentialProfiles": [
+    {
+      "id": "azure-default",
+      "provider": "azure-devops",
+      "mode": "azure-cli",
+      "cliPath": "",
+      "environmentVariable": "AZURE_DEVOPS_EXT_PAT"
+    },
+    {
+      "id": "github-default",
+      "provider": "github",
+      "mode": "gh-cli",
+      "cliPath": "",
+      "environmentVariable": "GH_TOKEN"
+    }
+  ],
+  "repositories": [
+    {
+      "id": "azure-project-repository",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/org/project/_git/repository",
+      "organizationUrl": "https://dev.azure.com/org",
+      "project": "project",
+      "repository": "repository",
+      "reviewer": "name@company.com",
+      "credentialProfile": "azure-default",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "github-owner-repository",
+      "enabled": false,
+      "provider": "github",
+      "url": "https://github.com/owner/repository",
+      "owner": "owner",
+      "repository": "repository",
+      "reviewer": "github-login",
+      "credentialProfile": "github-default",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    }
+  ]
+}

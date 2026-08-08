@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence-backed knowledge update",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "entries"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "statement", "source", "revision", "observedAtUtc", "observedBy", "targetPath"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["verified", "proposed", "superseded"] },
+          "statement": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "revision": { "type": "string", "minLength": 1 },
+          "observedAtUtc": { "type": "string", "format": "date-time" },
+          "observedBy": { "type": "string", "minLength": 1 },
+          "targetPath": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
+

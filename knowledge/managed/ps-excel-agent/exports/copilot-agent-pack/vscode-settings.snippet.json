@@ -1,0 +1,17 @@
+{
+  "chat.agentSkillsLocations": {
+    "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills": true
+  },
+  "chat.agentFilesLocations": {
+    "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\agents": true
+  },
+  "chat.instructionsFilesLocations": {
+    "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions": true
+  },
+  "chat.promptFilesLocations": {
+    "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\prompts": true
+  },
+  "github.copilot.chat.additionalReadAccessFolders": [
+    "C:\\Repos\\AI Knowledge\\ps_excel_agent"
+  ]
+}

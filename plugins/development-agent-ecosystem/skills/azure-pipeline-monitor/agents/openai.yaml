@@ -1,0 +1,7 @@
+interface:
+  display_name: "Azure Pipeline Monitor"
+  short_description: "Monitor Azure DevOps builds after pushes"
+  default_prompt: "Use $azure-pipeline-monitor after my push, auto-queue approved build pipelines such as 892 when needed, and monitor every matching Azure DevOps run."
+
+policy:
+  allow_implicit_invocation: true

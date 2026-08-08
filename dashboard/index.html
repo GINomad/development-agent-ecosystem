@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru" data-session-token="__SESSION_TOKEN__">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development Agent Desk</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">LOCAL AGENT WORKSPACE</p>
+        <h1>Development Agent Desk</h1>
+        <p class="lede">Одна точка входа для задачи, комментариев reviewer и полного delivery workflow.</p>
+      </div>
+      <div class="status-pill" id="connectionStatus">Подключение…</div>
+    </header>
+
+    <section class="card primary-card">
+      <div class="section-heading">
+        <div>
+          <p class="step">01 · Режим работы</p>
+          <h2>Что делаем сейчас?</h2>
+        </div>
+        <div class="segmented" role="group" aria-label="Режим работы">
+          <button type="button" data-mode="manual" class="active">Manual</button>
+          <button type="button" data-mode="automate">Automate</button>
+        </div>
+      </div>
+
+      <label>
+        Репозиторий
+        <select id="repository"></select>
+      </label>
+
+      <div id="manualFields">
+        <label>
+          Задача
+          <input id="taskSelector" autocomplete="off" placeholder="ID, Azure DevOps URL или точное описание">
+        </label>
+        <label>
+          Task ID для истории <span class="optional">необязательно</span>
+          <input id="taskId" autocomplete="off" placeholder="Например, task-1839566">
+        </label>
+      </div>
+
+      <div id="automateFields" class="mode-note hidden">
+        Агенты загрузят все активные задачи, назначенные на настроенного пользователя, и обработают их с лимитом из JSON.
+      </div>
+
+      <label>
+        Дополнительная инструкция <span class="optional">необязательно</span>
+        <textarea id="instruction" rows="3" placeholder="Контекст только для этого запуска"></textarea>
+      </label>
+
+      <div class="actions">
+        <button class="button primary" id="startWorkflow">Запустить workflow</button>
+        <button class="button secondary" id="loadTasks">Показать назначенные задачи</button>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <p class="step">02 · Reviewer</p>
+        <h2>Комментарий агенту</h2>
+        <p class="muted">Заметка попадёт в контекст вместе с обсуждениями активного PR.</p>
+        <label>
+          PR ID <span class="optional">необязательно</span>
+          <input id="pullRequestId" inputmode="numeric" placeholder="23280">
+        </label>
+        <label>
+          Комментарий
+          <textarea id="reviewerNote" rows="5" placeholder="На что обратить внимание при следующем review"></textarea>
+        </label>
+        <div class="actions">
+          <button class="button primary" id="saveReviewerNote">Сохранить</button>
+          <button class="button secondary" id="runReview">Обновить review</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="step">03 · Inbox</p>
+        <h2>Назначенные задачи</h2>
+        <div id="taskInbox" class="inbox empty">Нажмите «Показать назначенные задачи».</div>
+      </section>
+    </div>
+
+    <section class="card activity-card">
+      <div class="section-heading compact">
+        <div>
+          <p class="step">ACTIVITY</p>
+          <h2>Результат действий</h2>
+        </div>
+        <button class="text-button" id="clearActivity">Очистить</button>
+      </div>
+      <pre id="activity" aria-live="polite">Готово к работе.</pre>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
+

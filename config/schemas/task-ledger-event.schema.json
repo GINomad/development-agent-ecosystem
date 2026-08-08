@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task ledger event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "taskId", "timestampUtc", "actor", "type", "summary", "evidence"],
+  "properties": {
+    "eventId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "timestampUtc": { "type": "string", "format": "date-time" },
+    "actor": { "type": "string", "minLength": 1 },
+    "type": { "enum": ["task-created", "context-issued", "agent-result", "question-opened", "question-resolved", "scope-held", "scope-released", "review-decision", "external-action", "knowledge-updated"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "artifact": { "type": ["string", "null"] },
+    "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}
+

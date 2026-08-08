@@ -1,0 +1,266 @@
+{
+  "$schema": "./schemas/agents.schema.json",
+  "schemaVersion": "1.0.0",
+  "namespace": "development-ecosystem",
+  "runtime": {
+    "maxConcurrentAgents": 4,
+    "approvalPolicy": "on-request",
+    "stateRoot": "${LOCALAPPDATA}/Codex/development-agent-ecosystem",
+    "agentInstallRoot": "${CODEX_HOME}/agents",
+    "historyFormat": "jsonl",
+    "defaultBaseBranch": "main"
+  },
+  "operation": {
+    "mode": "manual",
+    "manual": {
+      "requireTaskSelector": true
+    },
+    "automate": {
+      "pollIntervalMinutes": 360,
+      "dailyTime": "11:00",
+      "maxTasksPerRun": 10
+    }
+  },
+  "ui": {
+    "listenAddress": "127.0.0.1",
+    "port": 43127,
+    "openBrowser": true
+  },
+  "review": {
+    "excludeSelfAuthored": true,
+    "includeActivePrComments": true,
+    "rerunWhenCommentsChange": true,
+    "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor",
+    "monitorDataRoot": "${STATE_ROOT}/azure-pr-review-monitor",
+    "userNotesRoot": "${STATE_ROOT}/reviewer-notes",
+    "generatedPromptRoot": "${STATE_ROOT}/review-prompts",
+    "mcp": {
+      "mode": "disabled",
+      "allowedServers": []
+    }
+  },
+  "credentialProfiles": [
+    {
+      "id": "azure-default",
+      "provider": "azure-devops",
+      "mode": "azure-cli",
+      "cliPath": "C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd",
+      "environmentVariable": "AZURE_DEVOPS_EXT_PAT"
+    }
+  ],
+  "repositories": [
+    {
+      "id": "azure-planningspace-ps-excel-agent",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/ps-excel-agent",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "ps-excel-agent",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-excel-agent",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    }
+  ],
+  "taskSources": [
+    {
+      "id": "planning-space-azure-boards",
+      "provider": "azure-devops",
+      "enabled": true,
+      "organization": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "credentialProfile": "azure-default",
+      "assignee": "@Me",
+      "statesExcluded": [
+        "Closed",
+        "Removed"
+      ],
+      "includeComments": true
+    }
+  ],
+  "knowledge": {
+    "seedSources": [
+      {
+        "id": "ps-excel-agent-initial",
+        "path": "C:/Repos/AI Knowledge/ps_excel_agent",
+        "mode": "read-only-import",
+        "includeExtensions": [
+          ".md",
+          ".txt",
+          ".json",
+          ".yaml",
+          ".yml",
+          ".ps1"
+        ]
+      }
+    ],
+    "managedRoot": "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
+    "versionedRoots": [
+      "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
+      "${REPO_ROOT}/knowledge/components",
+      "${REPO_ROOT}/knowledge/decisions"
+    ],
+    "taskHistoryRoot": "${STATE_ROOT}/tasks",
+    "publicationPolicy": "verified-evidence-only",
+    "requiredEvidenceFields": [
+      "source",
+      "revision",
+      "observedAtUtc",
+      "observedBy"
+    ]
+  },
+  "gates": {
+    "unresolvedRequirements": {
+      "behavior": "hold-affected-scope",
+      "allowIndependentScope": true
+    },
+    "reviewFindings": {
+      "behavior": "require-human-approval",
+      "decisionScript": "${REPO_ROOT}/scripts/Set-ReviewDecision.ps1",
+      "allowedDecisions": [
+        "approved",
+        "rejected",
+        "deferred"
+      ]
+    },
+    "externalWrites": {
+      "behavior": "require-explicit-authorization",
+      "operations": [
+        "git-push",
+        "publish-review-comment",
+        "queue-pipeline",
+        "create-or-update-work-item"
+      ]
+    }
+  },
+  "agents": [
+    {
+      "id": "knowledge_keeper",
+      "name": "development_knowledge_keeper",
+      "description": "Primary orchestrator that selects verified context, records task history, and maintains evidence-backed knowledge.",
+      "reasoningEffort": "high",
+      "sandboxMode": "workspace-write",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/knowledge-keeper.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/keep-task-knowledge/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md"
+      ],
+      "handoffs": [
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "pipeline_monitor"
+      ],
+      "requiredArtifacts": [
+        "task-ledger.jsonl",
+        "context-pack.json",
+        "knowledge-update.json"
+      ]
+    },
+    {
+      "id": "requirements_analyst",
+      "name": "development_requirements_analyst",
+      "description": "Read-only analyst for assigned tasks, comments, code, knowledge, gaps, questions, and implementation-ready planning.",
+      "reasoningEffort": "high",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/roles/requirements-analyst.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "developer"
+      ],
+      "requiredArtifacts": [
+        "requirements-analysis.json"
+      ]
+    },
+    {
+      "id": "developer",
+      "name": "development_implementer",
+      "description": "Implementation owner that creates a branch, changes only ready scope, tests it, and reports exact implementation evidence.",
+      "reasoningEffort": "high",
+      "sandboxMode": "workspace-write",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/developer.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/implement-approved-plan/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "requirements_analyst",
+        "reviewer",
+        "pipeline_monitor"
+      ],
+      "requiredArtifacts": [
+        "implementation-plan.json",
+        "implementation-result.json"
+      ]
+    },
+    {
+      "id": "reviewer",
+      "name": "development_reviewer",
+      "description": "Read-only reviewer of code and agent work against requirements, knowledge, held scope, tests, and engineering quality.",
+      "reasoningEffort": "high",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/reviewer.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/review-against-requirements/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "requirements_analyst",
+        "developer"
+      ],
+      "requiredArtifacts": [
+        "review-result.json"
+      ]
+    },
+    {
+      "id": "pipeline_monitor",
+      "name": "development_pipeline_monitor",
+      "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/pipeline-monitor.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/monitor-delivery-pipelines/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "developer",
+        "reviewer"
+      ],
+      "requiredArtifacts": [
+        "pipeline-result.json"
+      ]
+    }
+  ]
+}

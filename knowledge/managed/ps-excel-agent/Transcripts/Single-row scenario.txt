@@ -1,0 +1,265 @@
+
+Transcript. Use arrow keys to navigate between transcript entries. Select an entry to navigate the media to the time of the entry.
+
+
+Search
+
+AI-generated content may be incorrect
+
+Marg Brodie started transcription
+
+Galina Lapushinskaya
+0 minutes 7 seconds0:07
+Galina Lapushinskaya 0 minutes 7 seconds
+So here I just have region variables.
+Galina Lapushinskaya 0 minutes 16 seconds
+And let's see if it's here.
+Galina Lapushinskaya 0 minutes 22 seconds
+Okay, I don't see, it should be called, sorry, economy indicator IR, economy indicator. Okay, it's not here.
+Galina Lapushinskaya 0 minutes 35 seconds
+It's mean, what is our...
+Galina Lapushinskaya 0 minutes 39 seconds
+Output variables in this case.
+
+Nestor Piazuelo Alonso
+0 minutes 47 seconds0:47
+Nestor Piazuelo Alonso 0 minutes 47 seconds
+outputs should include con indicators.
+
+Galina Lapushinskaya
+0 minutes 50 seconds0:50
+Galina Lapushinskaya 0 minutes 50 seconds
+Should.
+
+Nestor Piazuelo Alonso
+0 minutes 51 seconds0:51
+Nestor Piazuelo Alonso 0 minutes 51 seconds
+Yeah.
+
+Galina Lapushinskaya
+0 minutes 53 seconds0:53
+Galina Lapushinskaya 0 minutes 53 seconds
+Then we're trying to calculate it on the single project calculation.
+
+Nestor Piazuelo Alonso
+0 minutes 56 seconds0:56
+Nestor Piazuelo Alonso 0 minutes 56 seconds
+Well, we...
+MB
+Michael Bazilyeyev
+46 minutes 13 seconds46:13
+Michael Bazilyeyev 46 minutes 13 seconds
+Okay, and it will be some of, you know, of...
+
+Nestor Piazuelo Alonso
+46 minutes 17 seconds46:17
+Nestor Piazuelo Alonso 46 minutes 17 seconds
+The IRR is not the sum, but the MPVs are the sum of the individual projects. So that's fine. So the numbers for the Nigeria 2 regime will be fine. And they should be exactly the same results when the fix is introduced, right? So in the future, Nigeria 2 and Nigeria 1 should give you exactly the same numbers.
+MB
+Michael Bazilyeyev
+46 minutes 41 seconds46:41
+Michael Bazilyeyev 46 minutes 41 seconds
+Okay, Nigeria one is...
+
+Nestor Piazuelo Alonso
+46 minutes 43 seconds46:43
+Nestor Piazuelo Alonso 46 minutes 43 seconds
+A Nigeria country is the one that's failing now, right?
+MB
+Michael Bazilyeyev
+46 minutes 46 seconds46:46
+Michael Bazilyeyev 46 minutes 46 seconds
+Yes, but as I said before, we try to do so that we have every plan consolidation and you introduce consolidation test. OK.
+
+Nestor Piazuelo Alonso
+46 minutes 53 seconds46:53
+Nestor Piazuelo Alonso 46 minutes 53 seconds
+We need to forget about, we need, we need to forget about the plan consolidation. We need to use Nigeria too, the one that I will send you the name, right? Those are the right numbers that we expect. And then in the future, when we go back to Nigeria cons, we should be able to get exactly the same numbers that we are now getting with Nigeria too.
+MB
+Michael Bazilyeyev
+47 minutes 2 seconds47:02
+Michael Bazilyeyev 47 minutes 2 seconds
+Mhm.
+Michael Bazilyeyev 47 minutes 10 seconds
+Ardi.
+Michael Bazilyeyev 47 minutes 11 seconds
+Okay, I will test Nigeria 2 and probably send it to you just in case. Okay, okay, so I'll test all around with Nigeria 2. Correct. Thank you. Please send me this. Thank you.
+
+Nestor Piazuelo Alonso
+47 minutes 15 seconds47:15
+Nestor Piazuelo Alonso 47 minutes 15 seconds
+Yep, that's fine. Yeah, sounds good.
+Nestor Piazuelo Alonso 47 minutes 25 seconds
+Give it.
+MB
+Michael Bazilyeyev
+47 minutes 25 seconds47:25
+Michael Bazilyeyev 47 minutes 25 seconds
+Ticket.
+
+Galina Lapushinskaya
+47 minutes 26 seconds47:26
+Galina Lapushinskaya 47 minutes 26 seconds
+Marg, I changed my mind. Let's do it the future.
+
+Marg Brodie
+47 minutes 29 seconds47:29
+Marg Brodie 47 minutes 29 seconds
+Okay.
+
+Galina Lapushinskaya
+47 minutes 30 seconds47:30
+Galina Lapushinskaya 47 minutes 30 seconds
+Why I start I start to think that we also will need to test advanced calculation.
+Galina Lapushinskaya 47 minutes 37 seconds
+And we will need to make sure that advanced calculation patching project correctly and taking the model correctly because they build advanced calculation like this library based on what we ask them. And if we never send scenario name, I want to make sure that we kind of test it and covered it too. And it better to have separate more like story which easier to estimate.
+
+Marg Brodie
+47 minutes 48 seconds47:48
+Marg Brodie 47 minutes 48 seconds
+Yeah.
+Marg Brodie 47 minutes 51 seconds
+SM.
+Marg Brodie 47 minutes 55 seconds
+Okay.
+Marg Brodie 48 minutes
+Okay.
+MB
+Michael Bazilyeyev
+48 minutes 1 second48:01
+Michael Bazilyeyev 48 minutes 1 second
+Yeah.
+
+Galina Lapushinskaya
+48 minutes 3 seconds48:03
+Galina Lapushinskaya 48 minutes 3 seconds
+Um, Nestor, another question, more generic. I asked Arp Chaminda, I didn't get the answer. I know you talked with Marg. What is what Chevron decide? Did Chevron decide about next priorities?
+
+Nestor Piazuelo Alonso
+48 minutes 14 seconds48:14
+Nestor Piazuelo Alonso 48 minutes 14 seconds
+On the FD plan front.
+
+Galina Lapushinskaya
+48 minutes 17 seconds48:17
+Galina Lapushinskaya 48 minutes 17 seconds
+Anything, anything, because it's very steam considered to be Chevron. What I don't want to do is that we define the scope that will release a small POC commercialized solution without any extra work, sensitivity or anything. We'll have deployment of everything working, then we will do the next steps.
+Galina Lapushinskaya 48 minutes 36 seconds
+Then we were said, no, you will not do next steps. You will get production variance. Now it's not production variance. What I don't want us to land up that we continue with Excel considering this is highest priority. And then somebody came and said, who told you that your Chevron team is supposed to work on it?
+
+Nestor Piazuelo Alonso
+48 minutes 51 seconds48:51
+Nestor Piazuelo Alonso 48 minutes 51 seconds
+Well, yeah, well then wait for Chaminda to to to say that if you should be working only on Shell and stuff, but this is Shell funded stuff as well, so yeah.
+
+Marg Brodie
+48 minutes 59 seconds48:59
+Marg Brodie 48 minutes 59 seconds
+Oh, this is Chu, yeah.
+
+Galina Lapushinskaya
+49 minutes 2 seconds49:02
+Galina Lapushinskaya 49 minutes 2 seconds
+No, I just want from you Nestor to come and say from start we have green light. We continue to work on this until release. This is what we want to release. I don't need Chaminda to tell me. I want product to tell me that we are not in the wrong space.
+
+Marg Brodie
+49 minutes 3 seconds49:03
+Marg Brodie 49 minutes 3 seconds
+Or is Joe funding this?
+
+Nestor Piazuelo Alonso
+49 minutes 11 seconds49:11
+Nestor Piazuelo Alonso 49 minutes 11 seconds
+At.
+Nestor Piazuelo Alonso 49 minutes 15 seconds
+No, no, you are not in the wrong space. I mean, you're doing Shell stuff, right? So this is priority, not for Chevron, but for Shell. So no, definitely, we have to do that. So yeah, yeah, no.
+
+Galina Lapushinskaya
+49 minutes 25 seconds49:25
+Galina Lapushinskaya 49 minutes 25 seconds
+Okay.
+Galina Lapushinskaya 49 minutes 26 seconds
+Can we then, I know we had sensitivity and we had some less add companies and do some nice things later. When we will test this scenario.
+Galina Lapushinskaya 49 minutes 38 seconds
+based scenario that we have. I think it was kind of accept sensitivity our last first phase.
+Galina Lapushinskaya 49 minutes 45 seconds
+Right, for commercial solution.
+Galina Lapushinskaya 49 minutes 49 seconds
+Is this scenario implementation a must-have in this first phase?
+
+Nestor Piazuelo Alonso
+49 minutes 57 seconds49:57
+Nestor Piazuelo Alonso 49 minutes 57 seconds
+So, what's the Ask if instead of doing that? Yes, I mean, it's a...
+Nestor Piazuelo Alonso 50 minutes 3 seconds
+If we want to use this Excel integration agent as a substitute for having a full-blown economics and being able to drive all the economics analysis from Excel, yes, you need all the scenarios to do EV calculation, which is part, fundamental part of economics. So yes, yes, it is.
+
+Galina Lapushinskaya
+50 minutes 17 seconds50:17
+Galina Lapushinskaya 50 minutes 17 seconds
+Okay.
+Galina Lapushinskaya 50 minutes 21 seconds
+Okay.
+Galina Lapushinskaya 50 minutes 22 seconds
+So if we do this project, but let's say not sensitivity because we looked at it as maybe separate feature, if we did just these scenarios and we release it, can we say that we have first commercial release or without other things? Okay.
+
+Nestor Piazuelo Alonso
+50 minutes 37 seconds50:37
+Nestor Piazuelo Alonso 50 minutes 37 seconds
+Yeah, that's yeah, I mean, if this is for the objective for the PI, yes, I, and that that's fine, Galina, yeah, yeah.
+
+Galina Lapushinskaya
+50 minutes 42 seconds50:42
+Galina Lapushinskaya 50 minutes 42 seconds
+Yeah, it's more objective of PI and we have like if we will look at it quickly.
+
+Nestor Piazuelo Alonso
+50 minutes 44 seconds50:44
+Nestor Piazuelo Alonso 50 minutes 44 seconds
+And...
+
+Galina Lapushinskaya
+50 minutes 50 seconds50:50
+Galina Lapushinskaya 50 minutes 50 seconds
+On the backlog, favelas.
+
+Nestor Piazuelo Alonso
+50 minutes 54 seconds50:54
+Nestor Piazuelo Alonso 50 minutes 54 seconds
+I mean, let me just put it, this agents, I mean, this will, this part with the scenarios, project scenarios, this will solve the use case of Snapco for Monte Carlos simulation, right? This is 1 use case. Then there's another thing, which is the agent Smith thing, right, which is portfolio level.
+
+Marg Brodie
+50 minutes 54 seconds50:54
+Marg Brodie 50 minutes 54 seconds
+I think we...
+
+Nestor Piazuelo Alonso
+51 minutes 14 seconds51:14
+Nestor Piazuelo Alonso 51 minutes 14 seconds
+and at portfolio level, they will not be changing project inputs, they will be changing sensitivity items. So,
+Nestor Piazuelo Alonso 51 minutes 27 seconds
+The first step is fine, what we are doing, but if we have the sensitivity ones for Shell, again, we will be able to say, hey, you can do your models in Planning Space Economics and you can tie Planning Space Economics to your Agent Smith portfolio tool. And that would also be a great win for us at Shell.
+
+Marg Brodie
+51 minutes 46 seconds51:46
+Marg Brodie 51 minutes 46 seconds
+This is the first time hearing of Agent Smith. What is this?
+
+Nestor Piazuelo Alonso
+51 minutes 47 seconds51:47
+Nestor Piazuelo Alonso 51 minutes 47 seconds
+So.
+Nestor Piazuelo Alonso 51 minutes 50 seconds
+The agent Smith is a nasty tool that could be replaced by our portfolio, but Chad always goes the difficult way.
+
+Marg Brodie
+51 minutes 58 seconds51:58
+Marg Brodie 51 minutes 58 seconds
+Well...
+Marg Brodie 52 minutes
+Oh, this is Shell's agent. Okay.
+
+Nestor Piazuelo Alonso
+52 minutes 3 seconds52:03
+Nestor Piazuelo Alonso 52 minutes 3 seconds
+Correct. So this Agent Smith is Shell Agent Smith that essentially is driving economics from Python or Excel, BBA, whatever, just changing some sensitivity factors on whatever models the business units prepare.

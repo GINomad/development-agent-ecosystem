@@ -1,0 +1,5 @@
+interface:
+  display_name: "Analyze Requirements"
+  short_description: "Map requirements to code without guessing"
+  default_prompt: "Use $analyze-requirements to analyze this task against the codebase and identify held scope."
+

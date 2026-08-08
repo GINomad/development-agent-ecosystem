@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review Against Requirements"
+  short_description: "Review code and agent work against evidence"
+  default_prompt: "Use $review-against-requirements to review this implementation against requirements and held scope."
+

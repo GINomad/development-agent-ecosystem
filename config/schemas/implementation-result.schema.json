@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Implementation result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "branch", "headCommit", "changedFiles", "implementedRequirementIds", "heldRequirementIds", "tests", "newQuestions", "summary"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "headCommit": { "type": ["string", "null"] },
+    "changedFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "implementedRequirementIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "heldRequirementIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } },
+    "newQuestions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "summary": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "result", "evidence"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "result": { "enum": ["passed", "failed", "not-run"] },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
+

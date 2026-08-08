@@ -1,0 +1,675 @@
+{
+    "sourceId":  "ps-excel-agent-initial",
+    "sourceRoot":  "C:\\Repos\\AI Knowledge\\ps_excel_agent",
+    "managedRoot":  "C:\\Repos\\ps-excel-agent\\development-agent-ecosystem\\knowledge\\managed\\ps-excel-agent",
+    "importedAtUtc":  "2026-08-08T09:26:38.9084049Z",
+    "entries":  [
+                    {
+                        "relativePath":  "coding-knowledge.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\coding-knowledge.md",
+                        "sourceHash":  "5f6b72147be4938f3309821e11416de9087c035c90d3566df212b7353d47ad30",
+                        "importedHash":  "5f6b72147be4938f3309821e11416de9087c035c90d3566df212b7353d47ad30",
+                        "sourceLastWriteUtc":  "2026-08-05T16:11:10.3205727Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "coding-style.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\coding-style.md",
+                        "sourceHash":  "358b5f0362856ffad0531afe81afa358171b18b36b00183e20fbe245b17e29d0",
+                        "importedHash":  "358b5f0362856ffad0531afe81afa358171b18b36b00183e20fbe245b17e29d0",
+                        "sourceLastWriteUtc":  "2026-07-21T14:55:18.7853557Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\1813945-Define scenario for projects and variables.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\1813945-Define scenario for projects and variables.md",
+                        "sourceHash":  "2f3d089970d9f2711fb6f8d4f83d28f490569dd4262b35513ed208f7bebc094c",
+                        "importedHash":  "2f3d089970d9f2711fb6f8d4f83d28f490569dd4262b35513ed208f7bebc094c",
+                        "sourceLastWriteUtc":  "2026-07-08T15:10:03.0894797Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\1838084-[Inputs] Support per-project scenario targeting and configuration.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\1838084-[Inputs] Support per-project scenario targeting and configuration.md",
+                        "sourceHash":  "0db528aeb156d77cf3cb0c31104a23384199fe7778a8fbddcdfcbfdd0fb716ee",
+                        "importedHash":  "0db528aeb156d77cf3cb0c31104a23384199fe7778a8fbddcdfcbfdd0fb716ee",
+                        "sourceLastWriteUtc":  "2026-07-23T09:30:51.8059501Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\1838084-Per-row ProjectScenarioName override and Scenario Configuration feasibility (ps-excel-agent).md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\1838084-Per-row ProjectScenarioName override and Scenario Configuration feasibility (ps-excel-agent).md",
+                        "sourceHash":  "f6319b331dd133ed20a2f1a4b23e81a5cc86567e1812cafbeb9b98a7d2f35a5b",
+                        "importedHash":  "f6319b331dd133ed20a2f1a4b23e81a5cc86567e1812cafbeb9b98a7d2f35a5b",
+                        "sourceLastWriteUtc":  "2026-07-14T16:28:22.9736834Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\1839566-[Auth] Keep auth alive in Synchronous method.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\1839566-[Auth] Keep auth alive in Synchronous method.md",
+                        "sourceHash":  "9a6e7288a222d5f1fc38e16a0858191ab1a8ae33da07c48553ba6876966f1355",
+                        "importedHash":  "9a6e7288a222d5f1fc38e16a0858191ab1a8ae33da07c48553ba6876966f1355",
+                        "sourceLastWriteUtc":  "2026-07-16T13:15:35.1494681Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\2026-08-06-Local CalculationOrchestrator NuGet package update.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\2026-08-06-Local CalculationOrchestrator NuGet package update.md",
+                        "sourceHash":  "99bcee61b3219191f133af893d691298a786d991b8e0553c94f40c8d4f38ce84",
+                        "importedHash":  "99bcee61b3219191f133af893d691298a786d991b8e0553c94f40c8d4f38ce84",
+                        "sourceLastWriteUtc":  "2026-08-06T08:48:14.1062011Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\auth-refresh-cold-start.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\auth-refresh-cold-start.md",
+                        "sourceHash":  "986e71cb927950be70497e47a76b41de80830961c02819c7b04f7d4f13da7b93",
+                        "importedHash":  "986e71cb927950be70497e47a76b41de80830961c02819c7b04f7d4f13da7b93",
+                        "sourceLastWriteUtc":  "2026-07-20T10:51:38.0454597Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\excel-custom-functions-cancellation.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\excel-custom-functions-cancellation.md",
+                        "sourceHash":  "578a9552a41fe0706db6bab2cd71c02413dcce5f282320ca89749bd0ea379d07",
+                        "importedHash":  "578a9552a41fe0706db6bab2cd71c02413dcce5f282320ca89749bd0ea379d07",
+                        "sourceLastWriteUtc":  "2026-07-13T08:56:44.8170151Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "conversation history\\local-pr-review-agent.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\conversation history\\local-pr-review-agent.md",
+                        "sourceHash":  "e7df479f0ca6c585fa07672b1e15b6d34054dd7724230effe72d51e03e8637c2",
+                        "importedHash":  "e7df479f0ca6c585fa07672b1e15b6d34054dd7724230effe72d51e03e8637c2",
+                        "sourceLastWriteUtc":  "2026-08-04T18:47:00.5156801Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "docker-update.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\docker-update.md",
+                        "sourceHash":  "bb1feca8bf7b5c964f47081dbcdc3817719b90e253f5f117e274a6128f2bfa80",
+                        "importedHash":  "bb1feca8bf7b5c964f47081dbcdc3817719b90e253f5f117e274a6128f2bfa80",
+                        "sourceLastWriteUtc":  "2026-07-30T14:30:45.8004592Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\config.example.json",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\config.example.json",
+                        "sourceHash":  "2ca362e5225d6327cffc212bbdbe0da5fb21c571088f80a8b3de43109b0df0ea",
+                        "importedHash":  "2ca362e5225d6327cffc212bbdbe0da5fb21c571088f80a8b3de43109b0df0ea",
+                        "sourceLastWriteUtc":  "2026-08-04T18:40:57.2714163Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\examples\\review-prompts\\team-review.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\examples\\review-prompts\\team-review.md",
+                        "sourceHash":  "4c25c9c2cce3826baa1a3103baeaf558695ff85432798dbad62e816523ed70a3",
+                        "importedHash":  "4c25c9c2cce3826baa1a3103baeaf558695ff85432798dbad62e816523ed70a3",
+                        "sourceLastWriteUtc":  "2026-08-04T18:10:32.1450579Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\examples\\review-skills\\company-dotnet-review\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\examples\\review-skills\\company-dotnet-review\\SKILL.md",
+                        "sourceHash":  "3e38217355f5e32fbabe10e396fde8b5d777958e5ea9c547b22154686a7b6606",
+                        "importedHash":  "3e38217355f5e32fbabe10e396fde8b5d777958e5ea9c547b22154686a7b6606",
+                        "sourceLastWriteUtc":  "2026-08-04T18:10:32.1403359Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\INSTALL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\INSTALL.md",
+                        "sourceHash":  "1609300c08e507625411c0a779d960f93a6911d701743e6ecc0c4ded32f8dbb4",
+                        "importedHash":  "1609300c08e507625411c0a779d960f93a6911d701743e6ecc0c4ded32f8dbb4",
+                        "sourceLastWriteUtc":  "2026-08-04T18:40:57.2746984Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\install.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\install.ps1",
+                        "sourceHash":  "eb4ac16b039fdfe0dadf5f8f70fdd0e3a93675bdd846ff04c5e0704aebcff204",
+                        "importedHash":  "eb4ac16b039fdfe0dadf5f8f70fdd0e3a93675bdd846ff04c5e0704aebcff204",
+                        "sourceLastWriteUtc":  "2026-08-04T18:40:57.2694161Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\agents\\openai.yaml",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\agents\\openai.yaml",
+                        "sourceHash":  "3ab80e68b63ba183eb034711f9459e687d7e8c66d33944d72475a33f54907b01",
+                        "importedHash":  "3ab80e68b63ba183eb034711f9459e687d7e8c66d33944d72475a33f54907b01",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:43.8158607Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\config.schema.json",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\config.schema.json",
+                        "sourceHash":  "08551c0bb3592d2619b45e4914677df30fc9751f5773bc9cbcb202bd44d89f23",
+                        "importedHash":  "08551c0bb3592d2619b45e4914677df30fc9751f5773bc9cbcb202bd44d89f23",
+                        "sourceLastWriteUtc":  "2026-08-04T18:25:04.4012011Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\finding-management.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\finding-management.md",
+                        "sourceHash":  "f26b5fd8596564e8cd56430b89f27f23d400aee5e8531dca712da0899029fa6f",
+                        "importedHash":  "f26b5fd8596564e8cd56430b89f27f23d400aee5e8531dca712da0899029fa6f",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:43.8220388Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\interactive-dashboard.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\interactive-dashboard.md",
+                        "sourceHash":  "456c02e067bdee4ea4e6c037403f1fdb887b5c056d3661e95444f8c47d5f1c98",
+                        "importedHash":  "456c02e067bdee4ea4e6c037403f1fdb887b5c056d3661e95444f8c47d5f1c98",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:43.8190351Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\provider-configuration.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\provider-configuration.md",
+                        "sourceHash":  "dd920bfd369208eb80f5cc235170f760a20da9b2f038d0b264cd2dcc66c58780",
+                        "importedHash":  "dd920bfd369208eb80f5cc235170f760a20da9b2f038d0b264cd2dcc66c58780",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:21.8881833Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\review-checklist.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\review-checklist.md",
+                        "sourceHash":  "6f3b88af19532e7433aee2c5a0bc525343a67e553696905d824b8af95aab1e2f",
+                        "importedHash":  "6f3b88af19532e7433aee2c5a0bc525343a67e553696905d824b8af95aab1e2f",
+                        "sourceLastWriteUtc":  "2026-07-30T15:12:19.8005860Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\review-instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\references\\review-instructions.md",
+                        "sourceHash":  "251aca073748d6088c0bb93a47c66f406dcc7f5b444c41d907ce18de434d6d13",
+                        "importedHash":  "251aca073748d6088c0bb93a47c66f406dcc7f5b444c41d907ce18de434d6d13",
+                        "sourceLastWriteUtc":  "2026-08-04T18:10:32.1403359Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\agent_config.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\agent_config.ps1",
+                        "sourceHash":  "7878be60243488f003b70ceeed0d793e853c4c6bac44c73cace2abacbb131ae0",
+                        "importedHash":  "7878be60243488f003b70ceeed0d793e853c4c6bac44c73cace2abacbb131ae0",
+                        "sourceLastWriteUtc":  "2026-08-04T18:36:55.1201367Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\install_scheduled_tasks.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\install_scheduled_tasks.ps1",
+                        "sourceHash":  "157e9e5ca21f4bc10bb78ea89aa9d418885b82f44101745b256f7607cc29d5f9",
+                        "importedHash":  "157e9e5ca21f4bc10bb78ea89aa9d418885b82f44101745b256f7607cc29d5f9",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:21.8831827Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\manage_agent_settings.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\manage_agent_settings.ps1",
+                        "sourceHash":  "7b104438ec3046a3bb40d92cec7ad919e3330b5d1fe6315d7f63999600dcda64",
+                        "importedHash":  "7b104438ec3046a3bb40d92cec7ad919e3330b5d1fe6315d7f63999600dcda64",
+                        "sourceLastWriteUtc":  "2026-08-04T18:48:00.4911778Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\manage_review_findings.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\manage_review_findings.ps1",
+                        "sourceHash":  "6ff1d27d3c450b91b4ce1ad58388618da75f5563a83409bd991e5220cd00f08f",
+                        "importedHash":  "6ff1d27d3c450b91b4ce1ad58388618da75f5563a83409bd991e5220cd00f08f",
+                        "sourceLastWriteUtc":  "2026-08-04T18:31:54.1545877Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\open_review_dashboard.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\open_review_dashboard.ps1",
+                        "sourceHash":  "bfedb7c99ded2521d7464cb028c6837140d54a3ed7389bb0a7284d18d3f1f876",
+                        "importedHash":  "bfedb7c99ded2521d7464cb028c6837140d54a3ed7389bb0a7284d18d3f1f876",
+                        "sourceLastWriteUtc":  "2026-08-04T18:42:08.3318567Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\process_review_findings.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\process_review_findings.ps1",
+                        "sourceHash":  "65a7eef3b509aa8792f7cfee8e12b7b4419bcd6c9679375412a001a0dee8e54c",
+                        "importedHash":  "65a7eef3b509aa8792f7cfee8e12b7b4419bcd6c9679375412a001a0dee8e54c",
+                        "sourceLastWriteUtc":  "2026-08-04T18:31:42.2644496Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\azure_devops.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\azure_devops.ps1",
+                        "sourceHash":  "904fc1c2af96c6431b765d2bef0248b9350eb9f2e7b00e006907062124e9f759",
+                        "importedHash":  "904fc1c2af96c6431b765d2bef0248b9350eb9f2e7b00e006907062124e9f759",
+                        "sourceLastWriteUtc":  "2026-08-06T08:35:47.6790480Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\github.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\github.ps1",
+                        "sourceHash":  "8b4e3d6f1bf75eed09e6043601e5501f17d0a0ad2fbebcc2e41e43ce6ee5af8a",
+                        "importedHash":  "8b4e3d6f1bf75eed09e6043601e5501f17d0a0ad2fbebcc2e41e43ce6ee5af8a",
+                        "sourceLastWriteUtc":  "2026-08-06T08:35:47.6846666Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\provider_common.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\provider_common.ps1",
+                        "sourceHash":  "ae9444a8050e517068fb08a4f5a0840cc1bcc714ed528965f89026186747f4fc",
+                        "importedHash":  "ae9444a8050e517068fb08a4f5a0840cc1bcc714ed528965f89026186747f4fc",
+                        "sourceLastWriteUtc":  "2026-08-04T18:36:08.4727826Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\provider_dispatch.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\providers\\provider_dispatch.ps1",
+                        "sourceHash":  "07717d948977a50ad400024875a0931bb3e26b1a6d87b13d7436d0eeabb469ba",
+                        "importedHash":  "07717d948977a50ad400024875a0931bb3e26b1a6d87b13d7436d0eeabb469ba",
+                        "sourceLastWriteUtc":  "2026-08-04T18:23:44.1123763Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\render_azure_review.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\render_azure_review.ps1",
+                        "sourceHash":  "d94138d2c6a25b75e1a402b97cf726fa2aa550d0f6f71037f160cd133c2171bd",
+                        "importedHash":  "d94138d2c6a25b75e1a402b97cf726fa2aa550d0f6f71037f160cd133c2171bd",
+                        "sourceLastWriteUtc":  "2026-08-04T18:34:22.4374938Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\review_findings_common.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\review_findings_common.ps1",
+                        "sourceHash":  "95cf9b00d5afd48edc29c3e3425d8b7d64f470ea7dc0baafc16d7fb549aa6d58",
+                        "importedHash":  "95cf9b00d5afd48edc29c3e3425d8b7d64f470ea7dc0baafc16d7fb549aa6d58",
+                        "sourceLastWriteUtc":  "2026-07-31T15:49:10.7730876Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\run_pr_review_monitor.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\scripts\\run_pr_review_monitor.ps1",
+                        "sourceHash":  "6c12be93bbd07a21e53735e35f2ecb8faaf1f57aa7a83feb678d3ef0dc585cc7",
+                        "importedHash":  "6c12be93bbd07a21e53735e35f2ecb8faaf1f57aa7a83feb678d3ef0dc585cc7",
+                        "sourceLastWriteUtc":  "2026-08-04T18:44:18.1303568Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\azure-pr-review-agent\\skill\\azure-pr-review-monitor\\SKILL.md",
+                        "sourceHash":  "208175c79d744bfb146ec1bd4dbce184d0a3edb5b3f6f2f57688a08563d30c23",
+                        "importedHash":  "208175c79d744bfb146ec1bd4dbce184d0a3edb5b3f6f2f57688a08563d30c23",
+                        "sourceLastWriteUtc":  "2026-08-04T18:33:21.8851856Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\INSTALL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\INSTALL.md",
+                        "sourceHash":  "54cabc86b592753d5cedf2587ae7bd21e6248ccd5b1c8f16801a42bf9ca206c5",
+                        "importedHash":  "54cabc86b592753d5cedf2587ae7bd21e6248ccd5b1c8f16801a42bf9ca206c5",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8308140Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\install.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\install.ps1",
+                        "sourceHash":  "c01ecdf45054a020660cd07d48eb87a4ddd9d2359d3fc9758ee35022688c458b",
+                        "importedHash":  "c01ecdf45054a020660cd07d48eb87a4ddd9d2359d3fc9758ee35022688c458b",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8348389Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\install-both-ides.ps1",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\install-both-ides.ps1",
+                        "sourceHash":  "84aba5a6816810c6cf87c063ea1a966c784c1120db158f626706e7f82987eba8",
+                        "importedHash":  "84aba5a6816810c6cf87c063ea1a966c784c1120db158f626706e7f82987eba8",
+                        "sourceLastWriteUtc":  "2026-08-05T15:33:54.5642435Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\INSTALL-VSCODE-VISUAL-STUDIO.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\INSTALL-VSCODE-VISUAL-STUDIO.md",
+                        "sourceHash":  "df44d5c45b7f2ccddb0740940e4ce83993fd03d502b93cb588dbb4f3fa2dc7f8",
+                        "importedHash":  "df44d5c45b7f2ccddb0740940e4ce83993fd03d502b93cb588dbb4f3fa2dc7f8",
+                        "sourceLastWriteUtc":  "2026-08-05T15:34:25.9260694Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\agents\\ps-excel-engineer.agent.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\agents\\ps-excel-engineer.agent.md",
+                        "sourceHash":  "7a8e0948cff3a9eda1c8489a2d1175dbfeac0404b7b8d05f9b283f722e5110ed",
+                        "importedHash":  "7a8e0948cff3a9eda1c8489a2d1175dbfeac0404b7b8d05f9b283f722e5110ed",
+                        "sourceLastWriteUtc":  "2026-08-05T15:46:25.0631507Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\agents\\ps-excel-reviewer.agent.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\agents\\ps-excel-reviewer.agent.md",
+                        "sourceHash":  "d7d79fec5a9f1ab49429f7e4b677b1c0482a8c8bbc10d80a97ad75fe11e71d98",
+                        "importedHash":  "d7d79fec5a9f1ab49429f7e4b677b1c0482a8c8bbc10d80a97ad75fe11e71d98",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8661286Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\copilot-instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\copilot-instructions.md",
+                        "sourceHash":  "9824199727872fb1ca985f5d29edf8ef794fbca965056b13e28c234af7da6bd8",
+                        "importedHash":  "9824199727872fb1ca985f5d29edf8ef794fbca965056b13e28c234af7da6bd8",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8431537Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\configuration-deployment.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\configuration-deployment.instructions.md",
+                        "sourceHash":  "5ad2322cb1a1b4e7f26f1a3039eacd4520c4a3748378fe74e88e181af2e3940a",
+                        "importedHash":  "5ad2322cb1a1b4e7f26f1a3039eacd4520c4a3748378fe74e88e181af2e3940a",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8548290Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\csharp.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\csharp.instructions.md",
+                        "sourceHash":  "ab9c1dccb3d4c831461fefad7fec175cfe044183cccee5ad8baa9ee484293f54",
+                        "importedHash":  "ab9c1dccb3d4c831461fefad7fec175cfe044183cccee5ad8baa9ee484293f54",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8461729Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\knowledge-maintenance.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\knowledge-maintenance.instructions.md",
+                        "sourceHash":  "54df62b0408ce8069c3b51ddbebb660aed6ab1bafa097cbb04f523235915427a",
+                        "importedHash":  "54df62b0408ce8069c3b51ddbebb660aed6ab1bafa097cbb04f523235915427a",
+                        "sourceLastWriteUtc":  "2026-08-05T15:46:38.2754705Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\office-addin.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\office-addin.instructions.md",
+                        "sourceHash":  "316306c6e766211dc918b3f4037eb30ab5fd5a19c856365624c9e80f0498659c",
+                        "importedHash":  "316306c6e766211dc918b3f4037eb30ab5fd5a19c856365624c9e80f0498659c",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8503002Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\repository-context.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\repository-context.instructions.md",
+                        "sourceHash":  "1b840dfc519930108b8b25ecf564bfde6d6dfff875e41a0a136108d3dd4c4f9b",
+                        "importedHash":  "1b840dfc519930108b8b25ecf564bfde6d6dfff875e41a0a136108d3dd4c4f9b",
+                        "sourceLastWriteUtc":  "2026-08-05T15:34:25.9305777Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\instructions\\tests.instructions.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\instructions\\tests.instructions.md",
+                        "sourceHash":  "f6330914022909b4f0177dde42e4989086df541a98c5c6538af8666cbb242d90",
+                        "importedHash":  "f6330914022909b4f0177dde42e4989086df541a98c5c6538af8666cbb242d90",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8602998Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\prompts\\diagnose-ps-excel.prompt.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\prompts\\diagnose-ps-excel.prompt.md",
+                        "sourceHash":  "4239a1b4a93ec313340acb6c2c4528bc6a11a5b2cefbbee33eb3999549fdfa5e",
+                        "importedHash":  "4239a1b4a93ec313340acb6c2c4528bc6a11a5b2cefbbee33eb3999549fdfa5e",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8722727Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\prompts\\implement-ps-excel-change.prompt.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\prompts\\implement-ps-excel-change.prompt.md",
+                        "sourceHash":  "4a67621437b0d6937613129ec3fc124e1c9c115937130eb003d785f00c14c6d9",
+                        "importedHash":  "4a67621437b0d6937613129ec3fc124e1c9c115937130eb003d785f00c14c6d9",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8702625Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\prompts\\refresh-ps-excel-knowledge.prompt.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\prompts\\refresh-ps-excel-knowledge.prompt.md",
+                        "sourceHash":  "e133ae8f09d1fbb4e03c9cc5a528e09db0c85535374db260988f72c3299260b7",
+                        "importedHash":  "e133ae8f09d1fbb4e03c9cc5a528e09db0c85535374db260988f72c3299260b7",
+                        "sourceLastWriteUtc":  "2026-08-05T15:46:25.0671466Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\prompts\\review-ps-excel-change.prompt.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\prompts\\review-ps-excel-change.prompt.md",
+                        "sourceHash":  "e87e4b108648050560e2566274be3031bfe3bf3d28a991be995515e042aa0678",
+                        "importedHash":  "e87e4b108648050560e2566274be3031bfe3bf3d28a991be995515e042aa0678",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8785561Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\code-review\\references\\review-checklist.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\code-review\\references\\review-checklist.md",
+                        "sourceHash":  "2707904fa0f5fc936601d9955466d8081c8ca2ed07cf71bf60d6371fb047f84c",
+                        "importedHash":  "2707904fa0f5fc936601d9955466d8081c8ca2ed07cf71bf60d6371fb047f84c",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7932411Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\code-review\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\code-review\\SKILL.md",
+                        "sourceHash":  "4931dad26151fbc6f94d1dc3c1ea7fc46ba895da0c76393955c6872eced46c45",
+                        "importedHash":  "4931dad26151fbc6f94d1dc3c1ea7fc46ba895da0c76393955c6872eced46c45",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7897239Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-auth-refresh\\references\\auth-contract.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-auth-refresh\\references\\auth-contract.md",
+                        "sourceHash":  "8a4c2d87f5a7f49f49c41f67925eb6ae0bd5823206f2f51f260bd313514373be",
+                        "importedHash":  "8a4c2d87f5a7f49f49c41f67925eb6ae0bd5823206f2f51f260bd313514373be",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7567987Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-auth-refresh\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-auth-refresh\\SKILL.md",
+                        "sourceHash":  "2515bee01e058d96767b0d9d310f019e6264a304b245219493aab1850b9e73e7",
+                        "importedHash":  "2515bee01e058d96767b0d9d310f019e6264a304b245219493aab1850b9e73e7",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7545861Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\references\\cancellation-contract.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\references\\cancellation-contract.md",
+                        "sourceHash":  "306e7577234652bae1c906bd87590131ce7ea0de230d1f3d6e8920e472d1073a",
+                        "importedHash":  "306e7577234652bae1c906bd87590131ce7ea0de230d1f3d6e8920e472d1073a",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7672303Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\references\\scenario-contract.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\references\\scenario-contract.md",
+                        "sourceHash":  "2884e951f147a0d8799c2e9ce26b7cbb24e40a091dc4f0b93925866cbc0cdd1e",
+                        "importedHash":  "2884e951f147a0d8799c2e9ce26b7cbb24e40a091dc4f0b93925866cbc0cdd1e",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7672303Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-calculation-scenarios\\SKILL.md",
+                        "sourceHash":  "25524fbe8197fd501d613cc76e8f4aee2c97735d8bacf6fe18fc228725dcb6e5",
+                        "importedHash":  "25524fbe8197fd501d613cc76e8f4aee2c97735d8bacf6fe18fc228725dcb6e5",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7652192Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\references\\project-map.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\references\\project-map.md",
+                        "sourceHash":  "65dd3c90ea6ea3c995a33a38e011de42ca535c665771a454bf6ad76284be87e0",
+                        "importedHash":  "65dd3c90ea6ea3c995a33a38e011de42ca535c665771a454bf6ad76284be87e0",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7491315Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\references\\verification.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\references\\verification.md",
+                        "sourceHash":  "2be0ac9308a3d95118c7daf7a37d3435137f311d4cb2c5aa5b4aac97b6bda03a",
+                        "importedHash":  "2be0ac9308a3d95118c7daf7a37d3435137f311d4cb2c5aa5b4aac97b6bda03a",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7511404Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-change-workflow\\SKILL.md",
+                        "sourceHash":  "4dfffdd7653b490f407209ec84e6225136aaa70d5d5d130a8e3d0f5d10c4d769",
+                        "importedHash":  "4dfffdd7653b490f407209ec84e6225136aaa70d5d5d130a8e3d0f5d10c4d769",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7446241Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-delivery\\references\\delivery-contract.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-delivery\\references\\delivery-contract.md",
+                        "sourceHash":  "590281ba998bd4bc2938527326aba116109e283daab8e478d68b1cd0f2198022",
+                        "importedHash":  "590281ba998bd4bc2938527326aba116109e283daab8e478d68b1cd0f2198022",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7788108Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-delivery\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-delivery\\SKILL.md",
+                        "sourceHash":  "cf77d2abb38c56c3a1c4c9b657479fca14915c043ff25a7932c78f67b0d81245",
+                        "importedHash":  "cf77d2abb38c56c3a1c4c9b657479fca14915c043ff25a7932c78f67b0d81245",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7746893Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-knowledge-base\\references\\catalog.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-knowledge-base\\references\\catalog.md",
+                        "sourceHash":  "06416e065a67c21d4ac64d3efa131d920b08eeef938d3b17c682f07714180a8e",
+                        "importedHash":  "06416e065a67c21d4ac64d3efa131d920b08eeef938d3b17c682f07714180a8e",
+                        "sourceLastWriteUtc":  "2026-08-05T15:34:50.6107813Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-knowledge-base\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-excel-knowledge-base\\SKILL.md",
+                        "sourceHash":  "bb686cd266e815c792c2187ff9197dca09193cc80b932d1e37dde4c9b0900950",
+                        "importedHash":  "bb686cd266e815c792c2187ff9197dca09193cc80b932d1e37dde4c9b0900950",
+                        "sourceLastWriteUtc":  "2026-08-05T15:46:25.0580776Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-integration-architecture\\references\\ecosystem.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-integration-architecture\\references\\ecosystem.md",
+                        "sourceHash":  "356148e5f3c2c3b7e4342e58ce60b9264daddc41f79cec77abd9d257b1ed2581",
+                        "importedHash":  "356148e5f3c2c3b7e4342e58ce60b9264daddc41f79cec77abd9d257b1ed2581",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7869951Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-integration-architecture\\SKILL.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\.github\\skills\\ps-integration-architecture\\SKILL.md",
+                        "sourceHash":  "2ecd474ffc39d8aac959d33cc374da055d1374505196980d705ed38631b33ba2",
+                        "importedHash":  "2ecd474ffc39d8aac959d33cc374da055d1374505196980d705ed38631b33ba2",
+                        "sourceLastWriteUtc":  "2026-08-05T15:19:25.7788108Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\repository\\AGENTS.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\repository\\AGENTS.md",
+                        "sourceHash":  "9fcd35cdaca371cc834596850ad40ffc66b79da6eca3c1cb85df5ff573c7dfa1",
+                        "importedHash":  "9fcd35cdaca371cc834596850ad40ffc66b79da6eca3c1cb85df5ff573c7dfa1",
+                        "sourceLastWriteUtc":  "2026-08-05T15:16:58.8391254Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\START-COPILOT-VISUAL-STUDIO.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\START-COPILOT-VISUAL-STUDIO.md",
+                        "sourceHash":  "6e8ca38095a33d1042a51dffa35d7abf73c9f21bcb2097bbafdb4217c250657f",
+                        "importedHash":  "6e8ca38095a33d1042a51dffa35d7abf73c9f21bcb2097bbafdb4217c250657f",
+                        "sourceLastWriteUtc":  "2026-08-05T15:45:37.2590045Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "exports\\copilot-agent-pack\\vscode-settings.snippet.json",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\exports\\copilot-agent-pack\\vscode-settings.snippet.json",
+                        "sourceHash":  "d8a8ad63589ad05101f9ccb309a71b453c76c6b87f681f9054cd38abbf6d45f4",
+                        "importedHash":  "d8a8ad63589ad05101f9ccb309a71b453c76c6b87f681f9054cd38abbf6d45f4",
+                        "sourceLastWriteUtc":  "2026-08-05T15:31:40.6697070Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "knowledge-discovery.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\knowledge-discovery.md",
+                        "sourceHash":  "edb4788d35ae4f1963f57a841d53aa5dcee518cfc48d30c83b5277dc09510c00",
+                        "importedHash":  "edb4788d35ae4f1963f57a841d53aa5dcee518cfc48d30c83b5277dc09510c00",
+                        "sourceLastWriteUtc":  "2026-06-26T09:34:58.6264414Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_API_CONTRACTS_AND_INTERFACES.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_API_CONTRACTS_AND_INTERFACES.md",
+                        "sourceHash":  "ecf270be1c4332c009c06901c75d44bbd604078fc9b6c401933f19c7adb9b244",
+                        "importedHash":  "ecf270be1c4332c009c06901c75d44bbd604078fc9b6c401933f19c7adb9b244",
+                        "sourceLastWriteUtc":  "2026-07-08T14:50:25.9373581Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_ARCHITECTURE_OVERVIEW.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_ARCHITECTURE_OVERVIEW.md",
+                        "sourceHash":  "18e29d30435d8756eed22a5b8e7a1756d43e6f60328d976ea7eef42c0075173a",
+                        "importedHash":  "18e29d30435d8756eed22a5b8e7a1756d43e6f60328d976ea7eef42c0075173a",
+                        "sourceLastWriteUtc":  "2026-07-08T14:49:30.6024824Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_CODE_STYLE_AND_CONVENTIONS.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_CODE_STYLE_AND_CONVENTIONS.md",
+                        "sourceHash":  "239966c71993e562cac04742f320ca154b106898767167317d078491f7940472",
+                        "importedHash":  "239966c71993e562cac04742f320ca154b106898767167317d078491f7940472",
+                        "sourceLastWriteUtc":  "2026-07-08T14:51:29.9105379Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_DATA_FLOW_AND_EVENT_PROCESSING.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_DATA_FLOW_AND_EVENT_PROCESSING.md",
+                        "sourceHash":  "885e77b616bce85c44ef00dc158abe0fb5ca0ad587f5cab07966748621c63a48",
+                        "importedHash":  "885e77b616bce85c44ef00dc158abe0fb5ca0ad587f5cab07966748621c63a48",
+                        "sourceLastWriteUtc":  "2026-07-08T14:53:11.8014060Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_DEPENDENCIES_AND_TECH_STACK.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_DEPENDENCIES_AND_TECH_STACK.md",
+                        "sourceHash":  "665f820c16f48422a153445e41ec240d80833ff67a7d5a032b2521d308e419ea",
+                        "importedHash":  "665f820c16f48422a153445e41ec240d80833ff67a7d5a032b2521d308e419ea",
+                        "sourceLastWriteUtc":  "2026-07-08T14:54:21.9321791Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_INDEX_AND_SUMMARY.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_INDEX_AND_SUMMARY.md",
+                        "sourceHash":  "ef8b4f2025ce2ad8524c3ca315e355f35342f854959eb23f1821bf81b563f71e",
+                        "importedHash":  "ef8b4f2025ce2ad8524c3ca315e355f35342f854959eb23f1821bf81b563f71e",
+                        "sourceLastWriteUtc":  "2026-07-08T14:56:52.5044015Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_KNOWLEDGE_BASE_CREATION_SUMMARY.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_KNOWLEDGE_BASE_CREATION_SUMMARY.md",
+                        "sourceHash":  "0935af191314967328c6ebc01650ebfa6cd8ebac0d9f7065b5882bcfb92bf08f",
+                        "importedHash":  "0935af191314967328c6ebc01650ebfa6cd8ebac0d9f7065b5882bcfb92bf08f",
+                        "sourceLastWriteUtc":  "2026-07-08T14:57:52.8958598Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "ps-app-delfi_RELATIONSHIP_TO_PS_EXCEL_AGENT.md",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_RELATIONSHIP_TO_PS_EXCEL_AGENT.md",
+                        "sourceHash":  "7d98e8578cdf9a876dbd01bb1016bc8692bdd26472489b80966525fc0d5331cc",
+                        "importedHash":  "7d98e8578cdf9a876dbd01bb1016bc8692bdd26472489b80966525fc0d5331cc",
+                        "sourceLastWriteUtc":  "2026-07-08T14:55:42.4897589Z",
+                        "status":  "unchanged"
+                    },
+                    {
+                        "relativePath":  "Transcripts\\Single-row scenario.txt",
+                        "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\Transcripts\\Single-row scenario.txt",
+                        "sourceHash":  "5c79a704351b46dfc4c855d7f4ca1fce550d89b93f23824f68d9646d45e7f271",
+                        "importedHash":  "5c79a704351b46dfc4c855d7f4ca1fce550d89b93f23824f68d9646d45e7f271",
+                        "sourceLastWriteUtc":  "2026-07-21T11:56:55.9519146Z",
+                        "status":  "unchanged"
+                    }
+                ],
+    "conflicts":  [
+
+                  ]
+}
