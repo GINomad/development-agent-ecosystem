@@ -24,7 +24,8 @@
   "ui": {
     "listenAddress": "127.0.0.1",
     "port": 43127,
-    "openBrowser": true
+    "openBrowser": true,
+    "taskRefreshSeconds": 5
   },
   "review": {
     "excludeSelfAuthored": true,

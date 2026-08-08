@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $Actor,
-    [Parameter(Mandatory)][ValidateSet('task-created','context-issued','agent-result','question-opened','question-resolved','scope-held','scope-released','review-decision','external-action','knowledge-updated')][string] $Type,
+    [Parameter(Mandatory)][ValidateSet('task-created','workflow-status','agent-status','user-comment','user-comment-acknowledged','context-issued','agent-result','question-opened','question-resolved','scope-held','scope-released','review-decision','external-action','knowledge-updated')][string] $Type,
     [Parameter(Mandatory)][string] $Summary,
     [string] $Artifact,
     [string[]] $Evidence = @(),
@@ -32,4 +32,3 @@ $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
 $stream = [IO.File]::Open($ledgerPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
 try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
 [pscustomobject]$event
-

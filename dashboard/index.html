@@ -60,9 +60,70 @@
       </div>
     </section>
 
+    <section class="card task-monitor-card">
+      <div class="section-heading">
+        <div>
+          <p class="step">02 - LIVE WORKFLOWS</p>
+          <h2>Task status and intervention</h2>
+          <p class="muted">Task history survives page reloads. Status is refreshed automatically at the configured interval.</p>
+        </div>
+        <div class="monitor-controls">
+          <div class="segmented" role="group" aria-label="Task filter">
+            <button type="button" class="active" data-task-filter="active">Active</button>
+            <button type="button" data-task-filter="all">All</button>
+          </div>
+          <button class="button secondary compact-button" id="refreshTaskStatus">Refresh</button>
+        </div>
+      </div>
+
+      <div class="task-monitor">
+        <aside id="taskList" class="task-list empty">No active tasks.</aside>
+        <div id="taskDetail" class="task-detail empty-detail">
+          <div id="taskDetailEmpty" class="detail-placeholder">Select a task to inspect its agents, events, and artifacts.</div>
+          <div id="taskDetailContent" class="hidden">
+            <div class="task-detail-header">
+              <div>
+                <p class="detail-kicker" id="selectedTaskId"></p>
+                <h3 id="selectedTaskTitle"></h3>
+              </div>
+              <span class="task-status" id="selectedTaskStatus"></span>
+            </div>
+            <p class="task-meta" id="selectedTaskMeta"></p>
+            <p class="task-message" id="selectedTaskMessage"></p>
+
+            <h4>Agents</h4>
+            <div class="agent-status-grid" id="agentStatusGrid"></div>
+
+            <div class="comment-panel">
+              <label>
+                Comment or workflow correction
+                <textarea id="taskComment" rows="3" maxlength="4000" placeholder="Clarify a requirement, answer a question, pause a scope item, or redirect the next step."></textarea>
+              </label>
+              <p class="hint">A running workflow reads new comments at its next handoff checkpoint. For a stopped task, save the comment and select Resume workflow.</p>
+              <div class="actions">
+                <button class="button primary" id="sendTaskComment">Send comment</button>
+                <button class="button secondary" id="resumeTask">Resume workflow</button>
+              </div>
+            </div>
+
+            <div class="detail-columns">
+              <div>
+                <h4>Timeline</h4>
+                <div class="timeline" id="taskTimeline"></div>
+              </div>
+              <div>
+                <h4>Artifacts</h4>
+                <div class="artifact-list" id="taskArtifacts"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <div class="grid">
       <section class="card">
-        <p class="step">02 - REVIEWER NOTE</p>
+        <p class="step">03 - REVIEWER NOTE</p>
         <h2>Send a note to the Reviewer agent</h2>
         <p class="muted">The note is added to the next review context together with active PR discussions.</p>
         <label>
@@ -80,7 +141,7 @@
       </section>
 
       <section class="card">
-        <p class="step">03 - TASK INBOX</p>
+        <p class="step">04 - TASK INBOX</p>
         <h2>Assigned tasks</h2>
         <div id="taskInbox" class="inbox empty">Select "Show assigned tasks" to load the inbox.</div>
       </section>

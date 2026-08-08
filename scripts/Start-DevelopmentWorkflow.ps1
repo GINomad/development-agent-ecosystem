@@ -63,6 +63,14 @@ Target workspace: $([IO.Path]::GetFullPath($Workspace))
 Repository config ID: $RepositoryId
 Additional user instruction: $UserInstruction
 
+Live task control:
+- The persistent ledger is $($task.TaskRoot)\task-ledger.jsonl.
+- Before every agent handoff and after every agent result, reread the ledger and process every new user-comment event.
+- User comments may clarify, pause, or redirect in-scope work, but they do not bypass approval gates or authorize unrelated external writes.
+- Update visible per-agent state with $(Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') before and after every handoff. Use running, waiting, completed, failed, or skipped based only on evidence.
+- When comments have been incorporated, record a user-comment-acknowledged event whose evidence contains the processed comment event IDs, then call Set-AgentTaskStatus.ps1 with -AcknowledgeComments.
+- If user input is required, set the task to waiting_for_input and the affected agent to waiting. Do not invent an answer.
+
 Use the custom agents development_requirements_analyst, development_implementer, development_reviewer, and development_pipeline_monitor according to the configured gates. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
 
 $($knowledgePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
@@ -79,6 +87,10 @@ $result = [pscustomobject]@{
 }
 if ($PrepareOnly) { return $result }
 
+$statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
+& $statusScript -TaskId $TaskId -Status running -Stage knowledge_keeper -Message 'Workflow started. Knowledge Keeper is preparing task context.' -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus running -Stage knowledge_keeper -Message 'Knowledge Keeper is orchestrating the workflow.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+
 $arguments = @(
     '-C', [IO.Path]::GetFullPath($Workspace),
     '--add-dir', (Get-EcosystemRoot),
@@ -87,5 +99,25 @@ $arguments = @(
     '-c', "agents.max_concurrent_threads_per_session=$([int]$config.runtime.maxConcurrentAgents)",
     $prompt
 )
-& codex @arguments
-if ($LASTEXITCODE -ne 0) { throw "Codex exited with code $LASTEXITCODE." }
+try {
+    & codex @arguments
+    if ($LASTEXITCODE -ne 0) { throw "Codex exited with code $LASTEXITCODE." }
+    $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $currentStatus = [string]$currentTask.status
+    $currentStage = if ($currentTask.PSObject.Properties['currentStage']) { [string]$currentTask.currentStage } else { $currentStatus }
+    if ($currentStatus -in @('waiting_for_input','held')) {
+        & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus waiting -Stage $currentStage -Message 'The orchestration run stopped at an explicit user-input gate.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+    elseif ($currentStatus -eq 'review_pending') {
+        & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for human review decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+    elseif ($currentStatus -notin @('failed','interrupted','completed')) {
+        & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus completed -Stage completed -Message 'Knowledge Keeper completed the orchestration run.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        & $statusScript -TaskId $TaskId -Status completed -Stage completed -Message 'Workflow completed. Review task artifacts for the final outcome.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+}
+catch {
+    & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus failed -Stage failed -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    throw
+}
