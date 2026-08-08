@@ -25,6 +25,7 @@ function Get-FailureFingerprint {
     try { $event = $Line | ConvertFrom-Json } catch { return $null }
     if ([string]$event.type -ne 'item.completed' -or -not $event.PSObject.Properties['item']) { return $null }
     $item = $event.item
+    if (-not $item.PSObject.Properties['status']) { return $null }
     if ([string]$item.status -ne 'failed') { return $null }
     $detail = if ($item.PSObject.Properties['aggregated_output']) { [string]$item.aggregated_output } elseif ($item.PSObject.Properties['error']) { [string]$item.error } else { ($item | ConvertTo-Json -Depth 12 -Compress) }
     if ([string]::IsNullOrWhiteSpace($detail)) { return $null }
@@ -53,6 +54,7 @@ $identicalFailureCount = 0
 $guardTriggered = $false
 $guardReason = $null
 $lastFailure = $null
+$monitorCompleted = $false
 
 try {
     while (-not $process.HasExited) {
@@ -84,8 +86,13 @@ try {
     $process.WaitForExit()
     $process.Refresh()
     $nativeExitCode = $process.ExitCode
+    $monitorCompleted = $true
 }
 finally {
+    if (-not $monitorCompleted -and -not $process.HasExited) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        try { $process.WaitForExit() } catch { }
+    }
     [array]$remainingLines = @()
     if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { [array]$remainingLines = @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) }
     while ($lineIndex -lt $remainingLines.Count) {

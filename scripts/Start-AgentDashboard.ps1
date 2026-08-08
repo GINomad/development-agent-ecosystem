@@ -13,6 +13,8 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $root = Get-EcosystemRoot
 $dashboardRoot = Join-Path $root 'dashboard'
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
+$runspaceLogPath = Join-Path $stateRoot 'dashboard-runspaces.jsonl'
+$scriptRuns = [Collections.Generic.List[object]]::new()
 $address = [string]$config.ui.listenAddress
 $port = [int]$config.ui.port
 if ($address -ne '127.0.0.1') { throw 'Dashboard is restricted to 127.0.0.1.' }
@@ -75,6 +77,44 @@ function Start-ScriptProcess {
     return $process.Id
 }
 
+function Start-ScriptRunspace {
+    param([Parameter(Mandatory)][string] $ScriptPath, [Parameter(Mandatory)][hashtable] $Parameters, [string] $TaskId)
+    $runner = [PowerShell]::Create()
+    $null = $runner.AddCommand($ScriptPath)
+    foreach ($key in $Parameters.Keys) {
+        $value = $Parameters[$key]
+        if ($null -eq $value -or ([string]$value).Length -eq 0) { continue }
+        if ($value -is [bool]) {
+            if ($value) { $null = $runner.AddParameter($key) }
+        }
+        else { $null = $runner.AddParameter($key, $value) }
+    }
+    try { $async = $runner.BeginInvoke() }
+    catch { $runner.Dispose(); throw }
+    $run = [pscustomobject][ordered]@{ runId=[guid]::NewGuid().ToString('N'); taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); PowerShell=$runner; Async=$async }
+    $scriptRuns.Add($run)
+    return $run
+}
+
+function Clear-CompletedScriptRunspaces {
+    for ($index = $scriptRuns.Count - 1; $index -ge 0; $index--) {
+        $run = $scriptRuns[$index]
+        if (-not $run.Async.IsCompleted) { continue }
+        $status = 'completed'
+        $diagnostic = ''
+        try { $null = $run.PowerShell.EndInvoke($run.Async) }
+        catch { $status = 'failed'; $diagnostic = $_.Exception.Message }
+        if ($run.PowerShell.Streams.Error.Count) {
+            $status = 'failed'
+            $diagnostic = (($run.PowerShell.Streams.Error | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
+        }
+        $record = [ordered]@{ type='dashboard-runspace-completed'; runId=$run.runId; taskId=$run.taskId; startedAtUtc=$run.startedAtUtc; completedAtUtc=[DateTime]::UtcNow.ToString('o'); status=$status; diagnostic=$diagnostic } | ConvertTo-Json -Compress
+        [IO.File]::AppendAllText($runspaceLogPath, $record + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+        $run.PowerShell.Dispose()
+        $scriptRuns.RemoveAt($index)
+    }
+}
+
 function Resolve-RequestedTaskId {
     param([string] $Mode, [string] $TaskSelector, [string] $TaskId)
     if ($TaskId) {
@@ -100,6 +140,7 @@ $handled = 0
 try {
     while ($listener.IsListening -and ($MaxRequests -eq 0 -or $handled -lt $MaxRequests)) {
         $context = $listener.GetContext()
+        Clear-CompletedScriptRunspaces
         $handled++
         $request = $context.Request
         $response = $context.Response
@@ -238,13 +279,14 @@ try {
                     }
                     $repository = @($config.repositories | Where-Object { $_.id -eq [string]$persistedTask.repositoryId -and $_.enabled }) | Select-Object -First 1
                     if (-not $repository) { throw 'The task repository is not enabled.' }
-                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
+                    if ([string]$config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Unsupported elevated workflow launch strategy.' }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
                         RepositoryId=[string]$repository.id; Workspace=[string]$repository.localWorkspace
                         UserInstruction='Resume after an OS-level execution denial. Process all unacknowledged comments before the next handoff.'
                         Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$processId; executionMode='elevated-approved'; message='One elevated workflow session was approved and started.' }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; executionMode='elevated-approved'; launchStrategy='in-process-runspace'; message='One elevated workflow session was approved and started without a nested PowerShell process.' }
                     continue
                 }
                 if ($path -eq '/api/health-checks/run') {
@@ -335,6 +377,10 @@ try {
     }
 }
 finally {
+    foreach ($run in @($scriptRuns)) {
+        try { $run.PowerShell.Stop() } catch { }
+        $run.PowerShell.Dispose()
+    }
     $listener.Stop()
     $listener.Close()
 }

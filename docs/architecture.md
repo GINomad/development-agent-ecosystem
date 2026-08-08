@@ -22,7 +22,7 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/Invoke-EcosystemHealthCheck.ps1` | Deterministic diagnostics, safe derived-state repairs, and OS-policy compatibility profile generation |
 | `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery with structured validation |
 | `scripts/Invoke-EnhancedReview.ps1` | Active PR comments, local notes, discussion hashing, and vendored Review Monitor invocation |
-| `dashboard` | Loopback operator UI for manual/automate selection, persistent task and per-agent status, workflow comments, notes, and review launch |
+| `dashboard` | Loopback operator UI plus tracked in-process runspaces for policy-compatible workflow launch without nested PowerShell |
 | `knowledge/managed` | Versioned managed knowledge with seed-import provenance |
 | `%LOCALAPPDATA%/Codex/development-agent-ecosystem` | Mutable task ledgers, review prompts, notes, reports, and scheduler backups |
 
