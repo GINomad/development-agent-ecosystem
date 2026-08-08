@@ -29,6 +29,14 @@ foreach ($file in $powerShellFiles) {
 if ($parseErrors.Count) { throw "PowerShell syntax validation failed: $($parseErrors | ConvertTo-Json -Depth 5 -Compress)" }
 Add-Check -Name 'powershell-syntax' -Detail "$($powerShellFiles.Count) files"
 
+$automaticVariableWrites = @($powerShellFiles | Where-Object {
+    (Get-Content -LiteralPath $_.FullName -Raw) -match '(?im)^\s*\$pid\b\s*='
+})
+if ($automaticVariableWrites.Count) {
+    throw "PowerShell scripts must not assign to the read-only automatic variable `$PID: $($automaticVariableWrites.FullName -join ', ')"
+}
+Add-Check -Name 'automatic-variable-writes' -Detail 'No assignments to $PID'
+
 $jsonFiles = [Collections.Generic.List[IO.FileInfo]]::new()
 foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $root 'config') -Recurse -Filter '*.json' -File)) { $jsonFiles.Add($file) }
 $jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root '.agents\plugins\marketplace.json')))
