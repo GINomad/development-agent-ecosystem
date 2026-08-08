@@ -10,6 +10,20 @@
     "createdAtUtc": { "type": "string", "format": "date-time" },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "acceptedKnowledge": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "artifactSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256", "summary", "updatedAtUtc"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "summary": { "type": "string", "minLength": 1 },
+          "updatedAtUtc": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "engineeringGuidance": {
       "type": "object",
       "additionalProperties": false,

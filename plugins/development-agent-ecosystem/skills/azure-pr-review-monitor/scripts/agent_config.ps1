@@ -59,6 +59,8 @@ function New-AgentDefaultConfig {
         schedule = [pscustomobject][ordered]@{ pollIntervalMinutes = 60; dailyTime = '11:00' }
         review = [pscustomobject][ordered]@{
             excludeSelfAuthored = $true
+            maxFilesPerReview = 80
+            maxDiffCharacters = 500000
             skillPaths = @()
             promptPaths = @()
             mcp = [pscustomobject][ordered]@{ mode = 'disabled'; allowedServers = @() }
@@ -156,4 +158,6 @@ function Assert-AgentConfig {
     }
     $mcpMode = [string]$Config.review.mcp.mode
     if ($mcpMode -notin @('disabled', 'allowlist')) { throw "MCP mode must be 'disabled' or 'allowlist'." }
+    if ([int]$Config.review.maxFilesPerReview -lt 1 -or [int]$Config.review.maxFilesPerReview -gt 500) { throw 'Review maxFilesPerReview must be between 1 and 500.' }
+    if ([int]$Config.review.maxDiffCharacters -lt 10000 -or [int]$Config.review.maxDiffCharacters -gt 1500000) { throw 'Review maxDiffCharacters must be between 10000 and 1500000.' }
 }

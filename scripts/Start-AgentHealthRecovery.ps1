@@ -11,6 +11,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+
+function Get-BoundedTextTail {
+    param([string] $Path, [int] $TailLines, [int] $MaximumBytes)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    $text = (@(Get-Content -LiteralPath $Path -Tail $TailLines -Encoding UTF8) -join [Environment]::NewLine)
+    $encoding = New-Object Text.UTF8Encoding($false, $false)
+    $bytes = $encoding.GetBytes($text)
+    if ($bytes.Length -le $MaximumBytes) { return $text }
+    $offset = $bytes.Length - $MaximumBytes
+    return '[truncated to configured byte tail]' + [Environment]::NewLine + $encoding.GetString($bytes, $offset, $MaximumBytes)
+}
 if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
 if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure artifact was not found: $FailurePath" }
 
@@ -62,7 +73,7 @@ $attemptCount = @($attempts | Where-Object {
 if ($attemptCount -ge $maximumAttempts) {
     $message = "Automatic recovery limit reached for failure signature $signature."
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type agent-result -Summary $message -Artifact $attemptsPath -Evidence @($FailurePath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary $message -NextStep 'A human must inspect or approve the next bounded recovery action.' -EvidenceRefs @($FailurePath, $attemptsPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     return [pscustomobject]@{ Status='attempt-limit'; TaskId=$TaskId; FailureSignature=$signature; Attempts=$attemptCount }
 }
 
@@ -71,7 +82,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the ecosystem Git worktree.'
 if ($dirtyFiles.Count) {
     $message = 'Automatic source recovery is waiting because the ecosystem repository has uncommitted changes.'
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type agent-result -Summary $message -Artifact $FailurePath -Evidence @($dirtyFiles) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary $message -NextStep 'Resolve or preserve the existing worktree changes before automatic repair.' -EvidenceRefs (@($FailurePath) + @($dirtyFiles)) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     return [pscustomobject]@{ Status='dirty-worktree'; TaskId=$TaskId; Files=$dirtyFiles }
 }
 
@@ -79,19 +90,39 @@ $attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToSt
 [IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_recovery -Message "Health Check Agent is repairing failure $signature." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
-$failureJson = Get-Content -LiteralPath $FailurePath -Raw -Encoding UTF8
+$contextLimits = $config.runtime.contextLimits
+$maximumBytes = [int]$contextLimits.maxCommandOutputBytes
+$taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$diagnosticContextPath = Join-Path $taskRoot 'health-diagnostic-context.json'
+$diagnosticContext = [ordered]@{
+    taskId = $TaskId
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    failureSignature = $signature
+    failure = $failure
+    taskStatus = [ordered]@{
+        status = [string]$taskSnapshot.status
+        stage = if ($taskSnapshot.PSObject.Properties['currentStage']) { [string]$taskSnapshot.currentStage } else { [string]$taskSnapshot.status }
+        message = if ($taskSnapshot.PSObject.Properties['lastMessage']) { [string]$taskSnapshot.lastMessage } else { '' }
+    }
+    workflowLogTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'workflow-codex.jsonl') -TailLines ([int]$contextLimits.workflowLogTailLines) -MaximumBytes $maximumBytes
+    ledgerTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'task-ledger.jsonl') -TailLines ([int]$contextLimits.ledgerTailLines) -MaximumBytes $maximumBytes
+    finalResponseTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'workflow-final-response.md') -TailLines ([int]$contextLimits.ledgerTailLines) -MaximumBytes $maximumBytes
+    limits = [ordered]@{ workflowLogTailLines=[int]$contextLimits.workflowLogTailLines; ledgerTailLines=[int]$contextLimits.ledgerTailLines; maximumBytesPerTail=$maximumBytes }
+}
+$diagnosticJson = $diagnosticContext | ConvertTo-Json -Depth 20
+Write-Utf8NoBom -Path $diagnosticContextPath -Content ($diagnosticJson + [Environment]::NewLine)
 $healthPrompt = @"
 You are the bounded recovery coordinator for the Development Agent Ecosystem.
 
 Execution mode: $executionMode ($recoverySandboxMode). If this is elevated-approved, the user approved this one recovery attempt because the Windows sandbox failed with process-creation error 1260. The absence of an OS sandbox does not expand your authority: every read, write, and command must remain inside $workspace. Do not follow symlinks or junctions outside it.
 
 Task: $TaskId
-Failure artifact: $FailurePath
-Failure payload:
-$failureJson
+Bounded diagnostic artifact: $diagnosticContextPath
+Bounded diagnostic payload (use this instead of reading complete historical logs):
+$diagnosticJson
 Ecosystem workspace: $workspace
 
-First delegate evidence analysis to the custom agent development_health_check. Then, only if the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or retry another workflow. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If evidence is insufficient or user input is needed, do not invent a fix.
+First delegate evidence analysis to the custom agent development_health_check. Pass only the bounded diagnostic payload. Do not read complete workflow or ledger history. Then, only if the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or retry another workflow. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If evidence is insufficient or user input is needed, do not invent a fix.
 
 Return only the JSON object required by the configured output schema. Use the exact failure signature $signature.
 "@
@@ -137,7 +168,9 @@ try {
     }
     $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type agent-result -Summary "Automatic health recovery finished with status $([string]$recovery.status)." -Artifact $resultPath -Evidence @($FailurePath, $logPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    if ([string]$recovery.status -ne 'repaired') {
+        & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary "Automatic health recovery finished with status $([string]$recovery.status)." -NextStep ([string]$recovery.nextAction) -EvidenceRefs @($FailurePath, $resultPath, $logPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
     [pscustomobject]@{ Status=[string]$recovery.status; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath }
 }
 catch {

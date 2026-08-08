@@ -52,6 +52,40 @@ function Read-JsonBody {
     return $raw | ConvertFrom-Json
 }
 
+function Get-ObjectPropertyValue {
+    param([AllowNull()] $Source, [Parameter(Mandatory)][string] $Name)
+    if ($null -eq $Source) { return $null }
+    $property = $Source.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+function Get-RequestedRepositoryIds {
+    param([Parameter(Mandatory)] $Source, [switch] $Required)
+    $values = @()
+    if ($Source.PSObject.Properties['repositoryIds']) { $values = @($Source.repositoryIds) }
+    elseif ($Source.PSObject.Properties['repositoryId']) { $values = @($Source.repositoryId) }
+    $ids = [Collections.Generic.List[string]]::new()
+    foreach ($value in $values) {
+        $id = [string]$value
+        if ([string]::IsNullOrWhiteSpace($id) -or $ids.Contains($id)) { continue }
+        $ids.Add($id)
+    }
+    if ($Required -and -not $ids.Count) { throw 'Select at least one enabled repository.' }
+    return @($ids)
+}
+
+function Get-EnabledRepositories {
+    param([Parameter(Mandatory)] $Config, [Parameter(Mandatory)][string[]] $RepositoryIds)
+    $result = [Collections.Generic.List[object]]::new()
+    foreach ($id in $RepositoryIds) {
+        $repository = @($Config.repositories | Where-Object { $_.id -eq $id -and $_.enabled }) | Select-Object -First 1
+        if (-not $repository) { throw "Enabled repository '$id' was not found." }
+        $result.Add($repository)
+    }
+    return @($result)
+}
+
 function Quote-PowerShellLiteral {
     param([AllowEmptyString()][string] $Value)
     return "'" + $Value.Replace("'", "''") + "'"
@@ -66,6 +100,10 @@ function Start-ScriptProcess {
         if ($null -eq $value -or ([string]$value).Length -eq 0) { continue }
         if ($value -is [bool]) {
             if ($value) { $parts.Add("-$key") }
+        }
+        elseif ($value -is [Array]) {
+            $literals = @($value | ForEach-Object { Quote-PowerShellLiteral ([string]$_) })
+            if ($literals.Count) { $parts.Add("-$key @($($literals -join ','))") }
         }
         else {
             $parts.Add("-$key $(Quote-PowerShellLiteral ([string]$value))")
@@ -115,6 +153,57 @@ function Clear-CompletedScriptRunspaces {
     }
 }
 
+function Stop-TaskScriptRunspaces {
+    param([Parameter(Mandatory)][string] $TaskId)
+    $stoppedRunIds = [Collections.Generic.List[string]]::new()
+    for ($index = $scriptRuns.Count - 1; $index -ge 0; $index--) {
+        $run = $scriptRuns[$index]
+        if ([string]$run.taskId -ne $TaskId -or $run.Async.IsCompleted) { continue }
+        try { $run.PowerShell.Stop() } catch { }
+        try { $null = $run.PowerShell.EndInvoke($run.Async) } catch { }
+        $stoppedRunIds.Add([string]$run.runId)
+        $run.PowerShell.Dispose()
+        $scriptRuns.RemoveAt($index)
+    }
+    return @($stoppedRunIds)
+}
+
+function Stop-ValidatedWorkflowProcessTree {
+    param([Parameter(Mandatory)][int] $WorkflowProcessId, [Parameter(Mandatory)][string] $TaskId)
+    if ($WorkflowProcessId -le 0 -or $WorkflowProcessId -eq $PID) { return @() }
+    $rootProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$WorkflowProcessId" -ErrorAction SilentlyContinue
+    if (-not $rootProcess) { return @() }
+    $commandText = [string]$rootProcess.CommandLine
+    $decodedCommand = ''
+    $encodedMatch = [regex]::Match($commandText, '(?i)-EncodedCommand\s+([A-Za-z0-9+/=]+)')
+    if ($encodedMatch.Success) {
+        try { $decodedCommand = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encodedMatch.Groups[1].Value)) } catch { }
+    }
+    $validationText = $commandText + [Environment]::NewLine + $decodedCommand
+    if ($validationText -notmatch [regex]::Escape('Start-DevelopmentWorkflow.ps1') -or $validationText -notmatch [regex]::Escape($TaskId)) {
+        throw "Process $WorkflowProcessId is not the validated workflow owner for task '$TaskId'."
+    }
+    $allProcesses = @(Get-CimInstance Win32_Process)
+    $processIds = [Collections.Generic.List[int]]::new()
+    $processIds.Add($WorkflowProcessId)
+    for ($cursor = 0; $cursor -lt $processIds.Count; $cursor++) {
+        $parentId = $processIds[$cursor]
+        foreach ($child in @($allProcesses | Where-Object { [int]$_.ParentProcessId -eq $parentId })) {
+            $childId = [int]$child.ProcessId
+            if (-not $processIds.Contains($childId)) { $processIds.Add($childId) }
+        }
+    }
+    $stoppedIds = [Collections.Generic.List[int]]::new()
+    for ($index = $processIds.Count - 1; $index -ge 0; $index--) {
+        $processIdToStop = $processIds[$index]
+        if (Get-Process -Id $processIdToStop -ErrorAction SilentlyContinue) {
+            Stop-Process -Id $processIdToStop -Force -ErrorAction SilentlyContinue
+            $stoppedIds.Add($processIdToStop)
+        }
+    }
+    return @($stoppedIds)
+}
+
 function Resolve-RequestedTaskId {
     param([string] $Mode, [string] $TaskSelector, [string] $TaskId)
     if ($TaskId) {
@@ -159,8 +248,8 @@ try {
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
-                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description } })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds }
+                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; requiredArtifacts=@($_.requiredArtifacts) } })
+                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
@@ -175,7 +264,26 @@ try {
                     Send-Json -Response $response -Value @{ tasks=@($result.Tasks); generatedAtUtc=[string]$result.GeneratedAtUtc }
                     continue
                 }
-                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/artifacts/([^/]+)$') {
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/agents/([^/]+)/log$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    $requestedAgentId = [Uri]::UnescapeDataString($Matches[2])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if (-not @($config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) {
+                        Send-Json -Response $response -Value @{ error='Agent was not found.' } -StatusCode 404
+                        continue
+                    }
+                    $activityParameters = @{ TaskId=$requestedTaskId; AgentId=$requestedAgentId; Tail=200; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $activityParameters.CodexHome = $CodexHome }
+                    $result = & (Join-Path $PSScriptRoot 'Get-AgentActivity.ps1') @activityParameters
+                    Send-Json -Response $response -Value @{
+                        taskId=[string]$result.TaskId
+                        agentId=[string]$result.AgentId
+                        status=[string]$result.Status
+                        generatedAtUtc=[string]$result.GeneratedAtUtc
+                        entries=@($result.Entries)
+                    }
+                    continue
+                }                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/artifacts/([^/]+)$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     $artifactName = [Uri]::UnescapeDataString($Matches[2])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
@@ -231,8 +339,8 @@ try {
                     $mode = [string]$body.mode
                     if ($mode -notin @('manual','automate')) { throw 'Mode must be manual or automate.' }
                     if ($mode -eq 'manual' -and [string]::IsNullOrWhiteSpace([string]$body.taskSelector)) { throw 'Manual mode requires a task selector.' }
-                    $repository = @($config.repositories | Where-Object { $_.id -eq [string]$body.repositoryId -and $_.enabled }) | Select-Object -First 1
-                    if (-not $repository) { throw 'Select an enabled repository.' }
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $body -Required)
+                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
                     $resolvedTaskId = Resolve-RequestedTaskId -Mode $mode -TaskSelector ([string]$body.taskSelector) -TaskId ([string]$body.taskId)
                     $existingTaskPath = Join-Path $stateRoot "tasks\$resolvedTaskId\task.json"
                     $resume = Test-Path -LiteralPath $existingTaskPath -PathType Leaf
@@ -243,27 +351,98 @@ try {
                             if ($runningProcess) { throw "Task '$resolvedTaskId' already has a running workflow." }
                         }
                     }
+                    $resumePlan = $null
+                    if ($resume) {
+                        $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $resolvedTaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+                        if (-not [bool]$resumePlan.HasWork) {
+                            Send-Json -Response $response -Value @{ status='already-complete'; taskId=$resolvedTaskId; resumed=$false; pendingAgents=@(); message='No unfinished agents remain. Nothing was restarted.' }
+                            continue
+                        }
+                    }
                     $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
                         TaskId=$resolvedTaskId
-                        RepositoryId=[string]$repository.id
-                        Workspace=[string]$repository.localWorkspace
+                        RepositoryIds=$repositoryIds
                         UserInstruction=[string]$body.instruction
                         Resume=$resume
                         ConfigPath=$ConfigPath
                         CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; message='Workflow opened in a separate window.' }
+                    $pendingAgents = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
+                    $startMessage = if ($resume) { "Checkpoint resume started only for: $($pendingAgents -join ', ')." } else { 'Workflow opened in a separate window.' }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; executionMode='sandboxed'; repositories=@($repositoryIds); pendingAgents=$pendingAgents; message=$startMessage }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/comments$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    $commentParameters = @{ TaskId=$requestedTaskId; Text=[string]$body.text; Author='user'; ConfigPath=$ConfigPath }
+                    $commentText = [string](Get-ObjectPropertyValue -Source $body -Name 'text')
+                    $questionId = [string](Get-ObjectPropertyValue -Source $body -Name 'questionId')
+                    $targetAgentId = [string](Get-ObjectPropertyValue -Source $body -Name 'targetAgentId')
+                    $commentParameters = @{ TaskId=$requestedTaskId; Text=$commentText; Author='user'; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace($questionId)) { $commentParameters.QuestionId = $questionId }
+                    if (-not [string]::IsNullOrWhiteSpace($targetAgentId)) { $commentParameters.TargetAgentId = $targetAgentId }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
                     $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
-                    Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message='Comment saved. A running workflow will consume it at its next checkpoint.' }
+                    $commentMessage = if ($comment.QuestionId) { 'Answer saved and linked to the selected question. Resume the workflow to continue from the input gate.' } else { 'Comment saved. A running workflow will consume it at its next checkpoint.' }
+                    Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message=$commentMessage }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/agents/([^/]+)/resume$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    $requestedAgentId = [Uri]::UnescapeDataString($Matches[2])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if (-not @($config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before restarting one agent." }
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
+                    $parameters = @{
+                        Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
+                        RepositoryIds=$repositoryIds; TargetAgentId=$requestedAgentId
+                        UserInstruction="Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve every other agent."
+                        Resume=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                    }
+                    $elevated = [bool]$body.elevated
+                    if ($elevated) {
+                        if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                        $parameters.ElevatedApproved = $true
+                        $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
+                        $processId = $PID
+                        $runId = $run.runId
+                        $executionMode = 'elevated-approved'
+                    }
+                    else {
+                        $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters $parameters
+                        $runId = $null
+                        $executionMode = 'sandboxed'
+                    }
+                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -Status running -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_queued -Message "Targeted restart queued for '$requestedAgentId'; other agents remain unchanged." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$requestedAgentId'." -TargetAgentId $requestedAgentId -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled for restart." }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/workflow/stop$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $stoppedRunIds = @(Stop-TaskScriptRunspaces -TaskId $requestedTaskId)
+                    $stoppedProcessIds = @()
+                    if ($persistedTask.PSObject.Properties['workflowProcessId']) {
+                        $stoppedProcessIds = @(Stop-ValidatedWorkflowProcessTree -WorkflowProcessId ([int]$persistedTask.workflowProcessId) -TaskId $requestedTaskId)
+                    }
+                    foreach ($agent in @($config.agents)) {
+                        $agentId = [string]$agent.id
+                        if ($persistedTask.PSObject.Properties['agentStatuses'] -and $persistedTask.agentStatuses.PSObject.Properties[$agentId] -and [string]$persistedTask.agentStatuses.$agentId.status -eq 'running') {
+                            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -AgentId $agentId -AgentStatus waiting -Stage stopped_by_user -Message 'Execution was stopped by the user; persisted results were preserved.' -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                        }
+                    }
+                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -Status interrupted -Stage stopped_by_user -Message 'Workflow stopped by the user. Resume continues from the persisted checkpoint.' -Actor user -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    Send-Json -Response $response -Value @{ status='stopped'; taskId=$requestedTaskId; stoppedProcessIds=@($stoppedProcessIds); stoppedRunIds=@($stoppedRunIds); message='Workflow execution stopped; task history and completed results were preserved.' }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/workflow/elevated$') {
@@ -277,16 +456,21 @@ try {
                         $runningProcess = Get-Process -Id ([int]$persistedTask.workflowProcessId) -ErrorAction SilentlyContinue
                         if ($runningProcess) { throw "Task '$requestedTaskId' already has a running workflow." }
                     }
-                    $repository = @($config.repositories | Where-Object { $_.id -eq [string]$persistedTask.repositoryId -and $_.enabled }) | Select-Object -First 1
-                    if (-not $repository) { throw 'The task repository is not enabled.' }
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
+                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
+                    $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $requestedTaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    if (-not [bool]$resumePlan.HasWork) {
+                        Send-Json -Response $response -Value @{ status='already-complete'; taskId=$requestedTaskId; pendingAgents=@(); message='No unfinished agents remain. Nothing was restarted.' }
+                        continue
+                    }
                     if ([string]$config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Unsupported elevated workflow launch strategy.' }
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
-                        RepositoryId=[string]$repository.id; Workspace=[string]$repository.localWorkspace
+                        RepositoryIds=$repositoryIds
                         UserInstruction='Resume after an OS-level execution denial. Process all unacknowledged comments before the next handoff.'
                         Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
                     }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; executionMode='elevated-approved'; launchStrategy='in-process-runspace'; message='One elevated workflow session was approved and started without a nested PowerShell process.' }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; executionMode='elevated-approved'; launchStrategy='in-process-runspace'; pendingAgents=@($resumePlan.UnfinishedAgentIds); message="Elevated checkpoint resume started only for: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." }
                     continue
                 }
                 if ($path -eq '/api/health-checks/run') {
@@ -327,26 +511,34 @@ try {
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {
-                    $noteParameters = @{
-                        Text = [string]$body.text
-                        RepositoryId = [string]$body.repositoryId
-                        PullRequestId = [int]$body.pullRequestId
-                        ConfigPath = $ConfigPath
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $body -Required)
+                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
+                    $notes = foreach ($repositoryId in $repositoryIds) {
+                        $noteParameters = @{
+                            Text = [string]$body.text
+                            RepositoryId = $repositoryId
+                            PullRequestId = [int]$body.pullRequestId
+                            ConfigPath = $ConfigPath
+                        }
+                        if (-not [string]::IsNullOrWhiteSpace([string]$body.taskId)) { $noteParameters.TaskId = [string]$body.taskId }
+                        if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $noteParameters.CodexHome = $CodexHome }
+                        & (Join-Path $PSScriptRoot 'Add-ReviewerNote.ps1') @noteParameters
                     }
-                    if (-not [string]::IsNullOrWhiteSpace([string]$body.taskId)) { $noteParameters.TaskId = [string]$body.taskId }
-                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $noteParameters.CodexHome = $CodexHome }
-                    $note = & (Join-Path $PSScriptRoot 'Add-ReviewerNote.ps1') @noteParameters
-                    Send-Json -Response $response -Value @{ status='saved'; note=$note }
+                    Send-Json -Response $response -Value @{ status='saved'; notes=@($notes); repositories=@($repositoryIds) }
                     continue
                 }
                 if ($path -eq '/api/reviews/start') {
-                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -Parameters @{
-                        RepositoryId=[string]$body.repositoryId
-                        TaskId=[string]$body.taskId
-                        ConfigPath=$ConfigPath
-                        CodexHome=$CodexHome
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $body -Required)
+                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
+                    $processIds = foreach ($repositoryId in $repositoryIds) {
+                        Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -Parameters @{
+                            RepositoryId=$repositoryId
+                            TaskId=[string]$body.taskId
+                            ConfigPath=$ConfigPath
+                            CodexHome=$CodexHome
+                        }
                     }
-                    Send-Json -Response $response -Value @{ status='started'; processId=$processId; message='Review opened in a separate window.' }
+                    Send-Json -Response $response -Value @{ status='started'; processIds=@($processIds); repositories=@($repositoryIds); message='A review process was opened for each selected repository.' }
                     continue
                 }
                 Send-Json -Response $response -Value @{ error='API route not found.' } -StatusCode 404
@@ -384,4 +576,3 @@ finally {
     $listener.Stop()
     $listener.Close()
 }
-

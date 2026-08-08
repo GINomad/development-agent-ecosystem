@@ -7,6 +7,7 @@ param(
     [string] $Stage,
     [string] $Message,
     [int] $ProcessId,
+    [switch] $ClearProcessId,
     [string] $Actor = 'ecosystem',
     [switch] $AcknowledgeComments,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
@@ -20,7 +21,7 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
-if (-not $Status -and -not $AgentId -and -not $Stage -and -not $Message -and -not $AcknowledgeComments) {
+if (-not $Status -and -not $AgentId -and -not $Stage -and -not $Message -and -not $AcknowledgeComments -and -not $ClearProcessId) {
     throw 'Specify a task status, agent status, stage, message, or comment acknowledgement.'
 }
 if ([bool]$AgentId -xor [bool]$AgentStatus) { throw 'AgentId and AgentStatus must be supplied together.' }
@@ -31,6 +32,7 @@ if ($Status) { $task | Add-Member -NotePropertyName status -NotePropertyValue $S
 if ($Stage) { $task | Add-Member -NotePropertyName currentStage -NotePropertyValue $Stage -Force }
 if ($Message -and (-not $AgentId -or $Status)) { $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue $Message -Force }
 if ($ProcessId -gt 0) { $task | Add-Member -NotePropertyName workflowProcessId -NotePropertyValue $ProcessId -Force }
+if ($ClearProcessId -and $task.PSObject.Properties['workflowProcessId']) { $task.PSObject.Properties.Remove('workflowProcessId') }
 if ($AcknowledgeComments) { $task | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $false -Force }
 $task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
 
@@ -48,4 +50,15 @@ Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [
 $eventType = if ($AgentId) { 'agent-status' } else { 'workflow-status' }
 $eventSummary = if ($Message) { $Message } elseif ($AgentId) { "$AgentId is $AgentStatus." } elseif ($Status) { "Workflow is $Status." } else { 'Workflow state updated.' }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Actor -Type $eventType -Summary $eventSummary -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ($AgentId) {
+    $activityLevel = switch ($AgentStatus) {
+        'running' { 'progress' }
+        'completed' { 'success' }
+        'waiting' { 'waiting' }
+        'failed' { 'error' }
+        'skipped' { 'warning' }
+        default { 'info' }
+    }
+    & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $AgentId -Summary $eventSummary -Level $activityLevel -Stage $Stage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
 [pscustomobject]@{ TaskId=$TaskId; Status=[string]$task.status; AgentId=$AgentId; AgentStatus=$AgentStatus; UpdatedAtUtc=$now; Event=$event }

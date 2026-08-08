@@ -12,5 +12,5 @@ description: Analyze assigned development tasks and comments against code, tests
 5. Mark unsupported or contradictory scope as `held` and create focused blocking questions.
 6. Keep independent, supported scope `ready`.
 7. Write output conforming to `config/schemas/requirements-analysis.schema.json`.
-8. Return the artifact and a concise evidence summary to the knowledge keeper.
-
+8. Request missing knowledge or skills from Knowledge Keeper only when needed. If waiting or failed, save a private checkpoint and publish no shared outcome.
+9. After successful validation, publish the artifact and one concise evidence summary through `Publish-AgentOutcome.ps1`.

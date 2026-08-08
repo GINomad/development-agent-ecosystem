@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem architecture</title>
-  <desc id="desc">Knowledge Keeper orchestrates Requirements Analyst, Developer, Reviewer, Pipeline Monitor, and Health Check Agent. Azure Boards, code, pull request discussions, a decision gate, versioned knowledge, and bounded diagnostics surround the workflow.</desc>
+  <desc id="desc">Knowledge Keeper orchestrates Requirements Analyst, Developer, Reviewer, Pipeline Monitor, and Health Check Agent across selected repositories. The operator dashboard shows persistent status, per-agent live activity, waiting agents, and open questions, and links answers to exact question IDs.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/>
@@ -52,7 +52,7 @@
 
   <text x="100" y="92" class="eyebrow">EVIDENCE-FIRST SOFTWARE DELIVERY</text>
   <text x="100" y="150" class="title">Development Agent Ecosystem</text>
-  <text x="100" y="190" class="subtitle">Verified context flows through one orchestrator. Unclear scope stops; approved scope moves forward.</text>
+  <text x="100" y="190" class="subtitle">Knowledge is pulled on demand. Unclear scope stops; validated outcomes update shared context.</text>
 
   <!-- External inputs -->
   <g filter="url(#shadow)">
@@ -83,8 +83,8 @@
     <rect x="565" y="280" width="470" height="165" rx="28" fill="url(#keeper)"/>
     <text x="610" y="333" class="eyebrow" style="fill:#0e4937">PRIMARY ORCHESTRATOR</text>
     <text x="610" y="375" class="keeper-title">Knowledge Keeper</text>
-    <text x="610" y="409" class="keeper-copy">Selects verified context · records task history</text>
-    <text x="610" y="433" class="keeper-copy">Routes current engineering skills by detected stack</text>
+    <text x="610" y="409" class="keeper-copy">Serves bounded knowledge on request · never polls agents</text>
+    <text x="610" y="433" class="keeper-copy">Accepts successful outcomes · writes final task summary</text>
   </g>
 
   <!-- Agents -->
@@ -112,7 +112,7 @@
     <rect x="642" y="940" width="315" height="135" rx="22" fill="#172d35" stroke="#4b8375"/>
     <text x="677" y="982" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
     <text x="677" y="1017" class="box-title">Health Check Agent</text>
-    <text x="677" y="1049" class="box-copy">3 failures · derive 6 compatible roles · confirm resume</text>
+    <text x="677" y="1049" class="box-copy">Bounded recent tails · diagnosis · safe recovery</text>
   </g>
 
   <!-- Right-side gates and storage -->
@@ -126,6 +126,12 @@
     <text x="1380" y="613" text-anchor="middle" class="box-title" style="font-size:21px">Human review</text>
     <text x="1380" y="641" text-anchor="middle" class="box-copy">decision gate</text>
     <text x="1380" y="670" text-anchor="middle" class="tiny">approve · reject · defer</text>
+
+    <rect x="1240" y="775" width="280" height="150" rx="22" fill="#152638" stroke="#4b8375"/>
+    <text x="1275" y="820" class="eyebrow">OPERATOR CONTROL</text>
+    <text x="1275" y="856" class="box-title">Task dashboard</text>
+    <text x="1275" y="887" class="box-copy">Fingerprint resume · targeted restart</text>
+    <text x="1275" y="912" class="tiny">End-of-block comments · no restart · live logs</text>
   </g>
 
   <!-- Flows -->
@@ -144,13 +150,15 @@
   <path class="edge-dashed" d="M755 820 C930 710 1110 650 1280 630"/>
   <path class="edge" d="M1380 715 C1330 815 1230 840 1160 830"/>
   <path class="edge-bi" d="M1035 360 H1240"/>
+  <path class="edge-bi" d="M1035 410 C1160 470 1135 850 1240 850"/>
 
   <text x="397" y="326" class="label">requirements</text>
   <text x="770" y="578" class="label">ready scope</text>
   <text x="735" y="705" class="label">evidence</text>
   <text x="1070" y="703" class="label">reviewed delivery</text>
-  <text x="1135" y="337" class="label">verified updates</text>
+  <text x="1135" y="337" class="label">successful outcomes only</text>
   <text x="1090" y="620" class="label">findings</text>
+  <text x="1080" y="785" class="label">question ID · answer · command</text>
   <text x="815" y="918" class="label">guard stops after 3 · failure report · live recovery</text>
 
   <!-- Footer legend -->
