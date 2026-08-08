@@ -179,7 +179,7 @@ function renderTaskDetail(task) {
   resume.textContent = task.status === 'running' ? 'Workflow is running' : 'Resume workflow';
   const elevated = document.querySelector('#approveElevatedRecovery');
   const healthStatus = task.agentStatuses?.health_check?.status;
-  elevated.disabled = task.status === 'running' || healthStatus === 'running' || !taskArtifactItems.some(artifact => artifact.name.startsWith('agent-failure-'));
+  elevated.disabled = !['waiting', 'failed'].includes(healthStatus) || !taskArtifactItems.some(artifact => artifact.name.startsWith('agent-failure-'));
 }
 
 function closeArtifactViewer() {
