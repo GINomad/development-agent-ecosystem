@@ -1,6 +1,10 @@
-# Архитектура и ответственности
+# Architecture and responsibilities
 
-## Взаимодействие
+The editable vector overview is available below and as a standalone file: [ecosystem-architecture.svg](assets/ecosystem-architecture.svg).
+
+![Development Agent Ecosystem architecture](assets/ecosystem-architecture.svg)
+
+## Component interaction
 
 ```mermaid
 flowchart LR
@@ -18,15 +22,15 @@ flowchart LR
     RA --> R
     PR[Active PR code + user comments + local notes] --> R
     R -->|findings| K
-    R -->|findings, no auto-fix| D
+    R -->|findings, no automatic fix| D
     U -->|approve / reject / defer| G{Review decision gate}
-    G -->|approved only| D
+    G -->|approved findings only| D
     D --> P[Azure Pipeline Monitor]
     P -->|exact commit status + failed logs| K
     K --> KB
 ```
 
-## Жизненный цикл задачи
+## Task lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -40,7 +44,7 @@ sequenceDiagram
     U->>K: task ID / URL / instruction
     K->>A: verified context request
     A-->>K: ready scope, held scope, questions, sources
-    alt есть независимый ready scope
+    alt independent ready scope exists
         K->>D: approved implementation context
         D-->>K: plan, changes, tests, implementation evidence
         K->>R: requirements + held scope + implementation
@@ -51,21 +55,21 @@ sequenceDiagram
         D->>P: pushed branch and exact commit
         P-->>K: pipeline result and failure logs
         K->>K: publish verified knowledge and task history
-    else весь scope заблокирован вопросами
+    else all scope is blocked by unanswered questions
         K-->>U: questions and explicit hold
     end
 ```
 
-## Артефакты на задачу
+## Per-task artifacts
 
-Runtime хранит историю вне repository в `%LOCALAPPDATA%/Codex/development-agent-ecosystem/tasks/<task-id>`:
+Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Codex/development-agent-ecosystem/tasks/<task-id>`:
 
-- `task.json` — identity и текущее состояние;
-- `task-ledger.jsonl` — append-only диалог и события всех agents;
-- `context-pack.json` — выданный Knowledge Keeper контекст;
-- `requirements-analysis.json` — ready/held scope, gaps и вопросы;
-- `implementation-plan.json`, `implementation-result.json`;
-- `review-result.json`, `review-decisions.json`;
-- `pipeline-result.json`, `knowledge-update.json`.
+- `task.json`: task identity and current state;
+- `task-ledger.jsonl`: append-only communication and events from every agent;
+- `context-pack.json`: context selected by Knowledge Keeper;
+- `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
+- `implementation-plan.json` and `implementation-result.json`;
+- `review-result.json` and `review-decisions.json`;
+- `pipeline-result.json` and `knowledge-update.json`.
 
-Schemas находятся в `config/schemas`. Knowledge Keeper публикует в versioned KB только утверждения с обязательными evidence fields.
+Schemas are stored under `config/schemas`. Knowledge Keeper may publish only evidence-backed claims with all required evidence fields.

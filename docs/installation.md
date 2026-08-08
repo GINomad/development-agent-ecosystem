@@ -1,59 +1,59 @@
-# Установка
+# Installation
 
-## Требования
+## Prerequisites
 
-- Windows PowerShell 5.1 или PowerShell 7;
-- Codex CLI с поддержкой plugins и custom agents;
-- Azure CLI с доступом к организации Azure DevOps;
-- локальная рабочая копия каждого настроенного repository.
+- Windows PowerShell 5.1 or PowerShell 7;
+- Codex CLI with plugin and custom-agent support;
+- Azure CLI with access to the configured Azure DevOps organization;
+- a local working copy of every configured repository.
 
-Для текущей конфигурации Azure CLI расположен в `C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd`. Секреты не копируются в репозиторий.
+The current configuration uses Azure CLI at `C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd`. Secrets are not copied into this repository.
 
-## 1. Проверьте общую конфигурацию
+## 1. Review the shared configuration
 
-Откройте `config/agents.json` и проверьте:
+Open `config/agents.json` and verify:
 
-- `repositories[].localWorkspace`, Azure organization/project/repository и reviewer;
-- `taskSources[]` для assigned work items;
-- `credentialProfiles[]` — только CLI/environment strategy, без token/password;
-- `operation.mode`: `manual` или `automate`;
-- `knowledge.seedSources[]` и `knowledge.managedRoot`.
+- `repositories[].localWorkspace` and the Azure organization, project, repository, and reviewer;
+- `taskSources[]` for assigned work items;
+- `credentialProfiles[]`, which must contain only CLI or environment authentication strategy, never tokens or passwords;
+- `operation.mode`, set to `manual` or `automate`;
+- `knowledge.seedSources[]` and `knowledge.managedRoot`.
 
-## 2. Установите plugin и agents
+## 2. Install the plugin and agents
 
 ```powershell
 cd C:\Repos\ps-excel-agent\development-agent-ecosystem
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 ```
 
-Installer выполняет:
+The installer:
 
-1. идемпотентный read-only import начальной KB;
-2. компиляцию пяти custom agents из свежего JSON;
-3. создание derived-конфигурации review monitor в `%LOCALAPPDATA%`;
-4. локальные проверки;
-5. регистрацию repository как Codex marketplace и установку plugin.
+1. performs an idempotent, read-only import of the initial knowledge base;
+2. compiles five custom agents from the latest JSON configuration;
+3. creates a derived Review Monitor configuration under `%LOCALAPPDATA%`;
+4. runs local validation;
+5. registers this repository as a Codex marketplace and installs the plugin.
 
-Начальный источник `C:\Repos\AI Knowledge\ps_excel_agent` не изменяется. Управляемая версия хранится в `knowledge/managed/ps-excel-agent` этого repository; provenance находится в `.knowledge-import.json`.
+The seed source at `C:\Repos\AI Knowledge\ps_excel_agent` is never modified. Its managed copy is stored under `knowledge/managed/ps-excel-agent`; import provenance is recorded in `.knowledge-import.json`.
 
-## 3. Запустите интерфейс
+## 3. Start the dashboard
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-UI доступен только на loopback. URL содержит случайный session token, API дополнительно требует этот token в header.
+The UI is available only on loopback. Its URL contains a random session token, and API requests must also provide that token in a header.
 
-## 4. Переключите расписание после dry-run
+## 4. Switch scheduled tasks after a dry run
 
 ```powershell
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Preview
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Install
 ```
 
-`Install` сначала запускает новый monitor с `-DryRun`. Затем регистрирует три задачи `Development Ecosystem - ...`, проверяет их наличие и только после этого отключает legacy-задачи `Codex PR Review - ...`. Legacy XML сохраняется в `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
+`Install` first runs the new monitor with `-DryRun`. It then registers three `Development Ecosystem - ...` tasks, verifies that they exist, and only then disables the legacy `Codex PR Review - ...` tasks. Legacy task XML is saved under `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
 
-## Проверка установки
+## Verify the installation
 
 ```powershell
 .\scripts\Test-AgentEcosystem.ps1 | ConvertTo-Json -Depth 8
