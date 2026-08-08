@@ -85,12 +85,19 @@ $arguments = @(
 )
 
 try {
-    $healthPrompt | & codex @arguments 2>&1 | ForEach-Object {
-        $line = [string]$_
-        [IO.File]::AppendAllText($logPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-        Write-Output $line
+    $nativeErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $healthPrompt | & codex @arguments 2>&1 | ForEach-Object {
+            $line = [string]$_
+            [IO.File]::AppendAllText($logPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+            Write-Output $line
+        }
+        $codexExitCode = $LASTEXITCODE
     }
-    $codexExitCode = $LASTEXITCODE
+    finally {
+        $ErrorActionPreference = $nativeErrorActionPreference
+    }
     if ($codexExitCode -ne 0) { throw "Health recovery Codex exited with code $codexExitCode. See $logPath" }
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
