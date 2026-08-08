@@ -1,0 +1,5 @@
+interface:
+  display_name: "Agent Health Diagnostics"
+  short_description: "Diagnose and repair agent workflow failures"
+  default_prompt: "Use $diagnose-agent-health to diagnose this agent failure, route safe ecosystem repairs, and verify the result."
+

@@ -29,7 +29,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 The installer:
 
 1. performs an idempotent, read-only import of the initial knowledge base;
-2. compiles five custom agents from the latest JSON configuration;
+2. compiles six custom agents from the latest JSON configuration;
 3. creates a derived Review Monitor configuration under `%LOCALAPPDATA%`;
 4. runs local validation;
 5. registers this repository as a Codex marketplace and installs the plugin.

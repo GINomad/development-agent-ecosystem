@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [ValidateSet('created','queued','running','waiting_for_input','held','review_pending','completed','failed','interrupted')][string] $Status,
-    [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor')][string] $AgentId,
+    [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $AgentId,
     [ValidateSet('pending','running','waiting','completed','failed','skipped')][string] $AgentStatus,
     [string] $Stage,
     [string] $Message,
@@ -29,7 +29,7 @@ $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Jso
 $now = [DateTime]::UtcNow.ToString('o')
 if ($Status) { $task | Add-Member -NotePropertyName status -NotePropertyValue $Status -Force }
 if ($Stage) { $task | Add-Member -NotePropertyName currentStage -NotePropertyValue $Stage -Force }
-if ($Message) { $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue $Message -Force }
+if ($Message -and (-not $AgentId -or $Status)) { $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue $Message -Force }
 if ($ProcessId -gt 0) { $task | Add-Member -NotePropertyName workflowProcessId -NotePropertyValue $ProcessId -Force }
 if ($AcknowledgeComments) { $task | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $false -Force }
 $task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
@@ -40,6 +40,7 @@ if (-not $task.PSObject.Properties['agentStatuses']) {
 if ($AgentId) {
     $agentValue = [pscustomobject][ordered]@{ status=$AgentStatus; updatedAtUtc=$now; message=if ($Message) { $Message } else { '' } }
     $task.agentStatuses | Add-Member -NotePropertyName $AgentId -NotePropertyValue $agentValue -Force
+    if ($Message) { $task | Add-Member -NotePropertyName lastAgentMessage -NotePropertyValue $Message -Force }
 }
 
 Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
@@ -48,4 +49,3 @@ $eventType = if ($AgentId) { 'agent-status' } else { 'workflow-status' }
 $eventSummary = if ($Message) { $Message } elseif ($AgentId) { "$AgentId is $AgentStatus." } elseif ($Status) { "Workflow is $Status." } else { 'Workflow state updated.' }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Actor -Type $eventType -Summary $eventSummary -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome
 [pscustomobject]@{ TaskId=$TaskId; Status=[string]$task.status; AgentId=$AgentId; AgentStatus=$AgentStatus; UpdatedAtUtc=$now; Event=$event }
-

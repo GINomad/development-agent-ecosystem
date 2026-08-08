@@ -13,6 +13,7 @@ The canonical configuration is [`config/agents.json`](config/agents.json). Every
 | Developer | Branch creation, ready-scope implementation, tests, and implementation evidence | Applies review findings only after human approval |
 | Reviewer | Reviews code and Developer-agent work against requirements, held scope, knowledge, and tests | Read-only; a finding is not automatic permission to make a change |
 | Pipeline Monitor | Pipelines for an exact branch and commit, including failed task logs | Queuing a build requires explicit permission |
+| Health Check Agent | Automatically captures agent failures, diagnoses runtime and ecosystem defects, performs bounded recovery, and verifies the repair | Product repositories and external writes are excluded; one recovery attempt per failure signature |
 | Review Monitor | Active PRs, code revisions, user comments, and local reviewer notes | Self-authored PRs can be excluded by configuration |
 
 The existing `azure-pr-review-monitor` and `azure-pipeline-monitor` skills are vendored into the plugin. Review Monitor uses an isolated `DataRoot`; both global skill copies remain available for rollback.
@@ -29,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and per-agent status after a page reload, add an intervention comment to a running workflow, resume stopped work, leave a note for the Reviewer agent, and start a review.
+The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and all six agent statuses after a page reload, add an intervention comment, run a health check, resume recovered work, leave a note for the Reviewer agent, and start a review.
 
 See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
 

@@ -21,6 +21,24 @@ From the dashboard:
 
 The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. A running Knowledge Keeper reads new `user-comment` events before every agent handoff and after every agent result. A stopped workflow keeps the comment for the next **Resume workflow** action.
 
+## Automatic agent health recovery
+
+Every failed agent handoff includes a structured failure artifact with the agent, stage, exit code, diagnostic, evidence paths, and stable failure signature. Knowledge Keeper immediately starts Health Check Agent; a root workflow crash uses the same path from the host wrapper.
+
+Health recovery runs in three bounded phases:
+
+1. deterministic checks and safe repairs through `Invoke-EcosystemHealthCheck.ps1`;
+2. read-only diagnosis by `development_health_check`;
+3. an ecosystem-only recovery coordinator when source repair is supported by evidence.
+
+The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It runs once per failure signature, validates the exact repair plus `Test-AgentEcosystem.ps1`, and exposes its `running`, `waiting`, `completed`, or `failed` state on the task dashboard. A successful recovery changes the task to `interrupted`, ready for an explicit **Resume workflow**.
+
+Manual health check:
+
+```powershell
+.\scripts\Invoke-EcosystemHealthCheck.ps1 -TaskId task-1854726 -Repair
+```
+
 ## Review approval gate
 
 Reviewer records findings but does not authorize changes. Record the human decision separately:

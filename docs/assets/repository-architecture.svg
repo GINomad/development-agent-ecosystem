@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1220" viewBox="0 0 1800 1220" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem repository architecture</title>
-  <desc id="desc">Repository source-of-truth configuration, prompts, skills, scripts, dashboard, knowledge, generated agents, runtime task state, and Azure DevOps integrations.</desc>
+  <desc id="desc">Repository source-of-truth configuration, prompts, skills, scripts, dashboard, six generated agents including Health Check, runtime task state, and Azure DevOps integrations.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/><stop offset="0.55" stop-color="#0b1420"/><stop offset="1" stop-color="#12192a"/>
@@ -56,21 +56,21 @@
     <rect x="320" y="314" width="115" height="27" rx="9" class="extend"/><text x="337" y="332" class="extend-text">+ REPOSITORIES</text>
     <text x="115" y="339" class="mono">config/agents.json</text>
     <text x="115" y="372" class="copy">Single canonical source of truth</text>
-    <text x="115" y="398" class="small">agents · repositories · credentials strategy</text>
+    <text x="115" y="398" class="small">agents · repositories · credentials · health policy</text>
 
     <rect x="85" y="455" width="370" height="145" rx="19" fill="url(#source)" stroke="#32705d"/>
     <rect x="318" y="469" width="117" height="27" rx="9" class="extend"/><text x="335" y="487" class="extend-text">+ PROMPT PATHS</text>
     <text x="115" y="494" class="mono">prompts/</text>
     <text x="115" y="526" class="copy">common/</text><text x="205" y="526" class="small">evidence · protocol · approvals</text>
     <text x="115" y="554" class="copy">roles/</text><text x="188" y="554" class="small">keeper · analyst · developer</text>
-    <text x="188" y="578" class="small">reviewer · pipeline monitor</text>
+    <text x="188" y="578" class="small">reviewer · pipeline monitor · health check</text>
 
     <rect x="85" y="630" width="370" height="195" rx="19" fill="url(#source)" stroke="#32705d"/>
     <rect x="324" y="644" width="111" height="27" rx="9" class="extend"/><text x="344" y="662" class="extend-text">+ SKILL.MD</text>
     <text x="115" y="669" class="mono">plugins/.../skills/</text>
     <text x="115" y="702" class="copy">Workflow skills</text>
     <text x="115" y="728" class="small">analyze · keep knowledge · implement</text>
-    <text x="115" y="752" class="small">review · coordinate · monitor delivery</text>
+    <text x="115" y="752" class="small">review · coordinate · monitor · diagnose health</text>
     <text x="115" y="783" class="copy">Vendored operational skills</text>
     <text x="115" y="809" class="small">azure-pr-review-monitor · azure-pipeline-monitor</text>
 
@@ -98,14 +98,14 @@
     <rect x="805" y="479" width="140" height="27" rx="9" class="extend"/><text x="820" y="497" class="extend-text">+ COMPILE STEPS</text>
     <text x="575" y="505" class="mono">Sync-AgentDefinitions.ps1</text>
     <text x="575" y="538" class="copy">Compose prompts + enabled skills</text>
-    <text x="575" y="566" class="small">Generate five Codex TOML definitions</text>
+    <text x="575" y="566" class="small">Generate six Codex TOML definitions</text>
 
     <rect x="545" y="635" width="420" height="155" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="822" y="649" width="123" height="27" rx="9" class="extend"/><text x="838" y="667" class="extend-text">+ WORKFLOWS</text>
     <text x="575" y="675" class="mono">Start-DevelopmentWorkflow.ps1</text>
     <text x="575" y="708" class="copy">Manual task or assigned-task automate mode</text>
     <text x="575" y="736" class="small">Import knowledge · create task ledger</text>
-    <text x="575" y="762" class="small">Start Knowledge Keeper with named agents</text>
+    <text x="575" y="762" class="small">Headless runner logs · failure health check</text>
 
     <rect x="545" y="825" width="420" height="150" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="804" y="839" width="141" height="27" rx="9" class="extend"/><text x="819" y="857" class="extend-text">+ REVIEW INPUTS</text>
@@ -117,7 +117,7 @@
     <rect x="545" y="1010" width="420" height="100" rx="20" fill="#15263a" stroke="#416783"/>
     <rect x="830" y="1024" width="115" height="27" rx="9" class="extend"/><text x="849" y="1042" class="extend-text">+ UI ROUTES</text>
     <text x="575" y="1049" class="mono">Start-AgentDashboard.ps1</text>
-    <text x="575" y="1081" class="copy">Loopback task and review entry point</text>
+    <text x="575" y="1081" class="copy">Tasks · comments · reviews · health checks</text>
   </g>
 
   <!-- agents -->
@@ -128,40 +128,43 @@
     <text x="1085" y="376" class="box-title">Knowledge Keeper</text>
     <text x="1085" y="406" class="copy">Context packs · history · knowledge updates</text>
 
-    <rect x="1055" y="485" width="175" height="135" rx="20" fill="url(#agent)" stroke="#4a6387"/>
-    <text x="1078" y="522" class="agent-title">Requirements</text>
-    <text x="1078" y="547" class="agent-title">Analyst</text>
-    <text x="1078" y="578" class="agent-copy">ready / held scope</text>
-    <text x="1078" y="599" class="agent-copy">conflicts · questions</text>
+    <rect x="1055" y="470" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
+    <text x="1078" y="507" class="agent-title">Requirements</text>
+    <text x="1078" y="532" class="agent-title">Analyst</text>
+    <text x="1078" y="563" class="agent-copy">ready / held scope</text>
+    <text x="1078" y="584" class="agent-copy">conflicts · questions</text>
 
-    <rect x="1250" y="485" width="175" height="135" rx="20" fill="url(#agent)" stroke="#4a6387"/>
-    <text x="1273" y="522" class="agent-title">Developer</text>
-    <text x="1273" y="552" class="agent-copy">plan · branch · code</text>
-    <text x="1273" y="575" class="agent-copy">tests · evidence</text>
-    <text x="1273" y="599" class="agent-copy">approved scope only</text>
+    <rect x="1250" y="470" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
+    <text x="1273" y="507" class="agent-title">Developer</text>
+    <text x="1273" y="537" class="agent-copy">plan · branch · code</text>
+    <text x="1273" y="560" class="agent-copy">tests · evidence</text>
+    <text x="1273" y="584" class="agent-copy">approved scope only</text>
 
-    <rect x="1055" y="660" width="175" height="135" rx="20" fill="url(#agent)" stroke="#4a6387"/>
-    <text x="1078" y="697" class="agent-title">Reviewer</text>
-    <text x="1078" y="727" class="agent-copy">code + agent work</text>
-    <text x="1078" y="750" class="agent-copy">requirements trace</text>
-    <text x="1078" y="774" class="agent-copy">human decision gate</text>
+    <rect x="1055" y="625" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
+    <text x="1078" y="662" class="agent-title">Reviewer</text>
+    <text x="1078" y="692" class="agent-copy">code + agent work</text>
+    <text x="1078" y="715" class="agent-copy">requirements trace</text>
+    <text x="1078" y="739" class="agent-copy">human decision gate</text>
 
-    <rect x="1250" y="660" width="175" height="135" rx="20" fill="url(#agent)" stroke="#4a6387"/>
-    <text x="1273" y="697" class="agent-title">Pipeline</text>
-    <text x="1273" y="721" class="agent-title">Monitor</text>
-    <text x="1273" y="750" class="agent-copy">exact commit runs</text>
-    <text x="1273" y="774" class="agent-copy">failed task logs</text>
+    <rect x="1250" y="625" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
+    <text x="1273" y="662" class="agent-title">Pipeline</text>
+    <text x="1273" y="686" class="agent-title">Monitor</text>
+    <text x="1273" y="715" class="agent-copy">exact commit runs</text>
+    <text x="1273" y="739" class="agent-copy">failed task logs</text>
 
-    <rect x="1055" y="835" width="370" height="125" rx="20" fill="#182944" stroke="#536f9b"/>
-    <text x="1085" y="875" class="mono">${CODEX_HOME}/agents/*.toml</text>
-    <text x="1085" y="907" class="copy">Generated runtime agent definitions</text>
-    <text x="1085" y="934" class="small">Always regenerated from repository sources</text>
+    <rect x="1055" y="780" width="370" height="110" rx="20" fill="#173038" stroke="#4b8375"/>
+    <text x="1085" y="818" class="agent-title">Health Check Agent</text>
+    <text x="1085" y="846" class="agent-copy">automatic failure artifact pickup</text>
+    <text x="1085" y="870" class="agent-copy">one ecosystem-only recovery attempt</text>
 
-    <rect x="1055" y="995" width="370" height="115" rx="20" fill="#182d36" stroke="#3f7468"/>
+    <rect x="1055" y="915" width="370" height="85" rx="20" fill="#182944" stroke="#536f9b"/>
+    <text x="1085" y="950" class="mono">${CODEX_HOME}/agents/*.toml</text>
+    <text x="1085" y="978" class="small">Six generated definitions from repository sources</text>
+
+    <rect x="1055" y="1025" width="370" height="85" rx="20" fill="#182d36" stroke="#3f7468"/>
     <rect x="1268" y="1009" width="137" height="27" rx="9" class="extend"/><text x="1283" y="1027" class="extend-text">+ ARTIFACT SCHEMA</text>
-    <text x="1085" y="1035" class="mono">task-ledger.jsonl + artifacts</text>
-    <text x="1085" y="1067" class="copy">Shared per-task communication contract</text>
-    <text x="1085" y="1093" class="small">requirements · implementation · review · pipeline</text>
+    <text x="1085" y="1058" class="mono">task-ledger.jsonl + artifacts</text>
+    <text x="1085" y="1086" class="small">requirements · code · review · pipeline · health</text>
   </g>
 
   <!-- external -->
@@ -197,17 +200,17 @@
 
   <!-- composition flow -->
   <path class="edge" d="M455 362H545"/><path class="edge" d="M455 525C500 525 505 532 545 532"/><path class="edge" d="M455 715C500 715 505 565 545 555"/>
-  <path class="edge" d="M755 430V465"/><path class="edge" d="M965 532C1010 532 1015 888 1055 888"/><path class="edge" d="M1055 888C1000 888 1000 700 965 700"/>
+  <path class="edge" d="M755 430V465"/><path class="edge" d="M965 532C1010 532 1015 955 1055 955"/><path class="edge" d="M1055 955C1000 955 1000 700 965 700"/>
   <path class="edge" d="M965 710C1005 710 1015 372 1055 372"/>
-  <path class="edge-bi" d="M1142 445V485"/><path class="edge-bi" d="M1337 445V485"/><path class="edge-bi" d="M1142 620V660"/><path class="edge-bi" d="M1337 620V660"/>
-  <path class="edge" d="M1240 445V995"/><path class="edge" d="M455 915C760 915 800 1050 1055 1050"/><path class="edge" d="M965 1060H1055"/>
+  <path class="edge-bi" d="M1142 445V470"/><path class="edge-bi" d="M1337 445V470"/><path class="edge-bi" d="M1142 600V625"/><path class="edge-bi" d="M1337 600V625"/>
+  <path class="edge-bi" d="M1240 445V780"/><path class="edge" d="M1240 890V1025"/><path class="edge" d="M455 915C760 915 800 1068 1055 1068"/><path class="edge" d="M965 1060H1055"/>
 
   <!-- external flow -->
-  <path class="edge-violet" d="M1515 365H1425C1470 365 1470 552 1425 552"/><path class="edge-violet" d="M1515 550H1425C1465 550 1460 725 1230 725"/>
-  <path class="edge-violet" d="M1515 735H1425"/><path class="edge-blue" d="M1425 1050H1515"/><path class="edge-blue" d="M1425 900H1515"/>
+  <path class="edge-violet" d="M1515 365H1425C1470 365 1470 535 1425 535"/><path class="edge-violet" d="M1515 550H1425C1465 550 1460 690 1230 690"/>
+  <path class="edge-violet" d="M1515 735H1425"/><path class="edge-blue" d="M1425 1068H1515"/><path class="edge-blue" d="M1425 955H1515"/>
   <path class="edge-dashed" d="M1515 1068C1465 1068 1465 545 1425 545"/>
 
   <text x="472" y="345" class="label">validate</text><text x="468" y="507" class="label">compose</text><text x="978" y="514" class="label">install</text>
-  <text x="978" y="688" class="label">start</text><text x="1260" y="970" class="label">append results</text><text x="1435" y="532" class="label">review evidence</text>
+  <text x="978" y="688" class="label">start</text><text x="1260" y="1012" class="label">append results</text><text x="1435" y="532" class="label">review evidence</text>
   <text x="1438" y="718" class="label">status + logs</text><text x="1438" y="1038" class="label">authenticated reads</text>
 </svg>

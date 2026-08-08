@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent ecosystem health check result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["checkedAtUtc", "taskId", "status", "failureSignature", "checks", "repairs", "summary"],
+  "properties": {
+    "checkedAtUtc": { "type": "string", "format": "date-time" },
+    "taskId": { "type": ["string", "null"] },
+    "status": { "enum": ["healthy", "degraded", "unhealthy", "repaired"] },
+    "failureSignature": { "type": ["string", "null"] },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "warning", "failed", "repaired"] },
+          "summary": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "repairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["applied", "not-applicable", "requires-approval", "failed"] },
+          "summary": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "summary": { "type": "string", "minLength": 1 }
+  }
+}
+

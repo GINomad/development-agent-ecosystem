@@ -27,6 +27,19 @@
     "openBrowser": true,
     "taskRefreshSeconds": 5
   },
+  "health": {
+    "enabled": true,
+    "repairMode": "safe-deterministic-only",
+    "checkOnWorkflowFailure": true,
+    "dashboardHealthUrl": "http://127.0.0.1:43127/health",
+    "automaticRecovery": {
+      "enabled": true,
+      "maxAttemptsPerFailureSignature": 1,
+      "workspace": "${REPO_ROOT}",
+      "allowProductCodeChanges": false,
+      "allowExternalWrites": false
+    }
+  },
   "review": {
     "excludeSelfAuthored": true,
     "includeActivePrComments": true,
@@ -185,7 +198,8 @@
         "requirements_analyst",
         "developer",
         "reviewer",
-        "pipeline_monitor"
+        "pipeline_monitor",
+        "health_check"
       ],
       "requiredArtifacts": [
         "task-ledger.jsonl",
@@ -289,6 +303,29 @@
       ],
       "requiredArtifacts": [
         "pipeline-result.json"
+      ]
+    },
+    {
+      "id": "health_check",
+      "name": "development_health_check",
+      "description": "Read-only ecosystem diagnostics agent with trusted deterministic repair routing for workflow, configuration, dashboard, and runtime failures.",
+      "reasoningEffort": "high",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/health-check.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/diagnose-agent-health/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "developer"
+      ],
+      "requiredArtifacts": [
+        "health-check-result.json"
       ]
     }
   ]

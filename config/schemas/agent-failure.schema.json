@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent failure handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["failureId", "failureSignature", "taskId", "agentId", "stage", "occurredAtUtc", "summary", "exitCode", "diagnostic", "evidence"],
+  "properties": {
+    "failureId": { "type": "string", "minLength": 1 },
+    "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "agentId": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "health_check"] },
+    "stage": { "type": "string", "minLength": 1 },
+    "occurredAtUtc": { "type": "string", "format": "date-time" },
+    "summary": { "type": "string", "minLength": 1 },
+    "exitCode": { "type": ["integer", "null"] },
+    "diagnostic": { "type": ["string", "null"] },
+    "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}
+

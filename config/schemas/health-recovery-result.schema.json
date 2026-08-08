@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Automatic agent health recovery result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "failureSignature", "rootCause", "changes", "validation", "nextAction"],
+  "properties": {
+    "status": { "enum": ["repaired", "not-repairable", "needs-user-input", "blocked"] },
+    "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "rootCause": { "type": "string", "minLength": 1 },
+    "changes": { "type": "array", "items": { "type": "string" } },
+    "validation": { "type": "array", "items": { "type": "string" } },
+    "nextAction": { "type": "string", "minLength": 1 }
+  }
+}
+

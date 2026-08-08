@@ -9,7 +9,7 @@
     "taskId": { "type": "string", "minLength": 1 },
     "timestampUtc": { "type": "string", "format": "date-time" },
     "actor": { "type": "string", "minLength": 1 },
-    "type": { "enum": ["task-created", "workflow-status", "agent-status", "user-comment", "user-comment-acknowledged", "context-issued", "agent-result", "question-opened", "question-resolved", "scope-held", "scope-released", "review-decision", "external-action", "knowledge-updated"] },
+    "type": { "enum": ["task-created", "workflow-status", "agent-status", "agent-failure", "user-comment", "user-comment-acknowledged", "context-issued", "agent-result", "question-opened", "question-resolved", "scope-held", "scope-released", "review-decision", "external-action", "knowledge-updated"] },
     "summary": { "type": "string", "minLength": 1 },
     "artifact": { "type": ["string", "null"] },
     "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
