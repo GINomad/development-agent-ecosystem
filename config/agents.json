@@ -62,6 +62,34 @@
       "localWorkspace": "C:/Repos/ps-excel-agent",
       "includeAuthors": [],
       "excludeAuthors": []
+    },
+    {
+      "id": "azure-planningspace-ps-bicep",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/ps-bicep",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "ps-bicep",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-bicep",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "azure-palantirplugins-ps-app-delfi",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/palantir-consulting/PalantirPlugins/_git/ps-app-delfi",
+      "organizationUrl": "https://dev.azure.com/palantir-consulting",
+      "project": "PalantirPlugins",
+      "repository": "ps-app-delfi",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-app-delfi",
+      "includeAuthors": [],
+      "excludeAuthors": []
     }
   ],
   "taskSources": [
