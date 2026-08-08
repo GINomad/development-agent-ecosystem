@@ -71,9 +71,22 @@ $manifest = [pscustomobject][ordered]@{
     entries = @($entries)
     conflicts = @($conflicts)
 }
-$temporary = "$manifestPath.tmp"
-Write-Utf8NoBom -Path $temporary -Content (($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-Move-Item -LiteralPath $temporary -Destination $manifestPath -Force
+$manifestUpdated = $true
+if ($previous) {
+    $previousImportTime = [string]$previous.importedAtUtc
+    $previous.importedAtUtc = [string]$manifest.importedAtUtc
+    $previousComparable = $previous | ConvertTo-Json -Depth 8 -Compress
+    $currentComparable = $manifest | ConvertTo-Json -Depth 8 -Compress
+    if ([string]::Equals($previousComparable, $currentComparable, [StringComparison]::Ordinal)) {
+        $manifestUpdated = $false
+        $manifest.importedAtUtc = $previousImportTime
+    }
+}
+if ($manifestUpdated) {
+    $temporary = "$manifestPath.tmp"
+    Write-Utf8NoBom -Path $temporary -Content (($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+    Move-Item -LiteralPath $temporary -Destination $manifestPath -Force
+}
 [pscustomobject]@{
     SourceRoot = $sourceRoot
     ManagedRoot = $managedRoot
@@ -81,5 +94,5 @@ Move-Item -LiteralPath $temporary -Destination $manifestPath -Force
     FileCount = $entries.Count
     ConflictCount = $conflicts.Count
     Conflicts = @($conflicts)
+    ManifestUpdated = $manifestUpdated
 }
-
