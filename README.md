@@ -19,6 +19,8 @@ The existing `azure-pr-review-monitor` and `azure-pipeline-monitor` skills are v
 
 ![Development Agent Ecosystem architecture](docs/assets/ecosystem-architecture.svg)
 
+For the detailed repository composition, see [repository-architecture.svg](docs/assets/repository-architecture.svg).
+
 ## Quick start
 
 ```powershell
