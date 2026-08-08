@@ -17,7 +17,10 @@
     "elevatedFallback": {
       "enabled": true,
       "requiresDashboardApproval": true,
-      "sandboxMode": "danger-full-access"
+      "sandboxMode": "danger-full-access",
+      "installCompatibleAgentsOnDetection": true,
+      "agentProfileSuffix": "_host_compatible",
+      "compatibilityPromptPath": "${REPO_ROOT}/prompts/common/os-policy-compatibility.md"
     }
   },
   "operation": {

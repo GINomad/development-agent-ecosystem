@@ -21,6 +21,13 @@ From the dashboard:
 - attach a Reviewer note to a repository, PR, or task;
 - select **Run review** to read active PR code, user comments, and local notes.
 
+The task action guide is also displayed directly below the buttons:
+
+- **Send comment** appends an operator instruction to the task ledger; it does not resume a stopped workflow.
+- **Resume workflow** continues the same task in the normal Codex sandbox and is the default action.
+- **Resume workflow elevated** continues the complete task without the Codex OS sandbox for one confirmed session; all delivery gates remain active.
+- **Approve elevated repair** gives Health Check one elevated ecosystem-repair attempt; it neither resumes implementation nor authorizes product-code changes.
+
 The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. A running Knowledge Keeper reads new `user-comment` events before every agent handoff and after every agent result. A stopped workflow keeps the comment for the next **Resume workflow** action.
 
 ## Automatic agent health recovery
@@ -28,6 +35,8 @@ The task monitor refreshes every five seconds and reconstructs its state from `%
 Every failed agent handoff includes a structured failure artifact with the agent, stage, exit code, diagnostic, evidence paths, and stable failure signature. Knowledge Keeper immediately starts Health Check Agent; a root workflow crash uses the same path from the host wrapper.
 
 `Invoke-GuardedCodex.ps1` supervises the workflow and Health recovery runners. The same normalized failure signature may occur at most three times in one run. Waiting, changing shells, or re-emitting the same native-process error does not reset the counter. At the third occurrence the supervisor terminates the child process, marks the task failed, persists the execution-guard and agent-failure artifacts, and routes those artifacts to Health Check Agent. This prevents an agent from entering an execution or wait loop.
+
+When the evidence contains `CreateProcessWithLogonW 1260`, Health Check automatically recompiles all six roles as suffixed host-compatible agents. Each derived definition keeps its normal prompts and skills, adds the OS-policy compatibility rules, and changes only the Codex sandbox mode. Health Check marks the task `interrupted` at `os_policy_compatibility_ready`; it does not launch the profiles or repeat sandbox recovery. Confirm **Resume workflow elevated** to select them. This changes Codex process isolation, not CrowdStrike, AppLocker, WDAC, repository permissions, or approval gates.
 
 Health recovery runs in three bounded phases:
 

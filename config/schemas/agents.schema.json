@@ -47,11 +47,14 @@
         "elevatedFallback": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "requiresDashboardApproval", "sandboxMode"],
+          "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath"],
           "properties": {
             "enabled": { "type": "boolean" },
             "requiresDashboardApproval": { "const": true },
-            "sandboxMode": { "const": "danger-full-access" }
+            "sandboxMode": { "const": "danger-full-access" },
+            "installCompatibleAgentsOnDetection": { "const": true },
+            "agentProfileSuffix": { "type": "string", "pattern": "^_[a-z0-9_]+$" },
+            "compatibilityPromptPath": { "type": "string", "minLength": 1 }
           }
         }
       }

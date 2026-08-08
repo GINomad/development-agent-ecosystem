@@ -98,7 +98,7 @@
     <rect x="805" y="479" width="140" height="27" rx="9" class="extend"/><text x="820" y="497" class="extend-text">+ COMPILE STEPS</text>
     <text x="575" y="505" class="mono">Sync-AgentDefinitions.ps1</text>
     <text x="575" y="538" class="copy">Compose prompts + enabled skills</text>
-    <text x="575" y="566" class="small">Generate six Codex TOML definitions</text>
+    <text x="575" y="566" class="small">6 standard + 6 OS-compatible TOML definitions</text>
 
     <rect x="545" y="635" width="420" height="155" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="822" y="649" width="123" height="27" rx="9" class="extend"/><text x="838" y="667" class="extend-text">+ WORKFLOWS</text>
@@ -159,7 +159,7 @@
 
     <rect x="1055" y="915" width="370" height="85" rx="20" fill="#182944" stroke="#536f9b"/>
     <text x="1085" y="950" class="mono">${CODEX_HOME}/agents/*.toml</text>
-    <text x="1085" y="978" class="small">Six generated definitions from repository sources</text>
+    <text x="1085" y="978" class="small">Six standard; six derived after policy denial</text>
 
     <rect x="1055" y="1025" width="370" height="85" rx="20" fill="#182d36" stroke="#3f7468"/>
     <rect x="1268" y="1009" width="137" height="27" rx="9" class="extend"/><text x="1283" y="1027" class="extend-text">+ ARTIFACT SCHEMA</text>

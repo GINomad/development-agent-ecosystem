@@ -20,6 +20,7 @@ $repairs = [Collections.Generic.List[object]]::new()
 $failureParts = [Collections.Generic.List[string]]::new()
 $taskRoot = if ($TaskId) { Join-Path $stateRoot "tasks\$TaskId" } else { $null }
 $taskPath = if ($taskRoot) { Join-Path $taskRoot 'task.json' } else { $null }
+$policyCompatibilityPrepared = $false
 
 function Add-HealthCheck {
     param([string] $Id, [ValidateSet('passed','warning','failed','repaired')][string] $Status, [string] $Summary, [string[]] $Evidence = @())
@@ -148,9 +149,33 @@ try {
                 $lastDiagnostic = if (Test-Path -LiteralPath $codexLogPath) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureSummary }
                 $failureEvidence = @($taskPath, $ledgerPath)
                 if (Test-Path -LiteralPath $codexLogPath) { $failureEvidence += $codexLogPath }
-                Add-HealthCheck -Id 'agent-failure' -Status failed -Summary "Workflow is failed: $failureSummary" -Evidence $failureEvidence
-                if ($lastDiagnostic) { $failureParts.Add("diagnostic:$lastDiagnostic") }
-                Add-Repair -Id 'source-correction' -Status requires-approval -Summary 'Health Check Agent must diagnose the log; Developer owns any source-code correction.'
+                $osPolicyBlocked = $failureSummary -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260' -or $lastDiagnostic -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260'
+                if ($osPolicyBlocked -and [bool]$config.runtime.elevatedFallback.installCompatibleAgentsOnDetection) {
+                    if ($Repair) {
+                        $compatibilitySync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install -IncludeHostCompatibilityProfile
+                        $suffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
+                        $missingCompatibleAgents = @($config.agents | Where-Object { -not (Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name)$suffix.toml") -PathType Leaf) })
+                        if ($missingCompatibleAgents.Count) {
+                            Add-HealthCheck -Id 'os-policy-compatibility' -Status failed -Summary "Host-compatible agent profiles were not installed: $($missingCompatibleAgents.name -join ', ')." -Evidence @($agentInstallRoot)
+                            Add-Repair -Id 'install-host-compatible-agents' -Status failed -Summary 'The derived compatibility profile remains incomplete.'
+                        }
+                        else {
+                            $policyCompatibilityPrepared = $true
+                            Add-HealthCheck -Id 'os-policy-compatibility' -Status repaired -Summary "Installed $(@($config.agents).Count) host-compatible agent profiles for the confirmed current-user workflow path." -Evidence @($compatibilitySync.AgentFiles | Where-Object { $_ -like "*$suffix.toml" })
+                            Add-Repair -Id 'install-host-compatible-agents' -Status applied -Summary 'Recompiled every agent with the OS-policy compatibility prompt and danger-full-access sandbox mode. Dashboard confirmation is still required to select them.'
+                        }
+                    }
+                    else {
+                        Add-HealthCheck -Id 'os-policy-compatibility' -Status warning -Summary 'OS policy error 1260 requires derived host-compatible agent profiles.' -Evidence $failureEvidence
+                        Add-Repair -Id 'install-host-compatible-agents' -Status requires-approval -Summary 'Run Health Check with -Repair to compile the compatibility profiles; dashboard confirmation remains required to execute them.'
+                    }
+                    Add-HealthCheck -Id 'agent-failure' -Status warning -Summary "Sandboxed workflow stopped: $failureSummary" -Evidence $failureEvidence
+                }
+                else {
+                    Add-HealthCheck -Id 'agent-failure' -Status failed -Summary "Workflow is failed: $failureSummary" -Evidence $failureEvidence
+                    if ($lastDiagnostic) { $failureParts.Add("diagnostic:$lastDiagnostic") }
+                    Add-Repair -Id 'source-correction' -Status requires-approval -Summary 'Health Check Agent must diagnose the log; Developer owns any source-code correction.'
+                }
             }
             else {
                 Add-HealthCheck -Id 'agent-failure' -Status passed -Summary 'Task is not in failed state.'
@@ -185,8 +210,12 @@ try {
         $taskResultPath = Join-Path $taskRoot 'health-check-result.json'
         Write-Utf8NoBom -Path $taskResultPath -Content $json
         & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type agent-result -Summary ([string]$result.summary) -Artifact $taskResultPath -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($policyCompatibilityPrepared) {
+            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles for all agents after Windows policy error 1260. Confirm Resume workflow elevated to use them.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
         $healthAgentStatus = if ($overallStatus -eq 'unhealthy') { 'waiting' } else { 'completed' }
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus $healthAgentStatus -Stage health_check -Message ([string]$result.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        $healthStage = if ($policyCompatibilityPrepared) { 'os_policy_compatibility_ready' } else { 'health_check' }
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus $healthAgentStatus -Stage $healthStage -Message ([string]$result.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
     [pscustomobject]@{ ResultPath=$resultPath; Result=[pscustomobject]$result }
 }

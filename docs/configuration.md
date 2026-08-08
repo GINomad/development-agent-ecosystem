@@ -8,6 +8,8 @@
 
 `runtime.elevatedFallback` enables the task-level **Resume workflow elevated** action. It must use `danger-full-access` and require explicit dashboard confirmation. This is a controlled response to an OS process restriction, not a general agent permission: all requirement, review, and external-write approval gates remain active.
 
+`runtime.elevatedFallback.agentProfileSuffix` names the derived agent variants, while `compatibilityPromptPath` supplies their additional security and scope rules. When Health Check confirms error 1260, `installCompatibleAgentsOnDetection` compiles one host-compatible TOML beside every standard agent TOML. Standard workflows continue to select the original names; only a confirmed elevated workflow selects the suffixed profiles.
+
 `health` controls automatic failure handling. `repairMode` is fixed to `safe-deterministic-only`. `automaticRecovery.workspace` must resolve to this ecosystem repository; product-code changes and external writes are permanently disabled. `maxAttemptsPerFailureSignature` prevents recovery loops and defaults to one. Automatic recovery always uses `workspace-write`. `elevatedFallback` permits one `danger-full-access` attempt only after an explicit confirmation in the local dashboard; this is intended solely for Windows process-creation error 1260.
 
 ## Loading fresh changes at startup

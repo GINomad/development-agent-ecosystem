@@ -51,7 +51,7 @@ foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
-foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','resumeElevatedWorkflow','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','approveElevatedRecovery')) {
+foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
@@ -115,6 +115,18 @@ foreach ($file in $tomlFiles) {
     }
 }
 Add-Check -Name 'agent-compilation' -Detail "$($tomlFiles.Count) TOML definitions"
+
+$compatibleAgentOutput = Join-Path $OutputRoot 'agents-host-compatible'
+& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $compatibleAgentOutput -CodexHome $CodexHome -IncludeHostCompatibilityProfile | Out-Null
+$compatibleTomlFiles = @(Get-ChildItem -LiteralPath $compatibleAgentOutput -Filter '*.toml' -File)
+$profileSuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
+$profileTomlFiles = @($compatibleTomlFiles | Where-Object BaseName -like "*$profileSuffix")
+if ($compatibleTomlFiles.Count -ne (@($config.agents).Count * 2) -or $profileTomlFiles.Count -ne @($config.agents).Count) { throw 'Host-compatible agent profile count is incorrect.' }
+foreach ($file in $profileTomlFiles) {
+    $content = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+    if ($content -notmatch 'sandbox_mode = "danger-full-access"' -or $content -notmatch 'OS policy compatibility profile') { throw "Host-compatible agent definition is incomplete: $($file.FullName)" }
+}
+Add-Check -Name 'host-compatible-agent-compilation' -Detail "$($profileTomlFiles.Count) derived profiles preserve prompts and use current-user execution"
 
 $manifestPath = Join-Path (Resolve-EcosystemPath -Value ([string]$config.knowledge.managedRoot) -Config $config -CodexHome $CodexHome) '.knowledge-import.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Knowledge import manifest is missing: $manifestPath" }
