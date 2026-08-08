@@ -17,12 +17,14 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `prompts/roles` | Role-specific behavior for Keeper, Analyst, Developer, Reviewer, Pipeline Monitor, and Health Check Agent |
 | `plugins/development-agent-ecosystem/skills` | Workflow and health-diagnostics skills plus vendored Azure PR and pipeline monitors |
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
-| `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, task creation/resume, knowledge import, and Keeper launch |
+| `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, multi-repository workspace routing, task creation/resume, knowledge import, and Keeper launch |
 | `scripts/Invoke-GuardedCodex.ps1` | Native Codex supervision, UTF-8 log normalization, three-identical-failure cutoff, and execution-guard artifacts |
 | `scripts/Invoke-EcosystemHealthCheck.ps1` | Deterministic diagnostics, safe derived-state repairs, and OS-policy compatibility profile generation |
-| `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery with structured validation |
-| `scripts/Invoke-EnhancedReview.ps1` | Active PR comments, local notes, discussion hashing, and vendored Review Monitor invocation |
-| `dashboard` | Loopback operator UI plus tracked in-process runspaces for policy-compatible workflow launch without nested PowerShell |
+| `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery using a bounded recent-log diagnostic bundle |
+| `scripts/Save-AgentCheckpoint.ps1` | Private per-role context for running, waiting, or failed attempts; not shared with Knowledge Keeper |
+| `scripts/Publish-AgentOutcome.ps1` | Validates configured artifacts, completes the role, and only then publishes its shared outcome |
+| `scripts/Invoke-EnhancedReview.ps1` | Per-PR comment fingerprints, pending AI-processing state, and targeted Review Monitor invocation |
+| `dashboard` | Loopback operator UI for multi-repository selection, persisted statuses, per-agent live logs, open questions, targeted answers, artifacts, and tracked in-process elevated runspaces |
 | `knowledge/managed` | Versioned managed knowledge with seed-import provenance |
 | `%LOCALAPPDATA%/Codex/development-agent-ecosystem` | Mutable task ledgers, review prompts, notes, reports, and scheduler backups |
 
@@ -48,15 +50,21 @@ Dashed green `+` badges identify supported extension points:
 
 ## Component interaction
 
+Knowledge flow is pull-based. Knowledge Keeper issues a minimal initial context and answers explicit knowledge or skill requests; it never loops over `wait` or polls role logs. Each role autonomously sizes coherent work blocks. At the end of each block it reads applicable comments once, applies one ordered batch, and decides whether another block is needed in the same invocation. Working details remain in the role's private checkpoint until that role succeeds. Only a validated terminal outcome enters shared context. Knowledge Keeper then decides whether the outcome changes task decisions, coding rules, or managed knowledge. After all applicable roles complete, it writes `task-summary.json` for the whole task.
+
 ```mermaid
 flowchart LR
-    U[Developer / Dashboard] --> K[Knowledge Keeper]
+    U[Developer / Dashboard] -->|task + selected repositories + commands| K[Knowledge Keeper]
+    K -->|open question + waiting status| U
+    U -->|answer linked to question ID| K
     A[Azure Boards + comments] --> RA[Requirements Analyst]
     C[Codebase] --> RA
     KB[(Versioned Knowledge)] <--> K
     S[(Engineering skills: common + stack-specific)] --> K
-    K --> RA
-    RA -->|ready scope + held scope + questions| K
+    K -->|initial minimal context| RA
+    RA -->|knowledge / skill request| K
+    K -->|bounded answer| RA
+    RA -->|successful validated outcome only| K
     K --> D[Developer]
     K -->|context pack + selected engineering skills| D
     RA --> D
@@ -72,7 +80,7 @@ flowchart LR
     G -->|approved findings only| D
     D --> P[Azure Pipeline Monitor]
     P -->|exact commit status + failed logs| K
-    K -->|structured agent failure| H[Health Check Agent]
+    K -->|failure envelope + bounded recent tails| H[Health Check Agent]
     X[Guarded runner: stop after 3 identical failures] -->|guard + failure artifacts| K
     H -->|diagnosis + recovery status| K
     H -->|ecosystem-only correction plan| D
@@ -93,7 +101,7 @@ sequenceDiagram
     participant H as Health Check Agent
     participant G as Execution Guard
 
-    U->>K: task ID / URL / instruction
+    U->>K: task ID / URL / selected repositories / instruction
     K->>A: verified context request
     A-->>K: ready scope, held scope, questions, sources
     alt independent ready scope exists
@@ -111,13 +119,15 @@ sequenceDiagram
         G->>G: count normalized identical failures
         G-->>K: third failure: terminate and persist guard artifact
         K->>K: persist agent-failure artifact and failed status
-        K->>H: failure signature + logs + ledger + artifacts
+        K->>H: failure signature + bounded recent tails + summaries
         H-->>K: diagnosis and deterministic repair result
         K->>H: one bounded ecosystem-only recovery attempt
         H-->>K: repaired / waiting / failed + validation
         K-->>U: live recovery status and Resume action
     else all scope is blocked by unanswered questions
-        K-->>U: questions and explicit hold
+        K-->>U: question-opened + waiting status + explicit hold
+        U->>K: targeted answer or corrective command
+        K->>K: question-resolved; reread linked answer
     end
 ```
 
@@ -125,16 +135,20 @@ sequenceDiagram
 
 Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Codex/development-agent-ecosystem/tasks/<task-id>`:
 
-- `task.json`: task identity and current state;
-- `task-ledger.jsonl`: append-only communication, workflow and agent status, and user intervention comments;
+- `task.json`: task identity, ordered `repositoryIds[]`, backward-compatible primary `repositoryId`, and current state;
+- `task-ledger.jsonl`: append-only communication, workflow and agent status, `question-opened` / `question-resolved`, and user intervention comments;
+- `agent-activity.jsonl`: append-only factual per-agent progress used by the configurable live dashboard view;
+- `resume-plan.json`: the checkpoint snapshot listing only agents permitted to run and completed agents that must be preserved;
+- `resume-artifact-index.json`: SHA-256 fingerprints used to identify changed artifacts without model rereads;
+- `agent-checkpoints/<agent-id>.json`: private unfinished-role context, never consumed by Knowledge Keeper or the dashboard outcome viewer;
 - `context-pack.json`: context selected by Knowledge Keeper;
 - `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
 - `implementation-plan.json` and `implementation-result.json`;
 - `review-result.json` and `review-decisions.json`;
-- `pipeline-result.json` and `knowledge-update.json`.
+- `pipeline-result.json`, `knowledge-update.json`, and final `task-summary.json`.
 - `agent-failure-*.json`, `health-check-result.json`, `health-recovery-result.json`, and health recovery logs.
 
-`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable history. The dashboard polls the loopback API every five seconds, while Knowledge Keeper rereads unacknowledged user comments at every handoff checkpoint. Text-based artifacts are served through a token-protected, direct-child-only, size-limited read endpoint. Failed agents provide structured evidence immediately; Health Check status is persisted and rendered like every other agent. The guarded runner stops after three identical failures and hands both reports to Health Check. For error 1260, Health Check performs a deterministic derived repair: it compiles six suffixed agent definitions with the OS-policy compatibility prompt and `danger-full-access`, marks the task `os_policy_compatibility_ready`, and skips another sandbox recovery loop. The profiles are not selected until the user confirms **Resume workflow elevated**. CrowdStrike, AppLocker, WDAC, permissions, requirement holds, review approvals, and external-write gates remain active.
+`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable public history. Open questions are reconstructed by subtracting every `question-resolved` evidence reference from `question-opened` events; a targeted dashboard answer closes only its selected question. Applicable comments are coalesced at end-of-block checkpoints, so saving comments does not restart a running role. Agents do not poll while a block is running and perform a final comment check before outcome publication. General resume computes a checkpoint and dispatches only unfinished roles; explicit targeted restart dispatches exactly one stopped or completed role. Fingerprints in `resume-artifact-index.json` let roles reuse summaries for unchanged artifacts. The dashboard polling itself is deterministic and does not invoke a model. Health recovery receives configured tails rather than complete historical logs. PR comment fingerprints are stored per PR; only that PR is forced, while `pending-review-changes.json` records `pending-ai-review` or `requires-human-intervention` until AI processing succeeds. Pipeline Monitor uses low reasoning effort and lets its native monitor perform repeated status polling without repeated model turns.
 
 Every context pack has an `engineeringGuidance` section. Knowledge Keeper derives the stack from repository evidence, always selects pragmatic DRY, KISS, SOLID, YAGNI, separation-of-concerns, testability, and maintainability guidance, and adds only the applicable .NET, JavaScript/TypeScript, and React skills. Developer implements against that selection; Reviewer uses the same selection and reports a principle violation only when it has a concrete correctness, maintenance, or testing consequence.
 

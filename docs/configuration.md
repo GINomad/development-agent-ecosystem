@@ -4,7 +4,11 @@
 
 `ui.taskRefreshSeconds` controls how often the dashboard reloads persisted task, per-agent, timeline, and artifact state. The default is five seconds.
 
+`ui.agentLogRefreshSeconds` controls the selected agent live-log polling interval. The canonical default is 30 seconds; supported values are 2 through 300 seconds. The dashboard reloads this value from `config/agents.json` on startup.
+
 `runtime.executionGuard` supervises every headless Codex runner. `maxIdenticalFailures` is fixed to three: the third identical failure stops the native process and produces `workflow-execution-guard.json` or `health-recovery-execution-guard.json`. `maxRunMinutes` limits total runtime, and `pollMilliseconds` controls JSONL observation frequency.
+
+`runtime.contextLimits` bounds model-facing context. `maxSourceFiles` is the default first-party source inspection budget, `maxCommandOutputLines` and `maxCommandOutputBytes` trim tool output, and `workflowLogTailLines` plus `ledgerTailLines` define the recent slices supplied to Health Check. Deterministic dashboard and pipeline polling do not use these values because they do not invoke a model.
 
 `runtime.elevatedFallback` enables the task-level **Resume workflow elevated** action. It must use `danger-full-access` and require explicit dashboard confirmation. This is a controlled response to an OS process restriction, not a general agent permission: all requirement, review, and external-write approval gates remain active.
 
@@ -49,6 +53,8 @@ Add one object to `repositories[]` for each local repository. Repository IDs mus
 
 `localWorkspace` must point to an existing Git working copy whose `origin` matches `url`. Multiple Azure DevOps organizations may reuse one Azure CLI credential profile when the signed-in identity has access to each organization.
 
+The dashboard repository control supports multiple selection. The first selected repository is the primary `codex -C` workspace; every additional selected workspace is passed as a separate `--add-dir`. New task state persists both `repositoryIds[]` and the first `repositoryId` for backward compatibility. Reviewer notes and manual review starts are applied independently to every selected repository.
+
 ## Manual and automate modes
 
 - `manual`: the UI or CLI requires a task selector. It can be an Azure Boards ID, URL, or an explicit task description.
@@ -73,4 +79,6 @@ Runtime validation rejects plaintext `token`, `password`, and `secret` fields. T
 
 ## Review comments
 
-`includeActivePrComments` adds Azure DevOps PR threads or GitHub issue, review, and inline comments to the review prompt. `rerunWhenCommentsChange` includes a discussion hash in the revision key. Notes entered through the dashboard are stored separately under `reviewer-notes` and attached to the selected repository, PR, or task.
+`includeActivePrComments` adds Azure DevOps PR threads or GitHub issue, review, and inline comments to the matching PR prompt only. `rerunWhenCommentsChange` compares a per-PR discussion fingerprint and forces only the changed PR. Notes entered through the dashboard are stored separately under `reviewer-notes`. Unprocessed changes remain in `pending-review-changes.json` as `pending-ai-review`; a failed model review changes that entry to `requires-human-intervention`.
+
+`review.maxFilesPerReview` and `review.maxDiffCharacters` stop oversized PRs before a model call. The pending entry becomes `requires-human-intervention`, making the unprocessed change visible instead of silently consuming an unbounded context.

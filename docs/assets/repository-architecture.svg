@@ -56,7 +56,7 @@
     <rect x="320" y="314" width="115" height="27" rx="9" class="extend"/><text x="337" y="332" class="extend-text">+ REPOSITORIES</text>
     <text x="115" y="339" class="mono">config/agents.json</text>
     <text x="115" y="372" class="copy">Single canonical source of truth</text>
-    <text x="115" y="398" class="small">agents · repositories · credentials · health policy</text>
+    <text x="115" y="398" class="small">agents · repositories · context limits · health policy</text>
 
     <rect x="85" y="455" width="370" height="145" rx="19" fill="url(#source)" stroke="#32705d"/>
     <rect x="318" y="469" width="117" height="27" rx="9" class="extend"/><text x="335" y="487" class="extend-text">+ PROMPT PATHS</text>
@@ -104,20 +104,20 @@
     <rect x="822" y="649" width="123" height="27" rx="9" class="extend"/><text x="838" y="667" class="extend-text">+ WORKFLOWS</text>
     <text x="575" y="675" class="mono">Start-DevelopmentWorkflow.ps1</text>
     <text x="575" y="708" class="copy">Manual task or assigned-task automate mode</text>
-    <text x="575" y="736" class="small">Import knowledge · create task ledger</text>
-    <text x="575" y="762" class="small">Guard: 3 identical failures -> Health Check report</text>
+    <text x="575" y="736" class="small">Autonomous blocks · comment batches · fingerprints</text>
+    <text x="575" y="762" class="small">Guard: 3 identical failures -> bounded Health report</text>
 
     <rect x="545" y="825" width="420" height="150" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="804" y="839" width="141" height="27" rx="9" class="extend"/><text x="819" y="857" class="extend-text">+ REVIEW INPUTS</text>
     <text x="575" y="865" class="mono">Review runtime</text>
-    <text x="575" y="898" class="copy">Sync config · collect PR discussions</text>
-    <text x="575" y="926" class="small">User notes + comment hash + dry-run gate</text>
+    <text x="575" y="898" class="copy">Sync config · collect per-PR discussions</text>
+    <text x="575" y="926" class="small">Per-PR hash · pending AI / human state</text>
     <text x="575" y="952" class="small">Scheduled poll, daily pass, report dashboard</text>
 
     <rect x="545" y="1010" width="420" height="100" rx="20" fill="#15263a" stroke="#416783"/>
     <rect x="830" y="1024" width="115" height="27" rx="9" class="extend"/><text x="849" y="1042" class="extend-text">+ UI ROUTES</text>
     <text x="575" y="1049" class="mono">Start-AgentDashboard.ps1</text>
-    <text x="575" y="1081" class="copy">Tasks · comments · reviews · health checks</text>
+    <text x="575" y="1081" class="copy">Checkpoint · targeted restart · stop · live logs</text>
   </g>
 
   <!-- agents -->
@@ -126,7 +126,7 @@
     <rect x="1288" y="314" width="117" height="27" rx="9" class="extend"/><text x="1307" y="332" class="extend-text">+ AGENT ROLE</text>
     <text x="1085" y="340" class="lane">ORCHESTRATOR</text>
     <text x="1085" y="376" class="box-title">Knowledge Keeper</text>
-    <text x="1085" y="406" class="copy">Context + stack skill routing + knowledge</text>
+    <text x="1085" y="406" class="copy">On-demand context · no polling · final summary</text>
 
     <rect x="1055" y="470" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
     <text x="1078" y="507" class="agent-title">Requirements</text>
@@ -154,7 +154,7 @@
 
     <rect x="1055" y="780" width="370" height="110" rx="20" fill="#173038" stroke="#4b8375"/>
     <text x="1085" y="818" class="agent-title">Health Check Agent</text>
-    <text x="1085" y="846" class="agent-copy">automatic guard + failure artifact pickup</text>
+    <text x="1085" y="846" class="agent-copy">automatic guard + bounded recent log tails</text>
     <text x="1085" y="870" class="agent-copy">3-repeat ceiling + approved elevated retry</text>
 
     <rect x="1055" y="915" width="370" height="85" rx="20" fill="#182944" stroke="#536f9b"/>
@@ -163,8 +163,8 @@
 
     <rect x="1055" y="1025" width="370" height="85" rx="20" fill="#182d36" stroke="#3f7468"/>
     <rect x="1268" y="1009" width="137" height="27" rx="9" class="extend"/><text x="1283" y="1027" class="extend-text">+ ARTIFACT SCHEMA</text>
-    <text x="1085" y="1058" class="mono">task-ledger.jsonl + artifacts</text>
-    <text x="1085" y="1086" class="small">requirements · code · review · pipeline · health</text>
+    <text x="1085" y="1058" class="mono">private checkpoints + validated outcomes</text>
+    <text x="1085" y="1086" class="small">role artifacts · knowledge update · task summary</text>
   </g>
 
   <!-- external -->
@@ -190,7 +190,7 @@
     <text x="1540" y="880" class="box-title">Local state</text>
     <text x="1540" y="913" class="copy">%LOCALAPPDATA%</text>
     <text x="1540" y="940" class="small">task histories</text>
-    <text x="1540" y="964" class="small">review reports + notes</text>
+    <text x="1540" y="964" class="small">review reports · notes · pending PR changes</text>
 
     <rect x="1515" y="1025" width="200" height="85" rx="20" fill="#1a2a2d" stroke="#47716b"/>
     <rect x="1622" y="1037" width="76" height="25" rx="8" class="extend"/><text x="1636" y="1054" class="extend-text">+ AUTH</text>

@@ -26,7 +26,7 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "historyFormat", "defaultBaseBranch", "executionGuard", "elevatedFallback"],
+      "required": ["maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "historyFormat", "defaultBaseBranch", "executionGuard", "contextLimits", "elevatedFallback"],
       "properties": {
         "maxConcurrentAgents": { "type": "integer", "minimum": 1, "maximum": 16 },
         "approvalPolicy": { "enum": ["untrusted", "on-request", "never"] },
@@ -42,6 +42,18 @@
             "maxIdenticalFailures": { "const": 3 },
             "maxRunMinutes": { "type": "integer", "minimum": 5, "maximum": 1440 },
             "pollMilliseconds": { "type": "integer", "minimum": 100, "maximum": 5000 }
+          }
+        },
+        "contextLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSourceFiles", "maxCommandOutputLines", "maxCommandOutputBytes", "workflowLogTailLines", "ledgerTailLines"],
+          "properties": {
+            "maxSourceFiles": { "type": "integer", "minimum": 10, "maximum": 500 },
+            "maxCommandOutputLines": { "type": "integer", "minimum": 20, "maximum": 1000 },
+            "maxCommandOutputBytes": { "type": "integer", "minimum": 4096, "maximum": 1048576 },
+            "workflowLogTailLines": { "type": "integer", "minimum": 20, "maximum": 1000 },
+            "ledgerTailLines": { "type": "integer", "minimum": 10, "maximum": 500 }
           }
         },
         "elevatedFallback": {
@@ -87,12 +99,13 @@
     "ui": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["listenAddress", "port", "openBrowser", "taskRefreshSeconds"],
+      "required": ["listenAddress", "port", "openBrowser", "taskRefreshSeconds", "agentLogRefreshSeconds"],
       "properties": {
         "listenAddress": { "const": "127.0.0.1" },
         "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
         "openBrowser": { "type": "boolean" },
-        "taskRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 }
+        "taskRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 },
+        "agentLogRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 }
       }
     },
     "health": {
@@ -133,11 +146,13 @@
     "review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["excludeSelfAuthored", "includeActivePrComments", "rerunWhenCommentsChange", "monitorSkillRoot", "monitorDataRoot", "userNotesRoot", "generatedPromptRoot", "mcp"],
+      "required": ["excludeSelfAuthored", "includeActivePrComments", "rerunWhenCommentsChange", "maxFilesPerReview", "maxDiffCharacters", "monitorSkillRoot", "monitorDataRoot", "userNotesRoot", "generatedPromptRoot", "mcp"],
       "properties": {
         "excludeSelfAuthored": { "type": "boolean" },
         "includeActivePrComments": { "type": "boolean" },
         "rerunWhenCommentsChange": { "type": "boolean" },
+        "maxFilesPerReview": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "maxDiffCharacters": { "type": "integer", "minimum": 10000, "maximum": 1500000 },
         "monitorSkillRoot": { "type": "string", "minLength": 1 },
         "monitorDataRoot": { "type": "string", "minLength": 1 },
         "userNotesRoot": { "type": "string", "minLength": 1 },

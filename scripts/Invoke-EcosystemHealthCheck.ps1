@@ -209,13 +209,17 @@ try {
     if ($TaskId -and (Test-Path -LiteralPath $taskRoot -PathType Container)) {
         $taskResultPath = Join-Path $taskRoot 'health-check-result.json'
         Write-Utf8NoBom -Path $taskResultPath -Content $json
-        & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type agent-result -Summary ([string]$result.summary) -Artifact $taskResultPath -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         if ($policyCompatibilityPrepared) {
             & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles for all agents after Windows policy error 1260. Confirm Resume workflow elevated to use them.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
-        $healthAgentStatus = if ($overallStatus -eq 'unhealthy') { 'waiting' } else { 'completed' }
         $healthStage = if ($policyCompatibilityPrepared) { 'os_policy_compatibility_ready' } else { 'health_check' }
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus $healthAgentStatus -Stage $healthStage -Message ([string]$result.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($overallStatus -eq 'unhealthy') {
+            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage $healthStage -Message ([string]$result.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary ([string]$result.summary) -NextStep 'Resolve the reported health blocker, then rerun Health Check.' -EvidenceRefs @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+        else {
+            & (Join-Path $PSScriptRoot 'Publish-AgentOutcome.ps1') -TaskId $TaskId -AgentId health_check -Summary ([string]$result.summary) -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
     }
     [pscustomobject]@{ ResultPath=$resultPath; Result=[pscustomobject]$result }
 }

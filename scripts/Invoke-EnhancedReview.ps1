@@ -22,8 +22,8 @@ $comments = & (Join-Path $PSScriptRoot 'Get-ActivePullRequestComments.ps1') @com
 $monitorRoot = Resolve-EcosystemPath -Value ([string]$config.review.monitorSkillRoot) -Config $config -CodexHome $CodexHome
 $runner = Join-Path $monitorRoot 'scripts\run_pr_review_monitor.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) { throw "Review monitor runner was not found: $runner" }
-$force = [bool]$ForceReview -or ([bool]$config.review.rerunWhenCommentsChange -and [bool]$comments.Changed)
-$runnerParameters = @{ Mode=$Mode; DataRoot=$sync.DataRoot; DryRun=[bool]$DryRun; ForceReview=$force }
+$forceKeys = if ([bool]$config.review.rerunWhenCommentsChange) { @($comments.ChangedPullRequestKeys) } else { @() }
+$runnerParameters = @{ Mode=$Mode; DataRoot=$sync.DataRoot; DryRun=[bool]$DryRun; ForceReview=[bool]$ForceReview; ForceReviewKey=$forceKeys; PullRequestContextPath=[string]$comments.ContextPath; PendingChangesPath=[string]$comments.PendingPath }
 if (-not [string]::IsNullOrWhiteSpace($RepositoryId)) { $runnerParameters.RepositoryId = $RepositoryId }
 & $runner @runnerParameters
 if ($LASTEXITCODE -ne 0) { throw "Review monitor exited with code $LASTEXITCODE." }

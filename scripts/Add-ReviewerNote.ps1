@@ -34,7 +34,6 @@ $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
 $stream = [IO.File]::Open($path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
 try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
 if ($TaskId) {
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Author -Type 'agent-result' -Summary 'User added a local reviewer note.' -Artifact $path -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Author -Type 'user-comment' -Summary 'User added a local reviewer note.' -Artifact $path -TargetAgentId reviewer -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 [pscustomobject]$entry
-

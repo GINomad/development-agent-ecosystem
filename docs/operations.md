@@ -10,12 +10,19 @@ Start the main dashboard:
 
 From the dashboard:
 
+- select one or more repositories; the first checked repository is the primary workspace and the rest are additional writable workspaces for that task;
 - select manual or automate mode;
 - in manual mode, enter a task ID or URL, or select a task from the assigned-task inbox;
 - add an optional instruction for the current run;
 - track active or completed tasks, every agent status, generated artifacts, and the append-only event timeline;
+- use **View outcome** on an agent card to inspect that role's configured required artifacts and exact persisted status without inferring a result from live logs;
+- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default);
+- write a comment directly to the selected agent, or use **Restart agent with comment** to save the comment and start only that agent through Knowledge Keeper;
+- use **Stop workflow** to stop only the selected task's validated process tree or tracked runspace while preserving task history, completed agents, and artifacts;
 - select any supported text artifact to preview JSON, JSONL, Markdown, text, logs, TOML, YAML, XML, HTML source, or CSV in the read-only viewer (limited to 1 MiB);
-- add a task comment to clarify requirements, answer an open question, pause scope, or redirect the next in-scope step;
+- inspect the yellow **Input required** panel whenever any agent is waiting for information;
+- choose **Answer this question**, enter the answer or corrective command, and send it; the answer is linked to that exact question in the append-only ledger;
+- add a general task comment to clarify requirements, pause scope, or redirect the next in-scope step without falsely resolving a question;
 - resume an existing task without creating a duplicate history directory;
 - after an OS sandbox failure, select **Resume workflow elevated** and confirm one task-specific elevated session;
 - attach a Reviewer note to a repository, PR, or task;
@@ -23,12 +30,14 @@ From the dashboard:
 
 The task action guide is also displayed directly below the buttons:
 
-- **Send comment** appends an operator instruction to the task ledger; it does not resume a stopped workflow.
-- **Resume workflow** continues the same task in the normal Codex sandbox and is the default action.
-- **Resume workflow elevated** continues the complete task without the Codex OS sandbox for one confirmed session; all delivery gates remain active.
+- **Send comment** appends an operator instruction to the task ledger. A running agent finishes its current coherent work block, reads all applicable comments once, processes them as one ordered batch, and decides its next block without restart. When a Reply target is selected, the action also resolves that exact question. A stopped workflow remains stopped until Resume.
+- **Resume workflow** computes `resume-plan.json` and continues only unfinished agents in the normal Codex sandbox; completed agents and their artifacts are not rerun.
+- **Resume workflow elevated** applies the same checkpoint plan without the Codex OS sandbox for one confirmed session; all delivery gates remain active.
+- **Restart agent with comment** saves an addressable `targetAgentId` comment and starts only the selected agent in the default elevated mode used on this machine.
+- **Stop workflow** marks running agents `waiting` and the task `interrupted` after stopping its validated process tree or tracked in-process runspace.
 - **Approve elevated repair** gives Health Check one elevated ecosystem-repair attempt; it neither resumes implementation nor authorizes product-code changes.
 
-The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. A running Knowledge Keeper reads new `user-comment` events before every agent handoff and after every agent result. A stopped workflow keeps the comment for the next **Resume workflow** action.
+The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. Dashboard and live-log polling are ordinary local HTTP/file reads and consume no AI tokens. A selected agent log refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default). Each running role chooses the largest coherent block allowed by ready scope, dependencies, reversibility, validation cost, approval gates, and context limits. At block completion it uses `Get-AgentCommentBatch.ps1` once and acknowledges the processed IDs with `Acknowledge-AgentCommentBatch.ps1`. It never idle-polls for comments. Any role that needs information calls `Open-AgentQuestion.ps1`; this records the minimal public question while detailed unfinished context stays in `agent-checkpoints/<agent-id>.json`. Knowledge Keeper remains pull-based and `Publish-AgentOutcome.ps1` performs one final comment checkpoint before sharing a terminal outcome.
 
 ## Automatic agent health recovery
 
@@ -44,7 +53,7 @@ Health recovery runs in three bounded phases:
 2. read-only diagnosis by `development_health_check`;
 3. an ecosystem-only recovery coordinator when source repair is supported by evidence.
 
-The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It runs once per failure signature, validates the exact repair plus `Test-AgentEcosystem.ps1`, and exposes its `running`, `waiting`, `completed`, or `failed` state on the task dashboard. A successful recovery changes the task to `interrupted`, ready for an explicit **Resume workflow**.
+The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It receives `health-diagnostic-context.json`, containing only the configured workflow-log, ledger, and final-response tails. It runs once per failure signature, validates the exact repair plus `Test-AgentEcosystem.ps1`, and exposes its `running`, `waiting`, `completed`, or `failed` state on the task dashboard. A successful recovery changes the task to `interrupted`, ready for an explicit **Resume workflow**.
 
 If the sandboxed agent is blocked by Windows process-creation error 1260, select **Approve elevated repair** on the task card and confirm the warning. This authorizes one `danger-full-access` retry for that task and failure signature. The launcher still requires a clean ecosystem worktree, starts in the exact ecosystem root without additional writable directories, and keeps product/external writes disabled. The OS does not enforce the repository boundary during that single elevated attempt.
 
@@ -72,7 +81,7 @@ Allowed decisions are `approved`, `rejected`, and `deferred`. Developer must not
 - `Development Ecosystem - PR Review Daily`: performs the complete daily pass;
 - `Development Ecosystem - PR Review Dashboard`: starts the loopback report server at logon.
 
-Review reports are local by default. The monitor writes Markdown and interactive HTML reports to `%LOCALAPPDATA%\Codex\development-agent-ecosystem\azure-pr-review-monitor\reports`; `latest-summary.md` points to the newest run state. The dashboard scheduled task serves that directory on loopback. Nothing is emailed or posted to Azure DevOps automatically; publishing a selected finding remains an explicit, approval-gated action.
+Review reports are local by default. The monitor writes Markdown and interactive HTML reports to `%LOCALAPPDATA%\Codex\development-agent-ecosystem\azure-pr-review-monitor\reports`; `latest-summary.md` points to the newest run state. Comment hashes are tracked per PR. A changed comment forces only that PR, and `pending-review-changes.json` keeps the change visible as `pending-ai-review` or `requires-human-intervention` until a successful review consumes it. Nothing is emailed or posted to Azure DevOps automatically; publishing a selected finding remains an explicit, approval-gated action.
 
 ## Rollback
 

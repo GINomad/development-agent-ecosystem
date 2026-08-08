@@ -14,6 +14,13 @@
       "maxRunMinutes": 120,
       "pollMilliseconds": 500
     },
+    "contextLimits": {
+      "maxSourceFiles": 80,
+      "maxCommandOutputLines": 200,
+      "maxCommandOutputBytes": 65536,
+      "workflowLogTailLines": 200,
+      "ledgerTailLines": 60
+    },
     "elevatedFallback": {
       "enabled": true,
       "requiresDashboardApproval": true,
@@ -39,7 +46,8 @@
     "listenAddress": "127.0.0.1",
     "port": 43127,
     "openBrowser": true,
-    "taskRefreshSeconds": 5
+    "taskRefreshSeconds": 5,
+    "agentLogRefreshSeconds": 30
   },
   "health": {
     "enabled": true,
@@ -65,6 +73,8 @@
     "excludeSelfAuthored": true,
     "includeActivePrComments": true,
     "rerunWhenCommentsChange": true,
+    "maxFilesPerReview": 80,
+    "maxDiffCharacters": 500000,
     "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor",
     "monitorDataRoot": "${STATE_ROOT}/azure-pr-review-monitor",
     "userNotesRoot": "${STATE_ROOT}/reviewer-notes",
@@ -134,6 +144,20 @@
       "enabled": true,
       "organization": "https://dev.azure.com/Aucerna",
       "project": "PlanningSpace",
+      "credentialProfile": "azure-default",
+      "assignee": "@Me",
+      "statesExcluded": [
+        "Closed",
+        "Removed"
+      ],
+      "includeComments": true
+    },
+    {
+      "id": "quorum-azure-boards",
+      "provider": "azure-devops",
+      "enabled": true,
+      "organization": "https://dev.azure.com/quorumsoftware",
+      "project": "Quorum",
       "credentialProfile": "azure-default",
       "assignee": "@Me",
       "statesExcluded": [
@@ -229,7 +253,8 @@
       "requiredArtifacts": [
         "task-ledger.jsonl",
         "context-pack.json",
-        "knowledge-update.json"
+        "knowledge-update.json",
+        "task-summary.json"
       ]
     },
     {
@@ -317,7 +342,7 @@
       "id": "pipeline_monitor",
       "name": "development_pipeline_monitor",
       "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
-      "reasoningEffort": "medium",
+      "reasoningEffort": "low",
       "sandboxMode": "read-only",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",

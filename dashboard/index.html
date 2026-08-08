@@ -29,10 +29,14 @@
         </div>
       </div>
 
-      <label>
-        Repository
-        <select id="repository"></select>
-      </label>
+      <div class="repository-field">
+        <span class="field-label" id="repositoryLabel">Repositories</span>
+        <details class="multi-select" id="repositoryPicker">
+          <summary id="repositorySummary" aria-labelledby="repositoryLabel repositorySummary">Select repositories</summary>
+          <div class="multi-select-options" id="repositoryOptions" role="group" aria-labelledby="repositoryLabel"></div>
+        </details>
+        <p class="hint">Select every repository that the agents may inspect or modify for this task. The first selected repository is the primary workspace.</p>
+      </div>
 
       <div id="manualFields">
         <label>
@@ -92,31 +96,83 @@
             <p class="task-meta" id="selectedTaskMeta"></p>
             <p class="task-message" id="selectedTaskMessage"></p>
 
+            <section class="input-required hidden" id="inputRequiredPanel" aria-live="polite">
+              <h4>Input required</h4>
+              <p class="hint">An agent could not resolve these questions from requirements, code, comments, or verified knowledge. Answer below or provide a corrective command.</p>
+              <div id="openQuestions" class="open-questions"></div>
+            </section>
+
             <h4>Agents</h4>
             <div class="agent-status-grid" id="agentStatusGrid"></div>
+            <section class="agent-outcome-panel hidden" id="agentOutcomePanel" aria-live="polite">
+              <div class="agent-outcome-header">
+                <div>
+                  <p class="detail-kicker">PERSISTED AGENT OUTCOME</p>
+                  <h4 id="agentOutcomeTitle">Agent outcome</h4>
+                  <p id="agentOutcomeMeta"></p>
+                </div>
+                <button class="text-button" id="closeAgentOutcome" type="button">Close</button>
+              </div>
+              <p class="agent-outcome-summary" id="agentOutcomeSummary"></p>
+              <div class="agent-outcome-artifacts" id="agentOutcomeArtifacts"></div>
+              <p class="agent-outcome-artifact-meta" id="agentOutcomeArtifactMeta"></p>
+              <pre id="agentOutcomeContent"></pre>
+            </section>
+            <section class="agent-log-panel hidden" id="agentLogPanel" aria-live="polite">
+              <div class="agent-log-header">
+                <div>
+                  <p class="detail-kicker"><span class="live-dot" aria-hidden="true"></span> LIVE AGENT LOG</p>
+                  <h4 id="agentLogTitle">Agent activity</h4>
+                  <p id="agentLogMeta">Refresh interval is loaded from configuration.</p>
+                </div>
+                <button class="text-button" id="closeAgentLog" type="button">Close</button>
+              </div>
+              <div class="agent-log-entries" id="agentLogEntries"></div>
+              <div class="agent-intervention">
+                <label>
+                  Comment for this agent
+                  <textarea id="agentComment" rows="3" maxlength="4000" placeholder="Add evidence, correct this agent, or provide a new instruction."></textarea>
+                </label>
+                <div class="actions">
+                  <button class="button primary" id="sendAgentComment" type="button">Send to agent</button>
+                  <button class="button danger" id="restartAgentWithComment" type="button">Restart agent</button>
+                </div>
+                <p class="agent-action-status" id="agentActionStatus" role="status"></p>
+                <p class="hint">Send queues the comment for this agent's next end-of-block checkpoint. A running agent reads the batch and continues without restart. Restart is only for a stopped or completed agent and preserves every other agent and completed artifact.</p>
+              </div>
+            </section>
 
-            <div class="comment-panel">
+            <details class="comment-panel" id="taskInterventionPanel" open>
+              <summary>Comment or workflow correction</summary>
+              <div class="comment-panel-body">
               <label>
-                Comment or workflow correction
+                Message
                 <textarea id="taskComment" rows="3" maxlength="4000" placeholder="Clarify a requirement, answer a question, pause a scope item, or redirect the next step."></textarea>
               </label>
-              <p class="hint">A running workflow reads new comments at its next handoff checkpoint. For a stopped task, save the comment and select Resume workflow.</p>
+              <label>
+                Reply target <span class="optional">optional</span>
+                <select id="taskQuestionTarget"><option value="">General workflow instruction</option></select>
+              </label>
+              <p class="hint">A running agent reads new comments after finishing its current work block, applies one batch, and decides the next coherent block without restart. For a stopped task, save the comment and select Resume workflow.</p>
               <div class="policy-notice hidden" id="executionPolicyNotice" role="status">
                 Windows policy blocked the Codex sandbox for this task. Use the normal resume only after the policy is fixed, or use the elevated workflow action for one explicitly confirmed task session.
               </div>
               <div class="actions">
                 <button class="button primary" id="sendTaskComment" aria-describedby="sendTaskCommentHelp">Send comment</button>
                 <button class="button secondary" id="resumeTask" aria-describedby="resumeTaskHelp">Resume workflow</button>
+                <button class="button danger" id="stopWorkflow" aria-describedby="stopWorkflowHelp">Stop workflow</button>
                 <button class="button danger" id="resumeElevatedWorkflow" aria-describedby="resumeElevatedWorkflowHelp">Resume workflow elevated</button>
                 <button class="button danger" id="approveElevatedRecovery" aria-describedby="approveElevatedRecoveryHelp">Approve elevated repair</button>
               </div>
               <dl class="action-guide" aria-label="Task action explanations">
-                <div><dt id="sendTaskCommentHelp">Send comment</dt><dd>Saves your instruction in the task ledger. A running workflow reads it at the next handoff; it does not start or resume a stopped task.</dd></div>
-                <div><dt id="resumeTaskHelp">Resume workflow</dt><dd>Continues the same task and history in the normal Codex sandbox. This is the default and safest resume action.</dd></div>
-                <div><dt id="resumeElevatedWorkflowHelp">Resume workflow elevated</dt><dd>Continues the complete task in an in-process host runspace without a nested PowerShell or Codex OS sandbox. Use for policy error 1260; all delivery gates still apply.</dd></div>
+                <div><dt id="sendTaskCommentHelp">Send comment</dt><dd>Queues an instruction for the active agent's next end-of-block checkpoint, or resolves the selected Reply target. A running agent continues without restart; a stopped task stays stopped.</dd></div>
+                <div><dt id="resumeTaskHelp">Resume workflow</dt><dd>Continues from the persisted checkpoint and starts only unfinished agents. Completed agents and artifacts are preserved.</dd></div>
+                <div><dt id="stopWorkflowHelp">Stop workflow</dt><dd>Stops this task's active process tree or runspace, preserves history and completed work, and marks running agents as waiting.</dd></div>
+                <div><dt id="resumeElevatedWorkflowHelp">Resume workflow elevated</dt><dd>Continues only unfinished agents in an in-process host runspace without a nested PowerShell or Codex OS sandbox. Use for policy error 1260; all delivery gates still apply.</dd></div>
                 <div><dt id="approveElevatedRecoveryHelp">Approve elevated repair</dt><dd>Allows Health Check one elevated attempt to repair the ecosystem itself. It does not resume product implementation or authorize product-code changes.</dd></div>
               </dl>
-            </div>
+              </div>
+            </details>
 
             <div class="detail-columns">
               <div>

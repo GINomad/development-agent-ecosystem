@@ -37,6 +37,8 @@ $derived = [pscustomobject][ordered]@{
     }
     review = [pscustomobject][ordered]@{
         excludeSelfAuthored = [bool]$config.review.excludeSelfAuthored
+        maxFilesPerReview = [int]$config.review.maxFilesPerReview
+        maxDiffCharacters = [int]$config.review.maxDiffCharacters
         skillPaths = @($reviewSkill)
         promptPaths = @($promptRoot)
         mcp = [pscustomobject][ordered]@{
@@ -52,4 +54,3 @@ $temporary = "$path.tmp"
 Write-Utf8NoBom -Path $temporary -Content (($derived | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 Move-Item -LiteralPath $temporary -Destination $path -Force
 [pscustomobject]@{ DataRoot = $dataRoot; ConfigPath = $path; PromptRoot = $promptRoot }
-

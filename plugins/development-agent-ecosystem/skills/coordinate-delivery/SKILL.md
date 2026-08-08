@@ -12,6 +12,6 @@ description: Orchestrate requirements, knowledge, implementation, review approva
 5. Require read-only review against requirements and agent behavior.
 6. Pause review fixes until a human records explicit finding decisions.
 7. After an authorized push, invoke exact-commit pipeline monitoring.
-8. Record every transition, artifact, question, and decision in the task ledger.
-9. Finish only when required scope is done or explicitly held with owners and questions.
-
+8. Batch pending comments at one checkpoint; do not restart once per comment or poll a role for progress.
+9. Keep working context private for waiting or failed roles. Publish only validated successful outcomes to shared history.
+10. Finish and write the task summary only when required scope is done; a task with held questions remains waiting, not completed.

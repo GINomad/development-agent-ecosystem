@@ -1,0 +1,62 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
+    [Parameter(Mandatory)][ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $AgentId,
+    [Parameter(Mandatory)][string] $Summary,
+    [string[]] $ArtifactNames = @(),
+    [string[]] $Evidence = @(),
+    [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
+    [string] $CodexHome
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$agent = @($config.agents | Where-Object { [string]$_.id -eq $AgentId }) | Select-Object -First 1
+if (-not $agent) { throw "Unknown agent '$AgentId'." }
+$taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
+$taskPath = Join-Path $taskRoot 'task.json'
+if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($AgentId -eq 'knowledge_keeper') {
+    if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
+    foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+        $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
+        if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
+    }
+}
+$required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
+$validated = [Collections.Generic.List[string]]::new()
+foreach ($name in $required) {
+    if ([IO.Path]::GetFileName($name) -ne $name) { throw "Outcome artifact must be a direct task artifact: $name" }
+    $path = Join-Path $taskRoot $name
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required outcome artifact is missing: $name" }
+    if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
+        $parsedArtifact = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($name -eq 'task-summary.json') {
+            if ([string]$parsedArtifact.taskId -ne $TaskId -or [string]$parsedArtifact.status -ne 'completed') { throw 'task-summary.json must identify this task and have status completed.' }
+            foreach ($propertyName in @('completedAtUtc','repositories','outcomes','decisions','verification','knowledgeUpdates','artifacts','residualItems')) {
+                if (-not $parsedArtifact.PSObject.Properties[$propertyName]) { throw "task-summary.json is missing '$propertyName'." }
+            }
+        }
+    }
+    elseif ($name.EndsWith('.jsonl', [StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+            if (-not [string]::IsNullOrWhiteSpace($line)) { $null = $line | ConvertFrom-Json }
+        }
+    }
+    $validated.Add($path)
+}
+
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
+$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($Evidence)) -ConfigPath $ConfigPath -CodexHome $CodexHome
+$checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
+if (Test-Path -LiteralPath $checkpointPath -PathType Leaf) {
+    $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $checkpoint | Add-Member -NotePropertyName publishedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+    $checkpoint | Add-Member -NotePropertyName outcomeEventId -NotePropertyValue ([string]$event.eventId) -Force
+    Write-Utf8NoBom -Path $checkpointPath -Content (($checkpoint | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+}
+[pscustomobject]@{ TaskId=$TaskId; AgentId=$AgentId; EventId=[string]$event.eventId; Artifacts=@($validated) }
