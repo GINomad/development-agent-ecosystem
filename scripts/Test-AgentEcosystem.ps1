@@ -47,11 +47,11 @@ Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
-foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks/run','/health-recovery/elevated','already-repaired','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
+foreach ($marker in @('/api/tasks','/artifacts/','/comments','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','already-repaired','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
-foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','approveElevatedRecovery')) {
+foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','resumeElevatedWorkflow','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
@@ -63,16 +63,33 @@ Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent st
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
 
+$engineeringSkills = @('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react')
+foreach ($agentId in @('knowledge_keeper','developer','reviewer')) {
+    $engineeringAgent = @($config.agents | Where-Object id -eq $agentId) | Select-Object -First 1
+    if (-not $engineeringAgent) { throw "Engineering-guidance agent is missing: $agentId" }
+    $skillPaths = @($engineeringAgent.skillPaths | ForEach-Object { [IO.Path]::GetFileName([IO.Path]::GetDirectoryName([string]$_)) })
+    foreach ($skillName in $engineeringSkills) {
+        if ($skillPaths -notcontains $skillName) { throw "$agentId is missing required engineering skill: $skillName" }
+    }
+}
+Add-Check -Name 'engineering-skill-routing' -Detail 'Knowledge Keeper, Developer, and Reviewer share common plus .NET/JS/React guidance'
+
 $healthAgent = @($config.agents | Where-Object id -eq 'health_check') | Select-Object -First 1
 if (-not $healthAgent) { throw 'Health Check Agent is missing from the canonical configuration.' }
 if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
 if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
-foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1')) {
+foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1','Invoke-GuardedCodex.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
 Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); sandbox=workspace-write; elevated=approval-gated; productWrites=false; externalWrites=false"
+
+$guardTestRoot = Join-Path $OutputRoot 'execution-guard'
+New-Item -ItemType Directory -Path $guardTestRoot -Force | Out-Null
+$guardTest = & (Join-Path $root 'scripts\Invoke-GuardedCodex.ps1') -FilePath 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tests\fixtures\Emit-RepeatedCodexFailures.ps1')) -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $guardTestRoot 'events.jsonl') -GuardArtifactPath (Join-Path $guardTestRoot 'guard.json') -MaxIdenticalFailures 3 -MaxRunMinutes 1 -PollMilliseconds 100
+if (-not [bool]$guardTest.guardTriggered -or [int]$guardTest.identicalFailureCount -ne 3 -or [int]$guardTest.exitCode -ne 1 -or [string]$guardTest.reason -notmatch 'retry limit' -or -not (Test-Path -LiteralPath (Join-Path $guardTestRoot 'guard.json') -PathType Leaf)) { throw 'Execution guard did not stop the deterministic repeated-failure fixture after exactly three attempts.' }
+Add-Check -Name 'execution-retry-guard' -Detail 'Three identical failures stop execution and produce a guard artifact'
 
 $skillFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills') -Recurse -Filter 'SKILL.md' -File)
 foreach ($file in $skillFiles) {

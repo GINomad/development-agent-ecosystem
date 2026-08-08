@@ -225,6 +225,28 @@ try {
                     Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message='Comment saved. A running workflow will consume it at its next checkpoint.' }
                     continue
                 }
+                if ($path -match '^/api/tasks/([^/]+)/workflow/elevated$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    if ([string]$persistedTask.status -eq 'running' -and $persistedTask.PSObject.Properties['workflowProcessId']) {
+                        $runningProcess = Get-Process -Id ([int]$persistedTask.workflowProcessId) -ErrorAction SilentlyContinue
+                        if ($runningProcess) { throw "Task '$requestedTaskId' already has a running workflow." }
+                    }
+                    $repository = @($config.repositories | Where-Object { $_.id -eq [string]$persistedTask.repositoryId -and $_.enabled }) | Select-Object -First 1
+                    if (-not $repository) { throw 'The task repository is not enabled.' }
+                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
+                        Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
+                        RepositoryId=[string]$repository.id; Workspace=[string]$repository.localWorkspace
+                        UserInstruction='Resume after an OS-level execution denial. Process all unacknowledged comments before the next handoff.'
+                        Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                    }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$processId; executionMode='elevated-approved'; message='One elevated workflow session was approved and started.' }
+                    continue
+                }
                 if ($path -eq '/api/health-checks/run') {
                     $healthParameters = @{ Repair=$true; ConfigPath=$ConfigPath }
                     if (-not [string]::IsNullOrWhiteSpace([string]$body.taskId)) { $healthParameters.TaskId = [string]$body.taskId }

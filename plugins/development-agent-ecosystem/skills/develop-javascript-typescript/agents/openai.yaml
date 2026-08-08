@@ -1,0 +1,4 @@
+interface:
+  display_name: "JavaScript and TypeScript Engineering"
+  short_description: "Strict, modular JavaScript and TypeScript changes"
+  default_prompt: "Use $develop-javascript-typescript to implement or review this JavaScript or TypeScript change with strict boundaries and tests."

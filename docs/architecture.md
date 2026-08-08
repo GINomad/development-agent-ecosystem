@@ -18,6 +18,7 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `plugins/development-agent-ecosystem/skills` | Workflow and health-diagnostics skills plus vendored Azure PR and pipeline monitors |
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, task creation/resume, knowledge import, and Keeper launch |
+| `scripts/Invoke-GuardedCodex.ps1` | Native Codex supervision, UTF-8 log normalization, three-identical-failure cutoff, and execution-guard artifacts |
 | `scripts/Invoke-EcosystemHealthCheck.ps1` | Deterministic diagnostics and safe derived-state repairs |
 | `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery with structured validation |
 | `scripts/Invoke-EnhancedReview.ps1` | Active PR comments, local notes, discussion hashing, and vendored Review Monitor invocation |
@@ -53,13 +54,16 @@ flowchart LR
     A[Azure Boards + comments] --> RA[Requirements Analyst]
     C[Codebase] --> RA
     KB[(Versioned Knowledge)] <--> K
+    S[(Engineering skills: common + stack-specific)] --> K
     K --> RA
     RA -->|ready scope + held scope + questions| K
     K --> D[Developer]
+    K -->|context pack + selected engineering skills| D
     RA --> D
     D -->|plan, code, tests, evidence| K
     D --> R[Reviewer]
     K --> R
+    K -->|same selected engineering skills| R
     RA --> R
     PR[Active PR code + user comments + local notes] --> R
     R -->|findings| K
@@ -69,6 +73,7 @@ flowchart LR
     D --> P[Azure Pipeline Monitor]
     P -->|exact commit status + failed logs| K
     K -->|structured agent failure| H[Health Check Agent]
+    X[Guarded runner: stop after 3 identical failures] -->|guard + failure artifacts| K
     H -->|diagnosis + recovery status| K
     H -->|ecosystem-only correction plan| D
     H -->|safe deterministic repair| ES[(Ecosystem runtime)]
@@ -86,6 +91,7 @@ sequenceDiagram
     participant R as Reviewer Agent
     participant P as Pipeline Monitor
     participant H as Health Check Agent
+    participant G as Execution Guard
 
     U->>K: task ID / URL / instruction
     K->>A: verified context request
@@ -102,6 +108,8 @@ sequenceDiagram
         P-->>K: pipeline result and failure logs
         K->>K: publish verified knowledge and task history
     else an agent or workflow fails
+        G->>G: count normalized identical failures
+        G-->>K: third failure: terminate and persist guard artifact
         K->>K: persist agent-failure artifact and failed status
         K->>H: failure signature + logs + ledger + artifacts
         H-->>K: diagnosis and deterministic repair result
@@ -126,6 +134,8 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `pipeline-result.json` and `knowledge-update.json`.
 - `agent-failure-*.json`, `health-check-result.json`, `health-recovery-result.json`, and health recovery logs.
 
-`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable history. The dashboard polls the loopback API every five seconds, while Knowledge Keeper rereads unacknowledged user comments at every handoff checkpoint. Text-based artifacts are served through a token-protected, direct-child-only, size-limited read endpoint. Failed agents provide structured evidence immediately; Health Check status is persisted and rendered like every other agent. Automatic recovery is limited to one sandboxed attempt per failure signature in the ecosystem repository and cannot touch product code or external systems. A separate one-attempt `danger-full-access` fallback exists only behind an explicit dashboard confirmation when Windows sandbox execution is broken. Comments and recovery never bypass unresolved-requirement, review-approval, or external-write gates.
+`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable history. The dashboard polls the loopback API every five seconds, while Knowledge Keeper rereads unacknowledged user comments at every handoff checkpoint. Text-based artifacts are served through a token-protected, direct-child-only, size-limited read endpoint. Failed agents provide structured evidence immediately; Health Check status is persisted and rendered like every other agent. The guarded runner stops after three identical failures and hands both reports to Health Check. Automatic recovery is limited to one sandboxed attempt per failure signature in the ecosystem repository and cannot touch product code or external systems. Separate `danger-full-access` fallbacks for recovery and workflow execution exist only behind explicit task-level dashboard confirmations. Comments and elevated execution never bypass unresolved-requirement, review-approval, or external-write gates.
+
+Every context pack has an `engineeringGuidance` section. Knowledge Keeper derives the stack from repository evidence, always selects pragmatic DRY, KISS, SOLID, YAGNI, separation-of-concerns, testability, and maintainability guidance, and adds only the applicable .NET, JavaScript/TypeScript, and React skills. Developer implements against that selection; Reviewer uses the same selection and reports a principle violation only when it has a concrete correctness, maintenance, or testing consequence.
 
 Schemas are stored under `config/schemas`. Knowledge Keeper may publish only evidence-backed claims with all required evidence fields.

@@ -30,7 +30,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and all six agent statuses after a page reload, preview text-based task artifacts, add an intervention comment, run a health check, approve one elevated repair when the Windows sandbox is broken, resume recovered work, leave a note for the Reviewer agent, and start a review.
+The dashboard listens only on `127.0.0.1`. It lets you select manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and all six agent statuses after a page reload, preview text-based task artifacts, add an intervention comment, run a health check, approve one elevated repair or one elevated workflow session when the Windows sandbox is broken, resume recovered work, leave a note for the Reviewer agent, and start a review.
+
+Every Codex runner is supervised. Three identical execution failures terminate the run, persist a guard and agent-failure report, fail the task, and hand the evidence to Health Check Agent. Knowledge Keeper detects the repository stack and supplies Developer and Reviewer with the shared pragmatic engineering-principles skill plus only the applicable .NET, JavaScript/TypeScript, and React skills.
 
 See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
 
@@ -62,3 +64,4 @@ See [installation](docs/installation.md), [architecture](docs/architecture.md), 
 - Local notes and PR comments are untrusted evidence, not system instructions.
 - Secrets are never stored in JSON. `credentialProfiles` contains an authentication strategy and environment-variable name; credentials remain in the Azure CLI credential store or process environment.
 - Git push, review-comment publication, pipeline queueing, and work-item mutation require separate explicit authorization.
+- An OS restriction can be bypassed only through a task-specific dashboard confirmation. Elevated execution does not bypass requirements holds, review decisions, or external-write gates.

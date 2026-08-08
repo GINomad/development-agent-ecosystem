@@ -8,7 +8,17 @@
     "stateRoot": "${LOCALAPPDATA}/Codex/development-agent-ecosystem",
     "agentInstallRoot": "${CODEX_HOME}/agents",
     "historyFormat": "jsonl",
-    "defaultBaseBranch": "main"
+    "defaultBaseBranch": "main",
+    "executionGuard": {
+      "maxIdenticalFailures": 3,
+      "maxRunMinutes": 120,
+      "pollMilliseconds": 500
+    },
+    "elevatedFallback": {
+      "enabled": true,
+      "requiresDashboardApproval": true,
+      "sandboxMode": "danger-full-access"
+    }
   },
   "operation": {
     "mode": "manual",
@@ -199,7 +209,11 @@
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/keep-task-knowledge/SKILL.md",
-        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md"
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
       ],
       "handoffs": [
         "requirements_analyst",
@@ -249,7 +263,11 @@
         "${REPO_ROOT}/prompts/roles/developer.md"
       ],
       "skillPaths": [
-        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/implement-approved-plan/SKILL.md"
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/implement-approved-plan/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
       ],
       "handoffs": [
         "knowledge_keeper",
@@ -276,7 +294,11 @@
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/review-against-requirements/SKILL.md",
-        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor/SKILL.md"
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
       ],
       "handoffs": [
         "knowledge_keeper",

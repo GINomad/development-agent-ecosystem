@@ -74,6 +74,9 @@ function Assert-EcosystemConfig {
     if ([string]$Config.ui.listenAddress -ne '127.0.0.1') { throw 'The dashboard must listen on 127.0.0.1.' }
     if ([int]$Config.ui.port -lt 1024 -or [int]$Config.ui.port -gt 65535) { throw 'ui.port must be between 1024 and 65535.' }
     if ([int]$Config.ui.taskRefreshSeconds -lt 2 -or [int]$Config.ui.taskRefreshSeconds -gt 300) { throw 'ui.taskRefreshSeconds must be between 2 and 300.' }
+    if ([int]$Config.runtime.executionGuard.maxIdenticalFailures -ne 3) { throw 'runtime.executionGuard.maxIdenticalFailures must be exactly 3.' }
+    if ([int]$Config.runtime.executionGuard.maxRunMinutes -lt 5 -or [int]$Config.runtime.executionGuard.maxRunMinutes -gt 1440) { throw 'runtime.executionGuard.maxRunMinutes is outside the supported range.' }
+    if (-not [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow elevated fallback must require explicit dashboard approval.' }
     if ([string]$Config.health.repairMode -ne 'safe-deterministic-only') { throw 'health.repairMode must be safe-deterministic-only.' }
     if ([string]$Config.health.dashboardHealthUrl -notmatch '^http://127\.0\.0\.1:[0-9]+/health$') { throw 'health.dashboardHealthUrl must use the loopback health endpoint.' }
     if ([bool]$Config.health.automaticRecovery.allowProductCodeChanges) { throw 'Health automatic recovery must not modify product code.' }

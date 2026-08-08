@@ -177,6 +177,7 @@ function renderTaskDetail(task) {
   const resume = document.querySelector('#resumeTask');
   resume.disabled = task.status === 'running';
   resume.textContent = task.status === 'running' ? 'Workflow is running' : 'Resume workflow';
+  document.querySelector('#resumeElevatedWorkflow').disabled = task.status === 'running';
   const elevated = document.querySelector('#approveElevatedRecovery');
   const healthStatus = task.agentStatuses?.health_check?.status;
   elevated.disabled = !['waiting', 'failed'].includes(healthStatus) || !taskArtifactItems.some(artifact => artifact.name.startsWith('agent-failure-'));
@@ -301,6 +302,17 @@ document.querySelector('#resumeTask').addEventListener('click', async () => {
       instruction: 'Resume the persisted task. Read and process all unacknowledged user comments before the next handoff.'
     };
     const result = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify(payload) });
+    log(result);
+    window.setTimeout(() => loadTaskList({ silent: true }), 700);
+  } catch (error) { log(`Error: ${error.message}`); }
+});
+
+document.querySelector('#resumeElevatedWorkflow').addEventListener('click', async () => {
+  try {
+    if (!selectedTask) throw new Error('Select a task first.');
+    const approved = window.confirm('Resume this task without the OS sandbox? This permits local tools for every agent in this task session. Requirement, review, credential, and external-write gates still apply, but Windows will not enforce the filesystem boundary.');
+    if (!approved) return;
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/workflow/elevated`, { method: 'POST', body: '{}' });
     log(result);
     window.setTimeout(() => loadTaskList({ silent: true }), 700);
   } catch (error) { log(`Error: ${error.message}`); }
