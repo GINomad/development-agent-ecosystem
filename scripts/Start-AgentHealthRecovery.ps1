@@ -48,8 +48,9 @@ if (Test-Path -LiteralPath $attemptsPath -PathType Leaf) {
     }
 }
 $attemptCount = @($attempts | Where-Object {
+    $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
     $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
-    ($(if ($ElevatedApproved) { [string]$_.executionMode -eq 'elevated-approved' } else { [string]$_.executionMode -ne 'elevated-approved' }))
+    ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
 }).Count
 if ($attemptCount -ge $maximumAttempts) {
     $message = "Automatic recovery limit reached for failure signature $signature."
