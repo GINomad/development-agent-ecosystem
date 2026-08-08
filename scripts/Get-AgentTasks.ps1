@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $tasksRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) 'tasks'
-$activeStatuses = @('created','queued','running','waiting_for_input','held','review_pending','interrupted')
+$activeStatuses = @('created','queued','running','waiting_for_input','held','review_pending','failed','interrupted')
 $agentIds = @($config.agents | ForEach-Object { [string]$_.id })
 $items = [Collections.Generic.List[object]]::new()
 
@@ -65,4 +65,3 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
 }
 
 [pscustomobject]@{ Tasks=@($items | Sort-Object updatedAtUtc -Descending); GeneratedAtUtc=[DateTime]::UtcNow.ToString('o') }
-

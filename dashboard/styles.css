@@ -86,7 +86,7 @@ h3 { margin: 0; max-width: 700px; font-size: 1.04rem; line-height: 1.4; overflow
 h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #cbd4df; letter-spacing: .08em; }
 .task-meta { color: var(--muted); font-size: .78rem; margin: 10px 0; }
 .task-message { margin: 12px 0; padding: 11px 12px; border-left: 3px solid var(--accent-strong); background: rgba(70, 215, 164, .055); color: #dce7e2; border-radius: 0 9px 9px 0; }
-.agent-status-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
+.agent-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .agent-state { min-width: 0; border: 1px solid var(--line); background: #0b1017; border-radius: 10px; padding: 10px; }
 .agent-state-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
 .agent-state-top strong { font-size: .75rem; }

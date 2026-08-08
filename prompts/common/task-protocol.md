@@ -10,3 +10,5 @@
 - Keep each scope item in one state: `ready`, `in_progress`, `implemented`, `held`, `rejected`, or `done`.
 - A held scope item remains held until the knowledge keeper records evidence that resolves every blocking question.
 - Send the knowledge keeper a summary of evidence learned, decisions made, files changed, tests run, failures, and remaining uncertainty.
+- On an unexpected agent exit, invalid or missing artifact, stuck process, or dashboard/runtime contract error, notify Knowledge Keeper and route diagnosis to Health Check Agent. Use only the configured deterministic repair runner automatically; source changes remain Developer-owned.
+- A failed agent must return its agent ID, stage, error or exit code, last completed action, and diagnostic evidence. Knowledge Keeper persists this with `scripts/Write-AgentFailure.ps1`, immediately runs `scripts/Invoke-EcosystemHealthCheck.ps1 -Repair`, and starts `scripts/Start-AgentHealthRecovery.ps1` when automatic recovery is enabled. Do not wait for a manual dashboard refresh to register the failure.

@@ -131,7 +131,7 @@ try {
                     $taskParameters = @{ ConfigPath=$ConfigPath; IncludeCompleted=($request.QueryString['includeCompleted'] -eq 'true') }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
                     $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
-                    Send-Json -Response $response -Value $result
+                    Send-Json -Response $response -Value @{ tasks=@($result.Tasks); generatedAtUtc=[string]$result.GeneratedAtUtc }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)$') {
@@ -190,6 +190,14 @@ try {
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
                     $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
                     Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message='Comment saved. A running workflow will consume it at its next checkpoint.' }
+                    continue
+                }
+                if ($path -eq '/api/health-checks/run') {
+                    $healthParameters = @{ Repair=$true; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace([string]$body.taskId)) { $healthParameters.TaskId = [string]$body.taskId }
+                    if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $healthParameters.CodexHome = $CodexHome }
+                    $healthResult = & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') @healthParameters
+                    Send-Json -Response $response -Value @{ status='completed'; result=$healthResult.Result; resultPath=$healthResult.ResultPath }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {

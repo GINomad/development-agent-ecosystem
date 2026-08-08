@@ -47,10 +47,11 @@ Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
-foreach ($marker in @('/api/tasks','/comments','Get-AgentTasks.ps1','Add-TaskComment.ps1')) {
+foreach ($marker in @('/api/tasks','/comments','/api/health-checks/run','Get-AgentTasks.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
-foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask')) {
+if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
+foreach ($controlId in @('taskList','taskDetail','taskComment','sendTaskComment','resumeTask','runHealthCheck')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
@@ -62,12 +63,25 @@ Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent st
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
 
+$healthAgent = @($config.agents | Where-Object id -eq 'health_check') | Select-Object -First 1
+if (-not $healthAgent) { throw 'Health Check Agent is missing from the canonical configuration.' }
+if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
+if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
+foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
+}
+Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); productWrites=false; externalWrites=false"
+
 $skillFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills') -Recurse -Filter 'SKILL.md' -File)
 foreach ($file in $skillFiles) {
     $content = Get-Content -LiteralPath $file.FullName -Raw
     if ($content -notmatch '(?s)^---\r?\nname:\s*[a-z0-9-]+\r?\ndescription:\s*.+?\r?\n---') {
         throw "Invalid or missing skill frontmatter: $($file.FullName)"
     }
+    $openAiYaml = Join-Path $file.Directory.FullName 'agents\openai.yaml'
+    if (-not (Test-Path -LiteralPath $openAiYaml -PathType Leaf)) { throw "Skill UI metadata is missing: $openAiYaml" }
+    $metadata = Get-Content -LiteralPath $openAiYaml -Raw -Encoding UTF8
+    if ($metadata -notmatch '(?m)^interface:' -or $metadata -notmatch '(?m)^\s+display_name:' -or $metadata -notmatch '(?m)^\s+default_prompt:') { throw "Skill UI metadata is incomplete: $openAiYaml" }
 }
 Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 

@@ -36,6 +36,7 @@ if (-not (Test-Path -LiteralPath $taskPath)) {
             developer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             reviewer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             pipeline_monitor = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+            health_check = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
         }
     }
     Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 8) + [Environment]::NewLine)

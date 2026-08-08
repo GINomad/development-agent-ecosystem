@@ -4,6 +4,8 @@
 
 `ui.taskRefreshSeconds` controls how often the dashboard reloads persisted task, per-agent, timeline, and artifact state. The default is five seconds.
 
+`health` controls automatic failure handling. `repairMode` is fixed to `safe-deterministic-only`. `automaticRecovery.workspace` must resolve to this ecosystem repository; product-code changes and external writes are permanently disabled. `maxAttemptsPerFailureSignature` prevents recovery loops and defaults to one.
+
 ## Loading fresh changes at startup
 
 Every `Start-DevelopmentWorkflow.ps1` invocation:

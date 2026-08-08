@@ -71,7 +71,7 @@ Live task control:
 - When comments have been incorporated, record a user-comment-acknowledged event whose evidence contains the processed comment event IDs, then call Set-AgentTaskStatus.ps1 with -AcknowledgeComments.
 - If user input is required, set the task to waiting_for_input and the affected agent to waiting. Do not invent an answer.
 
-Use the custom agents development_requirements_analyst, development_implementer, development_reviewer, and development_pipeline_monitor according to the configured gates. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+Use the custom agents development_requirements_analyst, development_implementer, development_reviewer, development_pipeline_monitor, and development_health_check according to the configured gates. Dispatch development_health_check when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
 
 $($knowledgePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@
@@ -91,17 +91,29 @@ $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
 & $statusScript -TaskId $TaskId -Status running -Stage knowledge_keeper -Message 'Workflow started. Knowledge Keeper is preparing task context.' -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus running -Stage knowledge_keeper -Message 'Knowledge Keeper is orchestrating the workflow.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
+$codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
+$finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $arguments = @(
+    '-a', [string]$config.runtime.approvalPolicy,
+    'exec',
     '-C', [IO.Path]::GetFullPath($Workspace),
     '--add-dir', (Get-EcosystemRoot),
-    '-a', [string]$config.runtime.approvalPolicy,
     '-s', 'workspace-write',
     '-c', "agents.max_concurrent_threads_per_session=$([int]$config.runtime.maxConcurrentAgents)",
+    '--json',
+    '-o', $finalResponsePath,
     $prompt
 )
 try {
-    & codex @arguments
-    if ($LASTEXITCODE -ne 0) { throw "Codex exited with code $LASTEXITCODE." }
+    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
+    [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+    & codex @arguments 2>&1 | ForEach-Object {
+        $line = [string]$_
+        [IO.File]::AppendAllText($codexLogPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+        Write-Output $line
+    }
+    $codexExitCode = $LASTEXITCODE
+    if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
     $currentStage = if ($currentTask.PSObject.Properties['currentStage']) { [string]$currentTask.currentStage } else { $currentStatus }
@@ -117,7 +129,20 @@ try {
     }
 }
 catch {
-    & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus failed -Stage failed -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $failureMessage = $_.Exception.Message
+    & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $failureEvidence = @($codexLogPath, $finalResponsePath) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    $lastDiagnostic = if (Test-Path -LiteralPath $codexLogPath -PathType Leaf) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureMessage }
+    $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
+    $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId knowledge_keeper -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
+    if ([bool]$config.health.enabled -and [bool]$config.health.checkOnWorkflowFailure) {
+        try { & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        catch { Write-Warning "Health check also failed: $($_.Exception.Message)" }
+    }
+    if ([bool]$config.health.automaticRecovery.enabled) {
+        try { & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        catch { Write-Warning "Automatic health recovery failed: $($_.Exception.Message)" }
+    }
     throw
 }

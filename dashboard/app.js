@@ -6,7 +6,8 @@ const agentLabels = {
   requirements_analyst: 'Requirements Analyst',
   developer: 'Developer',
   reviewer: 'Reviewer',
-  pipeline_monitor: 'Pipeline Monitor'
+  pipeline_monitor: 'Pipeline Monitor',
+  health_check: 'Health Check'
 };
 let mode = 'manual';
 let taskFilter = 'active';
@@ -54,6 +55,7 @@ function statusClass(value) {
 }
 
 function renderTaskList(tasks) {
+  tasks = Array.isArray(tasks) ? tasks : [];
   const list = document.querySelector('#taskList');
   list.replaceChildren();
   if (!tasks.length) {
@@ -131,10 +133,11 @@ function renderTaskDetail(task) {
     agentGrid.append(card);
   });
 
+  const events = Array.isArray(task.events) ? task.events : [];
   const timeline = document.querySelector('#taskTimeline');
   timeline.replaceChildren();
-  if (!task.events.length) timeline.textContent = 'No events recorded.';
-  task.events.forEach(event => {
+  if (!events.length) timeline.textContent = 'No events recorded.';
+  events.forEach(event => {
     const item = document.createElement('article');
     item.className = `timeline-event event-${event.type}`;
     const top = document.createElement('div');
@@ -151,10 +154,11 @@ function renderTaskDetail(task) {
     timeline.append(item);
   });
 
+  const taskArtifactItems = Array.isArray(task.artifacts) ? task.artifacts : [];
   const artifacts = document.querySelector('#taskArtifacts');
   artifacts.replaceChildren();
-  if (!task.artifacts.length) artifacts.textContent = 'No artifacts produced yet.';
-  task.artifacts.forEach(artifact => {
+  if (!taskArtifactItems.length) artifacts.textContent = 'No artifacts produced yet.';
+  taskArtifactItems.forEach(artifact => {
     const item = document.createElement('div');
     item.className = 'artifact-item';
     const name = document.createElement('strong');
@@ -181,7 +185,7 @@ async function loadTaskList({ silent = false } = {}) {
   try {
     const suffix = taskFilter === 'all' ? '?includeCompleted=true' : '';
     const result = await api(`/api/tasks${suffix}`);
-    renderTaskList(result.tasks);
+    renderTaskList(Array.isArray(result.tasks) ? result.tasks : []);
     if (selectedTaskId) await loadTaskDetail(selectedTaskId);
   } catch (error) {
     if (!silent) log(`Error: ${error.message}`);
@@ -220,6 +224,23 @@ document.querySelector('#startWorkflow').addEventListener('click', async () => {
 
 document.querySelector('#refreshTaskStatus').addEventListener('click', () => loadTaskList());
 
+document.querySelector('#runHealthCheck').addEventListener('click', async () => {
+  try {
+    const button = document.querySelector('#runHealthCheck');
+    button.disabled = true;
+    button.textContent = 'Checking...';
+    const result = await api('/api/health-checks/run', { method: 'POST', body: JSON.stringify({ taskId: selectedTaskId || '' }) });
+    log(result);
+    await loadTaskList({ silent: true });
+  } catch (error) {
+    log(`Error: ${error.message}`);
+  } finally {
+    const button = document.querySelector('#runHealthCheck');
+    button.disabled = false;
+    button.textContent = 'Run health check';
+  }
+});
+
 document.querySelector('#sendTaskComment').addEventListener('click', async () => {
   try {
     if (!selectedTaskId) throw new Error('Select a task first.');
@@ -257,11 +278,12 @@ document.querySelector('#loadTasks').addEventListener('click', async () => {
     const result = await api('/api/tasks/assigned');
     inbox.replaceChildren();
     inbox.className = 'inbox';
-    if (!result.workItems.length) {
+    const workItems = Array.isArray(result.workItems) ? result.workItems : [];
+    if (!workItems.length) {
       inbox.className = 'inbox empty';
       inbox.textContent = 'There are no active assigned tasks.';
     }
-    result.workItems.forEach(item => {
+    workItems.forEach(item => {
       const button = document.createElement('button');
       button.className = 'task-item';
       const title = document.createElement('strong');
@@ -307,7 +329,8 @@ document.querySelector('#clearActivity').addEventListener('click', () => { activ
   try {
     const config = await api('/api/config');
     repository.replaceChildren();
-    config.repositories.forEach(item => {
+    const repositories = Array.isArray(config.repositories) ? config.repositories : [];
+    repositories.forEach(item => {
       const option = document.createElement('option');
       option.value = item.id;
       option.textContent = `${item.repository} - ${item.provider}`;
