@@ -241,6 +241,23 @@ try {
                     if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw 'Task was not found.' }
                     $failurePath = Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 -ExpandProperty FullName
                     if (-not $failurePath) { throw 'No failure artifact is available for elevated recovery.' }
+                    $failure = Get-Content -LiteralPath $failurePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $attemptsPath = Join-Path $taskRoot 'health-recovery-attempts.jsonl'
+                    $alreadyRepaired = $false
+                    if (Test-Path -LiteralPath $attemptsPath -PathType Leaf) {
+                        foreach ($line in @(Get-Content -LiteralPath $attemptsPath -Encoding UTF8)) {
+                            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                            try {
+                                $record = $line | ConvertFrom-Json
+                                if ($record.failureSignature -eq $failure.failureSignature -and $record.type -eq 'recovery-completed' -and [string]$record.status -eq 'repaired') { $alreadyRepaired = $true; break }
+                            }
+                            catch { }
+                        }
+                    }
+                    if ($alreadyRepaired) {
+                        Send-Json -Response $response -Value @{ status='already-repaired'; taskId=$requestedTaskId; message='This failure signature was already repaired and validated. Resume the workflow when ready.' }
+                        continue
+                    }
                     $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$processId; message='One elevated Health Check recovery attempt was approved and started.' }
                     continue
