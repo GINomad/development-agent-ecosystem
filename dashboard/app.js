@@ -13,6 +13,7 @@ let mode = 'manual';
 let taskFilter = 'active';
 let selectedTaskId = null;
 let selectedTask = null;
+let selectedArtifactName = null;
 let taskRefreshInFlight = false;
 
 function log(value) {
@@ -96,6 +97,7 @@ function renderTaskList(tasks) {
 
 function renderEmptyTaskDetail() {
   selectedTask = null;
+  closeArtifactViewer();
   document.querySelector('#taskDetailEmpty').classList.remove('hidden');
   document.querySelector('#taskDetailContent').classList.add('hidden');
 }
@@ -159,19 +161,53 @@ function renderTaskDetail(task) {
   artifacts.replaceChildren();
   if (!taskArtifactItems.length) artifacts.textContent = 'No artifacts produced yet.';
   taskArtifactItems.forEach(artifact => {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'artifact-item';
     const name = document.createElement('strong');
     name.textContent = artifact.name;
     const meta = document.createElement('span');
     meta.textContent = `${artifact.length} bytes - ${formatDate(artifact.lastWriteTimeUtc)}`;
     item.append(name, meta);
+    item.addEventListener('click', () => openArtifact(artifact.name));
     artifacts.append(item);
   });
+  if (selectedArtifactName && !taskArtifactItems.some(artifact => artifact.name === selectedArtifactName)) closeArtifactViewer();
 
   const resume = document.querySelector('#resumeTask');
   resume.disabled = task.status === 'running';
   resume.textContent = task.status === 'running' ? 'Workflow is running' : 'Resume workflow';
+  const elevated = document.querySelector('#approveElevatedRecovery');
+  const healthStatus = task.agentStatuses?.health_check?.status;
+  elevated.disabled = task.status === 'running' || healthStatus === 'running' || !taskArtifactItems.some(artifact => artifact.name.startsWith('agent-failure-'));
+}
+
+function closeArtifactViewer() {
+  selectedArtifactName = null;
+  const viewer = document.querySelector('#artifactViewer');
+  if (viewer) viewer.classList.add('hidden');
+}
+
+async function openArtifact(name) {
+  if (!selectedTaskId) throw new Error('Select a task first.');
+  selectedArtifactName = name;
+  const viewer = document.querySelector('#artifactViewer');
+  const content = document.querySelector('#artifactContent');
+  viewer.classList.remove('hidden');
+  document.querySelector('#artifactTitle').textContent = name;
+  document.querySelector('#artifactMeta').textContent = 'Loading preview...';
+  content.textContent = '';
+  try {
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/artifacts/${encodeURIComponent(name)}`);
+    const artifact = result.artifact;
+    if (selectedArtifactName !== name) return;
+    document.querySelector('#artifactMeta').textContent = `${artifact.length} bytes - ${formatDate(artifact.lastWriteTimeUtc)}${artifact.truncated ? ' - preview limited to 1 MiB' : ''}`;
+    content.textContent = artifact.content || '(empty artifact)';
+  } catch (error) {
+    document.querySelector('#artifactMeta').textContent = 'Preview unavailable';
+    content.textContent = error.message;
+    log(`Error: ${error.message}`);
+  }
 }
 
 async function loadTaskDetail(taskId) {
@@ -324,6 +360,17 @@ document.querySelector('#runReview').addEventListener('click', async () => {
 });
 
 document.querySelector('#clearActivity').addEventListener('click', () => { activity.textContent = 'Ready.'; });
+document.querySelector('#closeArtifactViewer').addEventListener('click', closeArtifactViewer);
+document.querySelector('#approveElevatedRecovery').addEventListener('click', async () => {
+  try {
+    if (!selectedTaskId) throw new Error('Select a task first.');
+    const approved = window.confirm('Run one Health Check repair without the OS sandbox? The coordinator is instructed to modify only the clean ecosystem repository, but Windows will not enforce that path boundary for this attempt.');
+    if (!approved) return;
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/health-recovery/elevated`, { method: 'POST', body: '{}' });
+    log(result);
+    window.setTimeout(() => loadTaskList({ silent: true }), 700);
+  } catch (error) { log(`Error: ${error.message}`); }
+});
 
 (async () => {
   try {

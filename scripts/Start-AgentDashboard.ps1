@@ -134,6 +134,39 @@ try {
                     Send-Json -Response $response -Value @{ tasks=@($result.Tasks); generatedAtUtc=[string]$result.GeneratedAtUtc }
                     continue
                 }
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/artifacts/([^/]+)$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    $artifactName = [Uri]::UnescapeDataString($Matches[2])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if ([string]::IsNullOrWhiteSpace($artifactName) -or [IO.Path]::GetFileName($artifactName) -ne $artifactName -or $artifactName -match '[\\/]') {
+                        throw 'Artifact name contains unsupported characters.'
+                    }
+                    $taskRoot = [IO.Path]::GetFullPath((Join-Path $stateRoot "tasks\$requestedTaskId"))
+                    if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) {
+                        Send-Json -Response $response -Value @{ error='Task was not found.' } -StatusCode 404
+                        continue
+                    }
+                    $artifactPath = [IO.Path]::GetFullPath((Join-Path $taskRoot $artifactName))
+                    if ([IO.Path]::GetDirectoryName($artifactPath) -ne $taskRoot -or -not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+                        Send-Json -Response $response -Value @{ error='Artifact was not found.' } -StatusCode 404
+                        continue
+                    }
+                    $allowedExtensions = @('.json','.jsonl','.md','.txt','.log','.toml','.yaml','.yml','.xml','.html','.csv')
+                    $extension = [IO.Path]::GetExtension($artifactPath).ToLowerInvariant()
+                    if ($extension -notin $allowedExtensions) {
+                        Send-Json -Response $response -Value @{ error='This artifact type cannot be previewed safely.' } -StatusCode 415
+                        continue
+                    }
+                    $artifactInfo = Get-Item -LiteralPath $artifactPath
+                    $maximumPreviewBytes = 1048576
+                    $previewLength = [Math]::Min([long]$artifactInfo.Length, [long]$maximumPreviewBytes)
+                    $bytes = New-Object byte[] ([int]$previewLength)
+                    $stream = [IO.File]::OpenRead($artifactPath)
+                    try { $readLength = $stream.Read($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+                    $content = (New-Object Text.UTF8Encoding($false, $false)).GetString($bytes, 0, $readLength)
+                    Send-Json -Response $response -Value @{ artifact=@{ name=$artifactInfo.Name; content=$content; length=[long]$artifactInfo.Length; truncated=([long]$artifactInfo.Length -gt $maximumPreviewBytes); lastWriteTimeUtc=$artifactInfo.LastWriteTimeUtc.ToString('o') } }
+                    continue
+                }
                 if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
@@ -198,6 +231,18 @@ try {
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $healthParameters.CodexHome = $CodexHome }
                     $healthResult = & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') @healthParameters
                     Send-Json -Response $response -Value @{ status='completed'; result=$healthResult.Result; resultPath=$healthResult.ResultPath }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/health-recovery/elevated$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery is not enabled.' }
+                    $taskRoot = Join-Path $stateRoot "tasks\$requestedTaskId"
+                    if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw 'Task was not found.' }
+                    $failurePath = Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 -ExpandProperty FullName
+                    if (-not $failurePath) { throw 'No failure artifact is available for elevated recovery.' }
+                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$processId; message='One elevated Health Check recovery attempt was approved and started.' }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {

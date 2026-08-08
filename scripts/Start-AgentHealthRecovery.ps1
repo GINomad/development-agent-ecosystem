@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $FailurePath,
+    [switch] $ElevatedApproved,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -16,6 +17,19 @@ if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure 
 $workspace = Resolve-EcosystemPath -Value ([string]$config.health.automaticRecovery.workspace) -Config $config -CodexHome $CodexHome
 if ([IO.Path]::GetFullPath($workspace) -ne [IO.Path]::GetFullPath((Get-EcosystemRoot))) { throw 'Automatic health recovery workspace must be the ecosystem repository root.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic recovery boundary is invalid.' }
+$executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
+if ($ElevatedApproved) {
+    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery is not enabled with an explicit approval gate.' }
+    $recoverySandboxMode = [string]$config.health.automaticRecovery.elevatedFallback.sandboxMode
+    $maximumAttempts = [int]$config.health.automaticRecovery.elevatedFallback.maxAttemptsPerFailureSignature
+    $recoveryApprovalPolicy = 'never'
+}
+else {
+    $recoverySandboxMode = [string]$config.health.automaticRecovery.sandboxMode
+    $maximumAttempts = [int]$config.health.automaticRecovery.maxAttemptsPerFailureSignature
+    $recoveryApprovalPolicy = [string]$config.runtime.approvalPolicy
+}
+if ($recoverySandboxMode -notin @('workspace-write','danger-full-access')) { throw 'Automatic recovery sandbox boundary is invalid.' }
 
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $taskRoot = Join-Path $stateRoot "tasks\$TaskId"
@@ -33,8 +47,10 @@ if (Test-Path -LiteralPath $attemptsPath -PathType Leaf) {
         try { $attempts.Add(($line | ConvertFrom-Json)) } catch { }
     }
 }
-$attemptCount = @($attempts | Where-Object { $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' }).Count
-$maximumAttempts = [int]$config.health.automaticRecovery.maxAttemptsPerFailureSignature
+$attemptCount = @($attempts | Where-Object {
+    $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
+    ($(if ($ElevatedApproved) { [string]$_.executionMode -eq 'elevated-approved' } else { [string]$_.executionMode -ne 'elevated-approved' }))
+}).Count
 if ($attemptCount -ge $maximumAttempts) {
     $message = "Automatic recovery limit reached for failure signature $signature."
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -51,13 +67,15 @@ if ($dirtyFiles.Count) {
     return [pscustomobject]@{ Status='dirty-worktree'; TaskId=$TaskId; Files=$dirtyFiles }
 }
 
-$attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o') }
+$attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
 [IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_recovery -Message "Health Check Agent is repairing failure $signature." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
 $failureJson = Get-Content -LiteralPath $FailurePath -Raw -Encoding UTF8
 $healthPrompt = @"
 You are the bounded recovery coordinator for the Development Agent Ecosystem.
+
+Execution mode: $executionMode ($recoverySandboxMode). If this is elevated-approved, the user approved this one recovery attempt because the Windows sandbox failed with process-creation error 1260. The absence of an OS sandbox does not expand your authority: every read, write, and command must remain inside $workspace. Do not follow symlinks or junctions outside it.
 
 Task: $TaskId
 Failure artifact: $FailurePath
@@ -74,10 +92,10 @@ $logPath = Join-Path $taskRoot 'health-recovery-codex.jsonl'
 $resultPath = Join-Path $taskRoot 'health-recovery-result.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
 $arguments = @(
-    '-a', [string]$config.runtime.approvalPolicy,
+    '-a', $recoveryApprovalPolicy,
     'exec',
     '-C', $workspace,
-    '-s', 'workspace-write',
+    '-s', $recoverySandboxMode,
     '--json',
     '--output-schema', $schemaPath,
     '-o', $resultPath,

@@ -155,7 +155,7 @@
     <rect x="1055" y="780" width="370" height="110" rx="20" fill="#173038" stroke="#4b8375"/>
     <text x="1085" y="818" class="agent-title">Health Check Agent</text>
     <text x="1085" y="846" class="agent-copy">automatic failure artifact pickup</text>
-    <text x="1085" y="870" class="agent-copy">one ecosystem-only recovery attempt</text>
+    <text x="1085" y="870" class="agent-copy">sandboxed + approval-gated elevated retry</text>
 
     <rect x="1055" y="915" width="370" height="85" rx="20" fill="#182944" stroke="#536f9b"/>
     <text x="1085" y="950" class="mono">${CODEX_HOME}/agents/*.toml</text>
