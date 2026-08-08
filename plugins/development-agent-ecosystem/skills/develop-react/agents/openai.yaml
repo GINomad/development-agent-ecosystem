@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Engineering"
+  short_description: "Pure, accessible React components and hooks"
+  default_prompt: "Use $develop-react to implement or review this React change using pure components, correct Hooks, and focused tests."

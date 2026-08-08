@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Engineering"
+  short_description: "Modern C# and .NET implementation and review"
+  default_prompt: "Use $develop-dotnet to implement or review this .NET change using the repository's supported architecture and tests."

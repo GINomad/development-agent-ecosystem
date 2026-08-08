@@ -84,7 +84,7 @@
     <text x="610" y="333" class="eyebrow" style="fill:#0e4937">PRIMARY ORCHESTRATOR</text>
     <text x="610" y="375" class="keeper-title">Knowledge Keeper</text>
     <text x="610" y="409" class="keeper-copy">Selects verified context · records task history</text>
-    <text x="610" y="433" class="keeper-copy">Publishes evidence-backed knowledge only</text>
+    <text x="610" y="433" class="keeper-copy">Routes current engineering skills by detected stack</text>
   </g>
 
   <!-- Agents -->
@@ -97,12 +97,12 @@
     <rect x="845" y="525" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
     <text x="880" y="571" class="eyebrow">IMPLEMENT</text>
     <text x="880" y="606" class="box-title">Developer</text>
-    <text x="880" y="638" class="box-copy">Branch · code · tests · evidence</text>
+    <text x="880" y="638" class="box-copy">Approved scope + stack engineering guidance</text>
 
     <rect x="440" y="750" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
     <text x="475" y="796" class="eyebrow">VERIFY</text>
     <text x="475" y="831" class="box-title">Reviewer</text>
-    <text x="475" y="863" class="box-copy">Code + agent work · no automatic fix</text>
+    <text x="475" y="863" class="box-copy">Requirements + principles · no automatic fix</text>
 
     <rect x="845" y="750" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
     <text x="880" y="796" class="eyebrow">VALIDATE DELIVERY</text>
@@ -112,7 +112,7 @@
     <rect x="642" y="940" width="315" height="135" rx="22" fill="#172d35" stroke="#4b8375"/>
     <text x="677" y="982" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
     <text x="677" y="1017" class="box-title">Health Check Agent</text>
-    <text x="677" y="1049" class="box-copy">Auto pickup · approval-gated OS bypass</text>
+    <text x="677" y="1049" class="box-copy">Third failure report · approval-gated OS bypass</text>
   </g>
 
   <!-- Right-side gates and storage -->
@@ -151,7 +151,7 @@
   <text x="1070" y="703" class="label">reviewed delivery</text>
   <text x="1135" y="337" class="label">verified updates</text>
   <text x="1090" y="620" class="label">findings</text>
-  <text x="815" y="918" class="label">failure artifact · live recovery status</text>
+  <text x="815" y="918" class="label">guard stops after 3 · failure report · live recovery</text>
 
   <!-- Footer legend -->
   <line x1="1215" y1="1066" x2="1275" y2="1066" class="edge"/>

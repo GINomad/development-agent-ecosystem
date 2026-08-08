@@ -3,13 +3,23 @@
   "title": "Agent context pack",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "recipient", "createdAtUtc", "sources", "acceptedKnowledge", "openQuestions", "heldScope"],
+  "required": ["taskId", "recipient", "createdAtUtc", "sources", "acceptedKnowledge", "engineeringGuidance", "openQuestions", "heldScope"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "recipient": { "type": "string", "minLength": 1 },
     "createdAtUtc": { "type": "string", "format": "date-time" },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "acceptedKnowledge": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "engineeringGuidance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detectedStack", "selectedSkills", "reason"],
+      "properties": {
+        "detectedStack": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "selectedSkills": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
     "openQuestions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "heldScope": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   },
@@ -27,4 +37,3 @@
     }
   }
 }
-

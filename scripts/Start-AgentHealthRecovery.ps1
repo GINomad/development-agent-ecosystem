@@ -98,6 +98,7 @@ Return only the JSON object required by the configured output schema. Use the ex
 
 $logPath = Join-Path $taskRoot 'health-recovery-codex.jsonl'
 $resultPath = Join-Path $taskRoot 'health-recovery-result.json'
+$guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
 $arguments = @(
     '-a', $recoveryApprovalPolicy,
@@ -111,19 +112,11 @@ $arguments = @(
 )
 
 try {
-    $nativeErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $healthPrompt | & codex @arguments 2>&1 | ForEach-Object {
-            $line = [string]$_
-            [IO.File]::AppendAllText($logPath, $line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-            Write-Output $line
-        }
-        $codexExitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $nativeErrorActionPreference
-    }
+    $codexCommand = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $codexCommand) { throw 'Codex CLI was not found.' }
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCommand.Source -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $codexExitCode = [int]$guardResult.exitCode
+    if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Health recovery Codex exited with code $codexExitCode. See $logPath" }
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json

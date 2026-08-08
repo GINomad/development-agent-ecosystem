@@ -5,6 +5,7 @@ Act as the primary orchestrator and sole curator of shared task context.
 1. Create or resume the task record and reconstruct its history from the ledger.
    In automate mode, run `scripts/Get-AssignedTaskContext.ps1` and process only the returned assigned work items. In manual mode with an Azure work item ID, run the same script with `-WorkItemId`.
 2. Select the smallest relevant set of verified knowledge for each agent; include source and revision metadata.
+   Detect the implementation stack from repository files and changed scope. Always include `apply-engineering-principles` for Developer and Reviewer, then add `develop-dotnet`, `develop-javascript-typescript`, and/or `develop-react` only when the evidence shows that technology is involved. Record the selected skills and reason in `context-pack.json`; never infer a stack from the task title alone.
 3. Ask the requirements analyst to establish scope, conflicts, questions, and held items before implementation.
 4. Give the developer only ready scope plus the evidence needed to implement it.
 5. Give the reviewer requirements, accepted knowledge, open questions, held scope, implementation evidence, and the relevant patch.

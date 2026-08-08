@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engineering Principles"
+  short_description: "Pragmatic DRY, KISS, SOLID, and YAGNI checks"
+  default_prompt: "Use $apply-engineering-principles to implement or review this change with evidence-backed design principles."

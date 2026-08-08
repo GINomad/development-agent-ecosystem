@@ -26,14 +26,34 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "historyFormat", "defaultBaseBranch"],
+      "required": ["maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "historyFormat", "defaultBaseBranch", "executionGuard", "elevatedFallback"],
       "properties": {
         "maxConcurrentAgents": { "type": "integer", "minimum": 1, "maximum": 16 },
         "approvalPolicy": { "enum": ["untrusted", "on-request", "never"] },
         "stateRoot": { "type": "string", "minLength": 1 },
         "agentInstallRoot": { "type": "string", "minLength": 1 },
         "historyFormat": { "const": "jsonl" },
-        "defaultBaseBranch": { "type": "string", "minLength": 1 }
+        "defaultBaseBranch": { "type": "string", "minLength": 1 },
+        "executionGuard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxIdenticalFailures", "maxRunMinutes", "pollMilliseconds"],
+          "properties": {
+            "maxIdenticalFailures": { "const": 3 },
+            "maxRunMinutes": { "type": "integer", "minimum": 5, "maximum": 1440 },
+            "pollMilliseconds": { "type": "integer", "minimum": 100, "maximum": 5000 }
+          }
+        },
+        "elevatedFallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "requiresDashboardApproval", "sandboxMode"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "requiresDashboardApproval": { "const": true },
+            "sandboxMode": { "const": "danger-full-access" }
+          }
+        }
       }
     },
     "operation": {
