@@ -3,14 +3,21 @@
   "title": "Automatic agent health recovery result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "failureSignature", "rootCause", "changes", "validation", "nextAction"],
+  "required": ["status", "failureSignature", "rootCause", "repairOwner", "routeAgentId", "requiresUserInput", "changes", "validation", "nextAction"],
   "properties": {
     "status": { "enum": ["repaired", "not-repairable", "needs-user-input", "blocked"] },
     "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "rootCause": { "type": "string", "minLength": 1 },
+    "repairOwner": {
+      "enum": ["ecosystem_recovery", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "human"]
+    },
+    "routeAgentId": {
+      "type": ["string", "null"],
+      "enum": [null, "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"]
+    },
+    "requiresUserInput": { "type": "boolean" },
     "changes": { "type": "array", "items": { "type": "string" } },
     "validation": { "type": "array", "items": { "type": "string" } },
     "nextAction": { "type": "string", "minLength": 1 }
   }
 }
-

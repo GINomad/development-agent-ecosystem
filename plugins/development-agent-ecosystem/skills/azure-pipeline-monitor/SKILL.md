@@ -10,9 +10,10 @@ description: Monitor Azure DevOps pipeline runs associated with an exact Git bra
 1. Record the UTC time immediately before `git push` when possible.
 2. After a successful push, resolve the repository, branch, and full commit SHA with Git.
 3. Read `references/planning-space.md` when working in `ps-excel-agent` or `ps-bicep`.
-4. Run `scripts/watch_pipeline_runs.ps1` with the exact branch and commit. In `ps-excel-agent`, pass `-AutoQueueDefinitionIds 892`; the script suppresses duplicate runs for the same SHA.
+4. Run `scripts/watch_pipeline_runs.ps1` with the exact branch and commit. In `ps-excel-agent`, pass `-AutoQueueDefinitionIds 892`; the script suppresses duplicate runs for the same SHA. In the ecosystem, prefer `Invoke-PostPushPipeline.ps1`, which reads this allowlist from canonical JSON.
 5. Stay with every discovered run until it reaches a terminal state.
 6. Report run IDs, links, source commits, final results, and failed task log excerpts.
+7. When `-ResultPath` is supplied, persist the structured exact-SHA result and deterministic failure classification. With `-PassThru`, return non-success as data so the orchestrator can route bounded code/test remediation without treating the monitor itself as crashed.
 
 Example:
 
@@ -41,3 +42,4 @@ For `ps-excel-agent`, automatically queue Docker build `892` when no matching ru
 - Do not expose access tokens, service-principal credentials, or masked log values.
 - Treat `partiallySucceeded`, `failed`, `canceled`, and timed-out runs as non-success.
 - If a run fails, retrieve the failed task timeline records and include the high-signal tail of each log.
+- Route only deterministic code/test classifications to Developer. Infrastructure, credentials, unknown failures, and remediation-limit results require a different gate.

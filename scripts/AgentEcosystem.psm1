@@ -67,10 +67,12 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','ui','health','review','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
+    if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 8) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
+    if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
     if ([string]$Config.ui.listenAddress -ne '127.0.0.1') { throw 'The dashboard must listen on 127.0.0.1.' }
     if ([int]$Config.ui.port -lt 1024 -or [int]$Config.ui.port -gt 65535) { throw 'ui.port must be between 1024 and 65535.' }
     if ([int]$Config.ui.taskRefreshSeconds -lt 2 -or [int]$Config.ui.taskRefreshSeconds -gt 300) { throw 'ui.taskRefreshSeconds must be between 2 and 300.' }
@@ -110,6 +112,23 @@ function Assert-EcosystemConfig {
             throw "Repository '$($repository.id)' and credential profile '$($repository.credentialProfile)' use different providers."
         }
     }
+    if ([int]$Config.pipeline.postPush.maxRemediationCycles -lt 1 -or [int]$Config.pipeline.postPush.maxRemediationCycles -gt 3) { throw 'pipeline.postPush.maxRemediationCycles must be between 1 and 3.' }
+    if ([bool]$Config.pipeline.delivery.allowForce -or [bool]$Config.pipeline.delivery.allowTags -or [string]$Config.pipeline.delivery.remote -ne 'origin') { throw 'Pipeline delivery permits only a normal branch push to origin.' }
+    if (-not [bool]$Config.pipeline.delivery.requireCleanWorktree) { throw 'Pipeline delivery requires a clean worktree.' }
+    if ([int]$Config.pipeline.postPush.failureLogTailLines -lt 20 -or [int]$Config.pipeline.postPush.failureLogTailLines -gt 500) { throw 'pipeline.postPush.failureLogTailLines is outside the supported range.' }
+    if ([int]$Config.pipeline.postPush.failureLogMaxBytes -lt 4096 -or [int]$Config.pipeline.postPush.failureLogMaxBytes -gt 262144) { throw 'pipeline.postPush.failureLogMaxBytes is outside the supported range.' }
+    $pipelineRepositoryIds = @{}
+    foreach ($pipelineRepository in @($Config.pipeline.repositories)) {
+        $pipelineRepositoryId = [string]$pipelineRepository.repositoryId
+        if (-not $repositoryIds.ContainsKey($pipelineRepositoryId)) { throw "Pipeline configuration references unknown repository '$pipelineRepositoryId'." }
+        if ($pipelineRepositoryIds.ContainsKey($pipelineRepositoryId)) { throw "Pipeline configuration repeats repository '$pipelineRepositoryId'." }
+        $pipelineRepositoryIds[$pipelineRepositoryId] = $true
+        if (@($pipelineRepository.autoQueueDefinitionIds) -contains 891) { throw 'Deployment definition 891 must never be auto-queued.' }
+        if (-not [bool]$Config.pipeline.postPush.autoQueueApprovedBuilds -and @($pipelineRepository.autoQueueDefinitionIds).Count) { throw 'Auto-queue definition IDs require pipeline.postPush.autoQueueApprovedBuilds=true.' }
+        if (@($pipelineRepository.autoQueueDefinitionIds | Select-Object -Unique).Count -ne @($pipelineRepository.autoQueueDefinitionIds).Count) { throw "Pipeline auto-queue sequence for '$pipelineRepositoryId' contains duplicate definition IDs." }
+    }
+    $monitorSkillRoot = Resolve-EcosystemPath -Value ([string]$Config.pipeline.monitorSkillRoot) -Config $Config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $monitorSkillRoot -PathType Container)) { throw "Pipeline monitor skill root is missing: $monitorSkillRoot" }
 
     $agentIds = @{}
     $agentNames = @{}

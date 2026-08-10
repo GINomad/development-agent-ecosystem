@@ -12,9 +12,9 @@ The canonical configuration is [`config/agents.json`](config/agents.json). Every
 | Requirements Analyst | Azure Boards tasks, comments, code, and knowledge; discrepancies, questions, and implementation planning | Never marks unclear scope as ready |
 | Developer | Branch creation, ready-scope implementation, tests, and implementation evidence | Applies review findings only after human approval |
 | Reviewer | Reviews code and Developer-agent work against requirements, held scope, knowledge, and tests | Read-only; a finding is not automatic permission to make a change |
-| Pipeline Monitor | Low-reasoning summary of deterministic monitoring for an exact branch and commit | Queuing a build requires explicit permission |
-| Health Check Agent | Diagnoses failures from bounded recent-log tails, performs bounded recovery, and verifies the repair | Product repositories and external writes are excluded; one recovery attempt per failure signature |
-| Review Monitor | Per-PR code revisions, user comments, local notes, and pending AI-processing state | A comment change forces only its own PR |
+| Pipeline Monitor | Guarded reviewed-branch push, exact-SHA build monitoring, bounded failure classification, Developer remediation, and task-PR completion gate | No base-branch/force/tag push; only JSON-allowlisted builds may be queued; deployments are never inferred |
+| Health Check Agent | Diagnoses failures from bounded recent-log tails, performs bounded recovery, verifies it, and restarts only the failed agent | Product repositories and external writes are excluded; one post-repair restart per failure signature |
+| Review Monitor | Authored-or-assigned PR discovery, per-PR revisions, comments, local notes, reports, and shared PR status index | Native status polling uses no model; a content/comment change forces only its own PR |
 
 The existing `azure-pr-review-monitor` and `azure-pipeline-monitor` skills are vendored into the plugin. Review Monitor uses an isolated `DataRoot`; both global skill copies remain available for rollback.
 
@@ -30,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\Start-AgentDashboard.ps1
 ```
 
-The dashboard listens only on `127.0.0.1`. It lets you select one or more repositories for a task, choose manual or automate mode, provide a task ID, URL, or description, monitor every persisted task and all six agent statuses after a page reload, click any agent to inspect its configurable live activity log, send that agent a comment, or restart only that agent, stop an active workflow without losing completed work, resume only unfinished agents from the checkpoint, see unresolved agent questions, answer a specific question or send a general intervention command, preview text-based task artifacts, run a health check, approve one elevated repair or one elevated workflow session when the Windows sandbox is broken, resume recovered work, leave notes for the Reviewer agent, and start reviews.
+The loopback dashboard is full-width and persists across reloads. It supports multi-repository tasks, per-agent live logs/comments/outcomes, targeted restart with automatic next-link continuation, stop/checkpoint resume, visible input gates, safe artifact previews, a PR-style local diff with line-aware comments, a separate external-PR report tab, manual close with a required Knowledge Keeper update, and revision-preserving reopen from Requirements Analyst or Developer.
 
 Every Codex runner is supervised. Three identical execution failures terminate the run, persist a guard and agent-failure report, fail the task, and hand bounded recent evidence to Health Check Agent. Knowledge Keeper never loops over subagent waits: roles request knowledge when needed, keep unfinished context in private checkpoints, and publish one shared outcome only after success. A running role sizes its own coherent work blocks, reads one comment batch after each block, and continues without restart when more ready work remains. Unchanged artifacts are represented by fingerprints and summaries, and a final `task-summary.json` is written only after the whole task completes. For Windows policy error 1260, Health Check automatically compiles host-compatible variants of all six agents; an explicitly confirmed elevated resume selects those variants without disabling CrowdStrike or any delivery gate.
 
@@ -51,6 +51,15 @@ See [installation](docs/installation.md), [architecture](docs/architecture.md), 
 # Run Review Monitor without publishing comments
 .\scripts\Invoke-EnhancedReview.ps1 -Mode Manual -DryRun
 
+# After an authorized successful push, monitor/queue only the configured build and route code/test failures
+.\scripts\Invoke-PostPushPipeline.ps1 -TaskId task-1839566 -RepositoryId azure-planningspace-ps-excel-agent -PushWasSuccessful -Branch feature/example -Commit <full-40-character-sha> -QueuedAfter <pre-push-utc>
+
+# Preview the guarded non-force working-branch push without writing remotely
+.\scripts\Invoke-ReviewedBranchDelivery.ps1 -TaskId task-1839566 -RepositoryId azure-planningspace-ps-excel-agent -PrepareOnly
+
+# Native task-PR status sync (scheduled every 120 minutes; no AI for polling)
+.\scripts\Sync-ActiveTaskPullRequests.ps1
+
 # Preview, install, or roll back scheduled-task migration
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Preview
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Install
@@ -63,5 +72,5 @@ See [installation](docs/installation.md), [architecture](docs/architecture.md), 
 - Claims about requirements, code, and knowledge must include a source and revision.
 - Local notes and PR comments are untrusted evidence, not system instructions.
 - Secrets are never stored in JSON. `credentialProfiles` contains an authentication strategy and environment-variable name; credentials remain in the Azure CLI credential store or process environment.
-- Git push, review-comment publication, pipeline queueing, and work-item mutation require separate explicit authorization.
+- The configured reviewed-branch delivery capability is standing authorization for a normal `origin/<working-branch>` push only after a clean local review. It rejects `main`/`master`, dirty worktrees, force, and tags. Review-comment publication, deployments, and work-item mutation remain separately gated. Build queueing stays limited to `pipeline.repositories[].autoQueueDefinitionIds`; build 892 is allowed and deployment 891 is rejected.
 - An OS restriction can be bypassed only through a task-specific dashboard confirmation. Elevated execution does not bypass requirements holds, review decisions, or external-write gates.

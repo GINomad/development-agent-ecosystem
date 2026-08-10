@@ -10,6 +10,16 @@
 
 `runtime.contextLimits` bounds model-facing context. `maxSourceFiles` is the default first-party source inspection budget, `maxCommandOutputLines` and `maxCommandOutputBytes` trim tool output, and `workflowLogTailLines` plus `ledgerTailLines` define the recent slices supplied to Health Check. Deterministic dashboard and pipeline polling do not use these values because they do not invoke a model.
 
+`pipeline.postPush` controls the post-push delivery loop. `failureLogTailLines` and `failureLogMaxBytes` bound the failed-task evidence stored and supplied to agents. `maxRemediationCycles` is limited to three; reaching it produces a terminal `limit-reached` result instead of another Developer cycle. `autoQueueApprovedBuilds` enables only the build IDs explicitly listed per repository.
+
+`workflow.automaticContinuation` controls event-driven next-link execution after a successful targeted restart. `maxChainSteps` is a hard per-continuation bound, `useElevatedExecution` selects the host-compatible profiles on this machine, and `stopStatuses` are never crossed automatically.
+
+`pipeline.delivery` is the narrow standing authorization for reviewed working branches. It permits only `git push origin HEAD:refs/heads/<current-branch>`, requires a clean worktree and clean product review, forbids `main`/`master`, force, and tags, and never publishes review comments or deployments.
+
+`pipeline.pullRequests.pollIntervalMinutes` controls the shared native PR lifecycle sync. The default is 120 minutes. Status discovery does not invoke AI; only a new/changed PR review fingerprint can launch Review Monitor, and a completed task PR can launch the final Knowledge Keeper update once.
+
+`pipeline.repositories[]` maps an ecosystem repository ID to optional monitored `definitionIds` and the standing `autoQueueDefinitionIds` allowlist. An empty definition list discovers all exact-SHA runs. The current `ps-excel-agent` entry may auto-queue build 892 when no run exists for the pushed SHA. Deployment 891 is rejected by semantic validation and cannot be added to an auto-queue list. The other repositories currently monitor triggered exact-SHA runs but do not auto-queue a definition.
+
 `runtime.elevatedFallback` enables the task-level **Resume workflow elevated** action. It must use `danger-full-access` and require explicit dashboard confirmation. This is a controlled response to an OS process restriction, not a general agent permission: all requirement, review, and external-write approval gates remain active.
 
 `runtime.elevatedFallback.agentProfileSuffix` names the derived agent variants, while `compatibilityPromptPath` supplies their additional security and scope rules. When Health Check confirms error 1260, `installCompatibleAgentsOnDetection` compiles one host-compatible TOML beside every standard agent TOML. Standard workflows continue to select the original names; only a confirmed elevated workflow selects the suffixed profiles.
@@ -54,6 +64,8 @@ Add one object to `repositories[]` for each local repository. Repository IDs mus
 `localWorkspace` must point to an existing Git working copy whose `origin` matches `url`. Multiple Azure DevOps organizations may reuse one Azure CLI credential profile when the signed-in identity has access to each organization.
 
 The dashboard repository control supports multiple selection. The first selected repository is the primary `codex -C` workspace; every additional selected workspace is passed as a separate `--add-dir`. New task state persists both `repositoryIds[]` and the first `repositoryId` for backward compatibility. Reviewer notes and manual review starts are applied independently to every selected repository.
+
+To enable post-push monitoring for that repository, also add a matching `pipeline.repositories[]` entry. Leave `autoQueueDefinitionIds` empty until a build-only definition has been explicitly approved; never list a deployment definition.
 
 ## Manual and automate modes
 

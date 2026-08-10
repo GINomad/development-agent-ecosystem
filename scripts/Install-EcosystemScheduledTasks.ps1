@@ -13,12 +13,14 @@ $sync = & (Join-Path $PSScriptRoot 'Sync-ReviewMonitorConfig.ps1') -ConfigPath $
 $wrapper = Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1'
 $monitorRoot = Resolve-EcosystemPath -Value ([string]$config.review.monitorSkillRoot) -Config $config -CodexHome $CodexHome
 $dashboard = Join-Path $monitorRoot 'scripts\open_review_dashboard.ps1'
+$prLifecycle = Join-Path $PSScriptRoot 'Sync-ActiveTaskPullRequests.ps1'
 $powerShellPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $quote = [string][char]34
 $newNames = @(
     'Development Ecosystem - PR Review Updates',
     'Development Ecosystem - PR Review Daily',
-    'Development Ecosystem - PR Review Dashboard'
+    'Development Ecosystem - PR Review Dashboard',
+    'Development Ecosystem - Task PR Lifecycle'
 )
 $legacyNames = @(
     'Codex PR Review - Updates',
@@ -34,6 +36,7 @@ $specification = [pscustomobject]@{
     DailyTime = [string]$config.operation.automate.dailyTime
     Wrapper = $wrapper
     ReviewDataRoot = $sync.DataRoot
+    PullRequestLifecycleIntervalMinutes = [int]$config.pipeline.pullRequests.pollIntervalMinutes
 }
 if ($Action -eq 'Preview') { return $specification }
 
@@ -54,12 +57,15 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatt
 $pollArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $quote$wrapper$quote -Mode Poll -ConfigPath $quote$ConfigPath$quote"
 $dailyArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $quote$wrapper$quote -Mode Daily -ConfigPath $quote$ConfigPath$quote"
 $dashboardArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $quote$dashboard$quote -Server -NoBrowser -DataRoot $quote$($sync.DataRoot)$quote"
+$prLifecycleArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $quote$prLifecycle$quote -ConfigPath $quote$ConfigPath$quote"
 $pollAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $pollArguments
 $dailyAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $dailyArguments
 $dashboardAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $dashboardArguments
+$prLifecycleAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $prLifecycleArguments
 $pollTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([int]$config.operation.automate.pollIntervalMinutes))
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At ([string]$config.operation.automate.dailyTime)
 $dashboardTrigger = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
+$prLifecycleTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([int]$config.pipeline.pullRequests.pollIntervalMinutes))
 $dashboardSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
 
 $backupRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) 'scheduled-task-backup'
@@ -77,6 +83,7 @@ try {
     Register-ScheduledTask -TaskName $newNames[0] -Action $pollAction -Trigger $pollTrigger -Settings $settings -Principal $principal -Description 'Checks active assigned PRs and reruns review when code or comments change.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[1] -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the vendored ecosystem PR review monitor daily.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[2] -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves vendored ecosystem review reports on loopback.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and finalizes completed PR tasks through Knowledge Keeper.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { throw "New scheduled task '$name' was not registered." }
     }

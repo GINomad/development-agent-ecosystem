@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1220" viewBox="0 0 1800 1220" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem repository architecture</title>
-  <desc id="desc">Repository source-of-truth configuration, prompts, skills, scripts, dashboard, six generated agents including Health Check, runtime task state, and Azure DevOps integrations.</desc>
+  <desc id="desc">Repository source of truth, prompts, skills, event-driven chain scripts, full-width review dashboard, six agents, guarded Azure delivery, shared PR lifecycle index, and revisioned task state.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/><stop offset="0.55" stop-color="#0b1420"/><stop offset="1" stop-color="#12192a"/>
@@ -104,20 +104,20 @@
     <rect x="822" y="649" width="123" height="27" rx="9" class="extend"/><text x="838" y="667" class="extend-text">+ WORKFLOWS</text>
     <text x="575" y="675" class="mono">Start-DevelopmentWorkflow.ps1</text>
     <text x="575" y="708" class="copy">Manual task or assigned-task automate mode</text>
-    <text x="575" y="736" class="small">Autonomous blocks · comment batches · fingerprints</text>
-    <text x="575" y="762" class="small">Guard: 3 identical failures -> bounded Health report</text>
+    <text x="575" y="736" class="small">Event chain · guarded push · exact-SHA build · PR gate</text>
+    <text x="575" y="762" class="small">3-cycle remediation · Health retry · task reopen</text>
 
     <rect x="545" y="825" width="420" height="150" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="804" y="839" width="141" height="27" rx="9" class="extend"/><text x="819" y="857" class="extend-text">+ REVIEW INPUTS</text>
     <text x="575" y="865" class="mono">Review runtime</text>
     <text x="575" y="898" class="copy">Sync config · collect per-PR discussions</text>
     <text x="575" y="926" class="small">Per-PR hash · pending AI / human state</text>
-    <text x="575" y="952" class="small">Scheduled poll, daily pass, report dashboard</text>
+    <text x="575" y="952" class="small">Changed-PR AI review + 2h model-free PR status</text>
 
     <rect x="545" y="1010" width="420" height="100" rx="20" fill="#15263a" stroke="#416783"/>
     <rect x="830" y="1024" width="115" height="27" rx="9" class="extend"/><text x="849" y="1042" class="extend-text">+ UI ROUTES</text>
     <text x="575" y="1049" class="mono">Start-AgentDashboard.ps1</text>
-    <text x="575" y="1081" class="copy">Checkpoint · targeted restart · stop · live logs</text>
+    <text x="575" y="1081" class="copy">Local/external review · close · reopen · live logs</text>
   </g>
 
   <!-- agents -->
@@ -149,8 +149,8 @@
     <rect x="1250" y="625" width="175" height="130" rx="20" fill="url(#agent)" stroke="#4a6387"/>
     <text x="1273" y="662" class="agent-title">Pipeline</text>
     <text x="1273" y="686" class="agent-title">Monitor</text>
-    <text x="1273" y="715" class="agent-copy">exact commit runs</text>
-    <text x="1273" y="739" class="agent-copy">failed task logs</text>
+    <text x="1273" y="715" class="agent-copy">push · SHA · PR gate</text>
+    <text x="1273" y="739" class="agent-copy">code/test/YAML · max 3</text>
 
     <rect x="1055" y="780" width="370" height="110" rx="20" fill="#173038" stroke="#4b8375"/>
     <text x="1085" y="818" class="agent-title">Health Check Agent</text>
@@ -190,7 +190,7 @@
     <text x="1540" y="880" class="box-title">Local state</text>
     <text x="1540" y="913" class="copy">%LOCALAPPDATA%</text>
     <text x="1540" y="940" class="small">task histories</text>
-    <text x="1540" y="964" class="small">review reports · notes · pending PR changes</text>
+    <text x="1540" y="964" class="small">reports · shared PR index · task revisions</text>
 
     <rect x="1515" y="1025" width="200" height="85" rx="20" fill="#1a2a2d" stroke="#47716b"/>
     <rect x="1622" y="1037" width="76" height="25" rx="8" class="extend"/><text x="1636" y="1054" class="extend-text">+ AUTH</text>
@@ -212,5 +212,5 @@
 
   <text x="472" y="345" class="label">validate</text><text x="468" y="507" class="label">compose</text><text x="978" y="514" class="label">install</text>
   <text x="978" y="688" class="label">start</text><text x="1260" y="1012" class="label">append results</text><text x="1435" y="532" class="label">review evidence</text>
-  <text x="1438" y="718" class="label">status + logs</text><text x="1438" y="1038" class="label">authenticated reads</text>
+  <text x="1438" y="718" class="label">exact SHA + bounded logs</text><text x="1438" y="1038" class="label">authenticated reads</text>
 </svg>

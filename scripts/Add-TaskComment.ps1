@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][ValidateLength(1,4000)][string] $Text,
     [string] $Author = 'user',
     [ValidatePattern('^[a-fA-F0-9]{32}$')][string] $QuestionId,
+    [ValidatePattern('^[A-Za-z0-9._:-]+$')][string] $ReviewFindingId,
     [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $TargetAgentId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -35,7 +36,10 @@ if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq
 
 $eventParameters = @{ TaskId=$TaskId; Actor=$Author; Type='user-comment'; Summary=$commentText; Artifact=$taskPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
 if ($TargetAgentId) { $eventParameters.TargetAgentId = $TargetAgentId }
-if ($QuestionId) { $eventParameters.Evidence = @($QuestionId) }
+$commentEvidence = [Collections.Generic.List[string]]::new()
+if ($QuestionId) { $commentEvidence.Add($QuestionId) }
+if ($ReviewFindingId) { $commentEvidence.Add("review-finding:$ReviewFindingId") }
+if ($commentEvidence.Count) { $eventParameters.Evidence = @($commentEvidence) }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') @eventParameters
 $resolvedEvent = $null
 if ($QuestionId) {
@@ -56,4 +60,4 @@ else {
 }
 Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
-[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
+[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
