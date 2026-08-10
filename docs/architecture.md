@@ -18,13 +18,18 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `plugins/development-agent-ecosystem/skills` | Workflow and health-diagnostics skills plus vendored Azure PR and pipeline monitors |
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, multi-repository workspace routing, task creation/resume, knowledge import, and Keeper launch |
+| `scripts/Continue-AgentChain.ps1` | Event-driven next-link selection after successful targeted execution; stops at human, review, delivery, and failure gates |
+| `scripts/Invoke-ReviewedBranchDelivery.ps1` | Clean-review, clean-worktree, non-base, non-force branch push followed by exact-SHA monitoring |
+| `scripts/Invoke-PostPushPipeline.ps1` | Exact pushed-ref verification, allowlisted build queueing, native run monitoring, result publication, and bounded Developer remediation routing |
+| `scripts/Sync-TaskPullRequestStatus.ps1` | One-shot task-branch PR correlation; completed PR triggers final Keeper work, abandoned PR opens a question |
+| `scripts/Sync-ActiveTaskPullRequests.ps1` | Shared model-free PR lifecycle index on a configurable schedule (120 minutes by default) |
 | `scripts/Invoke-GuardedCodex.ps1` | Native Codex supervision, UTF-8 log normalization, three-identical-failure cutoff, and execution-guard artifacts |
 | `scripts/Invoke-EcosystemHealthCheck.ps1` | Deterministic diagnostics, safe derived-state repairs, and OS-policy compatibility profile generation |
 | `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery using a bounded recent-log diagnostic bundle |
 | `scripts/Save-AgentCheckpoint.ps1` | Private per-role context for running, waiting, or failed attempts; not shared with Knowledge Keeper |
 | `scripts/Publish-AgentOutcome.ps1` | Validates configured artifacts, completes the role, and only then publishes its shared outcome |
 | `scripts/Invoke-EnhancedReview.ps1` | Per-PR comment fingerprints, pending AI-processing state, and targeted Review Monitor invocation |
-| `dashboard` | Loopback operator UI for multi-repository selection, persisted statuses, per-agent live logs, open questions, targeted answers, artifacts, and tracked in-process elevated runspaces |
+| `dashboard` | Full-width loopback UI with local diff review, external PR reports, persisted statuses, live logs, interventions, manual closure, revision reopen, and tracked elevated runspaces |
 | `knowledge/managed` | Versioned managed knowledge with seed-import provenance |
 | `%LOCALAPPDATA%/Codex/development-agent-ecosystem` | Mutable task ledgers, review prompts, notes, reports, and scheduler backups |
 
@@ -49,6 +54,8 @@ Dashed green `+` badges identify supported extension points:
 | `+ AUTH` | Add a credential profile that references a CLI or environment-variable name, never a plaintext secret |
 
 ## Component interaction
+
+Agent progression is event-driven: a successful targeted restart calls the next eligible role directly and never polls role state in a loop. Failed execution is handed to Health Check; a verified repair gets one failed-agent-only retry and then rejoins the chain. Review Monitor owns authored/assigned PR discovery and the shared status index, while Pipeline Monitor owns exact task-branch correlation, build/remediation, and the completion gate.
 
 Knowledge flow is pull-based. Knowledge Keeper issues a minimal initial context and answers explicit knowledge or skill requests; it never loops over `wait` or polls role logs. Each role autonomously sizes coherent work blocks. At the end of each block it reads applicable comments once, applies one ordered batch, and decides whether another block is needed in the same invocation. Working details remain in the role's private checkpoint until that role succeeds. Only a validated terminal outcome enters shared context. Knowledge Keeper then decides whether the outcome changes task decisions, coding rules, or managed knowledge. After all applicable roles complete, it writes `task-summary.json` for the whole task.
 
@@ -79,12 +86,17 @@ flowchart LR
     U -->|approve / reject / defer| G{Review decision gate}
     G -->|approved findings only| D
     D --> P[Azure Pipeline Monitor]
-    P -->|exact commit status + failed logs| K
+    P -->|clean review: guarded working-branch push| AZP[Azure Pipelines]
+    AZP -->|exact SHA result| P
+    RM[Review Monitor: authored + assigned PRs] --> IDX[(Shared PR status index)]
+    IDX -->|active / completed / abandoned| P
+    P -->|exact commit status + bounded failed logs| K
+    P -->|code/test only; max 3 cycles| D
     K -->|failure envelope + bounded recent tails| H[Health Check Agent]
     X[Guarded runner: stop after 3 identical failures] -->|guard + failure artifacts| K
     H -->|diagnosis + recovery status| K
     H -->|ecosystem-only correction plan| D
-    H -->|safe deterministic repair| ES[(Ecosystem runtime)]
+    H -->|safe deterministic repair + one failed-agent restart| ES[(Ecosystem runtime)]
     K --> KB
 ```
 
@@ -113,7 +125,17 @@ sequenceDiagram
         U->>K: approve / reject / defer finding
         K->>D: approved findings only
         D->>P: pushed branch and exact commit
-        P-->>K: pipeline result and failure logs
+        P-->>K: exact-SHA result + bounded classified logs
+        alt code or test failure and cycle remains
+            P-->>K: pipeline-remediation-request
+            K->>D: only the failed code/test scope
+            D->>R: locally verified remediation
+            R-->>K: remediation review
+            U->>D: authorize next push
+            D->>P: new pushed SHA + remediation cycle
+        else infrastructure / unknown / no run / limit reached
+            P-->>K: terminal evidence for Health or operator gate
+        end
         K->>K: publish verified knowledge and task history
     else an agent or workflow fails
         G->>G: count normalized identical failures
@@ -145,10 +167,12 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
 - `implementation-plan.json` and `implementation-result.json`;
 - `review-result.json` and `review-decisions.json`;
-- `pipeline-result.json`, `knowledge-update.json`, and final `task-summary.json`.
+- `delivery-result.json`, `pipeline-result.json`, `pull-request-status.json`, optional `pipeline-remediation-<signature>.json`, `knowledge-update.json`, and final `task-summary.json`;
+- `task-closure.json` plus `revisions/revision-<n>/` snapshots for manual closure and bug/rework reopen.
 - `agent-failure-*.json`, `health-check-result.json`, `health-recovery-result.json`, and health recovery logs.
+- `health-repair-routing.json` records a bounded, single-owner correction handoff when Health Check cannot perform the repair inside the ecosystem recovery workspace.
 
-`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable public history. Open questions are reconstructed by subtracting every `question-resolved` evidence reference from `question-opened` events; a targeted dashboard answer closes only its selected question. Applicable comments are coalesced at end-of-block checkpoints, so saving comments does not restart a running role. Agents do not poll while a block is running and perform a final comment check before outcome publication. General resume computes a checkpoint and dispatches only unfinished roles; explicit targeted restart dispatches exactly one stopped or completed role. Fingerprints in `resume-artifact-index.json` let roles reuse summaries for unchanged artifacts. The dashboard polling itself is deterministic and does not invoke a model. Health recovery receives configured tails rather than complete historical logs. PR comment fingerprints are stored per PR; only that PR is forced, while `pending-review-changes.json` records `pending-ai-review` or `requires-human-intervention` until AI processing succeeds. Pipeline Monitor uses low reasoning effort and lets its native monitor perform repeated status polling without repeated model turns.
+`task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable public history. Open questions are reconstructed by subtracting every `question-resolved` evidence reference from `question-opened` events; a targeted dashboard answer closes only its selected question. Applicable comments are coalesced at end-of-block checkpoints, so saving comments does not restart a running role. Agents do not poll while a block is running and perform a final comment check before outcome publication. General resume computes a checkpoint and dispatches only unfinished roles; explicit targeted restart dispatches exactly one stopped or completed role. Fingerprints in `resume-artifact-index.json` let roles reuse summaries for unchanged artifacts. The dashboard polling itself is deterministic and does not invoke a model. Health recovery receives configured tails rather than complete historical logs. PR comment fingerprints are stored per PR; only that PR is forced, while `pending-review-changes.json` records `pending-ai-review` or `requires-human-intervention` until AI processing succeeds. Pipeline Monitor uses low reasoning effort and lets its native monitor perform repeated status polling without repeated model turns. Post-push classification is also deterministic: only code/test failures create a deduplicated Developer request, while infrastructure/no-run/unknown states remain at their proper gate and the cycle stops after three attempts.
 
 Every context pack has an `engineeringGuidance` section. Knowledge Keeper derives the stack from repository evidence, always selects pragmatic DRY, KISS, SOLID, YAGNI, separation-of-concerns, testability, and maintainability guidance, and adds only the applicable .NET, JavaScript/TypeScript, and React skills. Developer implements against that selection; Reviewer uses the same selection and reports a principle violation only when it has a concrete correctness, maintenance, or testing consequence.
 

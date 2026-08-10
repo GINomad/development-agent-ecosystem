@@ -10,6 +10,9 @@ Start the main dashboard:
 
 From the dashboard:
 
+- switch between **Local Developer review** (PR-style task diff and line-aware local comments) and **External PR reviews** (Review Monitor reports for authored or assigned PRs);
+- use **Close task and update knowledge** with a reason to stop delivery and run only the final Knowledge Keeper scope;
+- select a completed task under **All** and use **Reopen as new revision** to archive the previous revision and continue from Requirements Analyst or Developer;
 - select one or more repositories; the first checked repository is the primary workspace and the rest are additional writable workspaces for that task;
 - select manual or automate mode;
 - in manual mode, enter a task ID or URL, or select a task from the assigned-task inbox;
@@ -39,7 +42,35 @@ The task action guide is also displayed directly below the buttons:
 
 The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. Dashboard and live-log polling are ordinary local HTTP/file reads and consume no AI tokens. A selected agent log refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default). Each running role chooses the largest coherent block allowed by ready scope, dependencies, reversibility, validation cost, approval gates, and context limits. At block completion it uses `Get-AgentCommentBatch.ps1` once and acknowledges the processed IDs with `Acknowledge-AgentCommentBatch.ps1`. It never idle-polls for comments. Any role that needs information calls `Open-AgentQuestion.ps1`; this records the minimal public question while detailed unfinished context stays in `agent-checkpoints/<agent-id>.json`. Knowledge Keeper remains pull-based and `Publish-AgentOutcome.ps1` performs one final comment checkpoint before sharing a terminal outcome.
 
+## Post-push pipeline and Developer remediation
+
+After an authorized push succeeds, Developer passes the exact repository ID, branch, full pushed SHA, and the UTC timestamp recorded immediately before the push to Pipeline Monitor. `Invoke-PostPushPipeline.ps1` verifies that the local `origin/<branch>` tracking ref equals that SHA, then runs the native watcher once. The watcher performs its own deterministic polling, so no model turn is spent on every status refresh.
+
+The watcher discovers only runs whose full `sourceVersion` equals the pushed SHA. If the canonical JSON contains an approved build definition and no matching run exists, it queues that build once. For `ps-excel-agent`, the standing allowlist contains build 892. Deployment 891 is never auto-queued; `ps-bicep` and `ps-app-delfi` currently have empty auto-queue lists.
+
+Failed task logs are reduced to the configured tail and byte limit, then classified without an AI call:
+
+- `code` and `test`: write a deduplicated `pipeline-remediation-<signature>.json`, set only Developer back to `pending`, and append a targeted `pipeline-remediation-request`;
+- `infrastructure`, credentials, `unknown`, or `no-run`: keep the result visible for Knowledge Keeper, Health Check, or operator action; do not ask Developer to guess;
+- after three remediation cycles: write `limit-reached` and stop the loop.
+
+Developer fixes only supported code/test evidence, runs local validation, and sends the change through Reviewer. A later push still requires explicit authorization. After that push, Pipeline Monitor validates the new exact SHA; completed unrelated agents and artifacts are not restarted.
+
+Manual invocation after a successful push:
+
+```powershell
+.\scripts\Invoke-PostPushPipeline.ps1 `
+  -TaskId task-1839566 `
+  -RepositoryId azure-planningspace-ps-excel-agent `
+  -PushWasSuccessful `
+  -Branch feature/example `
+  -Commit 0123456789abcdef0123456789abcdef01234567 `
+  -QueuedAfter '2026-08-08T12:00:00Z'
+```
+
 ## Automatic agent health recovery
+
+The scheduled task **Development Ecosystem - Task PR Lifecycle** runs every `pipeline.pullRequests.pollIntervalMinutes` (120 minutes by default). It performs Azure PR status reads without a model. When a matching manually created PR becomes completed, it requests the final Knowledge Keeper update. Run `Sync-ActiveTaskPullRequests.ps1` for an immediate operator-triggered sync.
 
 Every failed agent handoff includes a structured failure artifact with the agent, stage, exit code, diagnostic, evidence paths, and stable failure signature. Knowledge Keeper immediately starts Health Check Agent; a root workflow crash uses the same path from the host wrapper.
 
@@ -51,9 +82,9 @@ Health recovery runs in three bounded phases:
 
 1. deterministic checks and safe repairs through `Invoke-EcosystemHealthCheck.ps1`;
 2. read-only diagnosis by `development_health_check`;
-3. an ecosystem-only recovery coordinator when source repair is supported by evidence.
+3. an ecosystem-only recovery coordinator when source repair is supported by evidence, or a bounded handoff to the configured agent that owns a non-ecosystem correction.
 
-The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It receives `health-diagnostic-context.json`, containing only the configured workflow-log, ledger, and final-response tails. It runs once per failure signature, validates the exact repair plus `Test-AgentEcosystem.ps1`, and exposes its `running`, `waiting`, `completed`, or `failed` state on the task dashboard. A successful recovery changes the task to `interrupted`, ready for an explicit **Resume workflow**.
+The recovery coordinator cannot access product repositories or perform external writes. It does not commit or push. It receives `health-diagnostic-context.json`, containing only the configured workflow-log, ledger, and final-response tails. When a completed Health Check diagnosis already exists, the coordinator reuses it instead of spending another model pass on the same evidence. It runs once per failure signature and validates the exact repair plus `Test-AgentEcosystem.ps1`. A validated ecosystem repair automatically restarts only the failed agent once. A non-ecosystem correction is routed once to its owner: Developer for product code/tests/pipeline YAML, Requirements Analyst for requirements evidence, Knowledge Keeper for persisted context, Reviewer for review-process work, or Pipeline Monitor for provider-side diagnosis. Credentials, approvals, external authority, and ambiguous evidence stop at `waiting_for_input`.
 
 If the sandboxed agent is blocked by Windows process-creation error 1260, select **Approve elevated repair** on the task card and confirm the warning. This authorizes one `danger-full-access` retry for that task and failure signature. The launcher still requires a clean ecosystem worktree, starts in the exact ecosystem root without additional writable directories, and keeps product/external writes disabled. The OS does not enforce the repository boundary during that single elevated attempt.
 
@@ -66,6 +97,8 @@ Manual health check:
 ```
 
 ## Review approval gate
+
+The local task review diff includes the complete persisted Reviewer summary, product findings, held-scope violations, and agent-process suggestions. Each item has a durable reply thread backed by `task-ledger.jsonl`. **Send to Reviewer** requests clarification or correction from Reviewer; **Send to Developer** queues the same item as implementation input. Neither action restarts an agent or approves a finding. Use the separate restart and review-decision controls when those actions are intended.
 
 Reviewer records findings but does not authorize changes. Record the human decision separately:
 

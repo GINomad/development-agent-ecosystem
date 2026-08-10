@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $Actor,
-    [Parameter(Mandatory)][ValidateSet('task-created','workflow-status','agent-status','agent-failure','user-comment','user-comment-acknowledged','context-issued','agent-result','question-opened','question-resolved','scope-held','scope-released','review-decision','external-action','knowledge-updated')][string] $Type,
+    [Parameter(Mandatory)][ValidateSet('task-created','task-close-requested','task-closed','task-reopened','workflow-status','agent-status','agent-failure','user-comment','user-comment-acknowledged','context-issued','agent-result','question-opened','question-resolved','scope-held','scope-released','review-decision','external-action','pipeline-analysis','pipeline-remediation-request','pr-status','knowledge-update-requested','knowledge-updated')][string] $Type,
     [Parameter(Mandatory)][string] $Summary,
     [string] $Artifact,
     [string[]] $Evidence = @(),

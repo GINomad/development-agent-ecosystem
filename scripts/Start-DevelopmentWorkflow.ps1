@@ -10,6 +10,9 @@ param(
     [switch] $Resume,
     [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $TargetAgentId,
     [switch] $ElevatedApproved,
+    [switch] $HealthRecoveryRetry,
+    [switch] $ContinueChain,
+    [switch] $SkipChainContinuation,
     [switch] $PrepareOnly,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -115,6 +118,7 @@ All target workspaces: $($workspacePaths -join '; ')
 Repository config IDs: $($RepositoryIds -join ', ')
 Additional user instruction: $UserInstruction
 Execution mode: $executionMode ($workflowSandboxMode)
+Health recovery retry: $([bool]$HealthRecoveryRetry)
 Resume scope: $resumeScope
 Target agent: $(if ($TargetAgentId) { $TargetAgentId } else { 'none' })
 Unfinished agents permitted in this run: $(if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) -join ', ' } else { 'all roles under normal gates' })
@@ -140,6 +144,7 @@ Live task control:
 - If any agent requires user input, call $(Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') with the task ID, agent ID, and exact question. It publishes the question and atomically sets the task to waiting_for_input and that agent to waiting. Do not invent an answer or report a blocking question only in prose.
 - A dashboard answer is authoritative only when the ledger contains its question-resolved event. Reread the linked user-comment before resuming the held scope.
 - Do not retry an identical failed execution more than $([int]$config.runtime.executionGuard.maxIdenticalFailures) times. On the third failure, stop immediately, persist the failure evidence, and hand it to development_health_check. Do not enter a wait loop after the retry limit.
+- A Health Check targeted retry is the single post-repair attempt for its failure signature. If that retry fails, persist the new failure and stop; do not dispatch Health Check recursively from the retry.
 - In elevated-approved mode, the user approved an OS-sandbox bypass for this task session. Every role may use the available local tools despite error 1260, but this does not authorize external writes, requirement assumptions, unapproved review fixes, or work outside the target workspace and ecosystem root.
 
 Use the custom agents $requirementsAgentName, $developerAgentName, $reviewerAgentName, $pipelineAgentName, and $healthAgentName according to the configured gates. In host-compatible mode every selected subagent uses the current-user execution profile installed by Health Check; do not fall back to the standard sandboxed agent names. Dispatch $healthAgentName when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
@@ -195,6 +200,24 @@ try {
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
+    if ($TargetAgentId -eq 'health_check' -and -not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled -and [string]$currentTask.agentStatuses.health_check.status -eq 'waiting') {
+        $diagnosisPath = Join-Path $task.TaskRoot 'health-check-result.json'
+        $failurePath = $null
+        foreach ($candidate in @(Get-ChildItem -LiteralPath $task.TaskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
+            try { $candidateFailure = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+            if ([string]$candidateFailure.agentId -ne 'health_check') { $failurePath = $candidate.FullName; break }
+        }
+        if ($failurePath -and (Test-Path -LiteralPath $diagnosisPath -PathType Leaf)) {
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_handoff -Summary 'Health Check completed diagnosis and handed the bounded correction to automatic recovery.' -Details "Failure: $failurePath; diagnosis: $diagnosisPath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $recoveryParameters = @{ TaskId=$TaskId; FailurePath=$failurePath; DiagnosisPath=$diagnosisPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+            if ($ElevatedApproved) { $recoveryParameters.ElevatedApproved = $true }
+            $postDiagnosisRecovery = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @recoveryParameters
+            if ($postDiagnosisRecovery.PSObject.Properties['TargetedResume'] -and $postDiagnosisRecovery.TargetedResume) { return $postDiagnosisRecovery.TargetedResume }
+            if ([string]$postDiagnosisRecovery.Status -in @('repaired','already-repaired')) { return $postDiagnosisRecovery }
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $currentStatus = [string]$currentTask.status
+        }
+    }
     if ($Resume -and -not $TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
@@ -204,6 +227,19 @@ try {
         }
     }
     if ($TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
+        $closureComplete = $TargetAgentId -eq 'knowledge_keeper' -and $currentTask.PSObject.Properties['closure'] -and [string]$currentTask.closure.status -eq 'knowledge-update-pending' -and [string]$currentTask.agentStatuses.knowledge_keeper.status -eq 'completed'
+        if ($closureComplete) {
+            $completedAtUtc = [DateTime]::UtcNow.ToString('o')
+            $currentTask.closure.status = 'completed'
+            $currentTask.closure.completedAtUtc = $completedAtUtc
+            Write-Utf8NoBom -Path (Join-Path $task.TaskRoot 'task.json') -Content (($currentTask | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+            $closureKind = [string]$currentTask.closure.kind
+            & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type task-closed -Summary "Task closure '$closureKind' completed after the required knowledge update. Reason: $([string]$currentTask.closure.reason)" -Artifact (Join-Path $task.TaskRoot 'task-summary.json') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & $statusScript -TaskId $TaskId -Status completed -Stage $(if ($closureKind -eq 'manual') { 'manually_closed' } else { 'pr_completed' }) -Message 'Task closure completed. Knowledge and the final task summary were updated.' -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $currentStatus = 'completed'
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        if (-not $closureComplete) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage targeted_agent_completed -Message "Targeted restart for '$TargetAgentId' finished. Remaining agents: $(@($remainingPlan.UnfinishedAgentIds) -join ', ')." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -214,6 +250,7 @@ try {
             $currentStatus = 'completed'
         }
         $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
     }
     $currentStage = if ($currentTask.PSObject.Properties['currentStage']) { [string]$currentTask.currentStage } else { $currentStatus }
     if ($currentStatus -in @('waiting_for_input','held')) {
@@ -232,6 +269,13 @@ try {
         }
         & $statusScript -TaskId $TaskId -Status completed -Stage completed -Message 'Workflow completed. Review task artifacts for the final outcome.' -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
+    if ($TargetAgentId -and $ContinueChain -and -not $SkipChainContinuation -and $TargetAgentId -ne 'health_check') {
+        $chainTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $manualClosure = $chainTask.PSObject.Properties['closure'] -and [string]$chainTask.closure.kind -eq 'manual'
+        if (-not $manualClosure -and [string]$chainTask.agentStatuses.$TargetAgentId.status -eq 'completed') {
+            & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') -TaskId $TaskId -CompletedAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+    }
 }
 catch {
     $failureMessage = $_.Exception.Message
@@ -243,17 +287,38 @@ catch {
     $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
     $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
     $hostCompatibilityReady = $false
-    if ([bool]$config.health.enabled -and [bool]$config.health.checkOnWorkflowFailure) {
+    $automaticTargetedResume = $null
+    if (-not $HealthRecoveryRetry -and [bool]$config.health.enabled -and [bool]$config.health.checkOnWorkflowFailure) {
         try {
-            & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $healthCheckResult = & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome
             $postHealthTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             $hostCompatibilityReady = [string]$postHealthTask.currentStage -eq 'os_policy_compatibility_ready'
+            if ($hostCompatibilityReady -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
+                $taskHealthEvidencePath = Join-Path $task.TaskRoot 'health-check-result.json'
+                if (Test-Path -LiteralPath $taskHealthEvidencePath -PathType Leaf) {
+                    $targetedParameters = @{
+                        TaskId = $TaskId
+                        FailurePath = [string]$failureHandoff.FailurePath
+                        RecoveryEvidencePath = $taskHealthEvidencePath
+                        ConfigPath = $ConfigPath
+                        CodexHome = $CodexHome
+                    }
+                    if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
+                    $automaticTargetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
+                }
+            }
         }
         catch { Write-Warning "Health check also failed: $($_.Exception.Message)" }
     }
-    if ([bool]$config.health.automaticRecovery.enabled -and -not $hostCompatibilityReady) {
-        try { & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+    if (-not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled -and -not $hostCompatibilityReady) {
+        try {
+            $healthRecoveryResult = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ConfigPath $ConfigPath -CodexHome $CodexHome
+            if ($healthRecoveryResult.PSObject.Properties['TargetedResume']) { $automaticTargetedResume = $healthRecoveryResult.TargetedResume }
+        }
         catch { Write-Warning "Automatic health recovery failed: $($_.Exception.Message)" }
+    }
+    if ($automaticTargetedResume -and [string]$automaticTargetedResume.Status -in @('completed','waiting','interrupted')) {
+        return $automaticTargetedResume
     }
     throw
 }

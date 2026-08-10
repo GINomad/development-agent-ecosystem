@@ -9,9 +9,11 @@
     "namespace",
     "runtime",
     "operation",
+    "workflow",
     "ui",
     "health",
     "review",
+    "pipeline",
     "credentialProfiles",
     "repositories",
     "taskSources",
@@ -96,16 +98,37 @@
         }
       }
     },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automaticContinuation"],
+      "properties": {
+        "automaticContinuation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "maxChainSteps", "useElevatedExecution", "orderedAgentIds", "stopStatuses"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "useElevatedExecution": { "type": "boolean" },
+            "orderedAgentIds": { "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] } },
+            "stopStatuses": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["waiting_for_input", "held", "review_pending", "failed", "interrupted"] } }
+          }
+        }
+      }
+    },
     "ui": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["listenAddress", "port", "openBrowser", "taskRefreshSeconds", "agentLogRefreshSeconds"],
+      "required": ["listenAddress", "port", "openBrowser", "taskRefreshSeconds", "agentLogRefreshSeconds", "diffContextLines", "diffMaxBytes"],
       "properties": {
         "listenAddress": { "const": "127.0.0.1" },
         "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
         "openBrowser": { "type": "boolean" },
         "taskRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 },
-        "agentLogRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 }
+        "agentLogRefreshSeconds": { "type": "integer", "minimum": 2, "maximum": 300 },
+        "diffContextLines": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "diffMaxBytes": { "type": "integer", "minimum": 65536, "maximum": 5242880 }
       }
     },
     "health": {
@@ -120,7 +143,7 @@
         "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "allowProductCodeChanges", "allowExternalWrites"],
+          "required": ["enabled", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
           "properties": {
             "enabled": { "type": "boolean" },
             "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 3 },
@@ -135,6 +158,22 @@
                 "requiresDashboardApproval": { "const": true },
                 "sandboxMode": { "const": "danger-full-access" },
                 "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 1 }
+              }
+            },
+            "targetedResume": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled", "requireSuccessfulRepair", "maxAttemptsPerFailureSignature", "allowedAgentIds"],
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "requireSuccessfulRepair": { "const": true },
+                "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 1 },
+                "allowedAgentIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] }
+                }
               }
             },
             "allowProductCodeChanges": { "const": false },
@@ -164,6 +203,70 @@
           "properties": {
             "mode": { "enum": ["disabled", "allowlist"] },
             "allowedServers": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "monitorSkillRoot", "delivery", "pullRequests", "postPush", "repositories"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "monitorSkillRoot": { "type": "string", "minLength": 1 },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["autoPushAfterCleanReview", "remote", "forbiddenBranches", "allowForce", "allowTags", "requireCleanWorktree"],
+          "properties": {
+            "autoPushAfterCleanReview": { "type": "boolean" },
+            "remote": { "const": "origin" },
+            "forbiddenBranches": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string" } },
+            "allowForce": { "const": false },
+            "allowTags": { "const": false },
+            "requireCleanWorktree": { "const": true }
+          }
+        },
+        "pullRequests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "pollIntervalMinutes", "completedStatuses", "abandonedStatuses"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "pollIntervalMinutes": { "type": "integer", "minimum": 2, "maximum": 1440 },
+            "completedStatuses": { "type": "array", "items": { "const": "completed" } },
+            "abandonedStatuses": { "type": "array", "items": { "const": "abandoned" } }
+          }
+        },
+        "postPush": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "autoQueueApprovedBuilds", "maxRemediationCycles", "failureLogTailLines", "failureLogMaxBytes"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "autoQueueApprovedBuilds": { "type": "boolean" },
+            "maxRemediationCycles": { "type": "integer", "minimum": 1, "maximum": 3 },
+            "failureLogTailLines": { "type": "integer", "minimum": 20, "maximum": 500 },
+            "failureLogMaxBytes": { "type": "integer", "minimum": 4096, "maximum": 262144 }
+          }
+        },
+        "repositories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["repositoryId", "definitionIds", "autoQueueDefinitionIds"],
+            "properties": {
+              "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              "definitionIds": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+              "autoQueueDefinitionIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "description": "Approved build definitions in mandatory fail-closed execution order; each later definition is queued only after the preceding exact-SHA run succeeds.",
+                "items": { "type": "integer", "minimum": 1 }
+              }
+            }
           }
         }
       }

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem architecture</title>
-  <desc id="desc">Knowledge Keeper orchestrates Requirements Analyst, Developer, Reviewer, Pipeline Monitor, and Health Check Agent across selected repositories. The operator dashboard shows persistent status, per-agent live activity, waiting agents, and open questions, and links answers to exact question IDs.</desc>
+  <desc id="desc">Event-driven agent chain with pull-based knowledge, failed-agent Health recovery, guarded branch delivery, exact-SHA builds, shared pull-request lifecycle status, manual closure, and revision reopen.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/>
@@ -107,12 +107,13 @@
     <rect x="845" y="750" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
     <text x="880" y="796" class="eyebrow">VALIDATE DELIVERY</text>
     <text x="880" y="831" class="box-title">Pipeline Monitor</text>
-    <text x="880" y="863" class="box-copy">Exact commit · status · failed logs</text>
+    <text x="880" y="863" class="box-copy">Guarded push · exact-SHA build</text>
+    <text x="880" y="887" class="tiny">2h native PR gate · code/test fix · max 3</text>
 
     <rect x="642" y="940" width="315" height="135" rx="22" fill="#172d35" stroke="#4b8375"/>
     <text x="677" y="982" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
     <text x="677" y="1017" class="box-title">Health Check Agent</text>
-    <text x="677" y="1049" class="box-copy">Bounded recent tails · diagnosis · safe recovery</text>
+    <text x="677" y="1049" class="box-copy">Safe repair · restart failed agent</text>
   </g>
 
   <!-- Right-side gates and storage -->
@@ -130,8 +131,8 @@
     <rect x="1240" y="775" width="280" height="150" rx="22" fill="#152638" stroke="#4b8375"/>
     <text x="1275" y="820" class="eyebrow">OPERATOR CONTROL</text>
     <text x="1275" y="856" class="box-title">Task dashboard</text>
-    <text x="1275" y="887" class="box-copy">Fingerprint resume · targeted restart</text>
-    <text x="1275" y="912" class="tiny">End-of-block comments · no restart · live logs</text>
+    <text x="1275" y="887" class="box-copy">Local diff · external PR reports</text>
+    <text x="1275" y="912" class="tiny">live logs · chain · close · revision reopen</text>
   </g>
 
   <!-- Flows -->
@@ -155,7 +156,7 @@
   <text x="397" y="326" class="label">requirements</text>
   <text x="770" y="578" class="label">ready scope</text>
   <text x="735" y="705" class="label">evidence</text>
-  <text x="1070" y="703" class="label">reviewed delivery</text>
+  <text x="1070" y="703" class="label">push / code-test remediation</text>
   <text x="1135" y="337" class="label">successful outcomes only</text>
   <text x="1090" y="620" class="label">findings</text>
   <text x="1080" y="785" class="label">question ID · answer · command</text>

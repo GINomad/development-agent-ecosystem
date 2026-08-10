@@ -23,6 +23,14 @@ let agentLogRequestInFlight = false;
 let agentLogRefreshSeconds = 30;
 let taskRefreshInFlight = false;
 let taskStateRevision = 0;
+let reviewDiffIndex = null;
+let selectedDiffRepositoryId = null;
+let selectedDiffFilePath = null;
+let selectedDiffLine = null;
+let reviewDiffRequestInFlight = false;
+let reviewerFeedback = null;
+let reviewerFeedbackRequestInFlight = false;
+let selectedExternalReviewName = null;
 const agentCommentDrafts = new Map();
 
 function log(value) {
@@ -87,6 +95,53 @@ function setAgentActionStatus(message, state = '') {
   status.dataset.state = state;
 }
 
+async function openExternalReview(name) {
+  selectedExternalReviewName = name;
+  document.querySelector('#externalReviewTitle').textContent = name;
+  document.querySelector('#externalReviewMeta').textContent = 'Loading report...';
+  document.querySelector('#externalReviewContent').textContent = '';
+  const result = await api('/api/external-reviews/' + encodeURIComponent(name));
+  document.querySelector('#externalReviewMeta').textContent = result.report.length + ' bytes - ' + formatDate(result.report.lastWriteTimeUtc);
+  document.querySelector('#externalReviewContent').textContent = result.report.content;
+  document.querySelectorAll('.external-review-item').forEach(item => item.classList.toggle('selected', item.dataset.reportName === name));
+}
+
+async function loadExternalReviews() {
+  const list = document.querySelector('#externalReviewList');
+  list.textContent = 'Loading reports...';
+  const result = await api('/api/external-reviews');
+  const reports = Array.isArray(result.reports) ? result.reports : [];
+  list.replaceChildren();
+  if (!reports.length) {
+    list.textContent = 'No external review reports yet.';
+    document.querySelector('#externalReviewContent').textContent = 'Review Monitor has not produced a Markdown, JSON, text, or log report in the ecosystem data root.';
+    return;
+  }
+  reports.forEach(report => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'external-review-item';
+    button.dataset.reportName = report.name;
+    const name = document.createElement('strong');
+    name.textContent = report.name;
+    const meta = document.createElement('small');
+    meta.textContent = report.length + ' bytes - ' + formatDate(report.lastWriteTimeUtc);
+    button.append(name, meta);
+    button.addEventListener('click', () => openExternalReview(report.name).catch(error => log('Error: ' + error.message)));
+    list.append(button);
+  });
+  const target = reports.some(report => report.name === selectedExternalReviewName) ? selectedExternalReviewName : reports[0].name;
+  await openExternalReview(target);
+}
+
+async function selectReviewTab(tab) {
+  const external = tab === 'external';
+  document.querySelector('#localReviewWorkspace').classList.toggle('hidden', external);
+  document.querySelector('#externalReviewWorkspace').classList.toggle('hidden', !external);
+  document.querySelectorAll('[data-review-tab]').forEach(button => button.classList.toggle('active', button.dataset.reviewTab === tab));
+  if (external) await loadExternalReviews();
+}
+
 function renderTaskList(tasks) {
   tasks = Array.isArray(tasks) ? tasks : [];
   const list = document.querySelector('#taskList');
@@ -124,6 +179,7 @@ function renderTaskList(tasks) {
       if (selectedTaskId !== item.taskId) {
         closeAgentLog();
         closeAgentOutcome();
+        closeReviewDiff();
       }
       selectedTaskId = item.taskId;
       await loadTaskList({ silent: true });
@@ -137,6 +193,7 @@ function renderEmptyTaskDetail() {
   closeArtifactViewer();
   closeAgentLog();
   closeAgentOutcome();
+  closeReviewDiff();
   document.querySelector('#taskDetailEmpty').classList.remove('hidden');
   document.querySelector('#taskDetailContent').classList.add('hidden');
 }
@@ -266,6 +323,11 @@ function renderTaskDetail(task) {
   document.querySelector('#resumeElevatedWorkflow').disabled = task.status === 'running';
   document.querySelector('#stopWorkflow').disabled = task.status !== 'running';
   document.querySelector('#restartAgentWithComment').disabled = task.status === 'running';
+  document.querySelector('#sendAndRestartReviewTarget').disabled = task.status === 'running';
+  const closeTaskButton = document.querySelector('#closeTaskManually');
+  closeTaskButton.disabled = task.status === 'running' || task.status === 'completed';
+  document.querySelector('#manualClosePanel').classList.toggle('hidden', task.status === 'completed');
+  document.querySelector('#reopenTaskPanel').classList.toggle('hidden', task.status !== 'completed');
   const executionPolicyNotice = document.querySelector('#executionPolicyNotice');
   const policyBlocked = /CreateProcessWithLogonW|error\s*1260|Windows sandbox/i.test(`${task.lastMessage || ''} ${task.agentStatuses?.knowledge_keeper?.message || ''}`);
   executionPolicyNotice.classList.toggle('hidden', !policyBlocked);
@@ -307,6 +369,7 @@ function closeAgentOutcome() {
   selectedOutcomeArtifactName = null;
   const panel = document.querySelector('#agentOutcomePanel');
   if (panel) panel.classList.add('hidden');
+  document.querySelector('#openReviewDiff').classList.add('hidden');
   document.querySelectorAll('.agent-state.outcome-selected').forEach(card => card.classList.remove('outcome-selected'));
 }
 
@@ -345,6 +408,7 @@ function renderAgentOutcome() {
   document.querySelector('#agentOutcomeTitle').textContent = `${label} outcome`;
   document.querySelector('#agentOutcomeMeta').textContent = `${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}`;
   document.querySelector('#agentOutcomeSummary').textContent = state.message || 'No persisted outcome summary is available.';
+  document.querySelector('#openReviewDiff').classList.toggle('hidden', agentId !== 'reviewer');
   document.querySelectorAll('.agent-state').forEach(card => card.classList.toggle('outcome-selected', card.dataset.agentId === agentId));
   const list = document.querySelector('#agentOutcomeArtifacts');
   list.replaceChildren();
@@ -379,6 +443,473 @@ function openAgentOutcome(agentId) {
   selectedOutcomeArtifactName = null;
   renderAgentOutcome();
   document.querySelector('#agentOutcomePanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function diffProperty(value, pascalName, camelName) {
+  if (!value) return null;
+  return value[pascalName] ?? value[camelName] ?? null;
+}
+
+function closeReviewDiff() {
+  reviewDiffIndex = null;
+  selectedDiffRepositoryId = null;
+  selectedDiffFilePath = null;
+  selectedDiffLine = null;
+  reviewerFeedback = null;
+  const panel = document.querySelector('#reviewDiffPanel');
+  if (panel) panel.classList.add('hidden');
+  const lines = document.querySelector('#reviewDiffLines');
+  if (lines) lines.replaceChildren();
+  const files = document.querySelector('#reviewDiffFiles');
+  if (files) files.replaceChildren();
+  const selection = document.querySelector('#reviewDiffSelection');
+  if (selection) selection.textContent = 'No line selected. The comment will apply to the whole diff.';
+}
+
+function setReviewDiffCommentStatus(message, state = '') {
+  const status = document.querySelector('#reviewDiffCommentStatus');
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function setReviewerFeedbackStatus(message, state = '') {
+  const status = document.querySelector('#reviewFeedbackStatus');
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function reviewerFeedbackItems(result) {
+  const items = [];
+  if (result?.summary) {
+    items.push({ id: 'REVIEW-SUMMARY', kind: 'summary', severity: 'info', summary: String(result.summary) });
+  }
+  const collections = [
+    ['finding', result?.findings],
+    ['process suggestion', result?.agentProcessFindings],
+    ['held-scope violation', result?.heldScopeViolations]
+  ];
+  collections.forEach(([kind, values]) => {
+    if (!Array.isArray(values)) return;
+    values.forEach((value, index) => {
+      const item = value && typeof value === 'object' ? value : { summary: String(value) };
+      items.push({ ...item, id: String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`), kind });
+    });
+  });
+  return items;
+}
+
+function reviewerFeedbackReplies(itemId) {
+  const evidenceKey = `review-finding:${itemId}`;
+  const events = Array.isArray(selectedTask?.events) ? selectedTask.events : [];
+  return events
+    .filter(event => event?.type === 'user-comment' && Array.isArray(event.evidence) && event.evidence.includes(evidenceKey))
+    .sort((left, right) => String(left.timestampUtc || '').localeCompare(String(right.timestampUtc || '')));
+}
+
+function appendReviewerFeedbackField(container, label, value) {
+  if (value == null || value === '' || (Array.isArray(value) && !value.length)) return;
+  const row = document.createElement('p');
+  row.className = 'review-feedback-field';
+  const strong = document.createElement('strong');
+  strong.textContent = label + ': ';
+  const content = document.createElement('span');
+  content.textContent = Array.isArray(value) ? value.join(', ') : String(value);
+  row.append(strong, content);
+  container.append(row);
+}
+
+async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons) {
+  if (!selectedTaskId) throw new Error('Select a task first.');
+  const reply = textarea.value.trim();
+  if (!reply) throw new Error('Enter a reply for this Reviewer item.');
+  const comment = [
+    '[Reviewer feedback reply]',
+    `Reviewer item: ${item.id}`,
+    `Item type: ${item.kind}`,
+    '',
+    reply
+  ].join('\n');
+  if (comment.length > 4000) throw new Error('Reply plus Reviewer context exceeds 4000 characters.');
+  buttons.forEach(button => { button.disabled = true; });
+  setReviewerFeedbackStatus(`Sending ${item.id} reply to ${agentLabels[targetAgentId] || targetAgentId}...`, 'working');
+  try {
+    const saved = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/comments', {
+      method: 'POST',
+      body: JSON.stringify({ text: comment, targetAgentId, reviewFindingId: item.id })
+    });
+    textarea.value = '';
+    taskStateRevision += 1;
+    await loadTaskDetail(selectedTaskId, taskStateRevision);
+    renderReviewerFeedback();
+    await loadTaskList({ silent: true });
+    setReviewerFeedbackStatus(`${item.id} reply queued for ${agentLabels[targetAgentId] || targetAgentId}.`, 'success');
+    log(saved);
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+function renderReviewerFeedback() {
+  const list = document.querySelector('#reviewFeedbackList');
+  const summary = document.querySelector('#reviewFeedbackSummary');
+  list.replaceChildren();
+  const items = reviewerFeedbackItems(reviewerFeedback);
+  const findings = items.filter(item => item.kind !== 'summary');
+  summary.textContent = reviewerFeedback
+    ? `${findings.length} finding(s) or suggestion(s); ${items.length ? 'Reviewer summary is included.' : 'no persisted Reviewer text.'}`
+    : 'Reviewer outcome is not available.';
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'agent-log-empty';
+    empty.textContent = 'No Reviewer outcome, finding, suggestion, or held-scope violation was persisted.';
+    list.append(empty);
+    return;
+  }
+  items.forEach(item => {
+    const card = document.createElement('article');
+    card.className = 'review-feedback-card';
+    const header = document.createElement('div');
+    header.className = 'review-feedback-card-header';
+    const identity = document.createElement('strong');
+    identity.textContent = `${item.id} · ${item.kind}`;
+    const badges = document.createElement('span');
+    badges.textContent = [item.severity, item.category, item.decisionStatus].filter(Boolean).join(' · ') || 'recorded';
+    header.append(identity, badges);
+    card.append(header);
+    appendReviewerFeedbackField(card, 'Summary', item.title || item.summary || item.message);
+    appendReviewerFeedbackField(card, 'Location', item.location || item.filePath);
+    appendReviewerFeedbackField(card, 'Evidence', item.evidence);
+    appendReviewerFeedbackField(card, 'Impact', item.impact);
+    appendReviewerFeedbackField(card, 'Suggested correction', item.correctionDirection || item.recommendation || item.suggestion);
+    const replies = reviewerFeedbackReplies(item.id);
+    if (replies.length) {
+      const thread = document.createElement('div');
+      thread.className = 'review-feedback-thread';
+      replies.forEach(reply => {
+        const entry = document.createElement('p');
+        const target = agentLabels[reply.targetAgentId] || reply.targetAgentId || 'workflow';
+        entry.textContent = `${formatDate(reply.timestampUtc)} → ${target}: ${reply.summary}`;
+        thread.append(entry);
+      });
+      card.append(thread);
+    }
+    const textarea = document.createElement('textarea');
+    textarea.rows = 2;
+    textarea.maxLength = 4000;
+    textarea.placeholder = `Reply to ${item.id}...`;
+    textarea.setAttribute('aria-label', `Reply to Reviewer item ${item.id}`);
+    const actions = document.createElement('div');
+    actions.className = 'actions review-feedback-actions';
+    const reviewerButton = document.createElement('button');
+    reviewerButton.type = 'button';
+    reviewerButton.className = 'button secondary compact-button';
+    reviewerButton.textContent = 'Send to Reviewer';
+    const developerButton = document.createElement('button');
+    developerButton.type = 'button';
+    developerButton.className = 'button primary compact-button';
+    developerButton.textContent = 'Send to Developer';
+    const buttons = [reviewerButton, developerButton];
+    reviewerButton.addEventListener('click', async () => {
+      try { await sendReviewerFeedbackReply(item, 'reviewer', textarea, buttons); }
+      catch (error) { setReviewerFeedbackStatus(error.message, 'error'); log('Error: ' + error.message); }
+    });
+    developerButton.addEventListener('click', async () => {
+      try { await sendReviewerFeedbackReply(item, 'developer', textarea, buttons); }
+      catch (error) { setReviewerFeedbackStatus(error.message, 'error'); log('Error: ' + error.message); }
+    });
+    actions.append(reviewerButton, developerButton);
+    card.append(textarea, actions);
+    list.append(card);
+  });
+}
+
+async function loadReviewerFeedback() {
+  if (!selectedTaskId || reviewerFeedbackRequestInFlight) return;
+  const taskId = selectedTaskId;
+  reviewerFeedbackRequestInFlight = true;
+  document.querySelector('#reviewFeedbackSummary').textContent = 'Loading Reviewer outcome...';
+  try {
+    const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/artifacts/review-result.json');
+    if (selectedTaskId !== taskId) return;
+    reviewerFeedback = JSON.parse(result.artifact.content);
+    renderReviewerFeedback();
+  } catch (error) {
+    reviewerFeedback = null;
+    renderReviewerFeedback();
+    setReviewerFeedbackStatus('Reviewer outcome unavailable: ' + error.message, 'error');
+  } finally {
+    reviewerFeedbackRequestInFlight = false;
+  }
+}
+
+function diffRepositories() {
+  return Array.isArray(diffProperty(reviewDiffIndex, 'Repositories', 'repositories'))
+    ? diffProperty(reviewDiffIndex, 'Repositories', 'repositories')
+    : [];
+}
+
+function findDiffFile(repositoryId, filePath) {
+  const repository = diffRepositories().find(item => item.id === repositoryId);
+  const files = Array.isArray(repository?.files) ? repository.files : [];
+  const file = files.find(item => item.path === filePath);
+  return { repository, file };
+}
+
+function renderReviewDiffIndex() {
+  const repositories = diffRepositories();
+  const container = document.querySelector('#reviewDiffFiles');
+  container.replaceChildren();
+  let totalFiles = 0;
+  repositories.forEach(repository => {
+    const files = Array.isArray(repository.files) ? repository.files : [];
+    totalFiles += files.length;
+    const heading = document.createElement('div');
+    heading.className = 'diff-repository';
+    heading.textContent = repository.repository + ' - ' + repository.branch;
+    container.append(heading);
+    if (!files.length) {
+      const empty = document.createElement('p');
+      empty.className = 'agent-log-empty';
+      empty.textContent = 'No changes.';
+      container.append(empty);
+      return;
+    }
+    files.forEach(file => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'diff-file';
+      button.classList.toggle('selected', repository.id === selectedDiffRepositoryId && file.path === selectedDiffFilePath);
+      const status = document.createElement('span');
+      status.className = 'diff-file-status';
+      status.textContent = String(file.status || '?').slice(0, 1);
+      const path = document.createElement('span');
+      path.className = 'diff-file-path';
+      path.textContent = file.oldPath ? file.oldPath + ' → ' + file.path : file.path;
+      const stats = document.createElement('span');
+      stats.className = 'diff-file-stats';
+      const added = document.createElement('span');
+      added.className = 'added';
+      added.textContent = file.additions == null ? '+?' : '+' + file.additions;
+      const deleted = document.createElement('span');
+      deleted.className = 'deleted';
+      deleted.textContent = '-' + (file.deletions || 0);
+      stats.append(added, deleted);
+      button.append(status, path, stats);
+      button.addEventListener('click', () => loadReviewDiffFile(repository.id, file.path));
+      container.append(button);
+    });
+  });
+  document.querySelector('#reviewDiffMeta').textContent = totalFiles
+    ? totalFiles + ' changed file(s) across ' + repositories.length + ' task repository/repositories. Select a line to attach exact context.'
+    : 'No local or branch changes were found for the repositories assigned to this task.';
+}
+
+function parseUnifiedDiff(patch) {
+  let oldLine = null;
+  let newLine = null;
+  return String(patch || '').split(/\r?\n/).map(text => {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      return { text, kind: 'hunk', oldLine: null, newLine: null, selectable: false };
+    }
+    if (text.startsWith('+') && !text.startsWith('+++')) {
+      const line = { text, kind: 'added', oldLine: null, newLine, selectable: true };
+      newLine += 1;
+      return line;
+    }
+    if (text.startsWith('-') && !text.startsWith('---')) {
+      const line = { text, kind: 'deleted', oldLine, newLine: null, selectable: true };
+      oldLine += 1;
+      return line;
+    }
+    if (text.startsWith(' ') && oldLine != null && newLine != null) {
+      const line = { text, kind: 'context', oldLine, newLine, selectable: true };
+      oldLine += 1;
+      newLine += 1;
+      return line;
+    }
+    return { text, kind: 'meta', oldLine: null, newLine: null, selectable: false };
+  });
+}
+
+function selectReviewDiffLine(line, button) {
+  if (!line.selectable) return;
+  document.querySelectorAll('.diff-line.selected').forEach(item => item.classList.remove('selected'));
+  button.classList.add('selected');
+  selectedDiffLine = {
+    repositoryId: selectedDiffRepositoryId,
+    filePath: selectedDiffFilePath,
+    oldLine: line.oldLine,
+    newLine: line.newLine,
+    text: line.text
+  };
+  const numbers = [];
+  if (line.oldLine != null) numbers.push('old ' + line.oldLine);
+  if (line.newLine != null) numbers.push('new ' + line.newLine);
+  document.querySelector('#reviewDiffSelection').textContent =
+    selectedDiffRepositoryId + ' / ' + selectedDiffFilePath + ' (' + numbers.join(', ') + '): ' + line.text;
+}
+
+function renderReviewDiffPatch(result) {
+  const file = diffProperty(result, 'File', 'file') || {};
+  const patch = diffProperty(result, 'Patch', 'patch') || '';
+  const repositoryId = diffProperty(result, 'RepositoryId', 'repositoryId');
+  const branch = diffProperty(result, 'Branch', 'branch') || '';
+  const head = diffProperty(result, 'Head', 'head') || '';
+  document.querySelector('#reviewDiffFileName').textContent = repositoryId + ' / ' + (file.path || selectedDiffFilePath);
+  document.querySelector('#reviewDiffFileStats').textContent =
+    branch + ' @ ' + String(head).slice(0, 10) + ' · +' + (file.additions ?? '?') + ' / -' + (file.deletions || 0) +
+    (diffProperty(result, 'Truncated', 'truncated') ? ' · truncated' : '');
+  const container = document.querySelector('#reviewDiffLines');
+  container.replaceChildren();
+  const lines = parseUnifiedDiff(patch);
+  if (!lines.length || !patch) {
+    const empty = document.createElement('p');
+    empty.className = 'agent-log-empty';
+    empty.textContent = file.binary ? 'Binary file changed; no text diff is available.' : 'No text diff is available.';
+    container.append(empty);
+    return;
+  }
+  lines.forEach(line => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'diff-line ' + line.kind;
+    row.disabled = !line.selectable;
+    row.setAttribute('role', 'listitem');
+    const oldNumber = document.createElement('span');
+    oldNumber.className = 'diff-line-number';
+    oldNumber.textContent = line.oldLine == null ? '' : line.oldLine;
+    const newNumber = document.createElement('span');
+    newNumber.className = 'diff-line-number';
+    newNumber.textContent = line.newLine == null ? '' : line.newLine;
+    const code = document.createElement('span');
+    code.className = 'diff-line-code';
+    code.textContent = line.text || ' ';
+    row.append(oldNumber, newNumber, code);
+    if (line.selectable) row.addEventListener('click', () => selectReviewDiffLine(line, row));
+    container.append(row);
+  });
+}
+
+async function loadReviewDiffFile(repositoryId, filePath) {
+  if (!selectedTaskId || reviewDiffRequestInFlight) return;
+  selectedDiffRepositoryId = repositoryId;
+  selectedDiffFilePath = filePath;
+  selectedDiffLine = null;
+  document.querySelector('#reviewDiffSelection').textContent = 'No line selected. The comment will apply to the whole diff.';
+  renderReviewDiffIndex();
+  document.querySelector('#reviewDiffFileName').textContent = repositoryId + ' / ' + filePath;
+  document.querySelector('#reviewDiffFileStats').textContent = 'Loading patch...';
+  document.querySelector('#reviewDiffLines').replaceChildren();
+  reviewDiffRequestInFlight = true;
+  try {
+    const query = new URLSearchParams({ repositoryId, filePath });
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/diff?' + query.toString());
+    if (repositoryId !== selectedDiffRepositoryId || filePath !== selectedDiffFilePath) return;
+    renderReviewDiffPatch(result.diff);
+  } catch (error) {
+    document.querySelector('#reviewDiffFileStats').textContent = 'Diff unavailable';
+    document.querySelector('#reviewDiffLines').textContent = error.message;
+    log('Error: ' + error.message);
+  } finally {
+    reviewDiffRequestInFlight = false;
+  }
+}
+
+async function loadReviewDiff() {
+  if (!selectedTaskId || reviewDiffRequestInFlight) return;
+  const taskId = selectedTaskId;
+  reviewDiffRequestInFlight = true;
+  document.querySelector('#reviewDiffMeta').textContent = 'Loading task diff...';
+  try {
+    const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/diff');
+    if (selectedTaskId !== taskId) return;
+    reviewDiffIndex = result.diff;
+    const repositories = diffRepositories();
+    const stillAvailable = findDiffFile(selectedDiffRepositoryId, selectedDiffFilePath).file;
+    if (!stillAvailable) {
+      const firstRepository = repositories.find(item => Array.isArray(item.files) && item.files.length);
+      selectedDiffRepositoryId = firstRepository?.id || null;
+      selectedDiffFilePath = firstRepository?.files?.[0]?.path || null;
+    }
+    renderReviewDiffIndex();
+    if (selectedDiffRepositoryId && selectedDiffFilePath) {
+      reviewDiffRequestInFlight = false;
+      await loadReviewDiffFile(selectedDiffRepositoryId, selectedDiffFilePath);
+    } else {
+      document.querySelector('#reviewDiffFileName').textContent = 'No changed files';
+      document.querySelector('#reviewDiffFileStats').textContent = '';
+      document.querySelector('#reviewDiffLines').replaceChildren();
+    }
+  } catch (error) {
+    document.querySelector('#reviewDiffMeta').textContent = 'Diff unavailable: ' + error.message;
+    log('Error: ' + error.message);
+  } finally {
+    reviewDiffRequestInFlight = false;
+  }
+}
+
+function openReviewDiff() {
+  if (!selectedTaskId) return;
+  document.querySelector('#reviewDiffPanel').classList.remove('hidden');
+  document.querySelector('#reviewFeedbackTitle').textContent = `Reviewer feedback for ${selectedTaskId}`;
+  setReviewDiffCommentStatus('');
+  setReviewerFeedbackStatus('');
+  loadReviewDiff();
+  loadReviewerFeedback();
+  document.querySelector('#reviewDiffPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function buildReviewDiffComment() {
+  const text = document.querySelector('#reviewDiffComment').value.trim();
+  if (!text) throw new Error('Enter a diff comment.');
+  const context = selectedDiffLine
+    ? [
+        '[Task diff line comment]',
+        'Repository: ' + selectedDiffLine.repositoryId,
+        'File: ' + selectedDiffLine.filePath,
+        'Old line: ' + (selectedDiffLine.oldLine ?? 'n/a'),
+        'New line: ' + (selectedDiffLine.newLine ?? 'n/a'),
+        'Diff line: ' + selectedDiffLine.text,
+        '',
+        text
+      ]
+    : ['[Task diff review comment]', 'Scope: complete current task diff', '', text];
+  const comment = context.join('\n');
+  if (comment.length > 4000) throw new Error('Comment plus diff context exceeds 4000 characters.');
+  return comment;
+}
+
+async function sendReviewDiffComment({ restart = false } = {}) {
+  if (!selectedTaskId) throw new Error('Select a task first.');
+  const targetAgentId = document.querySelector('#reviewDiffCommentTarget').value;
+  if (!['reviewer', 'developer'].includes(targetAgentId)) throw new Error('Unsupported diff comment target.');
+  const comment = buildReviewDiffComment();
+  if (restart && selectedTask?.status === 'running') throw new Error('Stop the running workflow before restarting one agent.');
+  const saved = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/comments', {
+    method: 'POST',
+    body: JSON.stringify({ text: comment, targetAgentId })
+  });
+  document.querySelector('#reviewDiffComment').value = '';
+  taskStateRevision += 1;
+  let restarted = null;
+  if (restart) {
+    restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/' + encodeURIComponent(targetAgentId) + '/resume', {
+      method: 'POST',
+      body: JSON.stringify({ elevated: true })
+    });
+  }
+  setReviewDiffCommentStatus(
+    restart
+      ? (agentLabels[targetAgentId] || targetAgentId) + ' was restarted with the diff comment.'
+      : 'Diff comment was queued for ' + (agentLabels[targetAgentId] || targetAgentId) + '.',
+    'success'
+  );
+  log({ comment: saved, restart: restarted });
+  await loadTaskDetail(selectedTaskId, taskStateRevision);
+  await loadTaskList({ silent: true });
 }
 
 function closeAgentLog() {
@@ -536,6 +1067,8 @@ document.querySelector('#startWorkflow').addEventListener('click', async () => {
 });
 
 document.querySelector('#refreshTaskStatus').addEventListener('click', () => loadTaskList());
+document.querySelectorAll('[data-review-tab]').forEach(button => button.addEventListener('click', () => selectReviewTab(button.dataset.reviewTab).catch(error => log('Error: ' + error.message))));
+document.querySelector('#refreshExternalReviews').addEventListener('click', () => loadExternalReviews().catch(error => log('Error: ' + error.message)));
 
 document.querySelector('#runHealthCheck').addEventListener('click', async () => {
   try {
@@ -667,6 +1200,73 @@ document.querySelector('#stopWorkflow').addEventListener('click', async () => {
   }
 });
 
+document.querySelector('#closeTaskManually').addEventListener('click', async () => {
+  const button = document.querySelector('#closeTaskManually');
+  const status = document.querySelector('#manualCloseStatus');
+  try {
+    if (!selectedTaskId) throw new Error('Select a task first.');
+    if (selectedTask?.status === 'running') throw new Error('Stop the workflow before closing the task.');
+    const field = document.querySelector('#manualCloseReason');
+    const reason = field.value.trim();
+    if (reason.length < 5) throw new Error('Enter a closure reason of at least 5 characters.');
+    if (!window.confirm('Close this task manually and start only Knowledge Keeper for the final knowledge update?')) return;
+    button.disabled = true;
+    button.textContent = 'Closing...';
+    status.dataset.state = 'working';
+    status.textContent = 'Saving the reason and starting Knowledge Keeper...';
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/close', { method: 'POST', body: JSON.stringify({ reason }) });
+    field.value = '';
+    document.querySelector('#manualClosePanel').open = false;
+    status.dataset.state = 'success';
+    status.textContent = result.message;
+    taskStateRevision += 1;
+    log(result);
+    await loadTaskDetail(selectedTaskId, taskStateRevision);
+    await loadTaskList({ silent: true });
+  } catch (error) {
+    status.dataset.state = 'error';
+    status.textContent = error.message;
+    log('Error: ' + error.message);
+  } finally {
+    button.textContent = 'Close task and update knowledge';
+    button.disabled = selectedTask?.status === 'running' || selectedTask?.status === 'completed';
+  }
+});
+
+document.querySelector('#reopenTask').addEventListener('click', async () => {
+  const button = document.querySelector('#reopenTask');
+  const status = document.querySelector('#reopenTaskStatus');
+  try {
+    if (!selectedTaskId || selectedTask?.status !== 'completed') throw new Error('Select a completed task first.');
+    const reasonField = document.querySelector('#reopenTaskReason');
+    const reason = reasonField.value.trim();
+    const resumeFrom = document.querySelector('#reopenFromAgent').value;
+    if (reason.length < 5) throw new Error('Enter a reopen reason of at least 5 characters.');
+    if (!window.confirm('Reopen this task as a new revision and automatically continue from ' + (agentLabels[resumeFrom] || resumeFrom) + '?')) return;
+    button.disabled = true;
+    button.textContent = 'Reopening...';
+    status.dataset.state = 'working';
+    status.textContent = 'Archiving the current revision and starting the selected agent...';
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/reopen', { method: 'POST', body: JSON.stringify({ reason, resumeFrom }) });
+    reasonField.value = '';
+    document.querySelector('#reopenTaskPanel').open = false;
+    status.dataset.state = 'success';
+    status.textContent = result.message;
+    taskFilter = 'active';
+    document.querySelectorAll('[data-task-filter]').forEach(item => item.classList.toggle('active', item.dataset.taskFilter === 'active'));
+    taskStateRevision += 1;
+    log(result);
+    await loadTaskList({ silent: true });
+  } catch (error) {
+    status.dataset.state = 'error';
+    status.textContent = error.message;
+    log('Error: ' + error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Reopen as new revision';
+  }
+});
+
 document.querySelector('#resumeElevatedWorkflow').addEventListener('click', async () => {
   try {
     if (!selectedTask) throw new Error('Select a task first.');
@@ -738,6 +1338,42 @@ document.querySelector('#clearActivity').addEventListener('click', () => { activ
 document.querySelector('#closeArtifactViewer').addEventListener('click', closeArtifactViewer);
 document.querySelector('#closeAgentLog').addEventListener('click', closeAgentLog);
 document.querySelector('#closeAgentOutcome').addEventListener('click', closeAgentOutcome);
+document.querySelector('#openReviewDiff').addEventListener('click', openReviewDiff);
+document.querySelector('#closeReviewDiff').addEventListener('click', closeReviewDiff);
+document.querySelector('#refreshReviewDiff').addEventListener('click', () => { loadReviewDiff(); loadReviewerFeedback(); });
+document.querySelector('#sendReviewDiffComment').addEventListener('click', async () => {
+  const button = document.querySelector('#sendReviewDiffComment');
+  try {
+    button.disabled = true;
+    button.textContent = 'Sending...';
+    setReviewDiffCommentStatus('Saving diff comment...', 'working');
+    await sendReviewDiffComment();
+  } catch (error) {
+    setReviewDiffCommentStatus(error.message, 'error');
+    log('Error: ' + error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Send diff comment';
+  }
+});
+document.querySelector('#sendAndRestartReviewTarget').addEventListener('click', async () => {
+  const button = document.querySelector('#sendAndRestartReviewTarget');
+  try {
+    const targetAgentId = document.querySelector('#reviewDiffCommentTarget').value;
+    const approved = window.confirm('Send this diff comment and restart only ' + (agentLabels[targetAgentId] || targetAgentId) + ' in elevated mode? Other agents and completed artifacts remain unchanged.');
+    if (!approved) return;
+    button.disabled = true;
+    button.textContent = 'Restarting...';
+    setReviewDiffCommentStatus('Saving comment and restarting only the selected target...', 'working');
+    await sendReviewDiffComment({ restart: true });
+  } catch (error) {
+    setReviewDiffCommentStatus(error.message, 'error');
+    log('Error: ' + error.message);
+  } finally {
+    button.disabled = selectedTask?.status === 'running';
+    button.textContent = 'Send and restart target';
+  }
+});
 document.querySelector('#agentComment').addEventListener('input', event => {
   const key = agentDraftKey();
   if (!key) return;
@@ -747,7 +1383,7 @@ document.querySelector('#agentComment').addEventListener('input', event => {
 document.querySelector('#approveElevatedRecovery').addEventListener('click', async () => {
   try {
     if (!selectedTaskId) throw new Error('Select a task first.');
-    const approved = window.confirm('Run one Health Check repair without the OS sandbox? The coordinator is instructed to modify only the clean ecosystem repository, but Windows will not enforce that path boundary for this attempt.');
+    const approved = window.confirm('Run one Health Check repair without the OS sandbox? After a validated repair, Health Check will restart only the failed agent once. Product-code changes, other agents, and approval gates remain out of scope.');
     if (!approved) return;
     const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/health-recovery/elevated`, { method: 'POST', body: '{}' });
     log(result);

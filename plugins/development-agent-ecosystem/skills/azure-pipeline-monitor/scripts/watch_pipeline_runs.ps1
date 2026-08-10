@@ -10,7 +10,16 @@ param(
     [int]$DiscoveryTimeoutMinutes = 3,
     [int]$RunTimeoutMinutes = 60,
     [int]$PollSeconds = 20,
-    [string]$AzCli
+    [string]$AzCli,
+    [string]$TaskId = 'pipeline-monitor',
+    [string]$RepositoryId = 'unknown',
+    [string]$ResultPath,
+    [string]$ClassifierScript,
+    [ValidateRange(20,500)][int]$FailureLogTailLines = 120,
+    [ValidateRange(4096,262144)][int]$FailureLogMaxBytes = 65536,
+    [ValidateRange(0,3)][int]$RemediationCycle = 0,
+    [ValidateRange(1,3)][int]$MaxRemediationCycles = 3,
+    [switch]$PassThru
 )
 
 Set-StrictMode -Version Latest
@@ -18,238 +27,341 @@ $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($AzCli)) {
     $command = Get-Command az.cmd -ErrorAction SilentlyContinue
-    if ($null -eq $command) {
-        $command = Get-Command az -ErrorAction SilentlyContinue
-    }
+    if ($null -eq $command) { $command = Get-Command az -ErrorAction SilentlyContinue }
     if ($null -eq $command) {
         $windowsAz = 'C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd'
-        if (Test-Path -LiteralPath $windowsAz) {
-            $AzCli = $windowsAz
-        } else {
-            throw 'Azure CLI was not found. Install Azure CLI and the azure-devops extension.'
-        }
-    } else {
-        $AzCli = $command.Source
+        if (Test-Path -LiteralPath $windowsAz) { $AzCli = $windowsAz }
+        else { throw 'Azure CLI was not found. Install Azure CLI and the azure-devops extension.' }
     }
+    else { $AzCli = $command.Source }
 }
+if (-not $ClassifierScript) {
+    $ClassifierScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\..\scripts\Classify-PipelineFailure.ps1'))
+}
+if (-not (Test-Path -LiteralPath $ClassifierScript -PathType Leaf)) { throw "Pipeline failure classifier was not found: $ClassifierScript" }
 
 function Invoke-AzJson {
     param([string[]]$Arguments)
-
     $output = & $AzCli @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Azure CLI failed: $($output -join [Environment]::NewLine)"
-    }
-
+    if ($LASTEXITCODE -ne 0) { throw "Azure CLI failed: $($output -join [Environment]::NewLine)" }
     $text = $output -join [Environment]::NewLine
-    if ([string]::IsNullOrWhiteSpace($text)) {
-        return $null
-    }
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
     return $text | ConvertFrom-Json
+}
+
+function Get-BoundedLogExcerpt {
+    param([string[]]$Lines, [int]$MaximumBytes)
+    $selected = [Collections.Generic.List[string]]::new()
+    $byteCount = 0
+    $encoding = New-Object Text.UTF8Encoding($false)
+    for ($index = $Lines.Count - 1; $index -ge 0; $index--) {
+        $line = [string]$Lines[$index]
+        $lineBytes = $encoding.GetByteCount($line + [Environment]::NewLine)
+        if ($selected.Count -gt 0 -and ($byteCount + $lineBytes) -gt $MaximumBytes) { break }
+        $selected.Insert(0, $line)
+        $byteCount += $lineBytes
+    }
+    return ($selected -join [Environment]::NewLine)
+}
+
+function Get-FailureSignature {
+    param([string]$Value)
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Value)
+        return (($algorithm.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally { $algorithm.Dispose() }
+}
+
+function New-PipelineResult {
+    param(
+        [object[]]$Runs,
+        [ValidateSet('succeeded','non-success','no-run')][string]$OverallResult,
+        $Classification,
+        [int[]]$QueuedIds,
+        [string]$Summary
+    )
+    $signature = $null
+    if ($OverallResult -ne 'succeeded') {
+        $signatureSource = @(
+            $RepositoryId,
+            $Branch,
+            $Commit,
+            [string]$Classification.category,
+            @($Runs | ForEach-Object { @($_.failedTasks) | ForEach-Object { "$($_.name):$($_.category):$($_.logExcerpt)" } }) -join [Environment]::NewLine
+        ) -join '|'
+        $signature = Get-FailureSignature -Value $signatureSource
+    }
+    $nextCycle = [Math]::Min($RemediationCycle + 1, $MaxRemediationCycles)
+    if ([bool]$Classification.developerEligible -and $RemediationCycle -lt $MaxRemediationCycles) {
+        $remediationStatus = 'pending'
+        $targetAgentId = 'developer'
+        $reason = "A $($Classification.category) failure is eligible for a bounded Developer fix cycle."
+    }
+    elseif ([bool]$Classification.developerEligible) {
+        $remediationStatus = 'limit-reached'
+        $targetAgentId = $null
+        $reason = "The maximum of $MaxRemediationCycles Developer remediation cycles has been reached."
+    }
+    else {
+        $remediationStatus = 'not-applicable'
+        $targetAgentId = $null
+        $reason = if ($OverallResult -eq 'succeeded') { 'No remediation is required.' } else { "Failure category '$($Classification.category)' is not a product-code remediation." }
+        $nextCycle = $RemediationCycle
+    }
+    [pscustomobject][ordered]@{
+        taskId = $TaskId
+        repositoryId = $RepositoryId
+        observedAtUtc = [DateTime]::UtcNow.ToString('o')
+        branch = $Branch
+        commit = $Commit
+        queuedDefinitionIds = @($QueuedIds)
+        runs = @($Runs)
+        overallResult = $OverallResult
+        failureClassification = $Classification
+        remediation = [pscustomobject][ordered]@{
+            status = $remediationStatus
+            cycle = $nextCycle
+            maxCycles = $MaxRemediationCycles
+            failureSignature = $signature
+            targetAgentId = $targetAgentId
+            reason = $reason
+        }
+        summary = $Summary
+    }
+}
+
+function Write-PipelineResult {
+    param($Result)
+    if ($ResultPath) {
+        $parent = Split-Path -Parent $ResultPath
+        if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        [IO.File]::WriteAllText($ResultPath, (($Result | ConvertTo-Json -Depth 20) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($Branch)) {
     $Branch = (& git branch --show-current).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Branch)) {
-        throw 'Could not resolve the current Git branch.'
-    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Branch)) { throw 'Could not resolve the current Git branch.' }
 }
-
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Commit)) {
-        throw 'Could not resolve the current Git commit.'
-    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Commit)) { throw 'Could not resolve the current Git commit.' }
 }
+if ($Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Commit must be a full 40-character SHA.' }
 
 $branchRef = if ($Branch.StartsWith('refs/heads/')) { $Branch } else { "refs/heads/$Branch" }
-$queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) {
-    (Get-Date).ToUniversalTime().AddMinutes(-5)
-} else {
-    $QueuedAfter.ToUniversalTime()
-}
-
+$Branch = $branchRef -replace '^refs/heads/', ''
+$queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) { [DateTime]::UtcNow.AddMinutes(-5) } else { $QueuedAfter.ToUniversalTime() }
 Write-Host "Monitoring Azure pipelines for $branchRef at $Commit"
 Write-Host "Queued after: $($queuedAfterUtc.ToString('o'))"
 
 $expectedDefinitionIds = @($DefinitionIds + $AutoQueueDefinitionIds | Sort-Object -Unique)
-$filterDefinitionIds = @()
-if ($DefinitionIds.Count -gt 0) {
-    $filterDefinitionIds = @($expectedDefinitionIds)
-}
-$queuedDefinitions = @{}
+$passiveDefinitionIds = @($DefinitionIds | Where-Object { $_ -notin $AutoQueueDefinitionIds } | Sort-Object -Unique)
+$queuedDefinitions = [Collections.Generic.List[int]]::new()
 $tracked = @{}
-$discoveryDeadline = (Get-Date).ToUniversalTime().AddMinutes($DiscoveryTimeoutMinutes)
-$lastCount = -1
-$stablePasses = 0
-
-do {
-    $runResult = Invoke-AzJson @(
-        'pipelines', 'runs', 'list',
-        '--organization', $Organization,
-        '--project', $Project,
-        '--branch', $branchRef,
-        '--top', '100',
-        '--output', 'json'
-    )
-    $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } else { @($runResult) }
-    Write-Verbose "Azure returned $($runs.Count) run(s) for $branchRef."
-
-    foreach ($run in $runs) {
-        Write-Verbose "Candidate run $($run.id): commit=$($run.sourceVersion), definition=$($run.definition.id), queued=$($run.queueTime)"
-        if ($null -eq $run -or $run.sourceVersion -ne $Commit) {
-            continue
-        }
-        if ([datetime]::Parse($run.queueTime).ToUniversalTime() -lt $queuedAfterUtc) {
-            continue
-        }
-        $definitionId = [int]$run.definition.id
-        if ($filterDefinitionIds.Count -gt 0 -and $definitionId -notin $filterDefinitionIds) {
-            continue
-        }
-        $tracked[[string]$run.id] = $run
-    }
-
-    $foundDefinitionIds = @($tracked.Values | ForEach-Object { [int]$_.definition.id } | Sort-Object -Unique)
-    $missingAutoQueueIds = @($AutoQueueDefinitionIds | Where-Object {
-        $_ -notin $foundDefinitionIds -and -not $queuedDefinitions.ContainsKey([string]$_)
-    })
-    foreach ($definitionId in $missingAutoQueueIds) {
-        Write-Host "No run exists for definition $definitionId at $Commit; queueing it for $branchRef."
-        $queuedRun = Invoke-AzJson @(
-            'pipelines', 'run',
-            '--id', [string]$definitionId,
-            '--branch', ($branchRef -replace '^refs/heads/', ''),
-            '--organization', $Organization,
-            '--project', $Project,
-            '--output', 'json'
-        )
-        $queuedDefinitions[[string]$definitionId] = $true
-        Write-Host "Queued run $($queuedRun.id) for definition $definitionId."
-    }
-
-    if ($tracked.Count -eq $lastCount -and $tracked.Count -gt 0) {
-        $stablePasses++
-    } else {
-        $stablePasses = 0
-        $lastCount = $tracked.Count
-    }
-
-    $foundDefinitionIds = @($tracked.Values | ForEach-Object { [int]$_.definition.id } | Sort-Object -Unique)
-    $missingDefinitionIds = @($expectedDefinitionIds | Where-Object { $_ -notin $foundDefinitionIds })
-    if ($expectedDefinitionIds.Count -gt 0 -and $missingDefinitionIds.Count -eq 0 -and $stablePasses -ge 1) {
-        break
-    }
-    if ($expectedDefinitionIds.Count -eq 0 -and $stablePasses -ge 1) {
-        break
-    }
-    if ((Get-Date).ToUniversalTime() -ge $discoveryDeadline) {
-        break
-    }
-
-    Start-Sleep -Seconds $PollSeconds
-} while ($true)
-
-if ($tracked.Count -eq 0) {
-    Write-Error "No pipeline runs were triggered for commit $Commit on $branchRef."
-    exit 2
-}
-
-if ($expectedDefinitionIds.Count -gt 0) {
-    $foundDefinitionIds = @($tracked.Values | ForEach-Object { [int]$_.definition.id } | Sort-Object -Unique)
-    $missingDefinitionIds = @($expectedDefinitionIds | Where-Object { $_ -notin $foundDefinitionIds })
-    if ($missingDefinitionIds.Count -gt 0) {
-        Write-Error "No matching run was found for pipeline definition(s): $($missingDefinitionIds -join ', ')."
-        exit 2
-    }
-}
-
-Write-Host "Discovered $($tracked.Count) matching run(s):"
-foreach ($run in $tracked.Values | Sort-Object id) {
-    $url = "$Organization/$Project/_build/results?buildId=$($run.id)&view=results"
-    Write-Host "  $($run.id) [$($run.definition.id)] $($run.definition.name): $url"
-}
-
-$deadline = (Get-Date).ToUniversalTime().AddMinutes($RunTimeoutMinutes)
-$lastState = @{}
 $completed = @{}
+$lastState = @{}
+$sequenceSucceeded = $true
 
-do {
-    foreach ($runId in @($tracked.Keys)) {
-        if ($completed.ContainsKey($runId)) {
-            continue
-        }
+# Auto-queued definitions are an ordered, fail-closed sequence. The first stage may
+# reuse a qualifying exact-SHA run; every later stage is deliberately queued only
+# after the preceding selected run succeeds, so an earlier run cannot satisfy it.
+for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequenceIndex++) {
+    $definitionId = [int]$AutoQueueDefinitionIds[$sequenceIndex]
+    $selectedRun = $null
+    if ($sequenceIndex -eq 0) {
+        $runResult = Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')
+        $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } elseif ($null -eq $runResult) { @() } else { @($runResult) }
+        $selectedRun = @($runs | Where-Object {
+            $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and [int]$_.definition.id -eq $definitionId -and
+            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc
+        } | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+        if ($selectedRun.Count -gt 0) { $selectedRun = $selectedRun[0] } else { $selectedRun = $null }
+    }
+    if ($null -eq $selectedRun) {
+        Write-Host "Queueing approved build definition $definitionId at sequence position $($sequenceIndex + 1) for $branchRef."
+        $selectedRun = Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
+        if ($null -eq $selectedRun -or $null -eq $selectedRun.id) { throw "Azure CLI did not return a run ID for definition $definitionId." }
+        $queuedDefinitions.Add($definitionId)
+        Write-Host "Queued run $($selectedRun.id) for build definition $definitionId."
+    }
 
-        $run = Invoke-AzJson @(
-            'pipelines', 'runs', 'show',
-            '--id', $runId,
-            '--organization', $Organization,
-            '--project', $Project,
-            '--output', 'json'
-        )
+    $runId = [string]$selectedRun.id
+    $runDeadline = [DateTime]::UtcNow.AddMinutes($RunTimeoutMinutes)
+    do {
+        $run = Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')
         $state = "$($run.status)/$($run.result)"
         if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
             Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
             $lastState[$runId] = $state
         }
-        if ($run.status -eq 'completed') {
-            $completed[$runId] = $run
+        if ([string]$run.status -eq 'completed') { break }
+        if ([DateTime]::UtcNow -ge $runDeadline) {
+            $timedOutRun = [pscustomobject][ordered]@{
+                id=[int]$selectedRun.id; definitionId=$definitionId; definitionName=[string]$selectedRun.definition.name
+                url="$Organization/$Project/_build/results?buildId=$($selectedRun.id)&view=results"; sourceVersion=$Commit
+                result='timedOut'; failedTasks=@(); failedLogExcerpts=@()
+            }
+            $classification = [pscustomobject]@{ category='infrastructure'; developerEligible=$false; matchedSignals=@('Pipeline monitoring timed out') }
+            $result = New-PipelineResult -Runs @($timedOutRun) -OverallResult non-success -Classification $classification -QueuedIds @($queuedDefinitions) -Summary "Timed out waiting for ordered exact-SHA definition $definitionId."
+            Write-PipelineResult -Result $result
+            if ($PassThru) { return $result }
+            Write-Error -ErrorAction Continue $result.summary
+            exit 3
         }
-    }
+        Start-Sleep -Seconds $PollSeconds
+    } while ($true)
 
-    if ($completed.Count -eq $tracked.Count) {
+    if ([int]$run.definition.id -ne $definitionId -or [string]$run.sourceVersion -ne $Commit) {
+        throw "Ordered pipeline run $runId did not match definition $definitionId and exact commit $Commit."
+    }
+    $tracked[$runId] = $run
+    $completed[$runId] = $run
+    if ([string]$run.result -ne 'succeeded') {
+        $sequenceSucceeded = $false
+        Write-Host "Definition $definitionId did not succeed; later ordered definitions will not be queued." -ForegroundColor Red
         break
     }
-    if ((Get-Date).ToUniversalTime() -ge $deadline) {
-        Write-Error "Timed out waiting for pipeline runs: $(@($tracked.Keys | Where-Object { -not $completed.ContainsKey($_) }) -join ', ')."
+}
+
+# Observe configured non-auto-queued definitions after the ordered sequence. When
+# no definitions are configured, preserve the existing behavior of observing all
+# exact-SHA runs without queueing anything.
+$discoverPassiveRuns = $sequenceSucceeded -and ($passiveDefinitionIds.Count -gt 0 -or $expectedDefinitionIds.Count -eq 0)
+if ($discoverPassiveRuns) {
+    $discoveryDeadline = [DateTime]::UtcNow.AddMinutes($DiscoveryTimeoutMinutes)
+    $lastCount = -1
+    $stablePasses = 0
+    do {
+        $runResult = Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')
+        $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } elseif ($null -eq $runResult) { @() } else { @($runResult) }
+        foreach ($run in $runs) {
+            if ($null -eq $run -or [string]$run.sourceVersion -ne $Commit) { continue }
+            if ([datetime]::Parse([string]$run.queueTime).ToUniversalTime() -lt $queuedAfterUtc) { continue }
+            $definitionId = [int]$run.definition.id
+            if ($passiveDefinitionIds.Count -gt 0 -and $definitionId -notin $passiveDefinitionIds) { continue }
+            $tracked[[string]$run.id] = $run
+        }
+        $passiveRuns = @($tracked.Values | Where-Object { $passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds })
+        if ($passiveRuns.Count -eq $lastCount -and $passiveRuns.Count -gt 0) { $stablePasses++ }
+        else { $stablePasses = 0; $lastCount = $passiveRuns.Count }
+        $foundDefinitionIds = @($passiveRuns | ForEach-Object { [int]$_.definition.id } | Sort-Object -Unique)
+        $missingDefinitionIds = @($passiveDefinitionIds | Where-Object { $_ -notin $foundDefinitionIds })
+        if ($passiveDefinitionIds.Count -gt 0 -and $missingDefinitionIds.Count -eq 0 -and $stablePasses -ge 1) { break }
+        if ($passiveDefinitionIds.Count -eq 0 -and $stablePasses -ge 1) { break }
+        if ([DateTime]::UtcNow -ge $discoveryDeadline) { break }
+        Start-Sleep -Seconds $PollSeconds
+    } while ($true)
+}
+
+if ($tracked.Count -eq 0) {
+    $classification = [pscustomobject]@{ category='unknown'; developerEligible=$false; matchedSignals=@() }
+    $result = New-PipelineResult -Runs @() -OverallResult no-run -Classification $classification -QueuedIds @($queuedDefinitions) -Summary "No exact-SHA pipeline run was found for $Branch@$Commit."
+    Write-PipelineResult -Result $result
+    if ($PassThru) { return $result }
+    Write-Error -ErrorAction Continue $result.summary
+    exit 2
+}
+if ($sequenceSucceeded -and $passiveDefinitionIds.Count -gt 0) {
+    $foundDefinitionIds = @($tracked.Values | ForEach-Object { [int]$_.definition.id } | Sort-Object -Unique)
+    $missingDefinitionIds = @($passiveDefinitionIds | Where-Object { $_ -notin $foundDefinitionIds })
+    if ($missingDefinitionIds.Count -gt 0) {
+        $classification = [pscustomobject]@{ category='unknown'; developerEligible=$false; matchedSignals=@() }
+        $result = New-PipelineResult -Runs @() -OverallResult no-run -Classification $classification -QueuedIds @($queuedDefinitions) -Summary "No exact-SHA run was found for definition(s): $($missingDefinitionIds -join ', ')."
+        Write-PipelineResult -Result $result
+        if ($PassThru) { return $result }
+        Write-Error -ErrorAction Continue $result.summary
+        exit 2
+    }
+}
+
+Write-Host "Discovered $($tracked.Count) matching run(s)."
+$deadline = [DateTime]::UtcNow.AddMinutes($RunTimeoutMinutes)
+do {
+    foreach ($runId in @($tracked.Keys)) {
+        if ($completed.ContainsKey($runId)) { continue }
+        $run = Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')
+        $state = "$($run.status)/$($run.result)"
+        if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
+            Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
+            $lastState[$runId] = $state
+        }
+        if ([string]$run.status -eq 'completed') { $completed[$runId] = $run }
+    }
+    if ($completed.Count -eq $tracked.Count) { break }
+    if ([DateTime]::UtcNow -ge $deadline) {
+        $timedOutRuns = [Collections.Generic.List[object]]::new()
+        foreach ($trackedRun in $tracked.Values | Sort-Object id) {
+            $timedOutRuns.Add([pscustomobject][ordered]@{
+                id=[int]$trackedRun.id; definitionId=[int]$trackedRun.definition.id; definitionName=[string]$trackedRun.definition.name
+                url="$Organization/$Project/_build/results?buildId=$($trackedRun.id)&view=results"; sourceVersion=[string]$trackedRun.sourceVersion
+                result='timedOut'; failedTasks=@(); failedLogExcerpts=@()
+            })
+        }
+        $classification = [pscustomobject]@{ category='infrastructure'; developerEligible=$false; matchedSignals=@('Pipeline monitoring timed out') }
+        $result = New-PipelineResult -Runs @($timedOutRuns) -OverallResult non-success -Classification $classification -QueuedIds @($queuedDefinitions) -Summary 'Timed out waiting for exact-SHA pipeline runs.'
+        Write-PipelineResult -Result $result
+        if ($PassThru) { return $result }
+        Write-Error -ErrorAction Continue $result.summary
         exit 3
     }
-
     Start-Sleep -Seconds $PollSeconds
 } while ($true)
 
-$hasFailure = $false
+$structuredRuns = [Collections.Generic.List[object]]::new()
+$allSignals = [Collections.Generic.List[string]]::new()
+$allCategories = [Collections.Generic.List[string]]::new()
 foreach ($run in $completed.Values | Sort-Object id) {
-    if ($run.result -eq 'succeeded') {
-        continue
-    }
-
-    $hasFailure = $true
-    Write-Host "Failed run $($run.id): result=$($run.result)" -ForegroundColor Red
-    $timeline = Invoke-AzJson @(
-        'devops', 'invoke',
-        '--organization', $Organization,
-        '--area', 'build',
-        '--resource', 'timeline',
-        '--route-parameters', "project=$Project", "buildId=$($run.id)",
-        '--api-version', '7.1',
-        '--output', 'json'
-    )
-
-    $failedTasks = @($timeline.records | Where-Object { $_.type -eq 'Task' -and $_.result -eq 'failed' })
-    foreach ($task in $failedTasks) {
-        Write-Host "Task: $($task.name)"
-        if ($null -eq $task.log -or $null -eq $task.log.id) {
-            continue
+    $failedTasks = [Collections.Generic.List[object]]::new()
+    $failedLogExcerpts = [Collections.Generic.List[string]]::new()
+    $runResult = [string]$run.result
+    if ($runResult -notin @('succeeded','failed','partiallySucceeded','canceled')) { $runResult = 'failed' }
+    if ($runResult -ne 'succeeded') {
+        Write-Host "Non-success run $($run.id): result=$runResult" -ForegroundColor Red
+        $timeline = Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')
+        foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
+            $excerpt = ''
+            if ($null -ne $task.log -and $null -ne $task.log.id) {
+                $logFile = Join-Path $env:TEMP "azdo-$($run.id)-$($task.log.id).log"
+                & $AzCli devops invoke --organization $Organization --area build --resource logs --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" --api-version 7.1 --accept-media-type text/plain --out-file $logFile | Out-Null
+                if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $logFile)) {
+                    $tail = @(Get-Content -LiteralPath $logFile -Tail $FailureLogTailLines -Encoding UTF8)
+                    $excerpt = Get-BoundedLogExcerpt -Lines $tail -MaximumBytes $FailureLogMaxBytes
+                    Write-Host $excerpt
+                }
+            }
+            $taskClassification = & $ClassifierScript -TaskNames @([string]$task.name) -LogLines @($excerpt -split '\r?\n')
+            $allCategories.Add([string]$taskClassification.category)
+            foreach ($signal in @($taskClassification.matchedSignals)) { if ($allSignals.Count -lt 8) { $allSignals.Add([string]$signal) } }
+            $failedTasks.Add([pscustomobject][ordered]@{ name=[string]$task.name; category=[string]$taskClassification.category; logExcerpt=$excerpt })
+            if ($excerpt) { $failedLogExcerpts.Add($excerpt) }
         }
-        $logFile = Join-Path $env:TEMP "azdo-$($run.id)-$($task.log.id).log"
-        & $AzCli devops invoke `
-            --organization $Organization `
-            --area build `
-            --resource logs `
-            --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" `
-            --api-version 7.1 `
-            --accept-media-type text/plain `
-            --out-file $logFile | Out-Null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $logFile)) {
-            Get-Content -LiteralPath $logFile -Tail 120
-        }
+        if ($failedTasks.Count -eq 0) { $allCategories.Add('unknown') }
     }
+    $structuredRuns.Add([pscustomobject][ordered]@{
+        id=[int]$run.id; definitionId=[int]$run.definition.id; definitionName=[string]$run.definition.name
+        url="$Organization/$Project/_build/results?buildId=$($run.id)&view=results"; sourceVersion=[string]$run.sourceVersion
+        result=$runResult; failedTasks=@($failedTasks); failedLogExcerpts=@($failedLogExcerpts)
+    })
 }
 
-if ($hasFailure) {
-    exit 1
+$hasNonSuccess = @($structuredRuns | Where-Object { [string]$_.result -ne 'succeeded' }).Count -gt 0
+if (-not $hasNonSuccess) {
+    $classification = [pscustomobject]@{ category='none'; developerEligible=$false; matchedSignals=@() }
+    $overallResult = 'succeeded'
+    $summary = "All exact-SHA pipeline runs succeeded for $Branch@$Commit."
 }
-
+else {
+    $category = if (@($allCategories) -contains 'test') { 'test' } elseif (@($allCategories) -contains 'code') { 'code' } elseif (@($allCategories) -contains 'infrastructure') { 'infrastructure' } else { 'unknown' }
+    $classification = [pscustomobject]@{ category=$category; developerEligible=$category -in @('code','test'); matchedSignals=@($allSignals) }
+    $overallResult = 'non-success'
+    $summary = "Exact-SHA pipeline completed with non-success; classified as $category."
+}
+$result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary
+Write-PipelineResult -Result $result
+if ($PassThru) { return $result }
+if ($overallResult -ne 'succeeded') { exit 1 }
 Write-Host 'All matching pipeline runs succeeded.' -ForegroundColor Green
 exit 0

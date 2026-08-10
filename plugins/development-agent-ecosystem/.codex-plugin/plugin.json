@@ -1,6 +1,6 @@
 {
   "name": "development-agent-ecosystem",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260808191900",
   "description": "Evidence-first multi-agent workflow for requirements, knowledge, implementation, review, and Azure pipelines.",
   "author": {
     "name": "PlanningSpace Engineering"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Development Agent Ecosystem",
     "shortDescription": "Evidence-first software delivery agents",
-    "longDescription": "Coordinates requirements analysis, task knowledge, implementation, review approval, and exact-commit Azure pipeline monitoring.",
+    "longDescription": "Coordinates requirements analysis, task knowledge, implementation, review approval, and exact-SHA Azure pipeline monitoring with bounded Developer remediation.",
     "developerName": "PlanningSpace Engineering",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,4 +31,3 @@
     ]
   }
 }
-

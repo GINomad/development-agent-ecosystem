@@ -21,9 +21,17 @@ if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$Task
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
-    foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
-        $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
-        if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
+    $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
+    if (-not $manualClosure) {
+        foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+            $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
+            if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
+        }
+    }
+    $pipelineResultPath = Join-Path $taskRoot 'pipeline-result.json'
+    if (Test-Path -LiteralPath $pipelineResultPath -PathType Leaf) {
+        $pipelineResult = Get-Content -LiteralPath $pipelineResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$pipelineResult.overallResult -ne 'succeeded') { throw "Knowledge Keeper cannot complete the task while the latest exact-SHA pipeline result is '$([string]$pipelineResult.overallResult)'." }
     }
 }
 $required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
@@ -32,6 +40,10 @@ foreach ($name in $required) {
     if ([IO.Path]::GetFileName($name) -ne $name) { throw "Outcome artifact must be a direct task artifact: $name" }
     $path = Join-Path $taskRoot $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required outcome artifact is missing: $name" }
+    if ($task.PSObject.Properties['reopenedAtUtc'] -and $task.PSObject.Properties['revisionResetAgentIds'] -and $AgentId -in @($task.revisionResetAgentIds)) {
+        $reopenedAt = [DateTime]::Parse([string]$task.reopenedAtUtc).ToUniversalTime()
+        if ((Get-Item -LiteralPath $path).LastWriteTimeUtc -le $reopenedAt) { throw "Outcome artifact '$name' was not refreshed for task revision $([int]$task.revision)." }
+    }
     if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
         $parsedArtifact = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($name -eq 'task-summary.json') {

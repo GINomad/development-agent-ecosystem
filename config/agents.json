@@ -42,12 +42,23 @@
       "maxTasksPerRun": 10
     }
   },
+  "workflow": {
+    "automaticContinuation": {
+      "enabled": true,
+      "maxChainSteps": 5,
+      "useElevatedExecution": true,
+      "orderedAgentIds": ["requirements_analyst", "developer", "reviewer", "pipeline_monitor", "knowledge_keeper"],
+      "stopStatuses": ["waiting_for_input", "held", "review_pending", "failed"]
+    }
+  },
   "ui": {
     "listenAddress": "127.0.0.1",
     "port": 43127,
     "openBrowser": true,
     "taskRefreshSeconds": 5,
-    "agentLogRefreshSeconds": 30
+    "agentLogRefreshSeconds": 30,
+    "diffContextLines": 3,
+    "diffMaxBytes": 2097152
   },
   "health": {
     "enabled": true,
@@ -65,12 +76,24 @@
         "sandboxMode": "danger-full-access",
         "maxAttemptsPerFailureSignature": 1
       },
+      "targetedResume": {
+        "enabled": true,
+        "requireSuccessfulRepair": true,
+        "maxAttemptsPerFailureSignature": 1,
+        "allowedAgentIds": [
+          "knowledge_keeper",
+          "requirements_analyst",
+          "developer",
+          "reviewer",
+          "pipeline_monitor"
+        ]
+      },
       "allowProductCodeChanges": false,
       "allowExternalWrites": false
     }
   },
   "review": {
-    "excludeSelfAuthored": true,
+    "excludeSelfAuthored": false,
     "includeActivePrComments": true,
     "rerunWhenCommentsChange": true,
     "maxFilesPerReview": 80,
@@ -83,6 +106,48 @@
       "mode": "disabled",
       "allowedServers": []
     }
+  },
+  "pipeline": {
+    "enabled": true,
+    "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor",
+    "delivery": {
+      "autoPushAfterCleanReview": true,
+      "remote": "origin",
+      "forbiddenBranches": ["main", "master"],
+      "allowForce": false,
+      "allowTags": false,
+      "requireCleanWorktree": true
+    },
+    "pullRequests": {
+      "enabled": true,
+      "pollIntervalMinutes": 120,
+      "completedStatuses": ["completed"],
+      "abandonedStatuses": ["abandoned"]
+    },
+    "postPush": {
+      "enabled": true,
+      "autoQueueApprovedBuilds": true,
+      "maxRemediationCycles": 3,
+      "failureLogTailLines": 120,
+      "failureLogMaxBytes": 65536
+    },
+    "repositories": [
+      {
+        "repositoryId": "azure-planningspace-ps-excel-agent",
+        "definitionIds": [],
+        "autoQueueDefinitionIds": [814, 892]
+      },
+      {
+        "repositoryId": "azure-planningspace-ps-bicep",
+        "definitionIds": [],
+        "autoQueueDefinitionIds": []
+      },
+      {
+        "repositoryId": "azure-palantirplugins-ps-app-delfi",
+        "definitionIds": [],
+        "autoQueueDefinitionIds": []
+      }
+    ]
   },
   "credentialProfiles": [
     {
@@ -213,11 +278,20 @@
       ]
     },
     "externalWrites": {
-      "behavior": "require-explicit-authorization",
-      "operations": [
-        "git-push",
+      "behavior": "configured-standing-or-explicit",
+      "standingAuthorizations": [
+        {
+          "operation": "git-push",
+          "policy": "pipeline.delivery"
+        },
+        {
+          "operation": "queue-pipeline",
+          "policy": "pipeline.repositories[].autoQueueDefinitionIds"
+        }
+      ],
+      "explicitAuthorizationOperations": [
         "publish-review-comment",
-        "queue-pipeline",
+        "deployment",
         "create-or-update-work-item"
       ]
     }
@@ -366,7 +440,7 @@
     {
       "id": "health_check",
       "name": "development_health_check",
-      "description": "Read-only ecosystem diagnostics agent with trusted deterministic repair routing for workflow, configuration, dashboard, and runtime failures.",
+      "description": "Read-only diagnostics agent that triggers bounded ecosystem recovery or routes verified repairs to the responsible configured agent.",
       "reasoningEffort": "high",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -380,7 +454,10 @@
       ],
       "handoffs": [
         "knowledge_keeper",
-        "developer"
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "pipeline_monitor"
       ],
       "requiredArtifacts": [
         "health-check-result.json"

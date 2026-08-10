@@ -1,30 +1,82 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Pipeline monitoring result",
+  "title": "Post-push pipeline monitoring result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "branch", "commit", "runs", "overallResult", "summary"],
+  "required": [
+    "taskId",
+    "repositoryId",
+    "observedAtUtc",
+    "branch",
+    "commit",
+    "queuedDefinitionIds",
+    "runs",
+    "overallResult",
+    "failureClassification",
+    "remediation",
+    "summary"
+  ],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "observedAtUtc": { "type": "string", "format": "date-time" },
     "branch": { "type": "string", "minLength": 1 },
     "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "queuedDefinitionIds": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
     "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
     "overallResult": { "enum": ["succeeded", "non-success", "no-run"] },
+    "failureClassification": { "$ref": "#/$defs/classification" },
+    "remediation": { "$ref": "#/$defs/remediation" },
     "summary": { "type": "string", "minLength": 1 }
   },
   "$defs": {
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "developerEligible", "matchedSignals"],
+      "properties": {
+        "category": { "enum": ["none", "code", "test", "infrastructure", "unknown"] },
+        "developerEligible": { "type": "boolean" },
+        "matchedSignals": { "type": "array", "maxItems": 8, "items": { "type": "string" } }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "cycle", "maxCycles", "failureSignature", "targetAgentId", "reason"],
+      "properties": {
+        "status": { "enum": ["not-applicable", "pending", "limit-reached"] },
+        "cycle": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "maxCycles": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "failureSignature": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "targetAgentId": { "type": ["string", "null"], "enum": ["developer", null] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "failedTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "category", "logExcerpt"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "category": { "enum": ["code", "test", "infrastructure", "unknown"] },
+        "logExcerpt": { "type": "string" }
+      }
+    },
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "url", "sourceVersion", "result", "failedLogExcerpts"],
+      "required": ["id", "definitionId", "definitionName", "url", "sourceVersion", "result", "failedTasks", "failedLogExcerpts"],
       "properties": {
         "id": { "type": "integer", "minimum": 1 },
+        "definitionId": { "type": "integer", "minimum": 1 },
+        "definitionName": { "type": "string", "minLength": 1 },
         "url": { "type": "string", "minLength": 1 },
         "sourceVersion": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
         "result": { "enum": ["succeeded", "failed", "partiallySucceeded", "canceled", "timedOut"] },
+        "failedTasks": { "type": "array", "items": { "$ref": "#/$defs/failedTask" } },
         "failedLogExcerpts": { "type": "array", "items": { "type": "string" } }
       }
     }
   }
 }
-

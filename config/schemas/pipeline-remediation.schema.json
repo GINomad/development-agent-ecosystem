@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Developer pipeline remediation request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "repositoryId", "branch", "commit", "category", "failureSignature", "cycle", "maxCycles", "pipelineRunIds", "failedTasks", "status", "targetAgentId", "createdAtUtc"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "category": { "enum": ["code", "test"] },
+    "failureSignature": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "cycle": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "maxCycles": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "pipelineRunIds": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+    "failedTasks": { "type": "array" },
+    "status": { "const": "pending" },
+    "targetAgentId": { "const": "developer" },
+    "createdAtUtc": { "type": "string", "format": "date-time" }
+  }
+}

@@ -249,7 +249,7 @@ try {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
                     $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; requiredArtifacts=@($_.requiredArtifacts) } })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds }
+                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
@@ -262,6 +262,25 @@ try {
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
                     $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
                     Send-Json -Response $response -Value @{ tasks=@($result.Tasks); generatedAtUtc=[string]$result.GeneratedAtUtc }
+                    continue
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/external-reviews') {
+                    $reviewRoot = Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'reports'
+                    $reports = if (Test-Path -LiteralPath $reviewRoot -PathType Container) { @(Get-ChildItem -LiteralPath $reviewRoot -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.md','.json','.txt','.log') } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 200 | ForEach-Object { [pscustomobject]@{ name=$_.Name; length=[long]$_.Length; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o') } }) } else { @() }
+                    Send-Json -Response $response -Value @{ reports=@($reports); lifecycleIndexPath=(Join-Path $stateRoot 'pr-lifecycle-index.json') }
+                    continue
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/external-reviews/([^/]+)$') {
+                    $reportName = [Uri]::UnescapeDataString($Matches[1])
+                    if ([IO.Path]::GetFileName($reportName) -ne $reportName -or [IO.Path]::GetExtension($reportName).ToLowerInvariant() -notin @('.md','.json','.txt','.log')) { throw 'Review report name is not allowed.' }
+                    $reviewRoot = [IO.Path]::GetFullPath((Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'reports'))
+                    $reportPath = [IO.Path]::GetFullPath((Join-Path $reviewRoot $reportName))
+                    if ([IO.Path]::GetDirectoryName($reportPath) -ne $reviewRoot -or -not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { Send-Json -Response $response -Value @{ error='Review report was not found.' } -StatusCode 404; continue }
+                    $info = Get-Item -LiteralPath $reportPath
+                    $maxBytes = 1048576
+                    $text = [IO.File]::ReadAllText($reportPath, [Text.Encoding]::UTF8)
+                    if ((New-Object Text.UTF8Encoding($false)).GetByteCount($text) -gt $maxBytes) { $text = $text.Substring(0, [Math]::Min($text.Length, $maxBytes)) + [Environment]::NewLine + '[report truncated]' }
+                    Send-Json -Response $response -Value @{ report=@{ name=$info.Name; content=$text; length=[long]$info.Length; lastWriteTimeUtc=$info.LastWriteTimeUtc.ToString('o') } }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/agents/([^/]+)/log$') {
@@ -283,7 +302,22 @@ try {
                         entries=@($result.Entries)
                     }
                     continue
-                }                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/artifacts/([^/]+)$') {
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/diff$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $repositoryId = [string]$request.QueryString['repositoryId']
+                    $filePath = [string]$request.QueryString['filePath']
+                    if ($repositoryId -and $repositoryId -notmatch '^[a-z0-9][a-z0-9-]*$') { throw 'Repository ID contains unsupported characters.' }
+                    if ($filePath.Length -gt 4096 -or $filePath.IndexOf([char]0) -ge 0) { throw 'Diff file path contains unsupported characters.' }
+                    $diffParameters = @{ TaskId=$requestedTaskId; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    if ($repositoryId) { $diffParameters.RepositoryId = $repositoryId }
+                    if ($filePath) { $diffParameters.FilePath = $filePath }
+                    $diffResult = & (Join-Path $PSScriptRoot 'Get-TaskDiff.ps1') @diffParameters
+                    Send-Json -Response $response -Value @{ diff=$diffResult }
+                    continue
+                }
+                if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)/artifacts/([^/]+)$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     $artifactName = [Uri]::UnescapeDataString($Matches[2])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
@@ -379,9 +413,11 @@ try {
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
                     $commentText = [string](Get-ObjectPropertyValue -Source $body -Name 'text')
                     $questionId = [string](Get-ObjectPropertyValue -Source $body -Name 'questionId')
+                    $reviewFindingId = [string](Get-ObjectPropertyValue -Source $body -Name 'reviewFindingId')
                     $targetAgentId = [string](Get-ObjectPropertyValue -Source $body -Name 'targetAgentId')
                     $commentParameters = @{ TaskId=$requestedTaskId; Text=$commentText; Author='user'; ConfigPath=$ConfigPath }
                     if (-not [string]::IsNullOrWhiteSpace($questionId)) { $commentParameters.QuestionId = $questionId }
+                    if (-not [string]::IsNullOrWhiteSpace($reviewFindingId)) { $commentParameters.ReviewFindingId = $reviewFindingId }
                     if (-not [string]::IsNullOrWhiteSpace($targetAgentId)) { $commentParameters.TargetAgentId = $targetAgentId }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
                     $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
@@ -403,7 +439,7 @@ try {
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
                         RepositoryIds=$repositoryIds; TargetAgentId=$requestedAgentId
                         UserInstruction="Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve every other agent."
-                        Resume=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                        Resume=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
                     }
                     $elevated = [bool]$body.elevated
                     if ($elevated) {
@@ -422,6 +458,44 @@ try {
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -Status running -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_queued -Message "Targeted restart queued for '$requestedAgentId'; other agents remain unchanged." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$requestedAgentId'." -TargetAgentId $requestedAgentId -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled for restart." }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/close$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $reason = [string](Get-ObjectPropertyValue -Source $body -Name 'reason')
+                    if ([string]::IsNullOrWhiteSpace($reason) -or $reason.Trim().Length -lt 5) { throw 'A closure reason of at least 5 characters is required.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $closure = & (Join-Path $PSScriptRoot 'Request-TaskClosure.ps1') -TaskId $requestedTaskId -Reason $reason -Kind manual -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
+                    $parameters = @{
+                        Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
+                        RepositoryIds=$repositoryIds; TargetAgentId='knowledge_keeper'
+                        UserInstruction='Process the explicit manual closure request. Update verified knowledge and publish the final task summary; do not restart delivery agents.'
+                        Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                    }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; closure=$closure; runId=$run.runId; executionMode='elevated-approved'; targetAgentId='knowledge_keeper'; message='Manual closure saved. Knowledge Keeper is updating evidence-backed knowledge and the final task summary.' }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/reopen$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $reason = [string](Get-ObjectPropertyValue -Source $body -Name 'reason')
+                    $resumeFrom = [string](Get-ObjectPropertyValue -Source $body -Name 'resumeFrom')
+                    if ($resumeFrom -notin @('requirements_analyst','developer')) { throw 'Reopen target must be Requirements Analyst or Developer.' }
+                    if ([string]::IsNullOrWhiteSpace($reason) -or $reason.Trim().Length -lt 5) { throw 'A reopen reason of at least 5 characters is required.' }
+                    $reopen = & (Join-Path $PSScriptRoot 'Reopen-AgentTask.ps1') -TaskId $requestedTaskId -Reason $reason -ResumeFrom $resumeFrom -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
+                        Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId; RepositoryIds=@($persistedTask.repositoryIds)
+                        UserInstruction="Task revision $([int]$persistedTask.revision) was reopened: $reason"; Resume=$true; TargetAgentId=$resumeFrom
+                        ElevatedApproved=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                    }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; revision=$reopen.Revision; resumeFrom=$resumeFrom; runId=$run.runId; message="Task reopened as revision $($reopen.Revision). '$resumeFrom' and its downstream chain were scheduled." }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/workflow/stop$') {
@@ -490,24 +564,43 @@ try {
                     $failurePath = Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 -ExpandProperty FullName
                     if (-not $failurePath) { throw 'No failure artifact is available for elevated recovery.' }
                     $failure = Get-Content -LiteralPath $failurePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $recoveryEvidencePath = $null
+                    $compatibilityEvidencePath = Join-Path $taskRoot 'health-check-result.json'
+                    if (Test-Path -LiteralPath $compatibilityEvidencePath -PathType Leaf) {
+                        try {
+                            $compatibilityEvidence = Get-Content -LiteralPath $compatibilityEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                            $compatibilityReady = @($compatibilityEvidence.checks | Where-Object {
+                                [string]$_.id -eq 'os-policy-compatibility' -and [string]$_.status -eq 'repaired'
+                            }).Count -gt 0
+                            $failureText = @([string]$failure.summary, [string]$failure.diagnostic) -join [Environment]::NewLine
+                            if ($compatibilityReady -and $failureText -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260') {
+                                $recoveryEvidencePath = $compatibilityEvidencePath
+                            }
+                        }
+                        catch { }
+                    }
                     $attemptsPath = Join-Path $taskRoot 'health-recovery-attempts.jsonl'
-                    $alreadyRepaired = $false
-                    if (Test-Path -LiteralPath $attemptsPath -PathType Leaf) {
+                    if (-not $recoveryEvidencePath -and (Test-Path -LiteralPath $attemptsPath -PathType Leaf)) {
                         foreach ($line in @(Get-Content -LiteralPath $attemptsPath -Encoding UTF8)) {
                             if ([string]::IsNullOrWhiteSpace($line)) { continue }
                             try {
                                 $record = $line | ConvertFrom-Json
-                                if ($record.failureSignature -eq $failure.failureSignature -and $record.type -eq 'recovery-completed' -and [string]$record.status -eq 'repaired') { $alreadyRepaired = $true; break }
+                                if ($record.failureSignature -eq $failure.failureSignature -and $record.type -eq 'recovery-completed' -and [string]$record.status -eq 'repaired') {
+                                    $candidateEvidencePath = if ($record.PSObject.Properties['resultPath']) { [string]$record.resultPath } else { Join-Path $taskRoot 'health-recovery-result.json' }
+                                    if (Test-Path -LiteralPath $candidateEvidencePath -PathType Leaf) { $recoveryEvidencePath = $candidateEvidencePath }
+                                    break
+                                }
                             }
                             catch { }
                         }
                     }
-                    if ($alreadyRepaired) {
-                        Send-Json -Response $response -Value @{ status='already-repaired'; taskId=$requestedTaskId; message='This failure signature was already repaired and validated. Resume the workflow when ready.' }
+                    if ($recoveryEvidencePath) {
+                        $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; RecoveryEvidencePath=$recoveryEvidencePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                        Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="Validated repair is ready. Health Check started only '$([string]$failure.agentId)' in the approved elevated profile." }
                         continue
                     }
-                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$processId; message='One elevated Health Check recovery attempt was approved and started.' }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved. After validation it will restart only '$([string]$failure.agentId)'." }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {

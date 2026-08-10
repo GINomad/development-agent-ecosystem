@@ -47,16 +47,28 @@ Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
-foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','/workflow/stop','/resume','already-repaired','Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
+foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff','/close','/reopen','/api/external-reviews','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','/workflow/stop','/resume','Start-HealthTargetedResume.ps1','Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
 if ($dashboardServer -notmatch 'Start-ScriptRunspace' -or $dashboardServer -notmatch 'in-process-runspace') { throw 'Elevated workflow must avoid the nested PowerShell process through a tracked in-process runspace.' }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
-foreach ($controlId in @('repositoryOptions','repositorySummary','taskList','taskDetail','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
+foreach ($controlId in @('repositoryOptions','repositorySummary','taskList','taskDetail','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewFeedbackStatus','externalReviewWorkspace','externalReviewList','externalReviewContent','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1')) {
+if ($dashboardServer -notmatch 'ReviewFindingId' -or $dashboardClient -notmatch 'review-finding:' -or $dashboardClient -notmatch 'Send to Reviewer' -or $dashboardClient -notmatch 'Send to Developer') { throw 'Reviewer feedback threads or addressable Reviewer/Developer replies are incomplete.' }
+$reviewReplyRoot = Join-Path $OutputRoot 'review-feedback-reply'
+$reviewReplyConfigPath = Join-Path $reviewReplyRoot 'agents.json'
+$reviewReplyConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$reviewReplyConfig.runtime.stateRoot = Join-Path $reviewReplyRoot 'state'
+Write-Utf8NoBom -Path $reviewReplyConfigPath -Content (($reviewReplyConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$reviewReplyTaskId = 'review-reply-' + [guid]::NewGuid().ToString('N')
+$reviewReplyTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $reviewReplyTaskId -TaskSelector synthetic-review-reply -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $reviewReplyConfigPath
+$reviewReply = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $reviewReplyTaskId -Text 'Implement the approved correction.' -TargetAgentId developer -ReviewFindingId REV-001 -ConfigPath $reviewReplyConfigPath
+$reviewReplyEvent = Get-Content -LiteralPath (Join-Path $reviewReplyTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object eventId -eq $reviewReply.CommentId | Select-Object -First 1
+if ([string]$reviewReply.ReviewFindingId -ne 'REV-001' -or [string]$reviewReply.TargetAgentId -ne 'developer' -or @($reviewReplyEvent.evidence) -notcontains 'review-finding:REV-001') { throw 'Reviewer feedback reply was not durably linked and targeted.' }
+Add-Check -Name 'reviewer-feedback-replies' -Detail 'Reviewer summary/findings/process suggestions are visible; replies persist by finding ID and target Reviewer or Developer'
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Get-TaskDiff.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -89,20 +101,165 @@ if ([int]$config.runtime.contextLimits.maxSourceFiles -gt 100 -or [int]$config.r
 if ([int]$config.review.maxFilesPerReview -gt 80 -or [int]$config.review.maxDiffCharacters -gt 500000) { throw 'Default PR review model-input limits are too broad.' }
 $pipelineAgent = @($config.agents | Where-Object id -eq 'pipeline_monitor') | Select-Object -First 1
 if ([string]$pipelineAgent.reasoningEffort -ne 'low') { throw 'Pipeline Monitor must use low reasoning effort for deterministic monitoring.' }
+if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postPush.maxRemediationCycles -ne 3) { throw 'Post-push monitoring must be enabled with a three-cycle remediation ceiling.' }
+if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 5 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
+if (-not [bool]$config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
+if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
+$excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
+if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; deployment 891 is forbidden.' }
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
+
+$pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
+New-Item -ItemType Directory -Path $pipelineTestRoot -Force | Out-Null
+$pipelineResultPath = Join-Path $pipelineTestRoot 'pipeline-result.json'
+$pipelineTestTaskId = 'pipeline-test-' + [guid]::NewGuid().ToString('N')
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $pipelineResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -DefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $pipelineResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -RemediationCycle 0 -MaxRemediationCycles 3 -PassThru
+}
+finally { Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue }
+if ([string]$pipelineResult.overallResult -ne 'non-success' -or [string]$pipelineResult.failureClassification.category -ne 'code' -or [string]$pipelineResult.remediation.status -ne 'pending' -or [string]$pipelineResult.remediation.targetAgentId -ne 'developer' -or [int]$pipelineResult.remediation.cycle -ne 1) { throw 'Synthetic exact-SHA code failure was not classified and routed to Developer.' }
+if (-not (Test-Path -LiteralPath $pipelineResultPath -PathType Leaf) -or (Get-Content -LiteralPath $pipelineResultPath -Raw | ConvertFrom-Json).commit -ne '0123456789abcdef0123456789abcdef01234567') { throw 'Structured pipeline-result.json was not persisted for the exact commit.' }
+$sequenceStatePath = Join-Path $pipelineTestRoot 'ordered-sequence-state.txt'
+$sequenceResultPath = Join-Path $pipelineTestRoot 'ordered-sequence-result.json'
+Remove-Item -LiteralPath $sequenceStatePath -Force -ErrorAction SilentlyContinue
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'ordered-success'
+$env:ECOSYSTEM_MOCK_PIPELINE_STATE = $sequenceStatePath
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $sequenceResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -AutoQueueDefinitionIds 814,892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $sequenceResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -RemediationCycle 0 -MaxRemediationCycles 3 -PassThru
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_STATE -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$sequenceActions = @(Get-Content -LiteralPath $sequenceStatePath)
+$queuedSequence = @($sequenceResult.queuedDefinitionIds) -join ','
+$selectedSequence = @($sequenceResult.runs.definitionId) -join ','
+$selectedRunIds = @($sequenceResult.runs.id)
+if ([string]$sequenceResult.overallResult -ne 'succeeded' -or $queuedSequence -ne '814,892' -or $selectedSequence -ne '814,892' -or $selectedRunIds -contains 9800) { throw 'Ordered pipeline monitoring did not select and queue exact-SHA definitions 814 then 892.' }
+if (($sequenceActions -join ',') -ne 'queued:814,succeeded:814,queued:892,succeeded:892') { throw 'Definition 892 was queued before exact-SHA definition 814 succeeded.' }
+Add-Check -Name 'ordered-pipeline-sequence' -Detail 'Earlier 892 is ignored; 814 exact-SHA success gates queueing and acceptance of a later 892 run'
+$infrastructureClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Publish image' -LogLines 'service connection authentication failed'
+if ([string]$infrastructureClassification.category -ne 'infrastructure' -or [bool]$infrastructureClassification.developerEligible) { throw 'Infrastructure failure must not be routed to Developer.' }
+$yamlClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Validate azure-pipelines.yml' -LogLines 'YAML syntax parse error: did not find expected key'
+if ([string]$yamlClassification.category -ne 'code' -or -not [bool]$yamlClassification.developerEligible) { throw 'YAML pipeline configuration failures must route to Developer.' }
+$pipelineTestConfigPath = Join-Path $pipelineTestRoot 'agents.json'
+$pipelineTestConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$pipelineTestConfig.runtime.stateRoot = (Join-Path $pipelineTestRoot 'state')
+Write-Utf8NoBom -Path $pipelineTestConfigPath -Content (($pipelineTestConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$pipelineTestTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $pipelineTestTaskId -TaskSelector synthetic-pipeline-test -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $pipelineTestConfigPath
+$firstRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
+$duplicateRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
+$pipelineTaskState = Get-Content -LiteralPath $pipelineTestTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Developer pipeline remediation request was not persisted, targeted, or deduplicated.' }
+Add-Check -Name 'post-push-pipeline-remediation' -Detail 'Exact-SHA run, bounded code/test classification, Developer routing, infrastructure exclusion, and three-cycle ceiling'
+
+$lifecycleTaskId = 'pr-lifecycle-test-' + [guid]::NewGuid().ToString('N')
+$lifecycleTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $lifecycleTaskId -TaskSelector synthetic-pr-lifecycle -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $pipelineTestConfigPath
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'delivery-result.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; repositoryId='azure-planningspace-ps-excel-agent'; branch='feature/synthetic-pr'; commit='0123456789abcdef0123456789abcdef01234567' } | ConvertTo-Json) + [Environment]::NewLine)
+$activePrPath = Join-Path $pipelineTestRoot 'active-pr.json'
+Write-Utf8NoBom -Path $activePrPath -Content ((@([ordered]@{ pullRequestId=123; status='active'; sourceRefName='refs/heads/feature/synthetic-pr'; title='Synthetic'; creationDate='2026-08-10T00:00:00Z'; createdBy=[ordered]@{ displayName='Test User' } }) | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$activeSync = & (Join-Path $root 'scripts\Sync-TaskPullRequestStatus.ps1') -TaskId $lifecycleTaskId -RepositoryId azure-planningspace-ps-excel-agent -PullRequestsJsonPath $activePrPath -DoNotStartKnowledgeUpdate -ConfigPath $pipelineTestConfigPath
+if ([string]$activeSync.Status -ne 'waiting' -or [string]$activeSync.Result.status -ne 'active') { throw 'Active PR lifecycle status did not keep the task waiting.' }
+$completedPrPath = Join-Path $pipelineTestRoot 'completed-pr.json'
+Write-Utf8NoBom -Path $completedPrPath -Content ((@([ordered]@{ pullRequestId=123; status='completed'; sourceRefName='refs/heads/feature/synthetic-pr'; title='Synthetic'; creationDate='2026-08-10T00:00:00Z'; createdBy=[ordered]@{ displayName='Test User' } }) | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$completedSync = & (Join-Path $root 'scripts\Sync-TaskPullRequestStatus.ps1') -TaskId $lifecycleTaskId -RepositoryId azure-planningspace-ps-excel-agent -PullRequestsJsonPath $completedPrPath -DoNotStartKnowledgeUpdate -ConfigPath $pipelineTestConfigPath
+if ([string]$completedSync.Status -ne 'completion-requested' -or -not (Test-Path -LiteralPath (Join-Path $lifecycleTask.TaskRoot 'task-closure.json'))) { throw 'Completed PR did not request final Knowledge Keeper closure.' }
+Add-Check -Name 'pull-request-lifecycle' -Detail 'Active PR waits; completed PR requests Knowledge Keeper closure; polling is fixture-backed and model-free'
+
+$deliveryFixtureId = [guid]::NewGuid().ToString('N')
+$deliveryTestRoot = Join-Path $OutputRoot "reviewed-branch-delivery-$deliveryFixtureId"
+$deliveryWorkspace = Join-Path $deliveryTestRoot 'workspace'
+New-Item -ItemType Directory -Path $deliveryWorkspace -Force | Out-Null
+& git init --quiet --initial-branch "feature/$deliveryFixtureId" $deliveryWorkspace
+if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the reviewed-branch delivery fixture repository.' }
+& git -C $deliveryWorkspace config user.email 'ecosystem-test@example.invalid'
+& git -C $deliveryWorkspace config user.name 'Ecosystem Test'
+Write-Utf8NoBom -Path (Join-Path $deliveryWorkspace 'fixture.txt') -Content "reviewed delivery fixture$([Environment]::NewLine)"
+& git -C $deliveryWorkspace add -- fixture.txt
+& git -C $deliveryWorkspace commit --quiet -m 'Create reviewed delivery fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Could not commit the reviewed-branch delivery fixture.' }
+& git -C $deliveryWorkspace remote add origin 'https://example.invalid/synthetic-reviewed-delivery'
+if ($LASTEXITCODE -ne 0) { throw 'Could not configure the reviewed-branch delivery fixture remote.' }
+
+$deliveryConfigPath = Join-Path $deliveryTestRoot 'agents.json'
+$deliveryConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$deliveryConfig.runtime.stateRoot = (Join-Path $deliveryTestRoot 'state')
+$deliveryRepositoryId = 'azure-planningspace-ps-excel-agent'
+$deliveryRepository = @($deliveryConfig.repositories | Where-Object id -eq $deliveryRepositoryId) | Select-Object -First 1
+$deliveryRepository.localWorkspace = $deliveryWorkspace
+$deliveryRepository.repository = 'synthetic-reviewed-delivery'
+Write-Utf8NoBom -Path $deliveryConfigPath -Content (($deliveryConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+
+$legacyDeliveryTaskId = "legacy-delivery-$deliveryFixtureId"
+$legacyDeliveryTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$legacyDeliveryTaskId"
+New-Item -ItemType Directory -Path $legacyDeliveryTaskRoot -Force | Out-Null
+$legacyDeliveryTask = [ordered]@{
+    taskId = $legacyDeliveryTaskId
+    repositoryId = $deliveryRepositoryId
+    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' } }
+}
+Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'task.json') -Content (($legacyDeliveryTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'review-result.json') -Content (([ordered]@{ findings=@(); heldScopeViolations=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$deliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $legacyDeliveryTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne "feature/$deliveryFixtureId" -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/feature/$deliveryFixtureId") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
+Add-Check -Name 'reviewed-branch-delivery-legacy-task' -Detail 'Prepare-only delivery accepts legacy singular repositoryId task state without pushing'
+
+$legacyResumeTaskId = "legacy-targeted-resume-$deliveryFixtureId"
+$legacyResumeTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$legacyResumeTaskId"
+New-Item -ItemType Directory -Path $legacyResumeTaskRoot -Force | Out-Null
+$legacyResumeFailureSignature = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+$legacyResumeTask = [ordered]@{
+    taskId = $legacyResumeTaskId
+    selector = 'synthetic-legacy-targeted-resume'
+    mode = 'manual'
+    status = 'interrupted'
+    repositoryId = $deliveryRepositoryId
+}
+$legacyResumeFailure = [ordered]@{
+    taskId = $legacyResumeTaskId
+    agentId = 'pipeline_monitor'
+    failureSignature = $legacyResumeFailureSignature
+    summary = 'Synthetic targeted-resume regression.'
+    diagnostic = 'Synthetic deterministic ecosystem defect.'
+}
+$legacyResumeRecovery = [ordered]@{
+    failureSignature = $legacyResumeFailureSignature
+    status = 'repaired'
+}
+$legacyResumeTaskPath = Join-Path $legacyResumeTaskRoot 'task.json'
+$legacyResumeFailurePath = Join-Path $legacyResumeTaskRoot 'agent-failure.json'
+$legacyResumeRecoveryPath = Join-Path $legacyResumeTaskRoot 'health-recovery-result.json'
+Write-Utf8NoBom -Path $legacyResumeTaskPath -Content (($legacyResumeTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path $legacyResumeFailurePath -Content (($legacyResumeFailure | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path $legacyResumeRecoveryPath -Content (($legacyResumeRecovery | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$legacyResumePlan = & (Join-Path $root 'scripts\Start-HealthTargetedResume.ps1') -TaskId $legacyResumeTaskId -FailurePath $legacyResumeFailurePath -RecoveryEvidencePath $legacyResumeRecoveryPath -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$legacyResumePlan.TargetAgentId -ne 'pipeline_monitor' -or @($legacyResumePlan.RepositoryIds).Count -ne 1 -or [string]$legacyResumePlan.RepositoryIds[0] -ne $deliveryRepositoryId) { throw 'Prepare-only targeted resume did not preserve the legacy singular repositoryId task scope.' }
+Add-Check -Name 'health-targeted-resume-legacy-task' -Detail 'Prepare-only targeted resume normalizes legacy singular repositoryId task state without dispatching a workflow'
 
 $knowledgePrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\knowledge-keeper.md') -Raw -Encoding UTF8
 $taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
 $healthPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\health-check.md') -Raw -Encoding UTF8
 $resumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -Raw -Encoding UTF8
 $healthRecoveryScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
+$healthTargetedResumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-HealthTargetedResume.ps1') -Raw -Encoding UTF8
+$healthRecoverySchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\health-recovery-result.schema.json') -Raw -Encoding UTF8
 if ($knowledgePrompt -notmatch 'Never cyclically poll' -or $knowledgePrompt -notmatch 'explicit agent knowledge or skill requests') { throw 'Knowledge Keeper is not pull-based or still permits subagent polling.' }
 if ($taskProtocol -notmatch 'Publish-AgentOutcome.ps1' -or $taskProtocol -notmatch 'agent-checkpoints' -or $taskProtocol -notmatch 'autonomous bounded work blocks' -or $taskProtocol -notmatch 'Get-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'Acknowledge-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'same agent invocation') { throw 'Private checkpoint, autonomous work-block, successful outcome, or end-of-block comment contract is missing.' }
 if ($dashboardHtml -notmatch 'finishing its current work block' -or $dashboardClient -notmatch 'no restart is needed') { throw 'Dashboard does not explain automatic end-of-block comment consumption.' }
 if ($healthPrompt -notmatch 'health-diagnostic-context.json' -or $healthRecoveryScript -notmatch 'Get-BoundedTextTail' -or $healthRecoveryScript -notmatch 'workflowLogTailLines') { throw 'Health Check bounded diagnostic context is incomplete.' }
+if ($healthPrompt -notmatch 'diagnosis is not a terminal outcome' -or $healthRecoveryScript -notmatch 'existingDiagnosis' -or $healthRecoveryScript -notmatch 'health-repair-routing.json' -or $healthRecoverySchema -notmatch 'routeAgentId' -or $healthRecoverySchema -notmatch 'repairOwner') { throw 'Health Check repair-or-route contract is incomplete.' }
+if ($workflowScript -notmatch 'health_recovery_handoff' -or $workflowScript -notmatch 'DiagnosisPath') { throw 'A completed Health Check diagnosis is not handed to automatic recovery.' }
+if ($healthPrompt -notmatch 'restart exactly the failed agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the failed agent.' }
+if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or $healthTargetedResumeScript -notmatch 'HealthRecoveryRetry = \$true' -or $healthTargetedResumeScript -notmatch 'maxAttemptsPerFailureSignature' -or $healthTargetedResumeScript -notmatch 'RecoveryEvidencePath') { throw 'Health Check targeted-resume launcher is missing its target, validation, or retry-loop guard.' }
+if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
+if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
 if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'") { throw 'Resume artifact fingerprinting or completed-outcome filtering is incomplete.' }
 $knowledgeAgent = @($config.agents | Where-Object id -eq 'knowledge_keeper') | Select-Object -First 1
 if (@($knowledgeAgent.requiredArtifacts) -notcontains 'task-summary.json' -or -not (Test-Path -LiteralPath (Join-Path $root 'config\schemas\task-summary.schema.json'))) { throw 'Final per-task summary contract is incomplete.' }
+if ((Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -Raw -Encoding UTF8) -notmatch "latest exact-SHA pipeline result") { throw 'Final task publication does not reject a non-success latest pipeline result.' }
 Add-Check -Name 'bounded-pull-orchestration' -Detail 'On-demand knowledge, terminal-only outcomes, private checkpoints, batched comments, artifact fingerprints, and bounded health tails'
 
 $quorumRoute = & (Join-Path $root 'scripts\Get-AssignedTaskContext.ps1') -TaskSelector 'https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1854726' -ResolveOnly -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -141,10 +298,13 @@ if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agen
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
 if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
-foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1','Invoke-GuardedCodex.ps1')) {
+$targetedResumeConfig = $config.health.automaticRecovery.targetedResume
+if (-not [bool]$targetedResumeConfig.enabled -or -not [bool]$targetedResumeConfig.requireSuccessfulRepair -or [int]$targetedResumeConfig.maxAttemptsPerFailureSignature -ne 1) { throw 'Health Check targeted resume must require validated repair and permit exactly one attempt.' }
+if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'requirements_analyst' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'developer') { throw 'Health Check targeted resume allowlist is unsafe or incomplete.' }
+foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
-Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); sandbox=workspace-write; elevated=approval-gated; productWrites=false; externalWrites=false"
+Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; sandbox=workspace-write; elevated=approval-gated; productWrites=false; externalWrites=false"
 
 $guardTestRoot = Join-Path $OutputRoot 'execution-guard'
 New-Item -ItemType Directory -Path $guardTestRoot -Force | Out-Null

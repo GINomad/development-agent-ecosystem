@@ -72,6 +72,10 @@
           <p class="muted">Task history survives page reloads. Status is refreshed automatically at the configured interval.</p>
         </div>
         <div class="monitor-controls">
+          <div class="segmented" role="tablist" aria-label="Review workspace">
+            <button type="button" class="active" data-review-tab="local">Local Developer review</button>
+            <button type="button" data-review-tab="external">External PR reviews</button>
+          </div>
           <div class="segmented" role="group" aria-label="Task filter">
             <button type="button" class="active" data-task-filter="active">Active</button>
             <button type="button" data-task-filter="all">All</button>
@@ -81,7 +85,7 @@
         </div>
       </div>
 
-      <div class="task-monitor">
+      <div class="task-monitor" id="localReviewWorkspace">
         <aside id="taskList" class="task-list empty">No active tasks.</aside>
         <div id="taskDetail" class="task-detail empty-detail">
           <div id="taskDetailEmpty" class="detail-placeholder">Select a task to inspect its agents, events, and artifacts.</div>
@@ -111,12 +115,72 @@
                   <h4 id="agentOutcomeTitle">Agent outcome</h4>
                   <p id="agentOutcomeMeta"></p>
                 </div>
-                <button class="text-button" id="closeAgentOutcome" type="button">Close</button>
+                <div class="outcome-actions">
+                  <button class="button secondary compact-button hidden" id="openReviewDiff" type="button">Open code diff</button>
+                  <button class="text-button" id="closeAgentOutcome" type="button">Close</button>
+                </div>
               </div>
               <p class="agent-outcome-summary" id="agentOutcomeSummary"></p>
               <div class="agent-outcome-artifacts" id="agentOutcomeArtifacts"></div>
               <p class="agent-outcome-artifact-meta" id="agentOutcomeArtifactMeta"></p>
               <pre id="agentOutcomeContent"></pre>
+            </section>
+            <section class="review-diff-panel hidden" id="reviewDiffPanel" aria-live="polite">
+              <div class="review-diff-header">
+                <div>
+                  <p class="detail-kicker">REVIEW CODE DIFF</p>
+                  <h4 id="reviewDiffTitle">Task changes</h4>
+                  <p id="reviewDiffMeta">Read-only Git comparison for the repositories assigned to this task.</p>
+                </div>
+                <div class="outcome-actions">
+                  <button class="button secondary compact-button" id="refreshReviewDiff" type="button">Refresh diff</button>
+                  <button class="text-button" id="closeReviewDiff" type="button">Close</button>
+                </div>
+              </div>
+              <section class="review-feedback-panel" aria-labelledby="reviewFeedbackTitle">
+                <div class="review-feedback-heading">
+                  <div>
+                    <p class="detail-kicker">REVIEWER FEEDBACK</p>
+                    <h5 id="reviewFeedbackTitle">Findings, suggestions, and replies</h5>
+                  </div>
+                  <p id="reviewFeedbackSummary">Loading Reviewer outcome...</p>
+                </div>
+                <div class="review-feedback-list" id="reviewFeedbackList"></div>
+                <p class="agent-action-status" id="reviewFeedbackStatus" role="status"></p>
+                <p class="hint">Each reply is saved in the task ledger and linked to the selected Reviewer item. Send it to Reviewer for clarification or to Developer as an implementation instruction. Sending does not approve a finding and does not restart an agent.</p>
+              </section>
+              <div class="review-diff-layout">
+                <aside class="review-diff-files" id="reviewDiffFiles"></aside>
+                <div class="review-diff-content">
+                  <div class="review-diff-file-header">
+                    <strong id="reviewDiffFileName">Select a changed file</strong>
+                    <span id="reviewDiffFileStats"></span>
+                  </div>
+                  <div class="diff-lines" id="reviewDiffLines" role="list"></div>
+                </div>
+              </div>
+              <div class="diff-comment-panel">
+                <p class="diff-selection" id="reviewDiffSelection">No line selected. The comment will apply to the whole diff.</p>
+                <div class="diff-comment-grid">
+                  <label>
+                    Send to
+                    <select id="reviewDiffCommentTarget">
+                      <option value="reviewer">Reviewer</option>
+                      <option value="developer">Developer</option>
+                    </select>
+                  </label>
+                  <label>
+                    Comment
+                    <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Leave a general review note, or select a diff line first to attach file and line context."></textarea>
+                  </label>
+                </div>
+                <div class="actions">
+                  <button class="button primary" id="sendReviewDiffComment" type="button">Send diff comment</button>
+                  <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
+                </div>
+                <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
+                <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
+              </div>
             </section>
             <section class="agent-log-panel hidden" id="agentLogPanel" aria-live="polite">
               <div class="agent-log-header">
@@ -169,9 +233,39 @@
                 <div><dt id="resumeTaskHelp">Resume workflow</dt><dd>Continues from the persisted checkpoint and starts only unfinished agents. Completed agents and artifacts are preserved.</dd></div>
                 <div><dt id="stopWorkflowHelp">Stop workflow</dt><dd>Stops this task's active process tree or runspace, preserves history and completed work, and marks running agents as waiting.</dd></div>
                 <div><dt id="resumeElevatedWorkflowHelp">Resume workflow elevated</dt><dd>Continues only unfinished agents in an in-process host runspace without a nested PowerShell or Codex OS sandbox. Use for policy error 1260; all delivery gates still apply.</dd></div>
-                <div><dt id="approveElevatedRecoveryHelp">Approve elevated repair</dt><dd>Allows Health Check one elevated attempt to repair the ecosystem itself. It does not resume product implementation or authorize product-code changes.</dd></div>
+                <div><dt id="approveElevatedRecoveryHelp">Approve elevated repair</dt><dd>Allows one elevated ecosystem repair. After validation, Health Check restarts only the failed agent once; it does not restart other agents, authorize product-code changes, or bypass review and external-write gates.</dd></div>
               </dl>
               </div>
+            </details>
+
+            <details class="manual-close-panel" id="manualClosePanel">
+              <summary>Close task manually</summary>
+              <label>
+                Closure reason
+                <textarea id="manualCloseReason" rows="3" maxlength="2000" placeholder="Explain why the task is being closed without waiting for a completed PR."></textarea>
+              </label>
+              <div class="actions">
+                <button class="button danger" id="closeTaskManually" type="button">Close task and update knowledge</button>
+              </div>
+              <p class="agent-action-status" id="manualCloseStatus" role="status"></p>
+              <p class="hint">Stops delivery progression, preserves all outcomes, and starts only Knowledge Keeper. The task becomes completed after the evidence-backed knowledge update and final summary succeed.</p>
+            </details>
+            <details class="manual-close-panel hidden" id="reopenTaskPanel">
+              <summary>Reopen task for bug fix or rework</summary>
+              <label>
+                Reopen from
+                <select id="reopenFromAgent">
+                  <option value="requirements_analyst">Requirements Analyst</option>
+                  <option value="developer">Developer</option>
+                </select>
+              </label>
+              <label>
+                Reason
+                <textarea id="reopenTaskReason" rows="3" maxlength="2000" placeholder="Describe the bug, changed requirement, or required rework."></textarea>
+              </label>
+              <div class="actions"><button class="button danger" id="reopenTask" type="button">Reopen as new revision</button></div>
+              <p class="agent-action-status" id="reopenTaskStatus" role="status"></p>
+              <p class="hint">Preserves the complete ledger and archives the current artifacts. The selected agent and downstream chain receive fresh revision-scoped work.</p>
             </details>
 
             <div class="detail-columns">
@@ -197,6 +291,16 @@
           </div>
         </div>
       </div>
+      <section class="external-review-workspace hidden" id="externalReviewWorkspace">
+        <aside class="external-review-list" id="externalReviewList">No external review reports.</aside>
+        <div class="external-review-viewer">
+          <div class="artifact-viewer-header">
+            <div><h4 id="externalReviewTitle">Select a review report</h4><p id="externalReviewMeta">Reports produced for authored or assigned active pull requests.</p></div>
+            <button class="button secondary compact-button" id="refreshExternalReviews" type="button">Refresh reports</button>
+          </div>
+          <pre id="externalReviewContent">Review Monitor reports will appear here. PR lifecycle status polling does not invoke AI.</pre>
+        </div>
+      </section>
     </section>
 
     <div class="grid">
