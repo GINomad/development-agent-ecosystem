@@ -16,6 +16,20 @@ function Add-Check {
     $checks.Add([pscustomobject]@{ Name=$Name; Status='passed'; Detail=$Detail })
 }
 
+function Invoke-SchedulerTestGit {
+    param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments)
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& git -C $Workspace @Arguments 2>&1)
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Scheduler test git $($Arguments -join ' ') failed: $($output -join [Environment]::NewLine)" }
+    @($output | ForEach-Object { [string]$_ })
+}
+
 $powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.Extension -in @('.ps1','.psm1') })
 $parseErrors = [Collections.Generic.List[object]]::new()
 foreach ($file in $powerShellFiles) {
@@ -52,6 +66,7 @@ foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff',
 }
 if ($dashboardServer -notmatch 'Start-ScriptRunspace' -or $dashboardServer -notmatch 'in-process-runspace') { throw 'Elevated workflow must avoid the nested PowerShell process through a tracked in-process runspace.' }
 if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard API must expose the task collection as lower-camel-case tasks.' }
+if ($dashboardServer -notmatch 'Test-TaskWorkflowActive' -or $dashboardServer -notmatch 'idle-awaiting-approval' -or $dashboardServer -notmatch 'queued-for-checkpoint' -or $dashboardClient -notmatch 'confirmIdleAgentDispatch' -or $dashboardClient -notmatch 'autoStartIdle: false') { throw 'Idle targeted comments are not wired to approval-gated immediate dispatch and active-workflow batching.' }
 foreach ($controlId in @('repositoryOptions','repositorySummary','taskList','taskDetail','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewFeedbackStatus','externalReviewWorkspace','externalReviewList','externalReviewContent','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
@@ -68,7 +83,7 @@ $reviewReply = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $review
 $reviewReplyEvent = Get-Content -LiteralPath (Join-Path $reviewReplyTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object eventId -eq $reviewReply.CommentId | Select-Object -First 1
 if ([string]$reviewReply.ReviewFindingId -ne 'REV-001' -or [string]$reviewReply.TargetAgentId -ne 'developer' -or @($reviewReplyEvent.evidence) -notcontains 'review-finding:REV-001') { throw 'Reviewer feedback reply was not durably linked and targeted.' }
 Add-Check -Name 'reviewer-feedback-replies' -Detail 'Reviewer summary/findings/process suggestions are visible; replies persist by finding ID and target Reviewer or Developer'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Get-TaskDiff.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Set-WorkflowInputRoute.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Get-TaskDiff.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -88,6 +103,114 @@ if ($dashboardServer -notmatch 'Get-ObjectPropertyValue' -or $dashboardServer -m
 if ($commentScript -notmatch 'TargetAgentId' -or $dashboardClient -notmatch 'sendSelectedAgentComment' -or $workflowScript -notmatch 'Resume scope:' -or $workflowScript -notmatch 'MUST dispatch only') { throw 'Targeted comments and checkpoint-only resume are not wired end to end.' }
 Add-Check -Name 'multi-repository-and-questions' -Detail 'Ordered repositoryIds, additional workspaces, visible open questions, targeted answers, and per-agent restart'
 
+$staleQuestionRoot = Join-Path $OutputRoot 'stale-agent-questions'
+$staleQuestionConfigPath = Join-Path $staleQuestionRoot 'agents.json'
+$staleQuestionConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$staleQuestionConfig.runtime.stateRoot = Join-Path $staleQuestionRoot 'state'
+Write-Utf8NoBom -Path $staleQuestionConfigPath -Content (($staleQuestionConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$staleQuestionTaskId = 'stale-question-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $staleQuestionTaskId -TaskSelector synthetic-stale-question -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $staleQuestionConfigPath
+$staleQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $staleQuestionTaskId -AgentId pipeline_monitor -Question 'Is this prior input still required?' -ConfigPath $staleQuestionConfigPath
+$restartCutoff = [DateTime]::Parse([string]$staleQuestion.TimestampUtc).ToUniversalTime().AddMilliseconds(1)
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $staleQuestionTaskId -Status interrupted -AgentId pipeline_monitor -AgentStatus completed -Stage targeted_agent_completed -Message 'Targeted restart completed without an input gate.' -ConfigPath $staleQuestionConfigPath | Out-Null
+$staleResolution = & (Join-Path $root 'scripts\Resolve-StaleAgentQuestions.ps1') -TaskId $staleQuestionTaskId -AgentId pipeline_monitor -RestartedAtUtc $restartCutoff -ConfigPath $staleQuestionConfigPath
+$staleQuestionView = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $staleQuestionTaskId -ConfigPath $staleQuestionConfigPath
+if (@($staleResolution.SupersededQuestionIds) -notcontains [string]$staleQuestion.QuestionId -or @($staleQuestionView.Tasks[0].openQuestions).Count -ne 0) { throw 'A question made obsolete by a successful targeted restart remained visible on the dashboard.' }
+$activeQuestionTaskId = 'active-question-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $activeQuestionTaskId -TaskSelector synthetic-active-question -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $staleQuestionConfigPath
+$activeQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $activeQuestionTaskId -AgentId reviewer -Question 'This input is still required.' -ConfigPath $staleQuestionConfigPath
+$activeCutoff = [DateTime]::Parse([string]$activeQuestion.TimestampUtc).ToUniversalTime().AddMilliseconds(1)
+$activeResolution = & (Join-Path $root 'scripts\Resolve-StaleAgentQuestions.ps1') -TaskId $activeQuestionTaskId -AgentId reviewer -RestartedAtUtc $activeCutoff -ConfigPath $staleQuestionConfigPath
+$activeQuestionView = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $activeQuestionTaskId -ConfigPath $staleQuestionConfigPath
+if (@($activeResolution.PreservedQuestionIds) -notcontains [string]$activeQuestion.QuestionId -or @($activeQuestionView.Tasks[0].openQuestions).Count -ne 1) { throw 'An agent still waiting_for_input lost its active question.' }
+Add-Check -Name 'stale-question-reconciliation' -Detail 'Successful targeted restart supersedes obsolete questions while an active waiting_for_input gate remains visible'
+
+$routingRoot = Join-Path $OutputRoot 'workflow-routing'
+$routingConfigPath = Join-Path $routingRoot 'agents.json'
+$routingConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$routingConfig.runtime.stateRoot = Join-Path $routingRoot 'state'
+Write-Utf8NoBom -Path $routingConfigPath -Content (($routingConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$routingTaskId = 'routing-' + [guid]::NewGuid().ToString('N')
+$routingTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $routingTaskId -TaskSelector synthetic-routing -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $routingConfigPath
+$generalComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $routingTaskId -Text 'Please implement the confirmed source-code correction.' -ConfigPath $routingConfigPath
+if ([string]$generalComment.TargetAgentId -ne 'orchestrator' -or [string]$generalComment.RoutingStatus -ne 'pending-orchestrator') { throw 'Untargeted workflow comments must enter the Orchestrator queue.' }
+$orchestratorBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
+if (@($orchestratorBatch.eventIds) -notcontains [string]$generalComment.CommentId) { throw 'Orchestrator did not receive the untargeted workflow comment.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $routingTaskId -AgentId developer -AgentStatus completed -Stage synthetic_preserved_target -Message 'Synthetic completed target must remain preserved during routing.' -ConfigPath $routingConfigPath | Out-Null
+$route = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $generalComment.CommentId -TargetAgentIds developer -Rationale 'The comment requests a product source-code change, which is Developer-owned.' -Confidence high -ConfigPath $routingConfigPath
+$routeAgain = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $generalComment.CommentId -TargetAgentIds reviewer -Rationale 'A duplicate route must return the persisted decision.' -Confidence low -ConfigPath $routingConfigPath
+$developerBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId developer -ConfigPath $routingConfigPath
+$orchestratorAfter = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
+$directComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $routingTaskId -Text 'Review the signing diff.' -TargetAgentId reviewer -ConfigPath $routingConfigPath
+$orchestratorFinal = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
+$routingTaskAfter = Get-Content -LiteralPath (Join-Path $routingTask.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$route.Status -ne 'routed' -or [string]$routeAgain.Status -ne 'already-routed' -or @($route.Routing.targets) -notcontains 'developer') { throw 'Workflow routing is not durable and idempotent.' }
+if (@($developerBatch.comments | Where-Object sourceEventId -eq $generalComment.CommentId).Count -ne 1 -or [int]$orchestratorAfter.count -ne 0 -or [int]$orchestratorFinal.count -ne 0 -or [string]$directComment.RoutingStatus -ne 'direct' -or [string]$routingTaskAfter.agentStatuses.developer.status -ne 'completed') { throw 'Routed inputs must remain addressable without changing a preserved target agent status.' }
+if (-not (Test-Path -LiteralPath (Join-Path $routingTask.TaskRoot 'workflow-routing.jsonl') -PathType Leaf)) { throw 'workflow-routing.jsonl was not persisted.' }
+Add-Check -Name 'workflow-orchestrator-routing' -Detail 'General comments route once; explicit targets remain direct; routed inputs are addressable without rewriting preserved target status'
+
+$schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
+$schedulerWorkspace = Join-Path $schedulerRoot 'repository'
+$schedulerConfigPath = Join-Path $schedulerRoot 'agents.json'
+New-Item -ItemType Directory -Path $schedulerWorkspace -Force | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('init','-b','main') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('config','user.email','ecosystem-tests@example.invalid') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('config','user.name','Agent Ecosystem Tests') | Out-Null
+Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "baseline$([Environment]::NewLine)"
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('add','tracked.txt') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('commit','-m','baseline') | Out-Null
+
+$schedulerConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$schedulerConfig.runtime.stateRoot = Join-Path $schedulerRoot 'state'
+$schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath = Join-Path $schedulerRoot 'state\workspace-coordinator.json'
+$schedulerRepository = @($schedulerConfig.repositories | Where-Object id -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
+$schedulerRepository.localWorkspace = $schedulerWorkspace
+Write-Utf8NoBom -Path $schedulerConfigPath -Content (($schedulerConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+
+$taskAId = 'workspace-a-' + [guid]::NewGuid().ToString('N')
+$taskBId = 'workspace-b-' + [guid]::NewGuid().ToString('N')
+$taskCId = 'workspace-c-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskAId -TaskSelector synthetic-workspace-a -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('switch','-c','feature/task-a') | Out-Null
+$leaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -ConfigPath $schedulerConfigPath
+Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "task-a$([Environment]::NewLine)"
+Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'task-a-untracked.txt') -Content "task-a-untracked$([Environment]::NewLine)"
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Message 'Synthetic task A is idle.' -ConfigPath $schedulerConfigPath | Out-Null
+
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskBId -TaskSelector synthetic-workspace-b -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+$leaseB = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath
+$branchAfterB = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
+$statusAfterB = @(Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('status','--porcelain=v1'))
+$taskASessionPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\workspace-session.json"
+$taskASuspended = Get-Content -LiteralPath $taskASessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$leaseA.Status -ne 'active' -or [string]$leaseB.Status -ne 'active' -or $branchAfterB -ne 'main' -or $statusAfterB.Count -ne 0 -or [string]::IsNullOrWhiteSpace([string]$taskASuspended.repositories[0].stashCommit)) { throw 'Switching to task B did not preserve and isolate task A changes.' }
+
+Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('switch','-c','feature/task-b') | Out-Null
+Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "task-b$([Environment]::NewLine)"
+Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'task-b-untracked.txt') -Content "task-b-untracked$([Environment]::NewLine)"
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskBId -Status interrupted -Message 'Synthetic task B is idle.' -ConfigPath $schedulerConfigPath | Out-Null
+$leaseARestored = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -ConfigPath $schedulerConfigPath
+$branchAfterA = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
+$taskAText = Get-Content -LiteralPath (Join-Path $schedulerWorkspace 'tracked.txt') -Raw -Encoding UTF8
+$taskAUntrackedExists = Test-Path -LiteralPath (Join-Path $schedulerWorkspace 'task-a-untracked.txt') -PathType Leaf
+$taskARestoredSession = Get-Content -LiteralPath $taskASessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskBSessionPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskBId\workspace-session.json"
+$taskBSuspended = Get-Content -LiteralPath $taskBSessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$leaseARestored.Status -ne 'active' -or $branchAfterA -ne 'feature/task-a' -or $taskAText.Trim() -ne 'task-a' -or -not $taskAUntrackedExists -or -not [string]::IsNullOrWhiteSpace([string]$taskARestoredSession.repositories[0].stashCommit) -or [string]::IsNullOrWhiteSpace([string]$taskBSuspended.repositories[0].stashCommit)) { throw 'Returning to task A did not restore its exact branch and working tree.' }
+
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Message 'Synthetic task A yields the lease.' -ConfigPath $schedulerConfigPath | Out-Null
+$leaseBRestored = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath
+$branchAfterBRestore = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
+$taskBText = Get-Content -LiteralPath (Join-Path $schedulerWorkspace 'tracked.txt') -Raw -Encoding UTF8
+if ([string]$leaseBRestored.Status -ne 'active' -or $branchAfterBRestore -ne 'feature/task-b' -or $taskBText.Trim() -ne 'task-b' -or -not (Test-Path -LiteralPath (Join-Path $schedulerWorkspace 'task-b-untracked.txt') -PathType Leaf)) { throw 'Returning to task B did not restore its exact branch and working tree.' }
+
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskBId -Status running -Message 'Synthetic task B owns the workspace.' -ConfigPath $schedulerConfigPath | Out-Null
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskCId -TaskSelector synthetic-workspace-c -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+$queuedC = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskCId -ConfigPath $schedulerConfigPath
+$taskC = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskCId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$queuedC.Status -ne 'queued' -or [string]$taskC.status -ne 'queued') { throw 'A second task was not queued while another task owned the workspace lease.' }
+Add-Check -Name 'serialized-workspace-scheduler' -Detail 'One task owns the workspace; later tasks queue; task branches and tracked/untracked changes survive task-specific stash/restore'
+
 $requirementsPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
 foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist','coverage')) {
     if ($requirementsPrompt -notmatch [regex]::Escape($excludedTree)) { throw ('Requirements Analyst first-party boundary is missing exclusion: ' + $excludedTree) }
@@ -96,12 +219,17 @@ if ($requirementsPrompt -notmatch 'first-party source code' -or $requirementsPro
 Add-Check -Name 'requirements-first-party-boundary' -Detail 'Requirements Analyst excludes dependency implementations, caches, vendor trees, and generated output'
 
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if (-not [bool]$config.workflow.orchestration.enabled -or [string]$config.workflow.orchestration.agentId -ne 'orchestrator' -or [string]$config.workflow.orchestration.fallbackAgentId -ne 'requirements_analyst') { throw 'Workflow Orchestrator configuration is incomplete.' }
+$orchestratorAgent = @($config.agents | Where-Object id -eq 'orchestrator') | Select-Object -First 1
+if (-not $orchestratorAgent -or @($orchestratorAgent.responsibilities).Count -lt 3) { throw 'Orchestrator responsibilities are not defined in the canonical agent directory.' }
 if ([int]$config.ui.agentLogRefreshSeconds -ne 30) { throw 'Default ui.agentLogRefreshSeconds must be 30.' }
 if ([int]$config.runtime.contextLimits.maxSourceFiles -gt 100 -or [int]$config.runtime.contextLimits.maxCommandOutputBytes -gt 65536) { throw 'Default AI context limits are too broad.' }
 if ([int]$config.review.maxFilesPerReview -gt 80 -or [int]$config.review.maxDiffCharacters -gt 500000) { throw 'Default PR review model-input limits are too broad.' }
 $pipelineAgent = @($config.agents | Where-Object id -eq 'pipeline_monitor') | Select-Object -First 1
 if ([string]$pipelineAgent.reasoningEffort -ne 'low') { throw 'Pipeline Monitor must use low reasoning effort for deterministic monitoring.' }
-if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postPush.maxRemediationCycles -ne 3) { throw 'Post-push monitoring must be enabled with a three-cycle remediation ceiling.' }
+$pipelinePrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\pipeline-monitor.md') -Raw -Encoding UTF8
+if ($pipelinePrompt -notmatch 'Refresh-TaskPipelineResult.ps1' -or $pipelinePrompt -notmatch 'Pull-request creation is never a prerequisite' -or $pipelinePrompt -notmatch 'older in-progress retry must not hide a newer terminal run') { throw 'Pipeline Monitor targeted restart must refresh the newest exact-SHA logs before PR synchronization.' }
+if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postPush.maxRemediationCycles -ne 3 -or [int]$config.pipeline.postPush.activityHeartbeatSeconds -ne 60) { throw 'Post-push monitoring must be enabled with a 60-second activity heartbeat and three-cycle remediation ceiling.' }
 if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 5 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
 if (-not [bool]$config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
 if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
@@ -113,13 +241,16 @@ $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
 New-Item -ItemType Directory -Path $pipelineTestRoot -Force | Out-Null
 $pipelineResultPath = Join-Path $pipelineTestRoot 'pipeline-result.json'
 $pipelineTestTaskId = 'pipeline-test-' + [guid]::NewGuid().ToString('N')
+$pipelineProgressStages = [Collections.Generic.List[string]]::new()
+$pipelineProgressCallback = { param($Stage, $Summary, $Details) $pipelineProgressStages.Add([string]$Stage) }.GetNewClosure()
 $env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
 try {
-    $pipelineResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -DefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $pipelineResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -RemediationCycle 0 -MaxRemediationCycles 3 -PassThru
+    $pipelineResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -DefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $pipelineResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -RemediationCycle 0 -MaxRemediationCycles 3 -ProgressHeartbeatSeconds 1 -ProgressCallback $pipelineProgressCallback -PassThru
 }
 finally { Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue }
 if ([string]$pipelineResult.overallResult -ne 'non-success' -or [string]$pipelineResult.failureClassification.category -ne 'code' -or [string]$pipelineResult.remediation.status -ne 'pending' -or [string]$pipelineResult.remediation.targetAgentId -ne 'developer' -or [int]$pipelineResult.remediation.cycle -ne 1) { throw 'Synthetic exact-SHA code failure was not classified and routed to Developer.' }
 if (-not (Test-Path -LiteralPath $pipelineResultPath -PathType Leaf) -or (Get-Content -LiteralPath $pipelineResultPath -Raw | ConvertFrom-Json).commit -ne '0123456789abcdef0123456789abcdef01234567') { throw 'Structured pipeline-result.json was not persisted for the exact commit.' }
+if (@($pipelineProgressStages) -notcontains 'pipeline_discovery' -or @($pipelineProgressStages) -notcontains 'pipeline_waiting' -or @($pipelineProgressStages) -notcontains 'pipeline_failure_analysis' -or @($pipelineProgressStages) -notcontains 'pipeline_terminal') { throw 'Pipeline native watcher did not publish the required dashboard stages.' }
 $sequenceStatePath = Join-Path $pipelineTestRoot 'ordered-sequence-state.txt'
 $sequenceResultPath = Join-Path $pipelineTestRoot 'ordered-sequence-result.json'
 Remove-Item -LiteralPath $sequenceStatePath -Force -ErrorAction SilentlyContinue
@@ -141,8 +272,22 @@ $selectedRunIds = @($sequenceResult.runs.id)
 if ([string]$sequenceResult.overallResult -ne 'succeeded' -or $queuedSequence -ne '814,892' -or $selectedSequence -ne '814,892' -or $selectedRunIds -contains 9800) { throw 'Ordered pipeline monitoring did not select and queue exact-SHA definitions 814 then 892.' }
 if (($sequenceActions -join ',') -ne 'queued:814,succeeded:814,queued:892,succeeded:892') { throw 'Definition 892 was queued before exact-SHA definition 814 succeeded.' }
 Add-Check -Name 'ordered-pipeline-sequence' -Detail 'Earlier 892 is ignored; 814 exact-SHA success gates queueing and acceptance of a later 892 run'
+$latestResultPath = Join-Path $pipelineTestRoot 'latest-terminal-result.json'
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'latest-terminal'
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $latestResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-5)) -PollSeconds 0 -DiscoveryTimeoutMinutes 0 -RunTimeoutMinutes 1 -LatestRunPerDefinition -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $latestResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -PassThru
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+if (@($latestResult.runs).Count -ne 1 -or [int]$latestResult.runs[0].id -ne 99002 -or [string]$latestResult.overallResult -ne 'non-success') { throw 'Targeted refresh did not select the newest terminal run per definition.' }
+Add-Check -Name 'pipeline-targeted-refresh' -Detail 'Newest terminal exact-SHA run is analyzed even when an older retry remains in progress'
 $infrastructureClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Publish image' -LogLines 'service connection authentication failed'
 if ([string]$infrastructureClassification.category -ne 'infrastructure' -or [bool]$infrastructureClassification.developerEligible) { throw 'Infrastructure failure must not be routed to Developer.' }
+$certificateClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Sign Excel Agent binaries' -LogLines 'Signing failed with error 800B010A (CERT_E_CHAINING).'
+if ([string]$certificateClassification.category -ne 'infrastructure' -or [bool]$certificateClassification.developerEligible) { throw 'Certificate-chain signing failures must be classified as infrastructure and must not route to Developer.' }
 $yamlClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Validate azure-pipelines.yml' -LogLines 'YAML syntax parse error: did not find expected key'
 if ([string]$yamlClassification.category -ne 'code' -or -not [bool]$yamlClassification.developerEligible) { throw 'YAML pipeline configuration failures must route to Developer.' }
 $pipelineTestConfigPath = Join-Path $pipelineTestRoot 'agents.json'
@@ -160,14 +305,18 @@ $lifecycleTaskId = 'pr-lifecycle-test-' + [guid]::NewGuid().ToString('N')
 $lifecycleTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $lifecycleTaskId -TaskSelector synthetic-pr-lifecycle -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $pipelineTestConfigPath
 Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'delivery-result.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; repositoryId='azure-planningspace-ps-excel-agent'; branch='feature/synthetic-pr'; commit='0123456789abcdef0123456789abcdef01234567' } | ConvertTo-Json) + [Environment]::NewLine)
 $activePrPath = Join-Path $pipelineTestRoot 'active-pr.json'
-Write-Utf8NoBom -Path $activePrPath -Content ((@([ordered]@{ pullRequestId=123; status='active'; sourceRefName='refs/heads/feature/synthetic-pr'; title='Synthetic'; creationDate='2026-08-10T00:00:00Z'; createdBy=[ordered]@{ displayName='Test User' } }) | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$activePrPayload = @(
+    [ordered]@{ pullRequestId=122; status='active'; title='Incomplete unrelated object' },
+    [ordered]@{ pullRequestId=123; status='active'; sourceRefName='refs/heads/feature/synthetic-pr'; title='Synthetic'; creationDate='2026-08-10T00:00:00Z'; createdBy=[ordered]@{ displayName='Test User' } }
+)
+Write-Utf8NoBom -Path $activePrPath -Content ((ConvertTo-Json -InputObject $activePrPayload -Depth 8) + [Environment]::NewLine)
 $activeSync = & (Join-Path $root 'scripts\Sync-TaskPullRequestStatus.ps1') -TaskId $lifecycleTaskId -RepositoryId azure-planningspace-ps-excel-agent -PullRequestsJsonPath $activePrPath -DoNotStartKnowledgeUpdate -ConfigPath $pipelineTestConfigPath
 if ([string]$activeSync.Status -ne 'waiting' -or [string]$activeSync.Result.status -ne 'active') { throw 'Active PR lifecycle status did not keep the task waiting.' }
 $completedPrPath = Join-Path $pipelineTestRoot 'completed-pr.json'
 Write-Utf8NoBom -Path $completedPrPath -Content ((@([ordered]@{ pullRequestId=123; status='completed'; sourceRefName='refs/heads/feature/synthetic-pr'; title='Synthetic'; creationDate='2026-08-10T00:00:00Z'; createdBy=[ordered]@{ displayName='Test User' } }) | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $completedSync = & (Join-Path $root 'scripts\Sync-TaskPullRequestStatus.ps1') -TaskId $lifecycleTaskId -RepositoryId azure-planningspace-ps-excel-agent -PullRequestsJsonPath $completedPrPath -DoNotStartKnowledgeUpdate -ConfigPath $pipelineTestConfigPath
 if ([string]$completedSync.Status -ne 'completion-requested' -or -not (Test-Path -LiteralPath (Join-Path $lifecycleTask.TaskRoot 'task-closure.json'))) { throw 'Completed PR did not request final Knowledge Keeper closure.' }
-Add-Check -Name 'pull-request-lifecycle' -Detail 'Active PR waits; completed PR requests Knowledge Keeper closure; polling is fixture-backed and model-free'
+Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure array output and incomplete PR objects are normalized safely; active PR waits; completed PR requests Knowledge Keeper closure'
 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
 $deliveryTestRoot = Join-Path $OutputRoot "reviewed-branch-delivery-$deliveryFixtureId"
@@ -207,6 +356,28 @@ $deliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') 
 if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne "feature/$deliveryFixtureId" -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/feature/$deliveryFixtureId") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
 Add-Check -Name 'reviewed-branch-delivery-legacy-task' -Detail 'Prepare-only delivery accepts legacy singular repositoryId task state without pushing'
 
+$processReviewTaskId = "process-review-$deliveryFixtureId"
+$processReviewTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$processReviewTaskId"
+New-Item -ItemType Directory -Path $processReviewTaskRoot -Force | Out-Null
+$processReviewTask = [ordered]@{
+    taskId = $processReviewTaskId
+    selector = 'synthetic-process-review'
+    mode = 'manual'
+    status = 'review_pending'
+    repositoryId = $deliveryRepositoryId
+    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' } }
+}
+$processReviewResult = [ordered]@{
+    findings = @()
+    heldScopeViolations = @()
+    agentProcessFindings = @([ordered]@{ id='REV-001'; severity='low'; category='agent-process'; disposition='proposed' })
+}
+Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'task.json') -Content (($processReviewTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'review-result.json') -Content (($processReviewResult | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$processReviewContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $processReviewTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$processReviewContinuation.Status -ne 'prepared' -or [string]$processReviewContinuation.NextAgentId -ne 'pipeline_monitor') { throw 'A process-only Reviewer suggestion incorrectly blocks Pipeline Monitor continuation.' }
+Add-Check -Name 'process-suggestion-continuation' -Detail 'A clean product review continues to Pipeline Monitor while process suggestions remain visible and non-blocking'
+
 $legacyResumeTaskId = "legacy-targeted-resume-$deliveryFixtureId"
 $legacyResumeTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$legacyResumeTaskId"
 New-Item -ItemType Directory -Path $legacyResumeTaskRoot -Force | Out-Null
@@ -245,6 +416,7 @@ $healthPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\health-
 $resumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -Raw -Encoding UTF8
 $healthRecoveryScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthTargetedResumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-HealthTargetedResume.ps1') -Raw -Encoding UTF8
+$continueChainScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Continue-AgentChain.ps1') -Raw -Encoding UTF8
 $healthRecoverySchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\health-recovery-result.schema.json') -Raw -Encoding UTF8
 if ($knowledgePrompt -notmatch 'Never cyclically poll' -or $knowledgePrompt -notmatch 'explicit agent knowledge or skill requests') { throw 'Knowledge Keeper is not pull-based or still permits subagent polling.' }
 if ($taskProtocol -notmatch 'Publish-AgentOutcome.ps1' -or $taskProtocol -notmatch 'agent-checkpoints' -or $taskProtocol -notmatch 'autonomous bounded work blocks' -or $taskProtocol -notmatch 'Get-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'Acknowledge-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'same agent invocation') { throw 'Private checkpoint, autonomous work-block, successful outcome, or end-of-block comment contract is missing.' }
@@ -252,6 +424,7 @@ if ($dashboardHtml -notmatch 'finishing its current work block' -or $dashboardCl
 if ($healthPrompt -notmatch 'health-diagnostic-context.json' -or $healthRecoveryScript -notmatch 'Get-BoundedTextTail' -or $healthRecoveryScript -notmatch 'workflowLogTailLines') { throw 'Health Check bounded diagnostic context is incomplete.' }
 if ($healthPrompt -notmatch 'diagnosis is not a terminal outcome' -or $healthRecoveryScript -notmatch 'existingDiagnosis' -or $healthRecoveryScript -notmatch 'health-repair-routing.json' -or $healthRecoverySchema -notmatch 'routeAgentId' -or $healthRecoverySchema -notmatch 'repairOwner') { throw 'Health Check repair-or-route contract is incomplete.' }
 if ($workflowScript -notmatch 'health_recovery_handoff' -or $workflowScript -notmatch 'DiagnosisPath') { throw 'A completed Health Check diagnosis is not handed to automatic recovery.' }
+if ($continueChainScript -notmatch "PSObject\.Properties\['repositoryIds'\]" -or $continueChainScript -notmatch "PSObject\.Properties\['repositoryId'\]") { throw 'Automatic continuation does not normalize legacy singular repositoryId task scope.' }
 if ($healthPrompt -notmatch 'restart exactly the failed agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the failed agent.' }
 if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or $healthTargetedResumeScript -notmatch 'HealthRecoveryRetry = \$true' -or $healthTargetedResumeScript -notmatch 'maxAttemptsPerFailureSignature' -or $healthTargetedResumeScript -notmatch 'RecoveryEvidencePath') { throw 'Health Check targeted-resume launcher is missing its target, validation, or retry-loop guard.' }
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }

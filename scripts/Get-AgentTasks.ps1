@@ -47,7 +47,7 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         foreach ($ackEvent in @($events | Where-Object { $_.type -eq 'user-comment-acknowledged' })) {
             foreach ($evidenceValue in @($ackEvent.evidence)) { if ($evidenceValue) { $null = $acknowledgedCommentIds.Add([string]$evidenceValue) } }
         }
-        $unacknowledgedComments = @($events | Where-Object { $_.type -eq 'user-comment' -and -not $acknowledgedCommentIds.Contains([string]$_.eventId) })
+        $unacknowledgedComments = @($events | Where-Object { [string]$_.type -in @('user-comment','workflow-input-routed') -and -not $acknowledgedCommentIds.Contains([string]$_.eventId) })
         $agentStatuses = [ordered]@{}
         foreach ($agentId in $agentIds) {
             $value = $null

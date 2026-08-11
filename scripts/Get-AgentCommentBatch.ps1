@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
-    [Parameter(Mandatory)][ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $AgentId,
+    [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $AgentId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if (-not @($config.agents | Where-Object { [string]$_.id -eq $AgentId }).Count) { throw "Unknown agent '$AgentId'." }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw "Task '$TaskId' was not found." }
@@ -21,7 +22,7 @@ foreach ($ack in @($events | Where-Object { $_.type -eq 'user-comment-acknowledg
     foreach ($eventId in @($ack.evidence)) { if ($eventId) { $null = $acknowledged.Add([string]$eventId) } }
 }
 $comments = @($events | Where-Object {
-    $_.type -eq 'user-comment' -and
+    [string]$_.type -in @('user-comment','workflow-input-routed') -and
     -not $acknowledged.Contains([string]$_.eventId) -and
     (-not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $AgentId)
 } | Sort-Object timestampUtc | ForEach-Object {
@@ -30,6 +31,8 @@ $comments = @($events | Where-Object {
         timestampUtc = [string]$_.timestampUtc
         author = [string]$_.actor
         text = [string]$_.summary
+        eventType = [string]$_.type
+        sourceEventId = if ([string]$_.type -eq 'workflow-input-routed' -and @($_.evidence).Count) { [string]$_.evidence[0] } else { [string]$_.eventId }
         targetAgentId = if ($_.PSObject.Properties['targetAgentId']) { [string]$_.targetAgentId } else { $null }
         evidence = @($_.evidence)
     }

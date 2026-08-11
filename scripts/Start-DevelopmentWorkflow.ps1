@@ -8,7 +8,7 @@ param(
     [string] $Workspace,
     [string] $UserInstruction,
     [switch] $Resume,
-    [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $TargetAgentId,
+    [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
     [switch] $ElevatedApproved,
     [switch] $HealthRecoveryRetry,
     [switch] $ContinueChain,
@@ -22,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
 if ($ElevatedApproved) {
     if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled with an explicit approval gate.' }
@@ -82,7 +83,16 @@ $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true
 if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
 $sync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
 $task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
+if (-not $Resume -and -not [string]::IsNullOrWhiteSpace($UserInstruction)) {
+    & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') -TaskId $TaskId -Text $UserInstruction -Author user -TargetAgentId ([string]$config.workflow.orchestration.agentId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+$workspaceLease = & (Join-Path $PSScriptRoot 'Switch-TaskWorkspace.ps1') -TaskId $TaskId -PrepareOnly:$PrepareOnly -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([string]$workspaceLease.Status -in @('queued','restore-conflict')) {
+    return [pscustomobject]@{ Mode=$Mode; TaskId=$TaskId; TaskRoot=$task.TaskRoot; RepositoryIds=@($RepositoryIds); WorkspaceLease=$workspaceLease; Status=[string]$workspaceLease.Status }
+}
 $agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
+$orchestratorAgentName = 'development_workflow_orchestrator' + $agentProfileSuffix
+$knowledgeAgentName = 'development_knowledge_keeper' + $agentProfileSuffix
 $requirementsAgentName = 'development_requirements_analyst' + $agentProfileSuffix
 $developerAgentName = 'development_implementer' + $agentProfileSuffix
 $reviewerAgentName = 'development_reviewer' + $agentProfileSuffix
@@ -99,14 +109,18 @@ if ($Resume) {
     Write-Utf8NoBom -Path (Join-Path $task.TaskRoot 'resume-plan.json') -Content (($resumePlan | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 }
 
-$knowledgeAgent = @($config.agents | Where-Object { $_.id -eq 'knowledge_keeper' }) | Select-Object -First 1
-$knowledgePrompt = [Collections.Generic.List[string]]::new()
-foreach ($pathValue in @($knowledgeAgent.promptPaths)) {
+$orchestratorAgent = @($config.agents | Where-Object { $_.id -eq [string]$config.workflow.orchestration.agentId }) | Select-Object -First 1
+$orchestratorPrompt = [Collections.Generic.List[string]]::new()
+foreach ($pathValue in @($orchestratorAgent.promptPaths)) {
     $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $config -CodexHome $CodexHome
-    $knowledgePrompt.Add((Get-Content -LiteralPath $path -Raw).Trim())
+    $orchestratorPrompt.Add((Get-Content -LiteralPath $path -Raw).Trim())
 }
+$roleDirectory = @($config.agents | Where-Object { [string]$_.id -ne [string]$config.workflow.orchestration.agentId } | ForEach-Object {
+    $responsibilities = @($_.responsibilities | ForEach-Object { [string]$_ }) -join ' | '
+    "$([string]$_.id): $([string]$_.description) Responsibilities: $responsibilities"
+}) -join [Environment]::NewLine
 $prompt = @"
-You are the primary knowledge keeper for the configured development agent ecosystem.
+You are the primary workflow coordinator for the configured development agent ecosystem. Orchestrator owns intake classification and dispatch; Knowledge Keeper is an on-demand knowledge service and final knowledge publisher.
 
 Task ID: $TaskId
 Mode: $Mode
@@ -127,6 +141,13 @@ Changed artifacts since the previous checkpoint: $(if ($resumePlan -and @($resum
 Unchanged artifacts available through existing summaries: $(if ($resumePlan -and @($resumePlan.UnchangedArtifactNames).Count) { @($resumePlan.UnchangedArtifactNames) -join ', ' } else { 'none' })
 
 Resume rules:
+- The trusted workspace coordinator permits only one active task. Never switch branches or use Git stash directly for task scheduling. Before this invocation it selected this task's saved branch and restored its task-specific stash. If another task was active, this task would have remained queued.
+- When a Developer creates or changes the task branch, the current branch becomes this task's branch at the next workspace suspension. Uncommitted tracked and untracked changes are stashed with a task/repository identity before switching away and restored with stash apply before the task resumes. The stash is dropped only after successful restoration.
+- A workspace restore conflict is a human-input gate. Never reset, clean, discard, or silently resolve it.
+- On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 before any newly selected delivery role starts.
+- On an explicit targeted-agent resume, preserve that explicit target. Orchestrator may classify already queued general inputs, but it must not replace the requested target or start a different role in that targeted invocation.
+- Orchestrator must use the freshly loaded role directory below, select the smallest sufficient target set, and use Requirements Analyst as the configured fallback when the evidence is actionable but ownership remains unclear.
+- Routed workflow-input events are the only general comments a delivery agent consumes. Explicit agent comments and linked question answers remain direct.
 - A checkpoint resume MUST dispatch only the listed unfinished agents. Do not rerun a completed agent, repeat its completed work, or regenerate its artifacts. Consume completed artifacts as immutable checkpoint input.
 - A targeted-agent resume MUST dispatch only the exact target agent. Knowledge Keeper may reconstruct context and persist the handoff, but no other role may be started, reset, or have its artifacts rewritten.
 - A skipped role in an active checkpoint is unfinished and must be reconsidered when its prerequisite becomes available. When a role is conclusively not applicable, record evidence and mark it completed with a no-op result so future resumes do not repeat it.
@@ -147,9 +168,12 @@ Live task control:
 - A Health Check targeted retry is the single post-repair attempt for its failure signature. If that retry fails, persist the new failure and stop; do not dispatch Health Check recursively from the retry.
 - In elevated-approved mode, the user approved an OS-sandbox bypass for this task session. Every role may use the available local tools despite error 1260, but this does not authorize external writes, requirement assumptions, unapproved review fixes, or work outside the target workspace and ecosystem root.
 
-Use the custom agents $requirementsAgentName, $developerAgentName, $reviewerAgentName, $pipelineAgentName, and $healthAgentName according to the configured gates. In host-compatible mode every selected subagent uses the current-user execution profile installed by Health Check; do not fall back to the standard sandboxed agent names. Dispatch $healthAgentName when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+Configured role directory (authoritative for routing):
+$roleDirectory
 
-$($knowledgePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
+Use the custom agents $orchestratorAgentName, $knowledgeAgentName, $requirementsAgentName, $developerAgentName, $reviewerAgentName, $pipelineAgentName, and $healthAgentName according to the configured gates. After Orchestrator persists a routing batch, it must publish its validated routing outcome and the coordinator dispatches the earliest eligible routed target. The existing Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper continuation remains unchanged. In host-compatible mode every selected subagent uses the current-user execution profile installed by Health Check; do not fall back to the standard sandboxed agent names. Dispatch $healthAgentName when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+
+$($orchestratorPrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@
 
 $result = [pscustomobject]@{
@@ -164,16 +188,17 @@ $result = [pscustomobject]@{
     Prompt = $prompt
     ResumeScope = $resumeScope
     TargetAgentId = $TargetAgentId
+    WorkspaceLease = $workspaceLease
     UnfinishedAgentIds = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
 }
 if ($PrepareOnly) { return $result }
 
 $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
-$startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Knowledge Keeper is preparing task context.' }
-& $statusScript -TaskId $TaskId -Status running -Stage knowledge_keeper -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-$updateKnowledgeKeeperStatus = -not $Resume -or $TargetAgentId -eq 'knowledge_keeper'
-if ($updateKnowledgeKeeperStatus) {
-    & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus running -Stage knowledge_keeper -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started through Orchestrator for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Orchestrator is classifying task intake.' }
+& $statusScript -TaskId $TaskId -Status running -Stage orchestrator -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
+if ($updateOrchestratorStatus) {
+    & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus running -Stage orchestrator -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
 $codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
@@ -189,8 +214,9 @@ foreach ($directory in $additionalDirectories) {
     $arguments.Add($resolvedDirectory)
 }
 foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalResponsePath, '-')) { $arguments.Add([string]$argument) }
+$workflowStartedAtUtc = [DateTime]::UtcNow
 try {
-    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
+    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $codexCommand = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $codexCommand) { throw 'Codex CLI was not found.' }
@@ -200,6 +226,9 @@ try {
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
+    if ($TargetAgentId) {
+        & (Join-Path $PSScriptRoot 'Resolve-StaleAgentQuestions.ps1') -TaskId $TaskId -AgentId $TargetAgentId -RestartedAtUtc $workflowStartedAtUtc -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
     if ($TargetAgentId -eq 'health_check' -and -not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled -and [string]$currentTask.agentStatuses.health_check.status -eq 'waiting') {
         $diagnosisPath = Join-Path $task.TaskRoot 'health-check-result.json'
         $failurePath = $null
@@ -254,18 +283,18 @@ try {
     }
     $currentStage = if ($currentTask.PSObject.Properties['currentStage']) { [string]$currentTask.currentStage } else { $currentStatus }
     if ($currentStatus -in @('waiting_for_input','held')) {
-        if ($updateKnowledgeKeeperStatus) {
-            & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus waiting -Stage $currentStage -Message 'The orchestration run stopped at an explicit user-input gate.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($updateOrchestratorStatus) {
+            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus waiting -Stage $currentStage -Message 'The orchestration run stopped at an explicit user-input gate.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
     elseif ($currentStatus -eq 'review_pending') {
-        if ($updateKnowledgeKeeperStatus) {
-            & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for human review decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($updateOrchestratorStatus) {
+            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for human review decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
     elseif ($currentStatus -notin @('failed','interrupted','completed')) {
-        if ($updateKnowledgeKeeperStatus) {
-            & $statusScript -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus completed -Stage completed -Message 'Knowledge Keeper completed the orchestration run.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($updateOrchestratorStatus) {
+            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage completed -Message 'Orchestrator completed intake routing and workflow coordination.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         & $statusScript -TaskId $TaskId -Status completed -Stage completed -Message 'Workflow completed. Review task artifacts for the final outcome.' -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
@@ -276,10 +305,14 @@ try {
             & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') -TaskId $TaskId -CompletedAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
+    if (-not $SkipChainContinuation) {
+        try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
+    }
 }
 catch {
     $failureMessage = $_.Exception.Message
-    $failureAgentId = if ($TargetAgentId) { $TargetAgentId } else { 'knowledge_keeper' }
+    $failureAgentId = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
     & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $failureEvidence = @($codexLogPath, $finalResponsePath, $guardArtifactPath) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
@@ -318,7 +351,15 @@ catch {
         catch { Write-Warning "Automatic health recovery failed: $($_.Exception.Message)" }
     }
     if ($automaticTargetedResume -and [string]$automaticTargetedResume.Status -in @('completed','waiting','interrupted')) {
+        if (-not $SkipChainContinuation) {
+            try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+            catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
+        }
         return $automaticTargetedResume
+    }
+    if (-not $SkipChainContinuation) {
+        try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
     }
     throw
 }

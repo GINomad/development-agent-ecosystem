@@ -40,6 +40,7 @@ if (-not (Test-Path -LiteralPath $taskPath)) {
         currentStage = 'not-started'
         lastMessage = 'Task created. Workflow has not started yet.'
         agentStatuses = [ordered]@{
+            orchestrator = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             knowledge_keeper = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             requirements_analyst = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             developer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }

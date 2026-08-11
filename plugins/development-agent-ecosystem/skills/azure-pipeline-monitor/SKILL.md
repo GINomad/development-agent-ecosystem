@@ -14,6 +14,7 @@ description: Monitor Azure DevOps pipeline runs associated with an exact Git bra
 5. Stay with every discovered run until it reaches a terminal state.
 6. Report run IDs, links, source commits, final results, and failed task log excerpts.
 7. When `-ResultPath` is supplied, persist the structured exact-SHA result and deterministic failure classification. With `-PassThru`, return non-success as data so the orchestrator can route bounded code/test remediation without treating the monitor itself as crashed.
+8. In the ecosystem, pass `-ProgressCallback` and the configured heartbeat interval so queue, discovery, waiting, failure-analysis, and terminal stages appear in the dashboard. The callback is native PowerShell reporting and must not invoke an AI model.
 
 Example:
 

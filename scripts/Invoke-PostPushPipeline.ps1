@@ -40,6 +40,11 @@ try {
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_post_push -Message "Monitoring exact pushed commit $($Commit.Substring(0,12)) on $shortBranch." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
     $watcher = Join-Path (Resolve-EcosystemPath -Value ([string]$config.pipeline.monitorSkillRoot) -Config $config -CodexHome $CodexHome) 'scripts\watch_pipeline_runs.ps1'
+    $activityWriter = Join-Path $PSScriptRoot 'Write-AgentActivity.ps1'
+    $activityCallback = {
+        param([string]$Stage, [string]$Summary, [string]$Details)
+        & $activityWriter -TaskId $TaskId -AgentId pipeline_monitor -Level progress -Stage $Stage -Summary $Summary -Details $Details -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }.GetNewClosure()
     $watcherParameters = @{
         Organization = [string]$repository.organizationUrl
         Project = [string]$repository.project
@@ -56,6 +61,8 @@ try {
         FailureLogMaxBytes = [int]$config.pipeline.postPush.failureLogMaxBytes
         RemediationCycle = $RemediationCycle
         MaxRemediationCycles = [int]$config.pipeline.postPush.maxRemediationCycles
+        ProgressHeartbeatSeconds = [int]$config.pipeline.postPush.activityHeartbeatSeconds
+        ProgressCallback = $activityCallback
         PassThru = $true
     }
     $result = & $watcher @watcherParameters

@@ -9,11 +9,11 @@
     "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "rootCause": { "type": "string", "minLength": 1 },
     "repairOwner": {
-      "enum": ["ecosystem_recovery", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "human"]
+      "enum": ["ecosystem_recovery", "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "human"]
     },
     "routeAgentId": {
       "type": ["string", "null"],
-      "enum": [null, "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"]
+      "enum": [null, "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"]
     },
     "requiresUserInput": { "type": "boolean" },
     "changes": { "type": "array", "items": { "type": "string" } },

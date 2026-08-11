@@ -5,7 +5,7 @@ param(
     [string] $Author = 'user',
     [ValidatePattern('^[a-fA-F0-9]{32}$')][string] $QuestionId,
     [ValidatePattern('^[A-Za-z0-9._:-]+$')][string] $ReviewFindingId,
-    [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $TargetAgentId,
+    [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -32,6 +32,9 @@ if ($QuestionId) {
     if ($TargetAgentId -and $TargetAgentId -ne $questionAgentId) { throw "Question '$QuestionId' belongs to agent '$questionAgentId', not '$TargetAgentId'." }
     $TargetAgentId = $questionAgentId
 }
+elseif (-not $TargetAgentId -and [bool]$config.workflow.orchestration.enabled -and [bool]$config.workflow.orchestration.routeUntargetedComments) {
+    $TargetAgentId = [string]$config.workflow.orchestration.agentId
+}
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 
 $eventParameters = @{ TaskId=$TaskId; Actor=$Author; Type='user-comment'; Summary=$commentText; Artifact=$taskPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
@@ -55,9 +58,9 @@ if ($QuestionId) {
     $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue 'A user answer is ready. Resume the workflow to continue from the input gate.' -Force
 }
 else {
-    $commentDestination = if ($TargetAgentId) { "agent '$TargetAgentId'" } else { 'the workflow' }
-    $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue "A user comment for $commentDestination is queued for the active agent's next end-of-block checkpoint; no restart is required while it is running." -Force
+    $commentDestination = if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId) { 'Orchestrator classification' } elseif ($TargetAgentId) { "agent '$TargetAgentId'" } else { 'the workflow' }
+    $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue "A user comment for $commentDestination is queued for the next end-of-block checkpoint; no restart is required while the workflow is running." -Force
 }
 Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
-[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
+[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }

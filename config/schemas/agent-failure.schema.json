@@ -8,7 +8,7 @@
     "failureId": { "type": "string", "minLength": 1 },
     "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "taskId": { "type": "string", "minLength": 1 },
-    "agentId": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "health_check"] },
+    "agentId": { "enum": ["orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "health_check"] },
     "stage": { "type": "string", "minLength": 1 },
     "occurredAtUtc": { "type": "string", "format": "date-time" },
     "summary": { "type": "string", "minLength": 1 },
@@ -17,4 +17,3 @@
     "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }
-
