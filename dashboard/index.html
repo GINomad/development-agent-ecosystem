@@ -160,26 +160,28 @@
                 </div>
               </div>
               <div class="diff-comment-panel">
-                <p class="diff-selection" id="reviewDiffSelection">No line selected. The comment will apply to the whole diff.</p>
-                <div class="diff-comment-grid">
-                  <label>
-                    Send to
-                    <select id="reviewDiffCommentTarget">
-                      <option value="reviewer">Reviewer</option>
-                      <option value="developer">Developer</option>
-                    </select>
-                  </label>
-                  <label>
-                    Comment
-                    <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Leave a general review note, or select a diff line first to attach file and line context."></textarea>
-                  </label>
+                <div class="diff-comment-content">
+                  <p class="diff-selection" id="reviewDiffSelection">No line selected. The comment will apply to the whole diff.</p>
+                  <div class="diff-comment-grid">
+                    <label>
+                      Send to
+                      <select id="reviewDiffCommentTarget">
+                        <option value="reviewer">Reviewer</option>
+                        <option value="developer">Developer</option>
+                      </select>
+                    </label>
+                    <label>
+                      Comment
+                      <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Leave a general review note, or select a diff line first to attach file and line context."></textarea>
+                    </label>
+                  </div>
+                  <div class="actions">
+                    <button class="button primary" id="sendReviewDiffComment" type="button">Send diff comment</button>
+                    <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
+                  </div>
+                  <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
+                  <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
                 </div>
-                <div class="actions">
-                  <button class="button primary" id="sendReviewDiffComment" type="button">Send diff comment</button>
-                  <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
-                </div>
-                <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
-                <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
               </div>
             </section>
             <section class="agent-log-panel hidden" id="agentLogPanel" aria-live="polite">

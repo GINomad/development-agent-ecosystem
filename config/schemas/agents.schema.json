@@ -101,8 +101,44 @@
     "workflow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["automaticContinuation"],
+      "required": ["orchestration", "workspaceScheduling", "automaticContinuation"],
       "properties": {
+        "orchestration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "agentId", "routeUntargetedComments", "preserveExplicitTargets", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "dispatchPriority"],
+          "properties": {
+            "enabled": { "const": true },
+            "agentId": { "const": "orchestrator" },
+            "routeUntargetedComments": { "const": true },
+            "preserveExplicitTargets": { "const": true },
+            "allowMultipleTargets": { "type": "boolean" },
+            "fallbackAgentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "routingArtifact": { "const": "workflow-routing.jsonl" },
+            "dispatchPriority": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+            }
+          }
+        },
+        "workspaceScheduling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "maxActiveTasks", "queueWhenBusy", "switchWhenCurrentTaskIsIdle", "stashUncommittedChanges", "includeUntracked", "restoreStashOnActivation", "lockTimeoutSeconds", "coordinatorStatePath"],
+          "properties": {
+            "enabled": { "const": true },
+            "maxActiveTasks": { "const": 1 },
+            "queueWhenBusy": { "const": true },
+            "switchWhenCurrentTaskIsIdle": { "const": true },
+            "stashUncommittedChanges": { "const": true },
+            "includeUntracked": { "type": "boolean" },
+            "restoreStashOnActivation": { "const": true },
+            "lockTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 120 },
+            "coordinatorStatePath": { "type": "string", "minLength": 1 }
+          }
+        },
         "automaticContinuation": {
           "type": "object",
           "additionalProperties": false,
@@ -172,7 +208,7 @@
                   "type": "array",
                   "minItems": 1,
                   "uniqueItems": true,
-                  "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] }
+                  "items": { "enum": ["orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] }
                 }
               }
             },
@@ -241,10 +277,11 @@
         "postPush": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "autoQueueApprovedBuilds", "maxRemediationCycles", "failureLogTailLines", "failureLogMaxBytes"],
+          "required": ["enabled", "autoQueueApprovedBuilds", "activityHeartbeatSeconds", "maxRemediationCycles", "failureLogTailLines", "failureLogMaxBytes"],
           "properties": {
             "enabled": { "type": "boolean" },
             "autoQueueApprovedBuilds": { "type": "boolean" },
+            "activityHeartbeatSeconds": { "type": "integer", "minimum": 20, "maximum": 600 },
             "maxRemediationCycles": { "type": "integer", "minimum": 1, "maximum": 3 },
             "failureLogTailLines": { "type": "integer", "minimum": 20, "maximum": 500 },
             "failureLogMaxBytes": { "type": "integer", "minimum": 4096, "maximum": 262144 }
@@ -358,7 +395,7 @@
     "gates": { "type": "object" },
     "agents": {
       "type": "array",
-      "minItems": 6,
+      "minItems": 7,
       "items": { "$ref": "#/$defs/agent" }
     }
   },
@@ -366,11 +403,12 @@
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "description", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
+      "required": ["id", "name", "description", "responsibilities", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "description": { "type": "string", "minLength": 20 },
+        "responsibilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 20 } },
         "model": { "type": "string", "minLength": 1 },
         "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh", "max", "ultra"] },
         "sandboxMode": { "enum": ["read-only", "workspace-write"] },

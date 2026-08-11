@@ -10,6 +10,7 @@ param(
     [int]$DiscoveryTimeoutMinutes = 3,
     [int]$RunTimeoutMinutes = 60,
     [int]$PollSeconds = 20,
+    [switch]$LatestRunPerDefinition,
     [string]$AzCli,
     [string]$TaskId = 'pipeline-monitor',
     [string]$RepositoryId = 'unknown',
@@ -19,11 +20,31 @@ param(
     [ValidateRange(4096,262144)][int]$FailureLogMaxBytes = 65536,
     [ValidateRange(0,3)][int]$RemediationCycle = 0,
     [ValidateRange(1,3)][int]$MaxRemediationCycles = 3,
+    [ValidateRange(1,600)][int]$ProgressHeartbeatSeconds = 60,
+    [scriptblock]$ProgressCallback,
     [switch]$PassThru
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$progressState = @{ LastAt = [DateTime]::MinValue; LastStage = $null }
+
+function Send-MonitorProgress {
+    param(
+        [Parameter(Mandatory)][string]$Stage,
+        [Parameter(Mandatory)][string]$Summary,
+        [string]$Details,
+        [switch]$Force
+    )
+    if (-not $ProgressCallback) { return }
+    $now = [DateTime]::UtcNow
+    $due = ($now - [datetime]$progressState.LastAt).TotalSeconds -ge $ProgressHeartbeatSeconds
+    if ($Force -or $progressState.LastStage -ne $Stage -or $due) {
+        & $ProgressCallback $Stage $Summary $Details
+        $progressState.LastAt = $now
+        $progressState.LastStage = $Stage
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($AzCli)) {
     $command = Get-Command az.cmd -ErrorAction SilentlyContinue
@@ -156,6 +177,7 @@ $Branch = $branchRef -replace '^refs/heads/', ''
 $queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) { [DateTime]::UtcNow.AddMinutes(-5) } else { $QueuedAfter.ToUniversalTime() }
 Write-Host "Monitoring Azure pipelines for $branchRef at $Commit"
 Write-Host "Queued after: $($queuedAfterUtc.ToString('o'))"
+Send-MonitorProgress -Stage pipeline_discovery -Summary "Discovering exact-SHA pipeline runs for $($Commit.Substring(0,12))." -Details "Branch: $Branch; queued after: $($queuedAfterUtc.ToString('o'))." -Force
 
 $expectedDefinitionIds = @($DefinitionIds + $AutoQueueDefinitionIds | Sort-Object -Unique)
 $passiveDefinitionIds = @($DefinitionIds | Where-Object { $_ -notin $AutoQueueDefinitionIds } | Sort-Object -Unique)
@@ -182,10 +204,12 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
     }
     if ($null -eq $selectedRun) {
         Write-Host "Queueing approved build definition $definitionId at sequence position $($sequenceIndex + 1) for $branchRef."
+        Send-MonitorProgress -Stage pipeline_queueing -Summary "Queueing approved definition $definitionId." -Details "Ordered position $($sequenceIndex + 1) of $($AutoQueueDefinitionIds.Count)." -Force
         $selectedRun = Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
         if ($null -eq $selectedRun -or $null -eq $selectedRun.id) { throw "Azure CLI did not return a run ID for definition $definitionId." }
         $queuedDefinitions.Add($definitionId)
         Write-Host "Queued run $($selectedRun.id) for build definition $definitionId."
+        Send-MonitorProgress -Stage pipeline_waiting -Summary "Waiting for definition $definitionId run $($selectedRun.id)." -Details 'The native watcher is polling Azure DevOps without an AI turn.' -Force
     }
 
     $runId = [string]$selectedRun.id
@@ -196,6 +220,10 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
         if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
             Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
             $lastState[$runId] = $state
+            Send-MonitorProgress -Stage pipeline_waiting -Summary "Definition $definitionId run $runId is $state." -Details ([string]$run.definition.name) -Force
+        }
+        else {
+            Send-MonitorProgress -Stage pipeline_waiting -Summary "Still waiting for definition $definitionId run $runId." -Details "Current Azure state: $state."
         }
         if ([string]$run.status -eq 'completed') { break }
         if ([DateTime]::UtcNow -ge $runDeadline) {
@@ -235,13 +263,21 @@ if ($discoverPassiveRuns) {
     $lastCount = -1
     $stablePasses = 0
     do {
+        Send-MonitorProgress -Stage pipeline_discovery -Summary 'Discovering configured exact-SHA pipeline runs.' -Details "Tracked runs: $($tracked.Count)."
         $runResult = Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')
         $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } elseif ($null -eq $runResult) { @() } else { @($runResult) }
-        foreach ($run in $runs) {
-            if ($null -eq $run -or [string]$run.sourceVersion -ne $Commit) { continue }
-            if ([datetime]::Parse([string]$run.queueTime).ToUniversalTime() -lt $queuedAfterUtc) { continue }
+        $matchingRuns = @($runs | Where-Object {
+            $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and
+            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc -and
+            ($passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds)
+        })
+        if ($LatestRunPerDefinition) {
+            $matchingRuns = @($matchingRuns | Group-Object { [int]$_.definition.id } | ForEach-Object {
+                @($_.Group | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+            })
+        }
+        foreach ($run in $matchingRuns) {
             $definitionId = [int]$run.definition.id
-            if ($passiveDefinitionIds.Count -gt 0 -and $definitionId -notin $passiveDefinitionIds) { continue }
             $tracked[[string]$run.id] = $run
         }
         $passiveRuns = @($tracked.Values | Where-Object { $passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds })
@@ -287,6 +323,10 @@ do {
         if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
             Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
             $lastState[$runId] = $state
+            Send-MonitorProgress -Stage pipeline_waiting -Summary "Pipeline run $runId is $state." -Details ([string]$run.definition.name) -Force
+        }
+        else {
+            Send-MonitorProgress -Stage pipeline_waiting -Summary "Still waiting for pipeline run $runId." -Details "Current Azure state: $state."
         }
         if ([string]$run.status -eq 'completed') { $completed[$runId] = $run }
     }
@@ -320,6 +360,7 @@ foreach ($run in $completed.Values | Sort-Object id) {
     if ($runResult -notin @('succeeded','failed','partiallySucceeded','canceled')) { $runResult = 'failed' }
     if ($runResult -ne 'succeeded') {
         Write-Host "Non-success run $($run.id): result=$runResult" -ForegroundColor Red
+        Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Analyzing failed tasks for run $($run.id)." -Details "Definition $($run.definition.id); result: $runResult." -Force
         $timeline = Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')
         foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
             $excerpt = ''
@@ -361,6 +402,7 @@ else {
 }
 $result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary
 Write-PipelineResult -Result $result
+Send-MonitorProgress -Stage pipeline_terminal -Summary $summary -Details "Overall result: $overallResult." -Force
 if ($PassThru) { return $result }
 if ($overallResult -ne 'succeeded') { exit 1 }
 Write-Host 'All matching pipeline runs succeeded.' -ForegroundColor Green

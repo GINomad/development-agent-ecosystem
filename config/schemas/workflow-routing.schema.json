@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/development-agent-ecosystem/workflow-routing.schema.json",
+  "title": "Workflow routing record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["routingId", "taskId", "sourceEventId", "sourceType", "inputKind", "targets", "rationale", "confidence", "requiresUserInput", "routedEventIds", "createdAtUtc"],
+  "properties": {
+    "routingId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "taskId": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "sourceEventId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "sourceType": { "enum": ["task-created", "user-comment"] },
+    "inputKind": { "enum": ["task-intake", "workflow-comment"] },
+    "targets": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "rationale": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "requiresUserInput": { "type": "boolean" },
+    "routedEventIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-f0-9]{32}$" } },
+    "createdAtUtc": { "type": "string", "format": "date-time" }
+  }
+}

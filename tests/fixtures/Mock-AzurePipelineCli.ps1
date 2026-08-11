@@ -43,6 +43,23 @@ if ($scenario -eq 'ordered-success') {
     throw "Unexpected ordered mock Azure CLI arguments: $($args -join ' ')"
 }
 
+if ($scenario -eq 'latest-terminal') {
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
+        @(
+            [ordered]@{ id=99001; sourceVersion=$commit; queueTime=[DateTime]::UtcNow.AddMinutes(-2).ToString('o'); definition=[ordered]@{ id=814; name='Older retry' } },
+            [ordered]@{ id=99002; sourceVersion=$commit; queueTime=[DateTime]::UtcNow.AddMinutes(-1).ToString('o'); definition=[ordered]@{ id=814; name='Newest retry' } }
+        ) | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'show') {
+        $runIdIndex = [Array]::IndexOf([object[]]$args, '--id')
+        $runId = [int]$args[$runIdIndex + 1]
+        if ($runId -ne 99002) { throw "Targeted refresh selected stale run $runId instead of newest run 99002." }
+        [ordered]@{ id=99002; status='completed'; result='failed'; sourceVersion=$commit; definition=[ordered]@{ id=814; name='Newest retry' } } | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+}
+
 if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
     @([ordered]@{
         id = 99001

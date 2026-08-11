@@ -3,6 +3,7 @@ const activity = document.querySelector('#activity');
 const repositoryOptions = document.querySelector('#repositoryOptions');
 const repositorySummary = document.querySelector('#repositorySummary');
 const agentLabels = {
+  orchestrator: 'Workflow Orchestrator',
   knowledge_keeper: 'Knowledge Keeper',
   requirements_analyst: 'Requirements Analyst',
   developer: 'Developer',
@@ -987,7 +988,27 @@ async function loadAgentLog({ silent = false } = {}) {
     agentLogRequestInFlight = false;
   }
 }
-async function sendSelectedAgentComment({ required = true, refresh = true } = {}) {
+async function confirmIdleAgentDispatch(taskId, result) {
+  if (result?.dispatch?.status !== 'idle-awaiting-approval') return result;
+  const agentId = result.dispatch.agentId;
+  const label = agentLabels[agentId] || agentId;
+  const approved = window.confirm(`${label} is idle. Start it immediately in elevated mode to process all pending comments as one batch?`);
+  if (!approved) {
+    result.dispatch.status = 'saved-awaiting-manual-start';
+    result.dispatch.reason = `Comment saved for ${label}; immediate start was not approved.`;
+    return result;
+  }
+  const restart = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
+    method: 'POST',
+    body: JSON.stringify({ elevated: true })
+  });
+  result.dispatch.status = 'started';
+  result.dispatch.reason = `${label} was idle and started immediately for the pending comment batch.`;
+  result.dispatch.restart = restart;
+  return result;
+}
+
+async function sendSelectedAgentComment({ required = true, refresh = true, autoStartIdle = true } = {}) {
   if (!selectedTaskId || !selectedAgentId) throw new Error('Select an agent first.');
   const taskId = selectedTaskId;
   const agentId = selectedAgentId;
@@ -999,14 +1020,21 @@ async function sendSelectedAgentComment({ required = true, refresh = true } = {}
     return null;
   }
   setAgentActionStatus('Sending comment...', 'working');
-  const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/comments`, {
+  let result = await api(`/api/tasks/${encodeURIComponent(taskId)}/comments`, {
     method: 'POST',
     body: JSON.stringify({ text, targetAgentId: agentId })
   });
+  if (autoStartIdle) result = await confirmIdleAgentDispatch(taskId, result);
   taskStateRevision += 1;
   agentCommentDrafts.delete(draftKey);
   if (selectedTaskId === taskId && selectedAgentId === agentId) field.value = '';
-  setAgentActionStatus(`Comment queued for ${agentLabels[agentId] || agentId}. A running agent will read it after the current work block; no restart is needed.`, 'success');
+  if (result?.dispatch?.status === 'started') {
+    setAgentActionStatus(`${agentLabels[agentId] || agentId} started immediately. Additional comments will be batched at its next checkpoint.`, 'success');
+  } else if (result?.dispatch?.status === 'queued-for-checkpoint') {
+    setAgentActionStatus(`Comment queued for ${agentLabels[agentId] || agentId}. The active workflow will consume it at the next checkpoint; no restart is needed.`, 'success');
+  } else {
+    setAgentActionStatus(result?.dispatch?.reason || result?.message || `Comment saved for ${agentLabels[agentId] || agentId}.`, 'success');
+  }
   if (refresh && selectedTaskId === taskId) {
     await loadTaskDetail(taskId, taskStateRevision);
     await loadAgentLog({ silent: true });
@@ -1144,7 +1172,7 @@ document.querySelector('#restartAgentWithComment').addEventListener('click', asy
     button.disabled = true;
     button.textContent = 'Restarting...';
     setAgentActionStatus(`Restarting ${label}...`, 'working');
-    const comment = await sendSelectedAgentComment({ required: false, refresh: false });
+    const comment = await sendSelectedAgentComment({ required: false, refresh: false, autoStartIdle: false });
     const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
       method: 'POST',
       body: JSON.stringify({ elevated: true })
@@ -1396,6 +1424,7 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
     const config = await api('/api/config');
     const configuredAgents = Array.isArray(config.agents) ? config.agents : [];
     configuredAgents.forEach(agent => {
+      if (!agentLabels[agent.id]) agentLabels[agent.id] = agent.name || agent.id;
       agentRequiredArtifacts[agent.id] = Array.isArray(agent.requiredArtifacts) ? agent.requiredArtifacts : [];
     });
     repositoryOptions.replaceChildren();

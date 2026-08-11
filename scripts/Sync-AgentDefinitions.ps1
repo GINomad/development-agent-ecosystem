@@ -45,6 +45,7 @@ if ($IncludeHostCompatibilityProfile) {
             id = [string]$agent.id
             name = ([string]$agent.name + $suffix)
             description = ([string]$agent.description + ' Host-compatible profile for an explicitly confirmed OS-policy fallback.')
+            responsibilities = @($agent.responsibilities)
             model = if ($agent.PSObject.Properties['model']) { [string]$agent.model } else { $null }
             reasoningEffort = [string]$agent.reasoningEffort
             sandboxMode = [string]$config.runtime.elevatedFallback.sandboxMode

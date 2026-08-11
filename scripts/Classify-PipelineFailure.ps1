@@ -27,6 +27,7 @@ $patterns = [ordered]@{
         '(?im)\b(unexpected value|unexpected property|did not find expected key)\b'
     )
     infrastructure = @(
+        '(?im)\b(0x)?800B010A\b|\bCERT_E_CHAINING\b|\bcertificate chain\b.*\b(cannot|could not|failed|unable|untrusted|trusted root)\b',
         '(?im)\b(unauthorized|forbidden|authentication failed|service connection)\b',
         '(?im)\b(agent|runner)\b.*\b(offline|unavailable|lost|not found)\b',
         '(?im)\b(timed? out|timeout|econnreset|enotfound|network error|connection refused)\b',

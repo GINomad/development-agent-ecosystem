@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
-    [ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $TargetAgentId,
+    [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -47,7 +47,17 @@ $acknowledged = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ord
 foreach ($ack in @($events | Where-Object { $_.type -eq 'user-comment-acknowledged' })) {
     foreach ($value in @($ack.evidence)) { if ($value) { $null = $acknowledged.Add([string]$value) } }
 }
-$unacknowledgedComments = @($events | Where-Object { $_.type -eq 'user-comment' -and -not $acknowledged.Contains([string]$_.eventId) })
+$unacknowledgedComments = @($events | Where-Object { [string]$_.type -in @('user-comment','workflow-input-routed') -and -not $acknowledged.Contains([string]$_.eventId) })
+$orchestratorId = [string]$config.workflow.orchestration.agentId
+if (-not $TargetAgentId) {
+    $pendingOrchestratorInputs = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $orchestratorId })
+    if ($pendingOrchestratorInputs.Count -and $orchestratorId -notin @($unfinished)) {
+        $orderedUnfinished = [Collections.Generic.List[string]]::new()
+        $orderedUnfinished.Add($orchestratorId)
+        foreach ($agentId in $unfinished) { $orderedUnfinished.Add($agentId) }
+        $unfinished = $orderedUnfinished
+    }
+}
 $applicableComments = if ($TargetAgentId) {
     @($unacknowledgedComments | Where-Object { -not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $TargetAgentId })
 } else { @($unacknowledgedComments) }

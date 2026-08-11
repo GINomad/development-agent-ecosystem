@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
-    [Parameter(Mandatory)][ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor')][string] $CompletedAgentId,
+    [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $CompletedAgentId,
     [switch] $ElevatedApproved,
+    [switch] $PrepareOnly,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -11,6 +12,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$knownAgentIds = @($config.agents | ForEach-Object { [string]$_.id })
+if ($CompletedAgentId -notin $knownAgentIds) { throw "Unknown completed agent '$CompletedAgentId'." }
 $chainConfig = $config.workflow.automaticContinuation
 if (-not [bool]$chainConfig.enabled) { return [pscustomobject]@{ Status='disabled'; StartedAgents=@() } }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
@@ -30,7 +33,8 @@ function Get-LatestDecisions {
 
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$task.status -in @($chainConfig.stopStatuses)) {
+    $reevaluateReviewerGate = $currentAgentId -eq 'reviewer' -and [string]$task.status -eq 'review_pending'
+    if ([string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateReviewerGate) {
         return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
     }
     if ([string]$task.agentStatuses.$currentAgentId.status -ne 'completed') {
@@ -39,6 +43,12 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
 
     $nextAgentId = $null
     switch ($currentAgentId) {
+        'orchestrator' {
+            foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+                $pendingInput = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId ([string]$candidate) -ConfigPath $ConfigPath -CodexHome $CodexHome
+                if ([int]$pendingInput.count -gt 0) { $nextAgentId = [string]$candidate; break }
+            }
+        }
         'requirements_analyst' { $nextAgentId = 'developer' }
         'developer' { $nextAgentId = 'reviewer' }
         'reviewer' {
@@ -46,26 +56,19 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Reviewer completed without review-result.json.' }
             $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $productFindings = @($review.findings)
-            $processFindings = @($review.agentProcessFindings)
-            $allFindings = @($productFindings) + @($processFindings)
-            if ($allFindings.Count) {
+            if ($productFindings.Count) {
                 $decisions = Get-LatestDecisions
-                $undecided = @($allFindings | Where-Object { -not $decisions.ContainsKey([string]$_.id) })
+                $undecided = @($productFindings | Where-Object { -not $decisions.ContainsKey([string]$_.id) })
                 if ($undecided.Count) {
-                    $message = "Reviewer produced $($undecided.Count) finding(s) that require a human decision."
+                    $message = "Reviewer produced $($undecided.Count) product finding(s) that require a human decision."
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_decision_required -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
                 }
                 $approvedProduct = @($productFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
-                $approvedProcess = @($processFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
                 if ($approvedProduct.Count) {
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage approved_review_rework -Message 'Approved Reviewer findings require Developer rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_rework -Message 'Reviewer must validate the approved rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     $nextAgentId = 'developer'
-                }
-                elseif ($approvedProcess.Count) {
-                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId knowledge_keeper -AgentStatus pending -Stage approved_process_finding -Message 'Knowledge Keeper must incorporate approved agent-process corrections.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                    $nextAgentId = 'knowledge_keeper'
                 }
                 else { $nextAgentId = 'pipeline_monitor' }
             }
@@ -98,11 +101,16 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         }
     }
     if (-not $nextAgentId) { return [pscustomobject]@{ Status='completed'; StartedAgents=@($started) } }
+    if ($PrepareOnly) {
+        return [pscustomobject]@{ Status='prepared'; NextAgentId=$nextAgentId; StartedAgents=@($started) }
+    }
 
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor ecosystem -Type workflow-status -Summary "Automatic chain continuation scheduled '$nextAgentId' after '$currentAgentId'." -TargetAgentId $nextAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $repositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() }
+    if (-not @($repositoryIds).Count) { throw "Task '$TaskId' has no repository scope for automatic continuation." }
     $workflowParameters = @{
         Mode=[string]$task.mode; TaskSelector=[string]$task.selector; TaskId=$TaskId
-        RepositoryIds=@($task.repositoryIds); UserInstruction="Automatic continuation after '$currentAgentId'. Run only '$nextAgentId' and stop at every human-input or approval gate."
+        RepositoryIds=@($repositoryIds); UserInstruction="Automatic continuation after '$currentAgentId'. Run only '$nextAgentId' and stop at every human-input or approval gate."
         Resume=$true; TargetAgentId=$nextAgentId; SkipChainContinuation=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
     }
     if ($ElevatedApproved -or [bool]$chainConfig.useElevatedExecution) { $workflowParameters.ElevatedApproved = $true }

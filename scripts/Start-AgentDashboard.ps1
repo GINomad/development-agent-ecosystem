@@ -153,6 +153,18 @@ function Clear-CompletedScriptRunspaces {
     }
 }
 
+function Test-TaskWorkflowActive {
+    param([Parameter(Mandatory)] $Task)
+    foreach ($run in @($scriptRuns)) {
+        if ([string]$run.taskId -eq [string]$Task.taskId -and -not $run.Async.IsCompleted) { return $true }
+    }
+    if ($Task.PSObject.Properties['workflowProcessId']) {
+        $workflowProcessId = [int]$Task.workflowProcessId
+        if ($workflowProcessId -gt 0 -and $workflowProcessId -ne $PID -and (Get-Process -Id $workflowProcessId -ErrorAction SilentlyContinue)) { return $true }
+    }
+    return $false
+}
+
 function Stop-TaskScriptRunspaces {
     param([Parameter(Mandatory)][string] $TaskId)
     $stoppedRunIds = [Collections.Generic.List[string]]::new()
@@ -248,7 +260,7 @@ try {
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
-                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; requiredArtifacts=@($_.requiredArtifacts) } })
+                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts) } })
                     Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
                     continue
                 }
@@ -421,8 +433,21 @@ try {
                     if (-not [string]::IsNullOrWhiteSpace($targetAgentId)) { $commentParameters.TargetAgentId = $targetAgentId }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
                     $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
-                    $commentMessage = if ($comment.QuestionId) { 'Answer saved and linked to the selected question. Resume the workflow to continue from the input gate.' } else { 'Comment saved. A running workflow will consume it at its next checkpoint.' }
-                    Send-Json -Response $response -Value @{ status='saved'; comment=$comment; message=$commentMessage }
+                    $dispatch = [pscustomobject][ordered]@{ status='not-requested'; agentId=$null; reason='The comment was not explicitly addressed to an agent.' }
+                    $explicitAgentComment = -not [string]::IsNullOrWhiteSpace($targetAgentId) -or -not [string]::IsNullOrWhiteSpace($questionId)
+                    $resolvedTargetAgentId = [string]$comment.TargetAgentId
+                    if ($explicitAgentComment -and -not [string]::IsNullOrWhiteSpace($resolvedTargetAgentId)) {
+                        $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                        $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                        if (Test-TaskWorkflowActive -Task $persistedTask) {
+                            $dispatch = [pscustomobject][ordered]@{ status='queued-for-checkpoint'; agentId=$resolvedTargetAgentId; reason='A workflow is already active. The comment will be consumed as part of the next comment batch; no duplicate restart was created.' }
+                        }
+                        else {
+                            $dispatch = [pscustomobject][ordered]@{ status='idle-awaiting-approval'; agentId=$resolvedTargetAgentId; reason="Agent '$resolvedTargetAgentId' is idle. The dashboard may request explicit approval to start one elevated targeted run now." }
+                        }
+                    }
+                    $commentMessage = if ([string]$dispatch.status -in @('idle-awaiting-approval','queued-for-checkpoint')) { [string]$dispatch.reason } elseif ($comment.QuestionId) { 'Answer saved and linked to the selected question.' } elseif ([string]$comment.RoutingStatus -eq 'pending-orchestrator') { 'Comment saved for Orchestrator classification at the next workflow checkpoint.' } else { 'Comment saved.' }
+                    Send-Json -Response $response -Value @{ status='saved'; comment=$comment; dispatch=$dispatch; message=$commentMessage }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/agents/([^/]+)/resume$') {
@@ -455,9 +480,9 @@ try {
                         $runId = $null
                         $executionMode = 'sandboxed'
                     }
-                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -Status running -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_queued -Message "Targeted restart queued for '$requestedAgentId'; other agents remain unchanged." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$requestedAgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$requestedAgentId'." -TargetAgentId $requestedAgentId -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled for restart." }
+                    Send-Json -Response $response -Value @{ status='scheduled'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled; it will run when this task owns the workspace lease." }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/close$') {

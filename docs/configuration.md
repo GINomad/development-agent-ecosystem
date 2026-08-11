@@ -10,9 +10,13 @@
 
 `runtime.contextLimits` bounds model-facing context. `maxSourceFiles` is the default first-party source inspection budget, `maxCommandOutputLines` and `maxCommandOutputBytes` trim tool output, and `workflowLogTailLines` plus `ledgerTailLines` define the recent slices supplied to Health Check. Deterministic dashboard and pipeline polling do not use these values because they do not invoke a model.
 
-`pipeline.postPush` controls the post-push delivery loop. `failureLogTailLines` and `failureLogMaxBytes` bound the failed-task evidence stored and supplied to agents. `maxRemediationCycles` is limited to three; reaching it produces a terminal `limit-reached` result instead of another Developer cycle. `autoQueueApprovedBuilds` enables only the build IDs explicitly listed per repository.
+`pipeline.postPush` controls the post-push delivery loop. `activityHeartbeatSeconds` controls how often the native Azure watcher refreshes its current stage in the dashboard; the default is 60 seconds and it does not invoke an AI model. `failureLogTailLines` and `failureLogMaxBytes` bound the failed-task evidence stored and supplied to agents. `maxRemediationCycles` is limited to three; reaching it produces a terminal `limit-reached` result instead of another Developer cycle. `autoQueueApprovedBuilds` enables only the build IDs explicitly listed per repository.
 
 `workflow.automaticContinuation` controls event-driven next-link execution after a successful targeted restart. `maxChainSteps` is a hard per-continuation bound, `useElevatedExecution` selects the host-compatible profiles on this machine, and `stopStatuses` are never crossed automatically.
+
+`workflow.orchestration` configures the control plane. `agentId` identifies Orchestrator, `routeUntargetedComments` sends general dashboard comments to its queue, `preserveExplicitTargets` prevents reclassification of direct agent comments and question answers, and `dispatchPriority` selects the first eligible owner when one input spans distinct responsibilities. Every routing decision is appended to `workflow-routing.jsonl`; `fallbackAgentId` is used only when the evidence is actionable but the responsible delivery role cannot be selected safely.
+
+`workflow.workspaceScheduling` serializes shared Git workspaces across tasks. `maxActiveTasks` is fixed to one, `queueWhenBusy` keeps later work in `queued`, and `switchWhenCurrentTaskIsIdle` lets the oldest queued task acquire the lease after the current workflow reaches a non-running terminal or input-gate status. `stashUncommittedChanges`, `includeUntracked`, and `restoreStashOnActivation` preserve each task's tracked and untracked working tree across branch switches. `coordinatorStatePath` stores the global lease owner; every task stores its branch and stash metadata in `workspace-session.json`. A stash is dropped only after successful `git stash apply --index`. Restore conflicts preserve the stash and open an Orchestrator input gate.
 
 `pipeline.delivery` is the narrow standing authorization for reviewed working branches. It permits only `git push origin HEAD:refs/heads/<current-branch>`, requires a clean worktree and clean product review, forbids `main`/`master`, force, and tags, and never publishes review comments or deployments.
 
@@ -63,7 +67,7 @@ Add one object to `repositories[]` for each local repository. Repository IDs mus
 
 `localWorkspace` must point to an existing Git working copy whose `origin` matches `url`. Multiple Azure DevOps organizations may reuse one Azure CLI credential profile when the signed-in identity has access to each organization.
 
-The dashboard repository control supports multiple selection. The first selected repository is the primary `codex -C` workspace; every additional selected workspace is passed as a separate `--add-dir`. New task state persists both `repositoryIds[]` and the first `repositoryId` for backward compatibility. Reviewer notes and manual review starts are applied independently to every selected repository.
+The dashboard repository control supports multiple selection. The first selected repository is the primary `codex -C` workspace; every additional selected workspace is passed as a separate `--add-dir`. New task state persists both `repositoryIds[]` and the first `repositoryId` for backward compatibility. All selected repositories participate in the same task workspace lease and are stashed/restored together. Reviewer notes and manual review starts are applied independently to every selected repository.
 
 To enable post-push monitoring for that repository, also add a matching `pipeline.repositories[]` entry. Leave `autoQueueDefinitionIds` empty until a build-only definition has been explicitly approved; never list a deployment definition.
 
@@ -74,7 +78,7 @@ To enable post-push monitoring for that repository, also add a matching `pipelin
 
 ## Extending prompts and skills
 
-Add a path to `agents[].promptPaths` or `agents[].skillPaths`. Paths may use `${REPO_ROOT}`, `${CODEX_HOME}`, `${STATE_ROOT}`, and `${LOCALAPPDATA}`. Every skill must contain a valid `SKILL.md` file and `agents/openai.yaml` metadata.
+Each `agents[]` entry also contains a `responsibilities[]` directory consumed by Orchestrator at every workflow start. Update that list whenever a role's authority changes. Add prompts through `agents[].promptPaths` and skills through `agents[].skillPaths`. Paths may use `${REPO_ROOT}`, `${CODEX_HOME}`, `${STATE_ROOT}`, and `${LOCALAPPDATA}`. Every skill must contain a valid `SKILL.md` file and `agents/openai.yaml` metadata.
 
 Knowledge Keeper, Developer, and Reviewer include `apply-engineering-principles`, `develop-dotnet`, `develop-javascript-typescript`, and `develop-react`. Knowledge Keeper records `engineeringGuidance.detectedStack`, `selectedSkills`, and the evidence-based selection reason in each context pack. The common principles skill is always supplied; technology skills are supplied only when repository files and configuration prove the stack.
 

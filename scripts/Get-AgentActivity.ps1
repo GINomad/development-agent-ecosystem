@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
-    [Parameter(Mandatory)][ValidateSet('knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')][string] $AgentId,
+    [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $AgentId,
     [ValidateRange(20,500)][int] $Tail = 200,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -71,7 +71,7 @@ if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try { $record = $line | ConvertFrom-Json } catch { continue }
         $isAgentActor = [string]$record.actor -eq $AgentId
-        $isTargetedUserComment = [string]$record.type -eq 'user-comment' -and $record.PSObject.Properties['targetAgentId'] -and [string]$record.targetAgentId -eq $AgentId
+        $isTargetedUserComment = [string]$record.type -in @('user-comment','workflow-input-routed') -and $record.PSObject.Properties['targetAgentId'] -and [string]$record.targetAgentId -eq $AgentId
         if (-not $isAgentActor -and -not $isTargetedUserComment) { continue }
         $sequence++
         $level = switch ([string]$record.type) {
@@ -80,13 +80,13 @@ if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
             'question-resolved' { 'success' }
             default { 'info' }
         }
-        $entryStage = if ($isTargetedUserComment) { 'user-comment' } else { $null }
-        $entrySummary = if ($isTargetedUserComment) { "User comment: $([string]$record.summary)" } else { [string]$record.summary }
+        $entryStage = if ($isTargetedUserComment) { if ([string]$record.type -eq 'workflow-input-routed') { 'orchestrator-routed-input' } else { 'user-comment' } } else { $null }
+        $entrySummary = if ($isTargetedUserComment) { if ([string]$record.type -eq 'workflow-input-routed') { "Orchestrator routed: $([string]$record.summary)" } else { "User comment: $([string]$record.summary)" } } else { [string]$record.summary }
         Add-ActivityEntry -Entries $entries -Id ([string]$record.eventId) -TimestampUtc ([string]$record.timestampUtc) -Source 'ledger' -Level $level -Stage $entryStage -Summary $entrySummary -Details $null -Sequence $sequence
     }
 }
 
-if ($AgentId -eq 'knowledge_keeper') {
+if ($AgentId -eq [string]$config.workflow.orchestration.agentId) {
     $workflowPath = Join-Path $taskRoot 'workflow-codex.jsonl'
     if (Test-Path -LiteralPath $workflowPath -PathType Leaf) {
         $workflowSequence = 0

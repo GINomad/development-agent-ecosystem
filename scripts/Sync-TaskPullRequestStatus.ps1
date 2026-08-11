@@ -11,6 +11,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+
+function ConvertTo-PullRequestList {
+    param($Value)
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [array]) { return @($Value.GetEnumerator()) }
+    return @($Value)
+}
+
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not [bool]$config.pipeline.pullRequests.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
 $repository = @($config.repositories | Where-Object { [string]$_.id -eq $RepositoryId -and [bool]$_.enabled }) | Select-Object -First 1
@@ -30,7 +38,8 @@ if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch i
 $sourceRef = 'refs/heads/' + ($branch -replace '^refs/heads/','')
 
 if ($PullRequestsJsonPath) {
-    $pullRequests = @(Get-Content -LiteralPath $PullRequestsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json)
+    $parsedPullRequests = Get-Content -LiteralPath $PullRequestsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $pullRequests = @(ConvertTo-PullRequestList -Value $parsedPullRequests)
 }
 else {
     $credential = @($config.credentialProfiles | Where-Object { [string]$_.id -eq [string]$repository.credentialProfile }) | Select-Object -First 1
@@ -44,9 +53,16 @@ else {
     }
     finally { $ErrorActionPreference = $previous }
     if ($exitCode -ne 0) { throw "Azure PR query failed with exit code $exitCode. $(@($json | Select-Object -Last 8) -join ' ')" }
-    $pullRequests = @(($json -join [Environment]::NewLine) | ConvertFrom-Json)
+    $parsedPullRequests = ($json -join [Environment]::NewLine) | ConvertFrom-Json
+    $pullRequests = @(ConvertTo-PullRequestList -Value $parsedPullRequests)
 }
-$matching = @($pullRequests | Where-Object { [string]$_.sourceRefName -eq $sourceRef } | Sort-Object creationDate -Descending)
+$matching = @($pullRequests | Where-Object {
+    $sourceProperty = $_.PSObject.Properties['sourceRefName']
+    $sourceProperty -and [string]$sourceProperty.Value -eq $sourceRef
+} | Sort-Object {
+    $creationProperty = $_.PSObject.Properties['creationDate']
+    if ($creationProperty -and $creationProperty.Value) { [datetime]::Parse([string]$creationProperty.Value) } else { [datetime]::MinValue }
+} -Descending)
 $pr = $matching | Select-Object -First 1
 $status = if ($pr) { ([string]$pr.status).ToLowerInvariant() } else { 'not-created' }
 $result = [ordered]@{
