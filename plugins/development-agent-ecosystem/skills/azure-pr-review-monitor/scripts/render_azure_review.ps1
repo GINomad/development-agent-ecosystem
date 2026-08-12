@@ -29,7 +29,6 @@ function New-FindingView {
         Recommendation = [string]$Source.Recommendation
         Disposition = $(if ($Source.Disposition) { [string]$Source.Disposition } else { 'actionable' })
         DispositionReason = [string]$Source.DispositionReason
-        Raw = [string]$Source.Raw
         Placed = $false
     }
 }
@@ -61,7 +60,6 @@ else {
             Recommendation = Get-Field $body 'Recommendation'
             Disposition = 'actionable'
             DispositionReason = ''
-            Raw = $body
         })))
     }
 }

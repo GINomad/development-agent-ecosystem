@@ -24,7 +24,8 @@ $patterns = [ordered]@{
         '(?im)\beslint\b.*\berror\b',
         '(?im)\bbuild failed\b.*\b(error|compil)'
         '(?im)\b(yaml|yml|azure-pipelines?)\b.*\b(invalid|syntax|parse|mapping|configuration error)\b',
-        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b'
+        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b',
+        '(?im)Excel deliverable validation failed with exit code\s*\.(?:\s|$)'
     )
     infrastructure = @(
         '(?im)\b(0x)?800B010A\b|\bCERT_E_CHAINING\b|\bcertificate chain\b.*\b(cannot|could not|failed|unable|untrusted|trusted root)\b',

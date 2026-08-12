@@ -78,7 +78,7 @@ $previousStatus = $null
 if (Test-Path -LiteralPath $resultPath -PathType Leaf) { try { $previousStatus = [string](Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json).status } catch {} }
 Write-Utf8NoBom -Path $resultPath -Content (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 if ($previousStatus -ne $status) {
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pr-status -Summary "Pull request status for '$branch' changed to '$status'." -Artifact $resultPath -Evidence @("pr:$($result.pullRequestId)") -TargetAgentId knowledge_keeper -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pr-status -Summary "Pull request status for '$branch' changed to '$status'." -Artifact $resultPath -Evidence @("pr:$($result.pullRequestId)") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
 if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
@@ -87,8 +87,8 @@ if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
     if (-not $DoNotStartKnowledgeUpdate) {
         $workflowParameters = @{
             Mode=[string]$task.mode; TaskSelector=[string]$task.selector; TaskId=$TaskId; RepositoryIds=@($task.repositoryIds)
-            UserInstruction='The task PR completed. Run only Knowledge Keeper to update verified knowledge and publish the final task summary.'
-            Resume=$true; TargetAgentId='knowledge_keeper'; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+            UserInstruction='The task PR completed. Run only Orchestrator to validate the terminal evidence and route the final publication command to Knowledge Keeper.'
+            Resume=$true; TargetAgentId='orchestrator'; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
         }
         & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
     }

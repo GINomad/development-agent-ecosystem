@@ -109,18 +109,31 @@ if ($Resume) {
     Write-Utf8NoBom -Path (Join-Path $task.TaskRoot 'resume-plan.json') -Content (($resumePlan | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 }
 
-$orchestratorAgent = @($config.agents | Where-Object { $_.id -eq [string]$config.workflow.orchestration.agentId }) | Select-Object -First 1
-$orchestratorPrompt = [Collections.Generic.List[string]]::new()
-foreach ($pathValue in @($orchestratorAgent.promptPaths)) {
+$executedAgentId = if ($TargetAgentId) { $TargetAgentId } else { [string]$config.workflow.orchestration.agentId }
+$activeAgent = @($config.agents | Where-Object { [string]$_.id -eq $executedAgentId }) | Select-Object -First 1
+$activeRolePrompt = [Collections.Generic.List[string]]::new()
+foreach ($pathValue in @($activeAgent.promptPaths)) {
     $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $config -CodexHome $CodexHome
-    $orchestratorPrompt.Add((Get-Content -LiteralPath $path -Raw).Trim())
+    $activeRolePrompt.Add((Get-Content -LiteralPath $path -Raw).Trim())
 }
 $roleDirectory = @($config.agents | Where-Object { [string]$_.id -ne [string]$config.workflow.orchestration.agentId } | ForEach-Object {
     $responsibilities = @($_.responsibilities | ForEach-Object { [string]$_ }) -join ' | '
     "$([string]$_.id): $([string]$_.description) Responsibilities: $responsibilities"
 }) -join [Environment]::NewLine
+$executionIdentity = if ($TargetAgentId) { "You are the '$TargetAgentId' role for this exact targeted run. Execute that role's work yourself in this Codex process; do not merely announce or simulate a handoff." } else { 'You are the primary workflow coordinator for the configured development agent ecosystem. Orchestrator owns intake classification and dispatch; Knowledge Keeper is an on-demand knowledge service and final knowledge publisher.' }
+$targetExecutionContract = if ($TargetAgentId) { @"
+Targeted execution contract:
+- Perform the '$TargetAgentId' work directly under the role prompt below. The installed custom-agent name is a policy reference, not a background process that survives this `codex exec` run.
+- Do not call collaboration spawn or wait, do not claim that another agent is active, and do not stop after merely setting '$TargetAgentId' to running.
+- Before returning, leave '$TargetAgentId' in exactly one terminal status: completed after validated outcome publication, waiting after an explicit input gate, or failed with structured failure evidence. A running or pending status at host exit is an execution failure.
+- Execute no other role. After a successful terminal outcome, return to the trusted PowerShell host, which alone decides automatic chain continuation.
+"@ } else { @"
+Coordinator execution contract:
+- Execute Orchestrator work directly in this Codex process. Do not claim a delivery agent is running unless its separate targeted host run has actually started.
+- Publish the Orchestrator outcome and return to the trusted PowerShell host; the host starts the selected role in a separate targeted invocation.
+"@ }
 $prompt = @"
-You are the primary workflow coordinator for the configured development agent ecosystem. Orchestrator owns intake classification and dispatch; Knowledge Keeper is an on-demand knowledge service and final knowledge publisher.
+$executionIdentity
 
 Task ID: $TaskId
 Mode: $Mode
@@ -145,14 +158,15 @@ Resume rules:
 - When a Developer creates or changes the task branch, the current branch becomes this task's branch at the next workspace suspension. Uncommitted tracked and untracked changes are stashed with a task/repository identity before switching away and restored with stash apply before the task resumes. The stash is dropped only after successful restoration.
 - A workspace restore conflict is a human-input gate. Never reset, clean, discard, or silently resolve it.
 - On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 before any newly selected delivery role starts.
-- On an explicit targeted-agent resume, preserve that explicit target. Orchestrator may classify already queued general inputs, but it must not replace the requested target or start a different role in that targeted invocation.
+- On an explicit targeted-agent resume, execute that exact role directly in this process. Do not replace it, delegate it, or start another role in that targeted invocation.
 - Orchestrator must use the freshly loaded role directory below, select the smallest sufficient target set, and use Requirements Analyst as the configured fallback when the evidence is actionable but ownership remains unclear.
 - Routed workflow-input events are the only general comments a delivery agent consumes. Explicit agent comments and linked question answers remain direct.
 - A checkpoint resume MUST dispatch only the listed unfinished agents. Do not rerun a completed agent, repeat its completed work, or regenerate its artifacts. Consume completed artifacts as immutable checkpoint input.
-- A targeted-agent resume MUST dispatch only the exact target agent. Knowledge Keeper may reconstruct context and persist the handoff, but no other role may be started, reset, or have its artifacts rewritten.
+- A targeted-agent resume MUST execute only the exact target role and reach its terminal status before this process returns. No other role may be started, reset, or have its artifacts rewritten.
 - A skipped role in an active checkpoint is unfinished and must be reconsidered when its prerequisite becomes available. When a role is conclusively not applicable, record evidence and mark it completed with a no-op result so future resumes do not repeat it.
 - Each permitted agent chooses the largest coherent bounded work block that stays inside ready scope, its role, approval gates, and configured context limits. It may execute successive blocks in the same invocation.
 - At the end of every work block, the active agent calls Get-AgentCommentBatch.ps1 once, applies all applicable comments as one batch, acknowledges the processed IDs once, and decides whether another block is necessary. No restart is needed while that agent is still running. A comment addressed to another agent remains pending for that agent.
+- If a batched comment is wholly or partly outside the active agent's configured responsibilities, that agent calls Request-OrchestratorCommentRouting.ps1 once for the affected IDs instead of acting outside its authority. After the agent publishes a successful outcome, dispatch Orchestrator before the normal next role; after Orchestrator routes the remainder, dispatch its earliest eligible target automatically. Do not require a manual restart for this authority handoff.
 - Reuse `context-pack.json` summaries for unchanged artifacts. Read only the listed changed artifacts plus a role's own private checkpoint; reopen an unchanged artifact only for a named evidence gap.
 
 Live task control:
@@ -171,9 +185,11 @@ Live task control:
 Configured role directory (authoritative for routing):
 $roleDirectory
 
-Use the custom agents $orchestratorAgentName, $knowledgeAgentName, $requirementsAgentName, $developerAgentName, $reviewerAgentName, $pipelineAgentName, and $healthAgentName according to the configured gates. After Orchestrator persists a routing batch, it must publish its validated routing outcome and the coordinator dispatches the earliest eligible routed target. The existing Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper continuation remains unchanged. In host-compatible mode every selected subagent uses the current-user execution profile installed by Health Check; do not fall back to the standard sandboxed agent names. Dispatch $healthAgentName when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+$targetExecutionContract
 
-$($orchestratorPrompt -join ([Environment]::NewLine + [Environment]::NewLine))
+The existing Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper continuation remains unchanged, but each link runs in its own host invocation. In host-compatible mode the current invocation uses the approved host-compatible sandbox. Dispatch Health Check only through the trusted host when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+
+$($activeRolePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@
 
 $result = [pscustomobject]@{
@@ -224,6 +240,7 @@ try {
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
+    & (Join-Path $PSScriptRoot 'Assert-TargetAgentTerminalState.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
     if ($TargetAgentId) {
@@ -257,6 +274,7 @@ try {
     }
     if ($TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
         $closureComplete = $TargetAgentId -eq 'knowledge_keeper' -and $currentTask.PSObject.Properties['closure'] -and [string]$currentTask.closure.status -eq 'knowledge-update-pending' -and [string]$currentTask.agentStatuses.knowledge_keeper.status -eq 'completed'
+        $preserveAwaitingPullRequest = $currentStatus -eq 'interrupted' -and $currentTask.PSObject.Properties['currentStage'] -and [string]$currentTask.currentStage -eq 'awaiting_pull_request'
         if ($closureComplete) {
             $completedAtUtc = [DateTime]::UtcNow.ToString('o')
             $currentTask.closure.status = 'completed'
@@ -268,7 +286,7 @@ try {
             $currentStatus = 'completed'
             $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
-        if (-not $closureComplete) {
+        if (-not $closureComplete -and -not $preserveAwaitingPullRequest) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage targeted_agent_completed -Message "Targeted restart for '$TargetAgentId' finished. Remaining agents: $(@($remainingPlan.UnfinishedAgentIds) -join ', ')." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -279,6 +297,11 @@ try {
             $currentStatus = 'completed'
         }
         $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        elseif ($preserveAwaitingPullRequest) {
+            & $statusScript -TaskId $TaskId -Status interrupted -Stage awaiting_pull_request -Message "Targeted restart for '$TargetAgentId' finished; exact-commit delivery succeeded and the task is awaiting pull-request lifecycle evidence." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $currentStatus = 'interrupted'
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
     }
     $currentStage = if ($currentTask.PSObject.Properties['currentStage']) { [string]$currentTask.currentStage } else { $currentStatus }
@@ -292,17 +315,26 @@ try {
             & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for human review decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
+    elseif ($currentStatus -eq 'interrupted') {
+        if ($updateOrchestratorStatus) {
+            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage checkpoint_incomplete -Message 'Orchestrator completed coordination; one or more routed agents remain unfinished.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+    }
     elseif ($currentStatus -notin @('failed','interrupted','completed')) {
         if ($updateOrchestratorStatus) {
             & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage completed -Message 'Orchestrator completed intake routing and workflow coordination.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         & $statusScript -TaskId $TaskId -Status completed -Stage completed -Message 'Workflow completed. Review task artifacts for the final outcome.' -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
-    if ($TargetAgentId -and $ContinueChain -and -not $SkipChainContinuation -and $TargetAgentId -ne 'health_check') {
+    if ($currentStatus -notin @('created','queued','running','failed')) {
+        try { & (Join-Path $PSScriptRoot 'Resolve-RecoveredControlPlaneStatuses.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+        catch { Write-Warning "Control-plane status reconciliation failed: $($_.Exception.Message)" }
+    }
+    if (-not $SkipChainContinuation -and [bool]$config.workflow.automaticContinuation.enabled -and $executedAgentId -ne 'health_check') {
         $chainTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $manualClosure = $chainTask.PSObject.Properties['closure'] -and [string]$chainTask.closure.kind -eq 'manual'
-        if (-not $manualClosure -and [string]$chainTask.agentStatuses.$TargetAgentId.status -eq 'completed') {
-            & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') -TaskId $TaskId -CompletedAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if (-not $manualClosure -and [string]$chainTask.agentStatuses.$executedAgentId.status -eq 'completed') {
+            & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
     if (-not $SkipChainContinuation) {

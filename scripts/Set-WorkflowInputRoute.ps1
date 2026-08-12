@@ -27,10 +27,10 @@ if (-not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) { throw "Task '$Ta
 $events = @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
 $source = @($events | Where-Object { [string]$_.eventId -eq $SourceEventId }) | Select-Object -First 1
 if (-not $source) { throw "Source event '$SourceEventId' was not found." }
-if ([string]$source.type -notin @('task-created','user-comment')) { throw "Event '$SourceEventId' is not routable task intake or a workflow comment." }
+if ([string]$source.type -notin @('task-created','user-comment','agent-routing-request')) { throw "Event '$SourceEventId' is not routable task intake or a workflow comment." }
 if ($InputKind -eq 'task-intake' -and [string]$source.type -ne 'task-created') { throw 'task-intake requires a task-created source event.' }
-if ($InputKind -eq 'workflow-comment' -and [string]$source.type -ne 'user-comment') { throw 'workflow-comment requires a user-comment source event.' }
-if ([string]$source.type -eq 'user-comment') {
+if ($InputKind -eq 'workflow-comment' -and [string]$source.type -notin @('user-comment','agent-routing-request')) { throw 'workflow-comment requires a user comment or agent authority-handoff source event.' }
+if ([string]$source.type -in @('user-comment','agent-routing-request')) {
     $existingTarget = if ($source.PSObject.Properties['targetAgentId']) { [string]$source.targetAgentId } else { '' }
     if (-not [string]::IsNullOrWhiteSpace($existingTarget) -and $existingTarget -ne $orchestratorId) { throw "Comment '$SourceEventId' is explicitly targeted to '$existingTarget' and cannot be reclassified." }
 }
@@ -81,7 +81,7 @@ $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
 $stream = [IO.File]::Open($routingPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
 try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
 
-if ([string]$source.type -eq 'user-comment') {
+if ([string]$source.type -in @('user-comment','agent-routing-request')) {
     & (Join-Path $PSScriptRoot 'Acknowledge-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $orchestratorId -EventIds @($SourceEventId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 if ($RequiresUserInput) {

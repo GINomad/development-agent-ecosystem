@@ -1,6 +1,6 @@
 ---
 name: monitor-delivery-pipelines
-description: Integrate exact-branch and exact-commit Azure pipeline monitoring into the task workflow and return terminal results and failure evidence to the knowledge keeper. Use only after an authorized push or an explicit pipeline monitoring request.
+description: Integrate exact-branch and exact-commit Azure pipeline monitoring into the task workflow, publish bounded successful outcomes for shared knowledge, and route remediation or completed-PR control signals through the orchestrator. Use only after an authorized push or an explicit pipeline monitoring request.
 ---
 
 # Monitor Delivery Pipelines
@@ -12,5 +12,6 @@ description: Integrate exact-branch and exact-commit Azure pipeline monitoring i
 5. Treat failed, partially succeeded, canceled, and timed-out runs as non-success.
 6. Bound failed task excerpts by the configured line and byte limits, classify them deterministically, and write `pipeline-result.json`.
 7. Route only `code` and `test` failures to Developer, once per failure signature and within the configured three-cycle ceiling.
-8. Return run links, results, classification, remediation state, and focused evidence to Knowledge Keeper.
+8. After producing a valid terminal artifact, publish one bounded successful Pipeline Monitor outcome so Knowledge Keeper can ingest verified delivery evidence; never send progress dumps or failed private context.
+9. After build success, synchronize the task PR once. Keep active or absent PRs waiting, open a human-input gate for abandoned PRs, and report completed-PR closure evidence to Orchestrator. Only Orchestrator may route the final publication command to Knowledge Keeper.
 9. On build success, call `scripts/Sync-TaskPullRequestStatus.ps1` once. Only a completed PR requests final task completion and the Knowledge Keeper update; active or absent PRs remain pending, and abandoned PRs require human input.
