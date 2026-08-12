@@ -1,0 +1,33 @@
+diff --git a/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1 b/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1
+--- a/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1
++++ b/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1
+@@ -368,7 +368,17 @@
+-                $logFile = Join-Path $env:TEMP "azdo-$($run.id)-$($task.log.id).log"
+-                & $AzCli devops invoke --organization $Organization --area build --resource logs --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" --api-version 7.1 --accept-media-type text/plain --out-file $logFile | Out-Null
+-                if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $logFile)) {
+-                    $tail = @(Get-Content -LiteralPath $logFile -Tail $FailureLogTailLines -Encoding UTF8)
+-                    $excerpt = Get-BoundedLogExcerpt -Lines $tail -MaximumBytes $FailureLogMaxBytes
+-                    Write-Host $excerpt
++                $logFile = Join-Path ([IO.Path]::GetTempPath()) "azdo-$($run.id)-$($task.log.id)-$([guid]::NewGuid().ToString('N')).log"
++                try {
++                    $logDownloadOutput = @(& $AzCli devops invoke --organization $Organization --area build --resource logs --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" --api-version 7.1 --accept-media-type text/plain --out-file $logFile 2>&1)
++                    $logDownloadExitCode = $LASTEXITCODE
++                    if ($logDownloadExitCode -eq 0 -and (Test-Path -LiteralPath $logFile -PathType Leaf)) {
++                        $tail = @(Get-Content -LiteralPath $logFile -Tail $FailureLogTailLines -Encoding UTF8)
++                        $excerpt = Get-BoundedLogExcerpt -Lines $tail -MaximumBytes $FailureLogMaxBytes
++                        Write-Host $excerpt
++                    }
++                    else {
++                        Write-Warning "Unable to download Azure log $($task.log.id) for run $($run.id): $($logDownloadOutput -join [Environment]::NewLine)"
++                    }
++                }
++                finally {
++                    if (Test-Path -LiteralPath $logFile -PathType Leaf) { Remove-Item -LiteralPath $logFile -Force }
+                 }
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -323,0 +324,3 @@
++$pipelineWatcherScript = Get-Content -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Raw -Encoding UTF8
++if ($pipelineWatcherScript -notmatch 'azdo-.*NewGuid' -or $pipelineWatcherScript -notmatch 'finally\s*\{\s*if\s*\(Test-Path -LiteralPath \$logFile') { throw 'Pipeline failed-log retrieval must use a unique non-existing temp path and guarantee cleanup.' }
++Add-Check -Name 'pipeline-log-temp-files' -Detail 'Every Azure failed-log download uses a unique path and removes it after bounded extraction'

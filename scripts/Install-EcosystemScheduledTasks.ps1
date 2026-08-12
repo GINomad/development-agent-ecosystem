@@ -83,7 +83,7 @@ try {
     Register-ScheduledTask -TaskName $newNames[0] -Action $pollAction -Trigger $pollTrigger -Settings $settings -Principal $principal -Description 'Checks active assigned PRs and reruns review when code or comments change.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[1] -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the vendored ecosystem PR review monitor daily.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[2] -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves vendored ecosystem review reports on loopback.' -Force | Out-Null
-    Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and finalizes completed PR tasks through Knowledge Keeper.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and routes completed PR tasks through Orchestrator for final Knowledge Keeper publication.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { throw "New scheduled task '$name' was not registered." }
     }

@@ -43,6 +43,14 @@ function Get-TextSha256 {
     finally { $sha.Dispose() }
 }
 
+function Get-OptionalPropertyValue {
+    param([AllowNull()] $InputObject, [Parameter(Mandatory)][string] $Name)
+    if ($null -eq $InputObject) { return $null }
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 $lines = [Collections.Generic.List[string]]::new()
 $lines.Add('# Active pull request discussion context')
 $lines.Add('')
@@ -63,19 +71,26 @@ foreach ($repository in $repositories) {
                 "project=$($repository.project)","repositoryId=$($pr.repositoryId)","pullRequestId=$($pr.pullRequestId)",
                 '--api-version','7.1'
             )
-            $threads = if ($result.value) { @($result.value) } else { @($result) }
+            $resultValue = Get-OptionalPropertyValue -InputObject $result -Name 'value'
+            $threads = if ($null -ne $resultValue) { @($resultValue) } else { @($result) }
             foreach ($thread in $threads) {
-                foreach ($comment in @($thread.comments)) {
-                    if (-not $comment -or $comment.isDeleted) { continue }
+                $threadComments = Get-OptionalPropertyValue -InputObject $thread -Name 'comments'
+                foreach ($comment in @($threadComments)) {
+                    if (-not $comment) { continue }
+                    if ([bool](Get-OptionalPropertyValue -InputObject $comment -Name 'isDeleted')) { continue }
+                    $threadContext = Get-OptionalPropertyValue -InputObject $thread -Name 'threadContext'
+                    $author = Get-OptionalPropertyValue -InputObject $comment -Name 'author'
+                    $authorUniqueName = [string](Get-OptionalPropertyValue -InputObject $author -Name 'uniqueName')
+                    $authorDisplayName = [string](Get-OptionalPropertyValue -InputObject $author -Name 'displayName')
                     $records.Add([pscustomobject][ordered]@{
                         kind = 'azure-thread-comment'
-                        threadId = [string]$thread.id
-                        threadStatus = [string]$thread.status
-                        filePath = [string]$thread.threadContext.filePath
-                        author = if ($comment.author.uniqueName) { [string]$comment.author.uniqueName } else { [string]$comment.author.displayName }
-                        publishedAt = [string]$comment.publishedDate
-                        updatedAt = [string]$comment.lastUpdatedDate
-                        content = [string]$comment.content
+                        threadId = [string](Get-OptionalPropertyValue -InputObject $thread -Name 'id')
+                        threadStatus = [string](Get-OptionalPropertyValue -InputObject $thread -Name 'status')
+                        filePath = [string](Get-OptionalPropertyValue -InputObject $threadContext -Name 'filePath')
+                        author = if (-not [string]::IsNullOrWhiteSpace($authorUniqueName)) { $authorUniqueName } else { $authorDisplayName }
+                        publishedAt = [string](Get-OptionalPropertyValue -InputObject $comment -Name 'publishedDate')
+                        updatedAt = [string](Get-OptionalPropertyValue -InputObject $comment -Name 'lastUpdatedDate')
+                        content = [string](Get-OptionalPropertyValue -InputObject $comment -Name 'content')
                     })
                 }
             }

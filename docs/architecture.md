@@ -19,9 +19,10 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, multi-repository workspace selection, task creation/resume, knowledge import, and Orchestrator launch |
 | `scripts/Set-WorkflowInputRoute.ps1` | Idempotent task/comment routing into addressable agent inputs backed by `workflow-routing.jsonl` |
+| `scripts/Request-OrchestratorCommentRouting.ps1` | Durable, idempotent return of out-of-scope targeted comments to Orchestrator with original-event traceability |
 | `scripts/Switch-TaskWorkspace.ps1` | Single-task workspace lease, task-specific branch capture, tracked/untracked stash, and safe restore |
 | `scripts/Start-NextQueuedTask.ps1` | Oldest-first continuation after the active task becomes idle; never launches concurrent task work |
-| `scripts/Continue-AgentChain.ps1` | Event-driven next-link selection after successful targeted execution; normalizes current and legacy repository scope and stops at human, review, delivery, and failure gates |
+| `scripts/Continue-AgentChain.ps1` | Event-driven next-link selection after successful targeted execution; prioritizes authority handoffs to Orchestrator, normalizes repository scope, and preserves human, review, delivery, and failure gates |
 | `scripts/Invoke-ReviewedBranchDelivery.ps1` | Clean-review, clean-worktree, non-base, non-force branch push followed by exact-SHA monitoring |
 | `scripts/Invoke-PostPushPipeline.ps1` | Exact pushed-ref verification, allowlisted build queueing, native run monitoring, result publication, and bounded Developer remediation routing |
 | `scripts/Sync-TaskPullRequestStatus.ps1` | One-shot task-branch PR correlation; completed PR triggers final Keeper work, abandoned PR opens a question |
@@ -58,9 +59,9 @@ Dashed green `+` badges identify supported extension points:
 
 ## Component interaction
 
-Agent progression is event-driven: Orchestrator classifies task intake and general comments from the current JSON responsibility directory, then a successful targeted run calls the next eligible role directly and never polls role state in a loop. A global workspace coordinator grants one task at a time ownership of all selected repositories; other tasks are durable queued work, not concurrent processes. Failed execution is handed to Health Check; a verified repair gets one failed-agent-only retry and then rejoins the chain. Review Monitor owns authored/assigned PR discovery and the shared status index, while Pipeline Monitor owns exact task-branch correlation, build/remediation, and the completion gate.
+Agent progression is host-driven and event-based: Orchestrator classifies task intake and general comments from the current JSON responsibility directory, then every successful initial, resume, or targeted run returns to the trusted host, which starts the next eligible role directly. Roles never poll one another or remain alive to wait for the next role. Developer completion may cross `review_pending` only to start Reviewer; a machine-readable Pipeline remediation may cross its waiting gate only to start Developer. All other human-input and approval gates stop the chain. A per-run bound allows at most eight handoffs and at most three repetitions of one role-to-role transition; exceeding either bound persists a failure and hands it to Health Check. A global workspace coordinator grants one task at a time ownership of all selected repositories; other tasks are durable queued work, not concurrent processes. Failed execution is handed to Health Check; a verified repair gets one failed-agent-only retry and then rejoins the chain. Review Monitor owns authored/assigned PR discovery and the shared status index, while Pipeline Monitor owns exact task-branch correlation, build/remediation, and the completion gate.
 
-Routing and knowledge are separate. Orchestrator owns task/comment classification and dispatch but performs no delivery work. Persisting a route appends an addressable input and never rewrites the selected agent's existing status. When new input changes work owned by a completed, waiting, interrupted, or failed role, Orchestrator may request its targeted restart; only trusted host continuation starts it after Orchestrator succeeds. Knowledge Keeper issues a minimal context on request and answers explicit knowledge or skill requests; it never loops over `wait` or polls role logs. Each role autonomously sizes coherent work blocks and reads only direct or Orchestrator-routed comments once per checkpoint. Working details remain private until the role succeeds. Only a validated terminal outcome enters shared context, where Knowledge Keeper decides whether it changes task decisions, coding rules, or managed knowledge. After all applicable roles complete, it writes `task-summary.json`.
+Routing and knowledge are separate. Orchestrator owns task/comment classification and dispatch but performs no delivery work. Persisting a route appends an addressable input and never rewrites the selected agent's existing status. When new input changes work owned by a completed, waiting, interrupted, or failed role, Orchestrator may request its targeted restart; only trusted host continuation starts it after Orchestrator succeeds. A completed-PR signal follows `Pipeline Monitor -> Orchestrator -> Knowledge Keeper`: Orchestrator verifies the persisted terminal gate and routes one final-publication command. Knowledge Keeper issues a minimal context on request and answers explicit knowledge or skill requests throughout delivery; it never loops over `wait` or polls role logs. Each role autonomously sizes coherent work blocks and reads only direct or Orchestrator-routed comments once per checkpoint. Working details remain private until the role succeeds. Only a validated terminal outcome enters shared context, where Knowledge Keeper decides whether it changes task decisions, coding rules, or managed knowledge. After all applicable roles complete, it writes `task-summary.json`.
 
 ```mermaid
 flowchart LR
@@ -101,6 +102,8 @@ flowchart LR
     RM[Review Monitor: authored + assigned PRs] --> IDX[(Shared PR status index)]
     IDX -->|active / completed / abandoned| P
     P -->|exact commit status + bounded failed logs| K
+    P -->|completed PR closure evidence| O
+    O -->|validated final-publication command| K
     P -->|code/test only; max 3 cycles| D
     O -->|failure envelope + bounded recent tails| H[Health Check Agent]
     X[Guarded runner: stop after 3 identical failures] -->|guard + failure artifacts| O
@@ -149,7 +152,7 @@ sequenceDiagram
         U->>O: approve / reject / defer finding
         O->>D: approved findings only
         D->>P: pushed branch and exact commit
-        P-->>K: exact-SHA result + bounded classified logs
+        P-->>K: successful exact-SHA outcome for shared knowledge
         P-->>O: delivery status
         alt code or test failure and cycle remains
             P-->>O: pipeline-remediation-request
@@ -161,6 +164,8 @@ sequenceDiagram
         else infrastructure / unknown / no run / limit reached
             P-->>O: terminal evidence for Health or operator gate
         end
+        P-->>O: completed PR closure evidence
+        O->>K: validated final-publication command
         K->>K: publish verified knowledge and task history
     else an agent or workflow fails
         G->>G: count normalized identical failures

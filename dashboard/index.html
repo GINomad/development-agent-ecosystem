@@ -146,6 +146,13 @@
                   <p id="reviewFeedbackSummary">Loading Reviewer outcome...</p>
                 </div>
                 <div class="review-feedback-list" id="reviewFeedbackList"></div>
+                <section class="requirement-traceability" aria-labelledby="requirementTraceabilityTitle">
+                  <div class="requirement-traceability-heading">
+                    <h6 id="requirementTraceabilityTitle">Requirement Traceability</h6>
+                    <p id="requirementTraceabilitySummary">Loading requirement coverage...</p>
+                  </div>
+                  <div class="requirement-traceability-list" id="requirementTraceabilityList"></div>
+                </section>
                 <p class="agent-action-status" id="reviewFeedbackStatus" role="status"></p>
                 <p class="hint">Each reply is saved in the task ledger and linked to the selected Reviewer item. Send it to Reviewer for clarification or to Developer as an implementation instruction. Sending does not approve a finding and does not restart an agent.</p>
               </section>
@@ -159,28 +166,30 @@
                   <div class="diff-lines" id="reviewDiffLines" role="list"></div>
                 </div>
               </div>
-              <div class="diff-comment-panel">
-                <div class="diff-comment-content">
-                  <p class="diff-selection" id="reviewDiffSelection">No line selected. The comment will apply to the whole diff.</p>
-                  <div class="diff-comment-grid">
-                    <label>
-                      Send to
-                      <select id="reviewDiffCommentTarget">
-                        <option value="reviewer">Reviewer</option>
-                        <option value="developer">Developer</option>
-                      </select>
-                    </label>
-                    <label>
-                      Comment
-                      <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Leave a general review note, or select a diff line first to attach file and line context."></textarea>
-                    </label>
+              <div class="hidden" id="reviewDiffCommentDock">
+                <div class="diff-comment-panel hidden" id="reviewDiffCommentPanel">
+                  <div class="diff-comment-content">
+                    <p class="diff-selection" id="reviewDiffSelection">Select a diff line to comment.</p>
+                    <div class="diff-comment-grid">
+                      <label>
+                        Send to
+                        <select id="reviewDiffCommentTarget">
+                          <option value="reviewer">Reviewer</option>
+                          <option value="developer">Developer</option>
+                        </select>
+                      </label>
+                      <label>
+                        Comment
+                        <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Comment on the selected diff line."></textarea>
+                      </label>
+                    </div>
+                    <div class="actions">
+                      <button class="button primary" id="sendReviewDiffComment" type="button">Send diff comment</button>
+                      <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
+                    </div>
+                    <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
+                    <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
                   </div>
-                  <div class="actions">
-                    <button class="button primary" id="sendReviewDiffComment" type="button">Send diff comment</button>
-                    <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
-                  </div>
-                  <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
-                  <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
                 </div>
               </div>
             </section>
@@ -294,14 +303,14 @@
         </div>
       </div>
       <section class="external-review-workspace hidden" id="externalReviewWorkspace">
-        <aside class="external-review-list" id="externalReviewList">No external review reports.</aside>
-        <div class="external-review-viewer">
-          <div class="artifact-viewer-header">
-            <div><h4 id="externalReviewTitle">Select a review report</h4><p id="externalReviewMeta">Reports produced for authored or assigned active pull requests.</p></div>
-            <button class="button secondary compact-button" id="refreshExternalReviews" type="button">Refresh reports</button>
+        <div class="external-review-header">
+          <div>
+            <h4>Active Azure pull requests</h4>
+            <p id="externalReviewSummary">Review Monitor status is loaded on demand.</p>
           </div>
-          <pre id="externalReviewContent">Review Monitor reports will appear here. PR lifecycle status polling does not invoke AI.</pre>
+          <button class="button secondary compact-button" id="refreshExternalReviews" type="button">Refresh PRs</button>
         </div>
+        <div class="external-review-list" id="externalReviewList">No active pull requests.</div>
       </section>
     </section>
 

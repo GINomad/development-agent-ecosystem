@@ -21,6 +21,25 @@ $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $started = [Collections.Generic.List[string]]::new()
 $currentAgentId = $CompletedAgentId
+$transitionCounts = @{}
+
+function Stop-AutomaticChain {
+    param([Parameter(Mandatory)][string] $Reason)
+
+    $failure = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId orchestrator -Stage automatic_chain_guard -Summary $Reason -Diagnostic $Reason -Evidence @($taskPath) -ConfigPath $ConfigPath -CodexHome $CodexHome
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId orchestrator -AgentStatus failed -Stage automatic_chain_guard -Message $Reason -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status failed -Stage automatic_chain_guard -Message $Reason -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $recovery = $null
+    try {
+        $recoveryParameters = @{ TaskId = $TaskId; FailurePath = [string]$failure.FailurePath; ConfigPath = $ConfigPath; CodexHome = $CodexHome }
+        if ($ElevatedApproved) { $recoveryParameters.ElevatedApproved = $true }
+        $recovery = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @recoveryParameters
+    }
+    catch {
+        Write-Warning ('Automatic chain failure was persisted, but Health Check launch failed: ' + $_.Exception.Message)
+    }
+    return [pscustomobject]@{ Status = 'failed'; Reason = $Reason; FailurePath = [string]$failure.FailurePath; HealthRecovery = $recovery; StartedAgents = @($started) }
+}
 
 function Get-LatestDecisions {
     $result = @{}
@@ -31,22 +50,66 @@ function Get-LatestDecisions {
     return $result
 }
 
+function Add-ApprovedFindingInput {
+    param(
+        [Parameter(Mandatory)][string] $FindingId,
+        [Parameter(Mandatory)][string] $FindingSummary,
+        [Parameter(Mandatory)][ValidateSet('developer','orchestrator')][string] $TargetAgentId,
+        [Parameter(Mandatory)][string] $ReviewPath
+    )
+
+    $evidenceKey = 'review-finding:' + $FindingId
+    $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+    if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
+        foreach ($line in @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8)) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try { $event = $line | ConvertFrom-Json } catch { continue }
+            if ([string]$event.type -eq 'workflow-input-routed' -and [string]$event.targetAgentId -eq $TargetAgentId -and @($event.evidence) -contains $evidenceKey -and @($event.evidence) -contains 'decision:approved') { return $event }
+        }
+    }
+    $summary = 'Human-approved Reviewer finding ' + $FindingId + ': ' + $FindingSummary + ' The approval is already recorded; do not reopen the approval gate.'
+    return (& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor reviewer -Type workflow-input-routed -Summary $summary -Artifact (Join-Path $taskRoot 'review-decisions.json') -Evidence @($evidenceKey, 'decision:approved', $ReviewPath, (Join-Path $taskRoot 'review-decisions.json')) -TargetAgentId $TargetAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome)
+}
+
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $reevaluateReviewerGate = $currentAgentId -eq 'reviewer' -and [string]$task.status -eq 'review_pending'
-    if ([string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateReviewerGate) {
-        return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
-    }
-    if ([string]$task.agentStatuses.$currentAgentId.status -ne 'completed') {
-        return [pscustomobject]@{ Status='stopped'; Reason="Agent '$currentAgentId' did not complete successfully."; StartedAgents=@($started) }
+    $currentAgentStatus = [string]$task.agentStatuses.$currentAgentId.status
+    if ($currentAgentStatus -ne 'completed') {
+        if ($currentAgentStatus -eq 'waiting') { return [pscustomobject]@{ Status='waiting'; Reason=('Agent ' + $currentAgentId + ' reached an explicit input or approval gate.'); StartedAgents=@($started) } }
+        if ($currentAgentStatus -eq 'failed') { return [pscustomobject]@{ Status='failed'; Reason=('Agent ' + $currentAgentId + ' failed and handed evidence to Health Check.'); StartedAgents=@($started) } }
+        return [pscustomobject]@{ Status='stopped'; Reason=('Agent ' + $currentAgentId + ' ended with non-continuable status ' + $currentAgentStatus + '.'); StartedAgents=@($started) }
     }
 
     $nextAgentId = $null
+    $authorityHandoffPending = $false
+    if ($currentAgentId -ne 'orchestrator' -and [bool]$config.workflow.orchestration.forwardOutOfScopeComments -and [bool]$config.workflow.orchestration.autoDispatchForwardedComments) {
+        $orchestratorBatch = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $authorityHandoffPending = @($orchestratorBatch.comments | Where-Object { [string]$_.eventType -in @('agent-routing-request','workflow-input-routed') }).Count -gt 0
+        if ($authorityHandoffPending) { $nextAgentId = 'orchestrator' }
+    }
+    # A successful Developer outcome intentionally leaves the task in
+    # review_pending. That gate means run Reviewer next, not wait for a human
+    # decision; human review decisions are evaluated after Reviewer findings.
+    $reevaluateDeveloperGate = $currentAgentId -eq 'developer' -and [string]$task.status -eq 'review_pending'
+    $reevaluateReviewerGate = $currentAgentId -eq 'reviewer' -and [string]$task.status -eq 'review_pending'
+    $reevaluatePipelineGate = $currentAgentId -eq 'pipeline_monitor' -and [string]$task.status -in @('waiting_for_input','held')
+    $reevaluateOrchestratorGate = $currentAgentId -eq 'orchestrator'
+    if (-not $authorityHandoffPending -and [string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateDeveloperGate -and -not $reevaluateReviewerGate -and -not $reevaluatePipelineGate -and -not $reevaluateOrchestratorGate) {
+        return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
+    }
+    if (-not $authorityHandoffPending) {
     switch ($currentAgentId) {
         'orchestrator' {
             foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
                 $pendingInput = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId ([string]$candidate) -ConfigPath $ConfigPath -CodexHome $CodexHome
                 if ([int]$pendingInput.count -gt 0) { $nextAgentId = [string]$candidate; break }
+            }
+            if (-not $nextAgentId -and [string]$task.status -notin @($chainConfig.stopStatuses)) {
+                foreach ($candidate in @($chainConfig.orderedAgentIds)) {
+                    if ([string]$candidate -in @('orchestrator','health_check')) { continue }
+                    $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
+                    if ($candidateStatus -in @('pending','skipped')) { $nextAgentId = [string]$candidate; break }
+                }
             }
         }
         'requirements_analyst' { $nextAgentId = 'developer' }
@@ -56,8 +119,14 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Reviewer completed without review-result.json.' }
             $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $productFindings = @($review.findings)
+            $processFindings = @($review.agentProcessFindings)
+            $decisions = Get-LatestDecisions
+            $approvedProcess = @($processFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
+            foreach ($finding in $approvedProcess) {
+                $findingSummary = if ($finding.PSObject.Properties['suggestedCorrection']) { [string]$finding.suggestedCorrection } elseif ($finding.PSObject.Properties['summary']) { [string]$finding.summary } else { [string]$finding.id }
+                $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId orchestrator -ReviewPath $reviewPath
+            }
             if ($productFindings.Count) {
-                $decisions = Get-LatestDecisions
                 $undecided = @($productFindings | Where-Object { -not $decisions.ContainsKey([string]$_.id) })
                 if ($undecided.Count) {
                     $message = "Reviewer produced $($undecided.Count) product finding(s) that require a human decision."
@@ -66,6 +135,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 }
                 $approvedProduct = @($productFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
                 if ($approvedProduct.Count) {
+                    foreach ($finding in $approvedProduct) {
+                        $findingSummary = if ($finding.PSObject.Properties['suggestedCorrection']) { [string]$finding.suggestedCorrection } elseif ($finding.PSObject.Properties['summary']) { [string]$finding.summary } else { [string]$finding.id }
+                        $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId developer -ReviewPath $reviewPath
+                    }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage approved_review_rework -Message 'Approved Reviewer findings require Developer rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_rework -Message 'Reviewer must validate the approved rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     $nextAgentId = 'developer'
@@ -84,7 +157,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 $prPath = Join-Path $taskRoot 'pull-request-status.json'
                 if (-not (Test-Path -LiteralPath $prPath -PathType Leaf)) { return [pscustomobject]@{ Status='waiting'; Reason='Build succeeded; waiting for the first task PR status synchronization.'; StartedAgents=@($started) } }
                 $prStatus = [string](Get-Content -LiteralPath $prPath -Raw -Encoding UTF8 | ConvertFrom-Json).status
-                if ($prStatus -in @($config.pipeline.pullRequests.completedStatuses)) { $nextAgentId = 'knowledge_keeper' }
+                if ($prStatus -in @($config.pipeline.pullRequests.completedStatuses)) { $nextAgentId = 'orchestrator' }
                 elseif ($prStatus -in @($config.pipeline.pullRequests.abandonedStatuses)) { return [pscustomobject]@{ Status='waiting'; Reason='The task PR was abandoned and requires human input.'; StartedAgents=@($started) } }
                 else { return [pscustomobject]@{ Status='waiting'; Reason="Build succeeded; PR status is '$prStatus'."; StartedAgents=@($started) } }
             }
@@ -100,7 +173,13 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
     }
+    }
     if (-not $nextAgentId) { return [pscustomobject]@{ Status='completed'; StartedAgents=@($started) } }
+    $transitionKey = $currentAgentId + '->' + $nextAgentId
+    $transitionCounts[$transitionKey] = if ($transitionCounts.ContainsKey($transitionKey)) { [int]$transitionCounts[$transitionKey] + 1 } else { 1 }
+    if ([int]$transitionCounts[$transitionKey] -gt [int]$chainConfig.maxTransitionRepeats) {
+        return (Stop-AutomaticChain -Reason ('Automatic continuation stopped before transition ' + $transitionKey + ' because its maximum of ' + [int]$chainConfig.maxTransitionRepeats + ' repetitions was reached.'))
+    }
     if ($PrepareOnly) {
         return [pscustomobject]@{ Status='prepared'; NextAgentId=$nextAgentId; StartedAgents=@($started) }
     }
@@ -119,4 +198,4 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $currentAgentId = $nextAgentId
 }
 
-[pscustomobject]@{ Status='step-limit'; Reason='Automatic continuation reached its configured step limit.'; StartedAgents=@($started) }
+Stop-AutomaticChain -Reason ('Automatic continuation reached its configured limit of ' + [int]$chainConfig.maxChainSteps + ' steps before reaching a terminal gate.')

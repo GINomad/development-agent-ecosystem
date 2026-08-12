@@ -1,0 +1,21 @@
+diff --git a/scripts/Refresh-TaskPipelineResult.ps1 b/scripts/Refresh-TaskPipelineResult.ps1
+--- a/scripts/Refresh-TaskPipelineResult.ps1
++++ b/scripts/Refresh-TaskPipelineResult.ps1
+@@ -59 +59 @@
+-    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_refresh -Message "Refreshing existing exact-SHA runs for $($Commit.Substring(0,12)) without queueing or pushing." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
++    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status running -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_refresh -Message "Refreshing existing exact-SHA runs for $($Commit.Substring(0,12)) without queueing or pushing." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+@@ -97 +97 @@
+-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_remediation_routed -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
++        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId pipeline_monitor -AgentStatus completed -Stage pipeline_remediation_routed -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+diff --git a/scripts/Request-PipelineRemediation.ps1 b/scripts/Request-PipelineRemediation.ps1
+--- a/scripts/Request-PipelineRemediation.ps1
++++ b/scripts/Request-PipelineRemediation.ps1
+@@ -58 +58 @@
+-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage pipeline_remediation_pending -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
++& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId developer -AgentStatus pending -Stage pipeline_remediation_pending -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -399 +399 @@
+-if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Developer pipeline remediation request was not persisted, targeted, or deduplicated.' }
++if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.status -ne 'interrupted' -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Developer pipeline remediation request was not persisted, targeted, deduplicated, or projected as unfinished task work.' }

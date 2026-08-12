@@ -10,7 +10,7 @@ Start the main dashboard:
 
 From the dashboard:
 
-- switch between **Local Developer review** (PR-style task diff and line-aware local comments) and **External PR reviews** (Review Monitor reports for authored or assigned PRs);
+- switch between **Local Developer review** (PR-style task diff and line-aware local comments) and **External PR reviews** (a compact list of active authored or assigned PRs with Azure links and direct links to the Review Monitor HTML UI);
 - use **Close task and update knowledge** with a reason to stop delivery and run only the final Knowledge Keeper scope;
 - select a completed task under **All** and use **Reopen as new revision** to archive the previous revision and continue from Requirements Analyst or Developer;
 - select one or more repositories; the first checked repository is the primary workspace and the rest are additional writable workspaces for that task;
@@ -20,8 +20,8 @@ From the dashboard:
 - track active or completed tasks, every agent status, generated artifacts, and the append-only event timeline;
 - treat `queued` as a durable workspace wait, not a failed start; the oldest queued task starts after the current task has no active workflow process;
 - use **View outcome** on an agent card to inspect that role's configured required artifacts and exact persisted status without inferring a result from live logs;
-- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default);
-- write a comment directly to the selected agent, or use **Restart agent with comment** to save the comment and start only that agent through Orchestrator;
+- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default) and shows the material operation, target, evidence-based progress, bounded evidence, and next action when the agent supplied them;
+- write a comment directly to the selected agent; if its content exceeds that role's configured authority, the agent returns it to Orchestrator and the trusted host automatically runs the rerouting chain after the current successful block;
 - use **Stop workflow** to stop only the selected task's validated process tree or tracked runspace while preserving task history, completed agents, and artifacts;
 - select any supported text artifact to preview JSON, JSONL, Markdown, text, logs, TOML, YAML, XML, HTML source, or CSV in the read-only viewer (limited to 1 MiB);
 - inspect the yellow **Input required** panel whenever any agent is waiting for information;
@@ -41,7 +41,9 @@ The task action guide is also displayed directly below the buttons:
 - **Stop workflow** marks running agents `waiting` and the task `interrupted` after stopping its validated process tree or tracked in-process runspace.
 - **Approve elevated repair** gives Health Check one elevated ecosystem-repair attempt; it neither resumes implementation nor authorizes product-code changes.
 
-The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. Dashboard and live-log polling are ordinary local HTTP/file reads and consume no AI tokens. A selected agent log refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default). Orchestrator handles new intake and general comments in one batch per checkpoint and never idle-polls. Each delivery role similarly reads only its direct and routed comment batch. Any role that needs information calls `Open-AgentQuestion.ps1`; detailed unfinished context stays in `agent-checkpoints/<agent-id>.json`. Knowledge Keeper remains pull-based and consumes only successful outcomes.
+The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. Dashboard and live-log polling are ordinary local HTTP/file reads and consume no AI tokens. A selected agent log refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default). Orchestrator handles new intake, general comments, and durable authority handoffs in one batch per checkpoint and never idle-polls. Each delivery role similarly reads only its direct and routed comment batch; `Request-OrchestratorCommentRouting.ps1` atomically forwards and acknowledges comments outside that role's JSON responsibilities. The successful role handoff automatically prioritizes Orchestrator, so no operator restart is required. Any role that needs information calls `Open-AgentQuestion.ps1`; detailed unfinished context stays in `agent-checkpoints/<agent-id>.json`. Knowledge Keeper remains pull-based and consumes only successful outcomes.
+
+Dashboard workflow and review actions run as tracked in-process PowerShell runspaces. They do not spawn nested `powershell.exe -EncodedCommand` children, so host security products can evaluate the stable dashboard process instead of blocking an encoded bootstrap before `task.json` and the Health Check failure envelope exist. **Start workflow** asks for explicit confirmation before requesting the host-compatible elevated profile; this does not disable CrowdStrike or bypass delivery gates.
 
 Task execution is serialized across all configured product repositories. `workspace-coordinator.json` records the single active task. When that task becomes idle, Orchestrator stashes its tracked and untracked changes with a task/repository-specific message, records the current branch in `workspace-session.json`, switches the next task to its recorded branch (or the configured base branch on first activation), and restores its stash with the index. It never uses `git reset`, `git clean`, force checkout, or `git stash pop`. The stash is dropped only after a successful apply. A restore conflict keeps the stash, opens an Orchestrator question, and stops automatic switching until the workspace is safe.
 
@@ -73,7 +75,7 @@ Manual invocation after a successful push:
 
 ## Automatic agent health recovery
 
-The scheduled task **Development Ecosystem - Task PR Lifecycle** runs every `pipeline.pullRequests.pollIntervalMinutes` (120 minutes by default). It performs Azure PR status reads without a model. When a matching manually created PR becomes completed, it requests the final Knowledge Keeper update. Run `Sync-ActiveTaskPullRequests.ps1` for an immediate operator-triggered sync.
+The scheduled task **Development Ecosystem - Task PR Lifecycle** runs every `pipeline.pullRequests.pollIntervalMinutes` (120 minutes by default). It performs Azure PR status reads without a model. When a matching manually created PR becomes completed, it sends the terminal evidence to Orchestrator; Orchestrator then routes the final update to Knowledge Keeper. Run `Sync-ActiveTaskPullRequests.ps1` for an immediate operator-triggered sync.
 
 Every failed agent handoff includes a structured failure artifact with the agent, stage, exit code, diagnostic, evidence paths, and stable failure signature. Orchestrator hands that bounded failure envelope to Health Check Agent; a root workflow crash uses the same path from the host wrapper.
 
@@ -101,7 +103,7 @@ Manual health check:
 
 ## Review approval gate
 
-The local task review diff includes the complete persisted Reviewer summary, product findings, held-scope violations, and agent-process suggestions. Each item has a durable reply thread backed by `task-ledger.jsonl`. **Send to Reviewer** requests clarification or correction from Reviewer; **Send to Developer** queues the same item as implementation input. Neither action restarts an agent or approves a finding. Use the separate restart and review-decision controls when those actions are intended.
+The local task review diff includes the complete persisted Reviewer summary, product findings, held-scope violations, agent-process suggestions, and requirement-to-code traceability. The code pane has its own vertical and horizontal scroll. Select a diff row to reveal the comment editor directly below that row; click the same selected row again to close it, or click another row to move it. No editor overlays an unselected file. Source-specific Reviewer findings are rendered inline at their structured `codeLocation`. Requirement Traceability records one entry per analyzed requirement and exposes exact repository-relative files and one-based line ranges; selecting a reference navigates to that diff line when it is part of the current patch. Each finding has a durable reply thread backed by `task-ledger.jsonl`. **Send to Reviewer** requests clarification or correction from Reviewer; **Send to Developer** queues the same item as implementation input. Neither action restarts an agent or approves a finding. Use the separate restart and review-decision controls when those actions are intended.
 
 Reviewer records findings but does not authorize changes. Record the human decision separately:
 

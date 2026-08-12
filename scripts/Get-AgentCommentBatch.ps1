@@ -22,7 +22,7 @@ foreach ($ack in @($events | Where-Object { $_.type -eq 'user-comment-acknowledg
     foreach ($eventId in @($ack.evidence)) { if ($eventId) { $null = $acknowledged.Add([string]$eventId) } }
 }
 $comments = @($events | Where-Object {
-    [string]$_.type -in @('user-comment','workflow-input-routed') -and
+    [string]$_.type -in @('user-comment','agent-routing-request','workflow-input-routed') -and
     -not $acknowledged.Contains([string]$_.eventId) -and
     (-not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $AgentId)
 } | Sort-Object timestampUtc | ForEach-Object {

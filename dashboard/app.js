@@ -31,7 +31,6 @@ let selectedDiffLine = null;
 let reviewDiffRequestInFlight = false;
 let reviewerFeedback = null;
 let reviewerFeedbackRequestInFlight = false;
-let selectedExternalReviewName = null;
 const agentCommentDrafts = new Map();
 
 function log(value) {
@@ -96,43 +95,59 @@ function setAgentActionStatus(message, state = '') {
   status.dataset.state = state;
 }
 
-async function openExternalReview(name) {
-  selectedExternalReviewName = name;
-  document.querySelector('#externalReviewTitle').textContent = name;
-  document.querySelector('#externalReviewMeta').textContent = 'Loading report...';
-  document.querySelector('#externalReviewContent').textContent = '';
-  const result = await api('/api/external-reviews/' + encodeURIComponent(name));
-  document.querySelector('#externalReviewMeta').textContent = result.report.length + ' bytes - ' + formatDate(result.report.lastWriteTimeUtc);
-  document.querySelector('#externalReviewContent').textContent = result.report.content;
-  document.querySelectorAll('.external-review-item').forEach(item => item.classList.toggle('selected', item.dataset.reportName === name));
-}
-
 async function loadExternalReviews() {
   const list = document.querySelector('#externalReviewList');
-  list.textContent = 'Loading reports...';
+  const summary = document.querySelector('#externalReviewSummary');
+  list.textContent = 'Loading active pull requests...';
   const result = await api('/api/external-reviews');
-  const reports = Array.isArray(result.reports) ? result.reports : [];
+  const pullRequests = Array.isArray(result.activePullRequests) ? result.activePullRequests : [];
   list.replaceChildren();
-  if (!reports.length) {
-    list.textContent = 'No external review reports yet.';
-    document.querySelector('#externalReviewContent').textContent = 'Review Monitor has not produced a Markdown, JSON, text, or log report in the ecosystem data root.';
+  summary.textContent = `${pullRequests.length} active pull request${pullRequests.length === 1 ? '' : 's'} - updated ${formatDate(result.generatedAtUtc)}`;
+  if (!pullRequests.length) {
+    list.textContent = 'No active authored or assigned pull requests were found by Review Monitor.';
     return;
   }
-  reports.forEach(report => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'external-review-item';
-    button.dataset.reportName = report.name;
-    const name = document.createElement('strong');
-    name.textContent = report.name;
+  pullRequests.forEach(pullRequest => {
+    const item = document.createElement('article');
+    item.className = 'external-review-item';
+    const heading = document.createElement('div');
+    heading.className = 'external-review-heading';
+    const title = document.createElement('strong');
+    title.textContent = `${pullRequest.repositoryName} PR ${pullRequest.pullRequestId}: ${pullRequest.title}`;
+    const status = document.createElement('span');
+    status.className = `mini-status ${statusClass(pullRequest.reviewStatus)}`;
+    status.textContent = String(pullRequest.reviewStatus || 'not-reviewed').replaceAll('-', ' ');
+    heading.append(title, status);
     const meta = document.createElement('small');
-    meta.textContent = report.length + ' bytes - ' + formatDate(report.lastWriteTimeUtc);
-    button.append(name, meta);
-    button.addEventListener('click', () => openExternalReview(report.name).catch(error => log('Error: ' + error.message)));
-    list.append(button);
+    meta.textContent = `${pullRequest.repositoryId} - commit ${pullRequest.sourceCommit || 'not reported'}`;
+    const actions = document.createElement('div');
+    actions.className = 'external-review-actions';
+    if (pullRequest.pullRequestUrl) {
+      const azureLink = document.createElement('a');
+      azureLink.className = 'button secondary compact-button';
+      azureLink.href = pullRequest.pullRequestUrl;
+      azureLink.target = '_blank';
+      azureLink.rel = 'noopener noreferrer';
+      azureLink.textContent = 'Open Azure PR';
+      actions.append(azureLink);
+    }
+    if (pullRequest.reportUrl) {
+      const reportLink = document.createElement('a');
+      reportLink.className = 'button primary compact-button';
+      reportLink.href = pullRequest.reportUrl;
+      reportLink.target = '_blank';
+      reportLink.rel = 'noopener noreferrer';
+      reportLink.textContent = 'Open HTML review';
+      actions.append(reportLink);
+    } else {
+      const pending = document.createElement('span');
+      pending.className = 'external-review-pending';
+      pending.textContent = 'HTML review is not available yet.';
+      actions.append(pending);
+    }
+    item.append(heading, meta, actions);
+    list.append(item);
   });
-  const target = reports.some(report => report.name === selectedExternalReviewName) ? selectedExternalReviewName : reports[0].name;
-  await openExternalReview(target);
 }
 
 async function selectReviewTab(tab) {
@@ -452,6 +467,7 @@ function diffProperty(value, pascalName, camelName) {
 }
 
 function closeReviewDiff() {
+  resetReviewDiffCommentEditor();
   reviewDiffIndex = null;
   selectedDiffRepositoryId = null;
   selectedDiffFilePath = null;
@@ -464,7 +480,7 @@ function closeReviewDiff() {
   const files = document.querySelector('#reviewDiffFiles');
   if (files) files.replaceChildren();
   const selection = document.querySelector('#reviewDiffSelection');
-  if (selection) selection.textContent = 'No line selected. The comment will apply to the whole diff.';
+  if (selection) selection.textContent = 'Select a diff line to comment.';
 }
 
 function setReviewDiffCommentStatus(message, state = '') {
@@ -497,6 +513,170 @@ function reviewerFeedbackItems(result) {
     });
   });
   return items;
+}
+
+function normalizeReviewPath(value) {
+  return String(value || '').replaceAll('\\', '/').replace(/^\.?\//, '').replace(/^[ab]\//, '').toLowerCase();
+}
+
+function reviewerCodeLocation(item) {
+  const value = item?.codeLocation;
+  if (value && typeof value === 'object' && value.filePath) {
+    return {
+      repositoryId: String(value.repositoryId || ''),
+      filePath: String(value.filePath),
+      oldLine: Number.isInteger(value.oldLine) ? value.oldLine : null,
+      newLine: Number.isInteger(value.newLine) ? value.newLine : null,
+      endLine: Number.isInteger(value.endLine) ? value.endLine : null
+    };
+  }
+  const legacy = /^(.*):(\d+)(?:-(\d+))?$/.exec(String(item?.location || '').trim());
+  if (!legacy) return null;
+  return {
+    repositoryId: '',
+    filePath: legacy[1],
+    oldLine: null,
+    newLine: Number(legacy[2]),
+    endLine: legacy[3] ? Number(legacy[3]) : null
+  };
+}
+
+function reviewerItemsForDiffLine(repositoryId, filePath, oldLine, newLine) {
+  const normalizedPath = normalizeReviewPath(filePath);
+  return reviewerFeedbackItems(reviewerFeedback).filter(item => {
+    if (item.kind === 'summary') return false;
+    const location = reviewerCodeLocation(item);
+    if (!location || normalizeReviewPath(location.filePath) !== normalizedPath) return false;
+    if (location.repositoryId && location.repositoryId !== repositoryId) return false;
+    const line = location.newLine ?? location.oldLine;
+    const candidate = location.newLine != null ? newLine : oldLine;
+    return line != null && candidate != null && candidate >= line && candidate <= (location.endLine ?? line);
+  });
+}
+
+function createInlineReviewerComment(item) {
+  const card = document.createElement('article');
+  card.className = 'review-inline-comment';
+  const header = document.createElement('div');
+  header.className = 'review-inline-comment-header';
+  const identity = document.createElement('span');
+  identity.textContent = item.id + ' · ' + item.kind;
+  const severity = document.createElement('span');
+  severity.textContent = [item.severity, item.category].filter(Boolean).join(' · ') || 'recorded';
+  header.append(identity, severity);
+  card.append(header);
+  const message = item.title || item.summary || item.evidence || item.message;
+  if (message) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = String(message);
+    card.append(paragraph);
+  }
+  const correction = item.correctionDirection || item.recommendation || item.suggestion;
+  if (correction) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'Suggested correction: ' + correction;
+    card.append(paragraph);
+  }
+  return card;
+}
+
+function renderInlineReviewerComments() {
+  document.querySelectorAll('.review-inline-comment').forEach(item => item.remove());
+  document.querySelectorAll('#reviewDiffLines .diff-line[data-selectable="true"]').forEach(row => {
+    const items = reviewerItemsForDiffLine(
+      row.dataset.repositoryId,
+      row.dataset.filePath,
+      row.dataset.oldLine ? Number(row.dataset.oldLine) : null,
+      row.dataset.newLine ? Number(row.dataset.newLine) : null
+    );
+    let anchor = row.nextElementSibling?.id === 'reviewDiffCommentPanel' ? row.nextElementSibling : row;
+    items.forEach(item => {
+      const comment = createInlineReviewerComment(item);
+      anchor.insertAdjacentElement('afterend', comment);
+      anchor = comment;
+    });
+  });
+}
+
+function requirementTraceabilityItems(result) {
+  return Array.isArray(result?.requirementTraceability) ? result.requirementTraceability : [];
+}
+
+async function openRequirementCodeReference(reference) {
+  const repositoryId = String(reference.repositoryId || selectedDiffRepositoryId || '');
+  const filePath = String(reference.filePath || '');
+  const line = Number(reference.startLine || reference.newLine || reference.oldLine || 0);
+  if (!repositoryId || !filePath) throw new Error('Requirement evidence does not identify a repository and file.');
+  await loadReviewDiffFile(repositoryId, filePath);
+  const selector = line > 0
+    ? `.diff-line[data-new-line="${line}"], .diff-line[data-old-line="${line}"]`
+    : '.diff-line[data-selectable="true"]';
+  const row = document.querySelector(selector);
+  if (!row) throw new Error('The referenced line is not present in the current diff.');
+  row.click();
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderRequirementTraceability() {
+  const list = document.querySelector('#requirementTraceabilityList');
+  const summary = document.querySelector('#requirementTraceabilitySummary');
+  list.replaceChildren();
+  const items = requirementTraceabilityItems(reviewerFeedback);
+  summary.textContent = items.length
+    ? `${items.length} requirement mapping(s) recorded by Reviewer.`
+    : 'Reviewer has not produced requirement traceability yet.';
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'agent-log-empty';
+    empty.textContent = 'Restart Reviewer after the updated review contract is installed to produce requirement-to-code evidence.';
+    list.append(empty);
+    return;
+  }
+  items.forEach(item => {
+    const card = document.createElement('article');
+    card.className = 'requirement-traceability-card';
+    const header = document.createElement('div');
+    header.className = 'requirement-traceability-card-header';
+    const identity = document.createElement('strong');
+    identity.textContent = String(item.requirementId || 'Requirement');
+    const status = document.createElement('span');
+    status.className = 'requirement-traceability-status';
+    status.textContent = String(item.implementationStatus || 'unknown').replaceAll('-', ' ');
+    header.append(identity, status);
+    card.append(header);
+    if (item.requirementText) {
+      const text = document.createElement('p');
+      text.className = 'requirement-traceability-text';
+      text.textContent = String(item.requirementText);
+      card.append(text);
+    }
+    const references = Array.isArray(item.codeReferences) ? item.codeReferences : [];
+    if (references.length) {
+      const referenceList = document.createElement('div');
+      referenceList.className = 'requirement-code-references';
+      references.forEach(reference => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'requirement-code-reference';
+        const endLine = reference.endLine && reference.endLine !== reference.startLine ? '-' + reference.endLine : '';
+        const symbol = reference.symbol ? ' · ' + reference.symbol : '';
+        button.textContent = `${reference.repositoryId || 'repository'} / ${reference.filePath}:${reference.startLine || '?'}${endLine}${symbol}`;
+        button.addEventListener('click', async () => {
+          try { await openRequirementCodeReference(reference); }
+          catch (error) { setReviewerFeedbackStatus(error.message, 'error'); log('Error: ' + error.message); }
+        });
+        referenceList.append(button);
+      });
+      card.append(referenceList);
+    }
+    if (item.notes) {
+      const note = document.createElement('p');
+      note.className = 'requirement-traceability-note';
+      note.textContent = String(item.notes);
+      card.append(note);
+    }
+    list.append(card);
+  });
 }
 
 function reviewerFeedbackReplies(itemId) {
@@ -564,6 +744,8 @@ function renderReviewerFeedback() {
     empty.className = 'agent-log-empty';
     empty.textContent = 'No Reviewer outcome, finding, suggestion, or held-scope violation was persisted.';
     list.append(empty);
+    renderRequirementTraceability();
+    renderInlineReviewerComments();
     return;
   }
   items.forEach(item => {
@@ -622,6 +804,8 @@ function renderReviewerFeedback() {
     card.append(textarea, actions);
     list.append(card);
   });
+  renderRequirementTraceability();
+  renderInlineReviewerComments();
 }
 
 async function loadReviewerFeedback() {
@@ -735,10 +919,31 @@ function parseUnifiedDiff(patch) {
   });
 }
 
+function resetReviewDiffCommentEditor() {
+  const panel = document.querySelector('#reviewDiffCommentPanel');
+  const dock = document.querySelector('#reviewDiffCommentDock');
+  if (panel && dock) dock.append(panel);
+  if (panel) panel.classList.add('hidden');
+  document.querySelectorAll('.diff-line.selected').forEach(item => {
+    item.classList.remove('selected');
+    item.setAttribute('aria-expanded', 'false');
+  });
+  selectedDiffLine = null;
+  const selection = document.querySelector('#reviewDiffSelection');
+  if (selection) selection.textContent = 'Select a diff line to comment.';
+}
+
 function selectReviewDiffLine(line, button) {
   if (!line.selectable) return;
-  document.querySelectorAll('.diff-line.selected').forEach(item => item.classList.remove('selected'));
+  const isSameSelection = button.classList.contains('selected') &&
+    selectedDiffLine?.repositoryId === selectedDiffRepositoryId &&
+    selectedDiffLine?.filePath === selectedDiffFilePath &&
+    selectedDiffLine?.oldLine === line.oldLine &&
+    selectedDiffLine?.newLine === line.newLine;
+  resetReviewDiffCommentEditor();
+  if (isSameSelection) return;
   button.classList.add('selected');
+  button.setAttribute('aria-expanded', 'true');
   selectedDiffLine = {
     repositoryId: selectedDiffRepositoryId,
     filePath: selectedDiffFilePath,
@@ -751,6 +956,10 @@ function selectReviewDiffLine(line, button) {
   if (line.newLine != null) numbers.push('new ' + line.newLine);
   document.querySelector('#reviewDiffSelection').textContent =
     selectedDiffRepositoryId + ' / ' + selectedDiffFilePath + ' (' + numbers.join(', ') + '): ' + line.text;
+  const panel = document.querySelector('#reviewDiffCommentPanel');
+  button.insertAdjacentElement('afterend', panel);
+  panel.classList.remove('hidden');
+  document.querySelector('#reviewDiffComment').focus({ preventScroll: true });
 }
 
 function renderReviewDiffPatch(result) {
@@ -764,6 +973,7 @@ function renderReviewDiffPatch(result) {
     branch + ' @ ' + String(head).slice(0, 10) + ' · +' + (file.additions ?? '?') + ' / -' + (file.deletions || 0) +
     (diffProperty(result, 'Truncated', 'truncated') ? ' · truncated' : '');
   const container = document.querySelector('#reviewDiffLines');
+  resetReviewDiffCommentEditor();
   container.replaceChildren();
   const lines = parseUnifiedDiff(patch);
   if (!lines.length || !patch) {
@@ -779,6 +989,15 @@ function renderReviewDiffPatch(result) {
     row.className = 'diff-line ' + line.kind;
     row.disabled = !line.selectable;
     row.setAttribute('role', 'listitem');
+    row.dataset.selectable = String(line.selectable);
+    row.dataset.repositoryId = String(repositoryId || '');
+    row.dataset.filePath = String(file.path || selectedDiffFilePath || '');
+    if (line.oldLine != null) row.dataset.oldLine = String(line.oldLine);
+    if (line.newLine != null) row.dataset.newLine = String(line.newLine);
+    if (line.selectable) {
+      row.setAttribute('aria-expanded', 'false');
+      row.title = 'Click to comment; click the selected line again to close the editor.';
+    }
     const oldNumber = document.createElement('span');
     oldNumber.className = 'diff-line-number';
     oldNumber.textContent = line.oldLine == null ? '' : line.oldLine;
@@ -792,14 +1011,14 @@ function renderReviewDiffPatch(result) {
     if (line.selectable) row.addEventListener('click', () => selectReviewDiffLine(line, row));
     container.append(row);
   });
+  renderInlineReviewerComments();
 }
 
 async function loadReviewDiffFile(repositoryId, filePath) {
   if (!selectedTaskId || reviewDiffRequestInFlight) return;
   selectedDiffRepositoryId = repositoryId;
   selectedDiffFilePath = filePath;
-  selectedDiffLine = null;
-  document.querySelector('#reviewDiffSelection').textContent = 'No line selected. The comment will apply to the whole diff.';
+  resetReviewDiffCommentEditor();
   renderReviewDiffIndex();
   document.querySelector('#reviewDiffFileName').textContent = repositoryId + ' / ' + filePath;
   document.querySelector('#reviewDiffFileStats').textContent = 'Loading patch...';
@@ -864,20 +1083,19 @@ function openReviewDiff() {
 }
 
 function buildReviewDiffComment() {
+  if (!selectedDiffLine) throw new Error('Select a diff line first.');
   const text = document.querySelector('#reviewDiffComment').value.trim();
   if (!text) throw new Error('Enter a diff comment.');
-  const context = selectedDiffLine
-    ? [
-        '[Task diff line comment]',
-        'Repository: ' + selectedDiffLine.repositoryId,
-        'File: ' + selectedDiffLine.filePath,
-        'Old line: ' + (selectedDiffLine.oldLine ?? 'n/a'),
-        'New line: ' + (selectedDiffLine.newLine ?? 'n/a'),
-        'Diff line: ' + selectedDiffLine.text,
-        '',
-        text
-      ]
-    : ['[Task diff review comment]', 'Scope: complete current task diff', '', text];
+  const context = [
+    '[Task diff line comment]',
+    'Repository: ' + selectedDiffLine.repositoryId,
+    'File: ' + selectedDiffLine.filePath,
+    'Old line: ' + (selectedDiffLine.oldLine ?? 'n/a'),
+    'New line: ' + (selectedDiffLine.newLine ?? 'n/a'),
+    'Diff line: ' + selectedDiffLine.text,
+    '',
+    text
+  ];
   const comment = context.join('\n');
   if (comment.length > 4000) throw new Error('Comment plus diff context exceeds 4000 characters.');
   return comment;
@@ -908,6 +1126,13 @@ async function sendReviewDiffComment({ restart = false } = {}) {
       : 'Diff comment was queued for ' + (agentLabels[targetAgentId] || targetAgentId) + '.',
     'success'
   );
+  setReviewerFeedbackStatus(
+    restart
+      ? (agentLabels[targetAgentId] || targetAgentId) + ' was restarted with the selected-line comment.'
+      : 'Selected-line comment queued for ' + (agentLabels[targetAgentId] || targetAgentId) + '.',
+    'success'
+  );
+  resetReviewDiffCommentEditor();
   log({ comment: saved, restart: restarted });
   await loadTaskDetail(selectedTaskId, taskStateRevision);
   await loadTaskList({ silent: true });
@@ -959,10 +1184,50 @@ function renderAgentLog(result) {
     const summary = document.createElement('p');
     summary.textContent = entry.summary || 'Activity recorded.';
     item.append(header, summary);
+    const facts = [
+      ['Operation', entry.operation],
+      ['Target', entry.target],
+      ['Next', entry.nextAction]
+    ].filter(([, value]) => value !== null && value !== undefined && String(value).trim());
+    if (facts.length) {
+      const metadata = document.createElement('dl');
+      metadata.className = 'agent-log-metadata';
+      facts.forEach(([label, value]) => {
+        const term = document.createElement('dt');
+        term.textContent = label;
+        const description = document.createElement('dd');
+        description.textContent = value;
+        metadata.append(term, description);
+      });
+      item.append(metadata);
+    }
+    if (entry.progressPercent !== null && entry.progressPercent !== undefined && Number.isFinite(Number(entry.progressPercent))) {
+      const progress = document.createElement('div');
+      progress.className = 'agent-log-progress';
+      const label = document.createElement('span');
+      const percent = Math.max(0, Math.min(100, Number(entry.progressPercent)));
+      label.textContent = `Progress ${percent}%`;
+      const track = document.createElement('div');
+      const fill = document.createElement('i');
+      fill.style.width = `${percent}%`;
+      track.append(fill);
+      progress.append(label, track);
+      item.append(progress);
+    }
     if (entry.details) {
       const details = document.createElement('pre');
       details.textContent = entry.details;
       item.append(details);
+    }
+    if (Array.isArray(entry.evidence) && entry.evidence.length) {
+      const evidence = document.createElement('ul');
+      evidence.className = 'agent-log-evidence';
+      entry.evidence.forEach(value => {
+        const line = document.createElement('li');
+        line.textContent = value;
+        evidence.append(line);
+      });
+      item.append(evidence);
     }
     container.append(item);
   });
@@ -1087,6 +1352,9 @@ document.querySelector('#startWorkflow').addEventListener('click', async () => {
     const payload = payloadBase();
     if (!payload.repositoryIds.length) throw new Error('Select at least one repository.');
     if (mode === 'manual' && !payload.taskSelector) throw new Error('Enter a task ID, URL, or description.');
+    const approved = window.confirm('Start this workflow in host-compatible elevated mode? This avoids the OS sandbox process blocked by CrowdStrike while preserving requirement, review, credential, and external-write gates.');
+    if (!approved) return;
+    payload.elevated = true;
     const result = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify(payload) });
     selectedTaskId = result.taskId;
     log(result);

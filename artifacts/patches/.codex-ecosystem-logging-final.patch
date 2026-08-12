@@ -1,0 +1,62 @@
+diff --git a/scripts/Write-AgentActivity.ps1 b/scripts/Write-AgentActivity.ps1
+--- a/scripts/Write-AgentActivity.ps1
++++ b/scripts/Write-AgentActivity.ps1
+@@ -20,6 +20,14 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+ if (-not @($config.agents | Where-Object { $_.id -eq $AgentId }).Count) { throw "Unknown agent '$AgentId'." }
++
++function Protect-ActivityText {
++    param([AllowNull()][object] $Value)
++    if ($null -eq $Value) { return $null }
++    $text = [string]$Value
++    $text = $text -replace '(?i)(authorization:\s*bearer\s+)[^\s"'']+', '$1[redacted]'
++    return ($text -replace '(?i)((?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s"'']+', '$1[redacted]')
++}
++
+ $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
+@@ -31,14 +39,14 @@ $record = [ordered]@{
+     timestampUtc = [DateTime]::UtcNow.ToString('o')
+     level = $Level
+     stage = if ($Stage) { $Stage } else { $null }
+-    summary = $Summary.Trim()
+-    details = if ([string]::IsNullOrWhiteSpace($Details)) { $null } else { $Details.Trim() }
+-    operation = if ([string]::IsNullOrWhiteSpace($Operation)) { $null } else { $Operation.Trim() }
+-    target = if ([string]::IsNullOrWhiteSpace($Target)) { $null } else { $Target.Trim() }
++    summary = Protect-ActivityText -Value $Summary.Trim()
++    details = if ([string]::IsNullOrWhiteSpace($Details)) { $null } else { Protect-ActivityText -Value $Details.Trim() }
++    operation = if ([string]::IsNullOrWhiteSpace($Operation)) { $null } else { Protect-ActivityText -Value $Operation.Trim() }
++    target = if ([string]::IsNullOrWhiteSpace($Target)) { $null } else { Protect-ActivityText -Value $Target.Trim() }
+     progressPercent = if ($null -eq $ProgressPercent) { $null } else { [int]$ProgressPercent }
+-    nextAction = if ([string]::IsNullOrWhiteSpace($NextAction)) { $null } else { $NextAction.Trim() }
+-    evidence = @($Evidence | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 20 | ForEach-Object { $_.Trim() })
++    nextAction = if ([string]::IsNullOrWhiteSpace($NextAction)) { $null } else { Protect-ActivityText -Value $NextAction.Trim() }
++    evidence = @($Evidence | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 20 | ForEach-Object { Protect-ActivityText -Value $_.Trim() })
+ }
+diff --git a/dashboard/app.js b/dashboard/app.js
+--- a/dashboard/app.js
++++ b/dashboard/app.js
+@@ -1204 +1204 @@ function renderAgentLog(result) {
+-    if (Number.isFinite(Number(entry.progressPercent))) {
++    if (entry.progressPercent !== null && entry.progressPercent !== undefined && Number.isFinite(Number(entry.progressPercent))) {
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -110,0 +111,20 @@
++$activityFixtureRoot = Join-Path $OutputRoot 'detailed-agent-activity'
++$activityFixtureConfigPath = Join-Path $activityFixtureRoot 'agents.json'
++$activityFixtureConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
++$activityFixtureConfig.runtime.stateRoot = Join-Path $activityFixtureRoot 'state'
++New-Item -ItemType Directory -Path $activityFixtureRoot -Force | Out-Null
++Write-Utf8NoBom -Path $activityFixtureConfigPath -Content (($activityFixtureConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
++$activityFixtureTaskId = 'activity-' + [guid]::NewGuid().ToString('N')
++& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $activityFixtureTaskId -TaskSelector synthetic-activity -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $activityFixtureConfigPath | Out-Null
++& (Join-Path $root 'scripts\Write-AgentActivity.ps1') -TaskId $activityFixtureTaskId -AgentId developer -Level progress -Stage test -Summary 'Running focused checks' -Details 'Bounded operational detail.' -Operation test -Target 'installer tests' -ProgressPercent 50 -NextAction 'Publish validation result.' -Evidence @('tests:5/10','token=must-not-persist') -ConfigPath $activityFixtureConfigPath | Out-Null
++$activityFixtureResult = & (Join-Path $root 'scripts\Get-AgentActivity.ps1') -TaskId $activityFixtureTaskId -AgentId developer -Tail 20 -ConfigPath $activityFixtureConfigPath
++$activityFixtureEntry = @($activityFixtureResult.Entries | Where-Object id -ne 'current-status' | Select-Object -Last 1)[0]
++$activityFixtureRaw = Get-Content -LiteralPath (Join-Path $activityFixtureConfig.runtime.stateRoot "tasks\$activityFixtureTaskId\agent-activity.jsonl") -Raw -Encoding UTF8
++if (
++    [string]$activityFixtureEntry.operation -ne 'test' -or [string]$activityFixtureEntry.target -ne 'installer tests' -or
++    [int]$activityFixtureEntry.progressPercent -ne 50 -or [string]$activityFixtureEntry.nextAction -ne 'Publish validation result.' -or
++    @($activityFixtureEntry.evidence) -notcontains 'tests:5/10' -or $activityFixtureRaw -match 'must-not-persist' -or $activityFixtureRaw -notmatch '\[redacted\]'
++) { throw 'Detailed agent activity did not round-trip or redact secret-shaped evidence.' }
++Add-Check -Name 'detailed-agent-activity-roundtrip' -Detail 'Structured operation, target, progress, next action, and evidence round-trip with persisted secret redaction'

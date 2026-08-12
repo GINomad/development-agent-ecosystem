@@ -365,12 +365,21 @@ foreach ($run in $completed.Values | Sort-Object id) {
         foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
             $excerpt = ''
             if ($null -ne $task.log -and $null -ne $task.log.id) {
-                $logFile = Join-Path $env:TEMP "azdo-$($run.id)-$($task.log.id).log"
-                & $AzCli devops invoke --organization $Organization --area build --resource logs --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" --api-version 7.1 --accept-media-type text/plain --out-file $logFile | Out-Null
-                if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $logFile)) {
-                    $tail = @(Get-Content -LiteralPath $logFile -Tail $FailureLogTailLines -Encoding UTF8)
-                    $excerpt = Get-BoundedLogExcerpt -Lines $tail -MaximumBytes $FailureLogMaxBytes
-                    Write-Host $excerpt
+                $logFile = Join-Path ([IO.Path]::GetTempPath()) "azdo-$($run.id)-$($task.log.id)-$([guid]::NewGuid().ToString('N')).log"
+                try {
+                    $logDownloadOutput = @(& $AzCli devops invoke --organization $Organization --area build --resource logs --route-parameters "project=$Project" "buildId=$($run.id)" "logId=$($task.log.id)" --api-version 7.1 --accept-media-type text/plain --out-file $logFile 2>&1)
+                    $logDownloadExitCode = $LASTEXITCODE
+                    if ($logDownloadExitCode -eq 0 -and (Test-Path -LiteralPath $logFile -PathType Leaf)) {
+                        $tail = @(Get-Content -LiteralPath $logFile -Tail $FailureLogTailLines -Encoding UTF8)
+                        $excerpt = Get-BoundedLogExcerpt -Lines $tail -MaximumBytes $FailureLogMaxBytes
+                        Write-Host $excerpt
+                    }
+                    else {
+                        Write-Warning "Unable to download Azure log $($task.log.id) for run $($run.id): $($logDownloadOutput -join [Environment]::NewLine)"
+                    }
+                }
+                finally {
+                    if (Test-Path -LiteralPath $logFile -PathType Leaf) { Remove-Item -LiteralPath $logFile -Force }
                 }
             }
             $taskClassification = & $ClassifierScript -TaskNames @([string]$task.name) -LogLines @($excerpt -split '\r?\n')

@@ -2,12 +2,15 @@
 param(
     [switch] $NoOpen,
     [int] $MaxRequests = 0,
-    [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
+    [string] $ConfigPath,
     [string] $CodexHome
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'
+}
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $root = Get-EcosystemRoot
@@ -84,35 +87,6 @@ function Get-EnabledRepositories {
         $result.Add($repository)
     }
     return @($result)
-}
-
-function Quote-PowerShellLiteral {
-    param([AllowEmptyString()][string] $Value)
-    return "'" + $Value.Replace("'", "''") + "'"
-}
-
-function Start-ScriptProcess {
-    param([Parameter(Mandatory)][string] $ScriptPath, [Parameter(Mandatory)][hashtable] $Parameters)
-    $parts = [Collections.Generic.List[string]]::new()
-    $parts.Add("& $(Quote-PowerShellLiteral $ScriptPath)")
-    foreach ($key in $Parameters.Keys) {
-        $value = $Parameters[$key]
-        if ($null -eq $value -or ([string]$value).Length -eq 0) { continue }
-        if ($value -is [bool]) {
-            if ($value) { $parts.Add("-$key") }
-        }
-        elseif ($value -is [Array]) {
-            $literals = @($value | ForEach-Object { Quote-PowerShellLiteral ([string]$_) })
-            if ($literals.Count) { $parts.Add("-$key @($($literals -join ','))") }
-        }
-        else {
-            $parts.Add("-$key $(Quote-PowerShellLiteral ([string]$value))")
-        }
-    }
-    $command = $parts -join ' '
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-    $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -PassThru
-    return $process.Id
 }
 
 function Start-ScriptRunspace {
@@ -277,9 +251,62 @@ try {
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/external-reviews') {
-                    $reviewRoot = Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'reports'
-                    $reports = if (Test-Path -LiteralPath $reviewRoot -PathType Container) { @(Get-ChildItem -LiteralPath $reviewRoot -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.md','.json','.txt','.log') } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 200 | ForEach-Object { [pscustomobject]@{ name=$_.Name; length=[long]$_.Length; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o') } }) } else { @() }
-                    Send-Json -Response $response -Value @{ reports=@($reports); lifecycleIndexPath=(Join-Path $stateRoot 'pr-lifecycle-index.json') }
+                    $monitorDataRoot = Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome
+                    $reviewRoot = [IO.Path]::GetFullPath((Join-Path $monitorDataRoot 'reports'))
+                    $promptRoot = Resolve-EcosystemPath -Value ([string]$config.review.generatedPromptRoot) -Config $config -CodexHome $CodexHome
+                    $contextPath = Join-Path $promptRoot 'active-pr-comments.json'
+                    $statePath = Join-Path $monitorDataRoot 'state.json'
+                    $pendingPath = Join-Path $monitorDataRoot 'pending-review-changes.json'
+                    $contextDocument = if (Test-Path -LiteralPath $contextPath -PathType Leaf) { try { Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } else { $null }
+                    $monitorState = if (Test-Path -LiteralPath $statePath -PathType Leaf) { try { Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } else { $null }
+                    $pendingState = if (Test-Path -LiteralPath $pendingPath -PathType Leaf) { try { Get-Content -LiteralPath $pendingPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } else { $null }
+                    $savedPullRequests = Get-ObjectPropertyValue -Source $monitorState -Name 'pullRequests'
+                    $pendingItems = @((Get-ObjectPropertyValue -Source $pendingState -Name 'items'))
+                    $activePullRequests = [Collections.Generic.List[object]]::new()
+                    foreach ($pullRequest in @((Get-ObjectPropertyValue -Source $contextDocument -Name 'pullRequests'))) {
+                        if (-not $pullRequest) { continue }
+                        $key = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'key')
+                        $repositoryId = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'repositoryId')
+                        $pullRequestId = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'pullRequestId')
+                        $sourceCommit = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'sourceCommit')
+                        $content = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'content')
+                        $titleMatch = [regex]::Match($content, '(?m)^- Title:\s*(?<value>.+)$')
+                        $urlMatch = [regex]::Match($content, '(?m)^- URL:\s*(?<value>[^\r\n]+)')
+                        $repository = @($config.repositories | Where-Object { [string]$_.id -eq $repositoryId }) | Select-Object -First 1
+                        $savedProperty = if ($savedPullRequests) { $savedPullRequests.PSObject.Properties[$key] } else { $null }
+                        $saved = if ($savedProperty) { $savedProperty.Value } else { $null }
+                        $pending = @($pendingItems | Where-Object { [string](Get-ObjectPropertyValue -Source $_ -Name 'key') -eq $key }) | Select-Object -First 1
+                        $htmlInfo = $null
+                        $savedHtmlPath = [string](Get-ObjectPropertyValue -Source $saved -Name 'htmlPath')
+                        if (-not [string]::IsNullOrWhiteSpace($savedHtmlPath)) {
+                            $resolvedHtmlPath = [IO.Path]::GetFullPath($savedHtmlPath)
+                            if ([IO.Path]::GetDirectoryName($resolvedHtmlPath) -eq $reviewRoot -and (Test-Path -LiteralPath $resolvedHtmlPath -PathType Leaf)) { $htmlInfo = Get-Item -LiteralPath $resolvedHtmlPath }
+                        }
+                        if (-not $htmlInfo -and (Test-Path -LiteralPath $reviewRoot -PathType Container)) {
+                            $reportPattern = '^' + [regex]::Escape($repositoryId) + '-pr-' + [regex]::Escape($pullRequestId) + '-.*\.html$'
+                            $htmlInfo = Get-ChildItem -LiteralPath $reviewRoot -Filter '*.html' -File | Where-Object { $_.Name -match $reportPattern } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+                        }
+                        $savedSourceCommit = [string](Get-ObjectPropertyValue -Source $saved -Name 'sourceCommit')
+                        $pendingStatus = [string](Get-ObjectPropertyValue -Source $pending -Name 'status')
+                        $reviewStatus = if ($htmlInfo -and $savedSourceCommit -eq $sourceCommit) { 'reviewed' } elseif (-not [string]::IsNullOrWhiteSpace($pendingStatus)) { $pendingStatus } else { 'awaiting-review' }
+                        $activePullRequests.Add([pscustomobject][ordered]@{
+                            key = $key
+                            repositoryId = $repositoryId
+                            repositoryName = if ($repository) { [string]$repository.repository } else { $repositoryId }
+                            provider = [string](Get-ObjectPropertyValue -Source $pullRequest -Name 'provider')
+                            pullRequestId = $pullRequestId
+                            title = if ($titleMatch.Success) { $titleMatch.Groups['value'].Value.Trim() } else { 'Untitled pull request' }
+                            pullRequestUrl = if ($urlMatch.Success) { $urlMatch.Groups['value'].Value.Trim() } else { '' }
+                            sourceCommit = $sourceCommit
+                            reviewStatus = $reviewStatus
+                            reportName = if ($htmlInfo) { $htmlInfo.Name } else { $null }
+                            reportUrl = if ($htmlInfo) { '/external-review-report/' + [Uri]::EscapeDataString($htmlInfo.Name) } else { $null }
+                            reportUpdatedAtUtc = if ($htmlInfo) { $htmlInfo.LastWriteTimeUtc.ToString('o') } else { $null }
+                        })
+                    }
+                    $generatedAtUtc = [string](Get-ObjectPropertyValue -Source $contextDocument -Name 'generatedAtUtc')
+                    if ([string]::IsNullOrWhiteSpace($generatedAtUtc)) { $generatedAtUtc = [DateTime]::UtcNow.ToString('o') }
+                    Send-Json -Response $response -Value @{ activePullRequests=@($activePullRequests); generatedAtUtc=$generatedAtUtc; lifecycleIndexPath=(Join-Path $stateRoot 'pr-lifecycle-index.json') }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/external-reviews/([^/]+)$') {
@@ -405,7 +432,7 @@ try {
                             continue
                         }
                     }
-                    $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters @{
+                    $workflowParameters = @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
                         TaskId=$resolvedTaskId
@@ -415,9 +442,16 @@ try {
                         ConfigPath=$ConfigPath
                         CodexHome=$CodexHome
                     }
+                    $elevatedRequested = [bool](Get-ObjectPropertyValue -Source $body -Name 'elevated')
+                    if ($elevatedRequested) {
+                        if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                        $workflowParameters.ElevatedApproved = $true
+                    }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $resolvedTaskId -Parameters $workflowParameters
+                    $processId = $PID
                     $pendingAgents = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
-                    $startMessage = if ($resume) { "Checkpoint resume started only for: $($pendingAgents -join ', ')." } else { 'Workflow opened in a separate window.' }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; executionMode='sandboxed'; repositories=@($repositoryIds); pendingAgents=$pendingAgents; message=$startMessage }
+                    $startMessage = if ($resume) { "Checkpoint resume started only for: $($pendingAgents -join ', ')." } else { 'Workflow started in a tracked in-process runspace.' }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; runId=$run.runId; executionMode=if ($elevatedRequested) { 'elevated-approved' } else { 'sandboxed' }; launchStrategy='in-process-runspace'; repositories=@($repositoryIds); pendingAgents=$pendingAgents; message=$startMessage }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/comments$') {
@@ -470,16 +504,11 @@ try {
                     if ($elevated) {
                         if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
                         $parameters.ElevatedApproved = $true
-                        $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
-                        $processId = $PID
-                        $runId = $run.runId
-                        $executionMode = 'elevated-approved'
                     }
-                    else {
-                        $processId = Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -Parameters $parameters
-                        $runId = $null
-                        $executionMode = 'sandboxed'
-                    }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
+                    $processId = $PID
+                    $runId = $run.runId
+                    $executionMode = if ($elevated) { 'elevated-approved' } else { 'sandboxed' }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$requestedAgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$requestedAgentId'." -TargetAgentId $requestedAgentId -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     Send-Json -Response $response -Value @{ status='scheduled'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled; it will run when this task owns the workspace lease." }
@@ -648,18 +677,38 @@ try {
                 if ($path -eq '/api/reviews/start') {
                     $repositoryIds = @(Get-RequestedRepositoryIds -Source $body -Required)
                     $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
-                    $processIds = foreach ($repositoryId in $repositoryIds) {
-                        Start-ScriptProcess -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -Parameters @{
+                    $runs = foreach ($repositoryId in $repositoryIds) {
+                        Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Invoke-EnhancedReview.ps1') -TaskId ([string]$body.taskId) -Parameters @{
                             RepositoryId=$repositoryId
                             TaskId=[string]$body.taskId
                             ConfigPath=$ConfigPath
                             CodexHome=$CodexHome
                         }
                     }
-                    Send-Json -Response $response -Value @{ status='started'; processIds=@($processIds); repositories=@($repositoryIds); message='A review process was opened for each selected repository.' }
+                    Send-Json -Response $response -Value @{ status='started'; processIds=@($PID); runIds=@($runs | ForEach-Object { $_.runId }); launchStrategy='in-process-runspace'; repositories=@($repositoryIds); message='A tracked review runspace was started for each selected repository.' }
                     continue
                 }
                 Send-Json -Response $response -Value @{ error='API route not found.' } -StatusCode 404
+                continue
+            }
+
+            if ($request.HttpMethod -eq 'GET' -and $path -match '^/external-review-report/([^/]+)$') {
+                $reportName = [Uri]::UnescapeDataString($Matches[1])
+                if ([IO.Path]::GetFileName($reportName) -ne $reportName -or [IO.Path]::GetExtension($reportName).ToLowerInvariant() -ne '.html') { throw 'HTML review report name is not allowed.' }
+                $reviewRoot = [IO.Path]::GetFullPath((Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'reports'))
+                $reportPath = [IO.Path]::GetFullPath((Join-Path $reviewRoot $reportName))
+                if ([IO.Path]::GetDirectoryName($reportPath) -ne $reviewRoot -or -not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { Send-Json -Response $response -Value @{ error='HTML review report was not found.' } -StatusCode 404; continue }
+                $bytes = [IO.File]::ReadAllBytes($reportPath)
+                $response.StatusCode = 200
+                $response.ContentType = 'text/html; charset=utf-8'
+                $response.ContentLength64 = $bytes.Length
+                $response.Headers['Cache-Control'] = 'no-store'
+                $response.Headers['X-Content-Type-Options'] = 'nosniff'
+                $response.Headers['X-Frame-Options'] = 'DENY'
+                $response.Headers['Referrer-Policy'] = 'no-referrer'
+                $response.Headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' http://127.0.0.1:47831; img-src data:; frame-ancestors 'none'; base-uri 'none'"
+                $response.OutputStream.Write($bytes, 0, $bytes.Length)
+                $response.OutputStream.Close()
                 continue
             }
 

@@ -1,0 +1,31 @@
+diff --git a/scripts/Refresh-TaskPipelineResult.ps1 b/scripts/Refresh-TaskPipelineResult.ps1
+--- a/scripts/Refresh-TaskPipelineResult.ps1
++++ b/scripts/Refresh-TaskPipelineResult.ps1
+@@ -36,8 +36,19 @@
+-    if ([string]::IsNullOrWhiteSpace($Branch)) { $Branch = ([string](& git branch --show-current)).Trim() }
++    if ([string]::IsNullOrWhiteSpace($Branch)) {
++        $Branch = ([string](& git branch --show-current)).Trim()
++        $branchExitCode = $LASTEXITCODE
++        if ($branchExitCode -ne 0) { throw 'Could not resolve the task branch for pipeline refresh.' }
++    }
+     $shortBranch = $Branch -replace '^refs/heads/', ''
+     if ([string]::IsNullOrWhiteSpace($shortBranch)) { throw 'Could not resolve the task branch for pipeline refresh.' }
+-    if ([string]::IsNullOrWhiteSpace($Commit)) { $Commit = ([string](& git rev-parse HEAD)).Trim() }
+-    if ($LASTEXITCODE -ne 0 -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact local commit for pipeline refresh.' }
++    if ([string]::IsNullOrWhiteSpace($Commit)) {
++        $Commit = ([string](& git rev-parse HEAD)).Trim()
++        $commitExitCode = $LASTEXITCODE
++        if ($commitExitCode -ne 0) { throw 'Could not resolve an exact local commit for pipeline refresh.' }
++    }
++    if ($Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact local commit for pipeline refresh.' }
+     $remoteCommit = ([string](& git rev-parse "refs/remotes/origin/$shortBranch" 2>$null)).Trim()
+-    if ($LASTEXITCODE -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) {
++    $remoteCommitExitCode = $LASTEXITCODE
++    if ($remoteCommitExitCode -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) {
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -320,0 +321,3 @@
++$pipelineRefreshScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Refresh-TaskPipelineResult.ps1') -Raw -Encoding UTF8
++if ($pipelineRefreshScript -notmatch '\$commitExitCode\s*=\s*\$LASTEXITCODE' -or $pipelineRefreshScript -notmatch '\$remoteCommitExitCode\s*=\s*\$LASTEXITCODE' -or $pipelineRefreshScript -match 'if\s*\(\$LASTEXITCODE\s+-ne\s+0\s+-or\s+\$Commit') { throw 'Pipeline refresh must not read an unset LASTEXITCODE when Branch or Commit is supplied explicitly.' }
++Add-Check -Name 'pipeline-refresh-explicit-commit' -Detail 'Explicit branch and commit refresh validates values without reading a stale or unset LASTEXITCODE'

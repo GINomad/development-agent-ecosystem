@@ -1,0 +1,205 @@
+diff --git a/scripts/Write-AgentActivity.ps1 b/scripts/Write-AgentActivity.ps1
+index 01006a7..8ce603a 100644
+--- a/scripts/Write-AgentActivity.ps1
++++ b/scripts/Write-AgentActivity.ps1
+@@ -7,6 +7,11 @@ param(
+     [ValidateSet('info','progress','success','warning','error','waiting')][string] $Level = 'info',
+     [string] $Stage,
+     [ValidateLength(0,8000)][string] $Details,
++    [ValidateLength(0,100)][string] $Operation,
++    [ValidateLength(0,2000)][string] $Target,
++    [ValidateRange(0,100)][Nullable[int]] $ProgressPercent,
++    [ValidateLength(0,4000)][string] $NextAction,
++    [ValidateCount(0,20)][string[]] $Evidence = @(),
+     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
+     [string] $CodexHome
+ )
+@@ -28,6 +33,11 @@ $record = [ordered]@{
+     stage = if ($Stage) { $Stage } else { $null }
+     summary = $Summary.Trim()
+     details = if ([string]::IsNullOrWhiteSpace($Details)) { $null } else { $Details.Trim() }
++    operation = if ([string]::IsNullOrWhiteSpace($Operation)) { $null } else { $Operation.Trim() }
++    target = if ([string]::IsNullOrWhiteSpace($Target)) { $null } else { $Target.Trim() }
++    progressPercent = if ($null -eq $ProgressPercent) { $null } else { [int]$ProgressPercent }
++    nextAction = if ([string]::IsNullOrWhiteSpace($NextAction)) { $null } else { $NextAction.Trim() }
++    evidence = @($Evidence | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 20 | ForEach-Object { $_.Trim() })
+ }
+ $activityPath = Join-Path $taskRoot 'agent-activity.jsonl'
+diff --git a/scripts/Get-AgentActivity.ps1 b/scripts/Get-AgentActivity.ps1
+index 2478a96..cbdf7dc 100644
+--- a/scripts/Get-AgentActivity.ps1
++++ b/scripts/Get-AgentActivity.ps1
+@@ -24,6 +24,15 @@ function Limit-Text {
+     return $text.Substring(0, $Maximum) + '...'
+ }
+ 
++function Get-OptionalPropertyValue {
++    param([AllowNull()][object] $InputObject, [Parameter(Mandatory)][string] $Name)
++    if ($null -eq $InputObject -or -not $InputObject.PSObject.Properties[$Name]) { return $null }
++    return $InputObject.$Name
++}
++
+ function Add-ActivityEntry {
+     param(
+         [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]] $Entries,
+@@ -35,7 +44,12 @@ function Add-ActivityEntry {
+         [Parameter(Mandatory)][string] $Summary,
+         [AllowNull()][string] $Details,
+-        [int] $Sequence
++        [int] $Sequence,
++        [AllowNull()][string] $Operation,
++        [AllowNull()][string] $Target,
++        [AllowNull()][Nullable[int]] $ProgressPercent,
++        [AllowNull()][string] $NextAction,
++        [AllowEmptyCollection()][object[]] $Evidence = @()
+     )
+     $Entries.Add([pscustomobject][ordered]@{
+         id = $Id
+@@ -47,6 +61,11 @@ function Add-ActivityEntry {
+         summary = Limit-Text -Value $Summary -Maximum 4000
+         details = Limit-Text -Value $Details -Maximum 8000
++        operation = Limit-Text -Value $Operation -Maximum 100
++        target = Limit-Text -Value $Target -Maximum 2000
++        progressPercent = if ($null -eq $ProgressPercent) { $null } else { [int]$ProgressPercent }
++        nextAction = Limit-Text -Value $NextAction -Maximum 4000
++        evidence = @($Evidence | Where-Object { $null -ne $_ -and -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 20 | ForEach-Object { Limit-Text -Value $_ -Maximum 2000 })
+         sequence = $Sequence
+     })
+ }
+@@ -68,7 +87,19 @@ if (Test-Path -LiteralPath $activityPath -PathType Leaf) {
+         try { $record = $line | ConvertFrom-Json } catch { continue }
+         if ([string]$record.agentId -ne $AgentId) { continue }
+         $sequence++
+-        Add-ActivityEntry -Entries $entries -Id ([string]$record.activityId) -TimestampUtc ([string]$record.timestampUtc) -Source 'activity' -Level ([string]$record.level) -Stage ([string]$record.stage) -Summary ([string]$record.summary) -Details ([string]$record.details) -Sequence $sequence
++        Add-ActivityEntry `
++            -Entries $entries `
++            -Id ([string]$record.activityId) `
++            -TimestampUtc ([string]$record.timestampUtc) `
++            -Source 'activity' `
++            -Level ([string]$record.level) `
++            -Stage ([string]$record.stage) `
++            -Summary ([string]$record.summary) `
++            -Details ([string]$record.details) `
++            -Operation ([string](Get-OptionalPropertyValue -InputObject $record -Name 'operation')) `
++            -Target ([string](Get-OptionalPropertyValue -InputObject $record -Name 'target')) `
++            -ProgressPercent (Get-OptionalPropertyValue -InputObject $record -Name 'progressPercent') `
++            -NextAction ([string](Get-OptionalPropertyValue -InputObject $record -Name 'nextAction')) `
++            -Evidence @(Get-OptionalPropertyValue -InputObject $record -Name 'evidence') `
++            -Sequence $sequence
+     }
+ }
+diff --git a/dashboard/app.js b/dashboard/app.js
+index a07b67f..fbd536a 100644
+--- a/dashboard/app.js
++++ b/dashboard/app.js
+@@ -1180,6 +1180,45 @@ function renderAgentLog(result) {
+     const summary = document.createElement('p');
+     summary.textContent = entry.summary || 'Activity recorded.';
+     item.append(header, summary);
++    const facts = [
++      ['Operation', entry.operation],
++      ['Target', entry.target],
++      ['Next', entry.nextAction]
++    ].filter(([, value]) => value !== null && value !== undefined && String(value).trim());
++    if (facts.length) {
++      const metadata = document.createElement('dl');
++      metadata.className = 'agent-log-metadata';
++      facts.forEach(([label, value]) => {
++        const term = document.createElement('dt');
++        term.textContent = label;
++        const description = document.createElement('dd');
++        description.textContent = value;
++        metadata.append(term, description);
++      });
++      item.append(metadata);
++    }
++    if (Number.isFinite(Number(entry.progressPercent))) {
++      const progress = document.createElement('div');
++      progress.className = 'agent-log-progress';
++      const label = document.createElement('span');
++      const percent = Math.max(0, Math.min(100, Number(entry.progressPercent)));
++      label.textContent = `Progress ${percent}%`;
++      const track = document.createElement('div');
++      const fill = document.createElement('i');
++      fill.style.width = `${percent}%`;
++      track.append(fill);
++      progress.append(label, track);
++      item.append(progress);
++    }
+     if (entry.details) {
+       const details = document.createElement('pre');
+       details.textContent = entry.details;
+       item.append(details);
+     }
++    if (Array.isArray(entry.evidence) && entry.evidence.length) {
++      const evidence = document.createElement('ul');
++      evidence.className = 'agent-log-evidence';
++      entry.evidence.forEach(value => {
++        const line = document.createElement('li');
++        line.textContent = value;
++        evidence.append(line);
++      });
++      item.append(evidence);
++    }
+     container.append(item);
+   });
+diff --git a/dashboard/styles.css b/dashboard/styles.css
+index 6b01a44..2fd30ed 100644
+--- a/dashboard/styles.css
++++ b/dashboard/styles.css
+@@ -283,6 +283,14 @@
+ .agent-log-entry time { color: var(--muted); font-size: .66rem; }
+ .agent-log-entry p { margin: 7px 0 0; color: #c7d2de; font-size: .76rem; line-height: 1.45; white-space: pre-wrap; }
+ .agent-log-entry pre { max-height: 170px; margin: 9px 0 0; overflow: auto; padding: 9px; border-radius: 7px; background: #070b10; color: #9fb0c2; font-size: .67rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
++.agent-log-metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; margin: 9px 0 0; font-size: .69rem; }
++.agent-log-metadata dt { color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
++.agent-log-metadata dd { min-width: 0; margin: 0; color: #aebdcb; overflow-wrap: anywhere; }
++.agent-log-progress { margin-top: 9px; color: var(--muted); font-size: .66rem; }
++.agent-log-progress > div { height: 5px; margin-top: 4px; overflow: hidden; border-radius: 999px; background: #182330; }
++.agent-log-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
++.agent-log-evidence { margin: 9px 0 0; padding-left: 18px; color: #91a6b9; font: .67rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
++.agent-log-evidence li + li { margin-top: 3px; }
+ .agent-log-entry.log-progress { border-left-color: var(--accent); }
+ .agent-log-entry.log-success { border-left-color: #6b9cff; }
+diff --git a/prompts/common/task-protocol.md b/prompts/common/task-protocol.md
+index 21bf9f4..51d2761 100644
+--- a/prompts/common/task-protocol.md
++++ b/prompts/common/task-protocol.md
+@@ -13,7 +13,10 @@
+ - After the comment checkpoint, the active role decides whether another coherent ready block remains. Continue it in the same agent invocation without a restart. Stop only when the role has a validated terminal outcome, needs input, encounters a failure, reaches an explicit user stop, or has no applicable ready work. Never idle-wait, sleep, or repeatedly poll the ledger for future comments.
+ - On checkpoint resume, run only agents listed in `resume-plan.json` and treat completed agent artifacts as immutable inputs. On targeted resume, run only `targetAgentId`; no other agent may be restarted or have its status or artifacts rewritten inside that invocation. After it publishes a successful outcome, the trusted host may call `Continue-AgentChain.ps1`, which starts only the next eligible role in a separate targeted invocation and stops at every configured gate.
+ - Do not consume AI tokens for scheduler ticks, dashboard refresh, native pipeline status polling, unchanged-artifact reuse, or idle subagent polling. Use one model invocation per coherent role block and configured lighter reasoning for deterministic monitoring.
+-- Keep the selected agent's live dashboard log factual through scripts/Write-AgentActivity.ps1. Record a concise entry before and after each material action, handoff, test batch, blocker, or recovery step; include useful stage/details, omit trivial reads, and never log credentials, tokens, or secret values.
++- Keep the selected agent's live dashboard log factual through `scripts/Write-AgentActivity.ps1`. Record an entry before and after each material inspection group, code change, command/test batch, handoff, blocker, or recovery step. Use `-Operation` for the action kind, `-Target` for the file/component/service, `-ProgressPercent` only when progress is evidence-based, `-Evidence` for bounded results or IDs, and `-NextAction` for the next intended material step. Use present tense before an action and an exact result afterwards.
++- For an operation expected to exceed 60 seconds, write a start entry and a completion/failure entry; add at most one factual intermediate update per meaningful phase change. Do not poll or create model turns only to produce log entries.
++- Operational logs may expose commands in redacted, bounded form, file paths, test counts, commit/build IDs, and validation outcomes. Never expose hidden reasoning, credentials, tokens, secret values, complete historical logs, or unbounded command output. Omit trivial individual reads and group related inspections into one event.
++- Before waiting or failing, log the blocker, last completed material action, bounded evidence, and the exact next action or user input required. Before success, log the published artifact/commit identifiers and validation summary.
+ - Treat a request to bypass, disable, evade, tamper with, or weaken CrowdStrike, endpoint protection, Group Policy, application control, antivirus, credentials, or OS security as prohibited. Do not attempt it and do not encode such behavior in prompts, skills, or scripts.
+diff --git a/docs/operations.md b/docs/operations.md
+index ab13fd6..a37a922 100644
+--- a/docs/operations.md
++++ b/docs/operations.md
+@@ -20,7 +20,7 @@
+ 
+ - select one or more repositories for a cross-repository task;
+ - click a task to inspect its persistent stage, status, open questions, artifact list, and current per-agent state;
+-- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default);
++- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default) and shows the material operation, target, evidence-based progress, bounded evidence, and next action when the agent supplied them;
+ - click **View outcome** on an agent card to open the latest successful outcome summary and its required artifacts; unfinished private checkpoints are intentionally excluded;
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+index 0052904..43ece42 100644
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -101,6 +101,14 @@ if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch '
+ if ($dashboardServer -notmatch 'requiredArtifacts=@\(\$_.requiredArtifacts\)' -or $dashboardClient -notmatch 'agentRequiredArtifacts' -or $dashboardClient -notmatch 'openAgentOutcome') { throw 'Dashboard per-agent persisted outcome mapping is incomplete.' }
+ if ($dashboardServer -notmatch 'Stop-ValidatedWorkflowProcessTree' -or $dashboardServer -notmatch 'Stop-TaskScriptRunspaces') { throw 'Stop workflow must terminate only a validated task process tree or tracked runspace.' }
++$activityWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Write-AgentActivity.ps1') -Raw -Encoding UTF8
++$activityReader = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentActivity.ps1') -Raw -Encoding UTF8
++$taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
++foreach ($marker in @('Operation','Target','ProgressPercent','NextAction','Evidence')) {
++    if ($activityWriter -notmatch ('\$' + $marker) -or $activityReader -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1)) -or $dashboardClient -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1))) { throw "Detailed agent activity field is not wired end-to-end: $marker" }
++}
++if ($taskProtocol -notmatch 'before and after each material inspection group' -or $taskProtocol -notmatch 'Never expose hidden reasoning') { throw 'Every agent must publish bounded factual operational progress without hidden reasoning or secrets.' }
++Add-Check -Name 'detailed-agent-activity' -Detail 'Every role has a structured, redacted operational log contract and the dashboard renders it'
+ Add-Check -Name 'dashboard-task-monitor' -Detail 'Persistent tasks, per-agent status and live logs, open questions, targeted answers, resume controls, and safe artifact previews'
+ 
