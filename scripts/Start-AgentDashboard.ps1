@@ -729,8 +729,17 @@ try {
             Send-Bytes -Response $response -Bytes ((New-Object Text.UTF8Encoding($false)).GetBytes($content)) -ContentType $contentType
         }
         catch {
-            if ($response.OutputStream.CanWrite) {
-                Send-Json -Response $response -Value @{ error=$_.Exception.Message } -StatusCode 500
+            $requestError = $_.Exception.Message
+            try {
+                if ($null -ne $response -and $response.OutputStream.CanWrite) {
+                    Send-Json -Response $response -Value @{ error=$requestError } -StatusCode 500
+                }
+            }
+            catch {
+                # A client can disconnect, or the response can already be submitted,
+                # while a route is writing its body. Failure to emit the fallback
+                # response must not terminate the dashboard listener.
+                try { $response.Abort() } catch { }
             }
         }
     }
