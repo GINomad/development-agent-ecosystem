@@ -1,5 +1,11 @@
 # Configuration
 
+## Model routing
+
+`modelRouting` is the live cost/quality policy for every agent execution. The host classifies bounded task evidence deterministically, so classification itself consumes no AI tokens. Four ordered tiers map complexity to a model and reasoning effort; `rolePolicies` define each agent's default, minimum, and maximum tier. The selected decision and its evidence signals are persisted in task-local `model-routing.json` and reused while its input fingerprint remains unchanged.
+
+Increase role floors only when representative tasks show a measurable quality gap. Keep Pipeline Monitor and routine Orchestrator/Knowledge Keeper work on the routine tier; security, credential, signing, architecture, multi-repository, failed, and post-repair work escalates within the configured role cap. Changes are loaded from JSON at the next agent launch; an active run keeps the model it started with.
+
 `config/agents.json` is the single canonical file for runtime settings, operation modes, repositories, workspaces, credential strategy, knowledge, gates, and all agents.
 
 `ui.taskRefreshSeconds` controls how often the dashboard reloads persisted task, per-agent, timeline, and artifact state. The default is five seconds.

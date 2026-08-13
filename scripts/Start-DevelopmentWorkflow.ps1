@@ -111,6 +111,19 @@ if ($Resume) {
 
 $executedAgentId = if ($TargetAgentId) { $TargetAgentId } else { [string]$config.workflow.orchestration.agentId }
 $activeAgent = @($config.agents | Where-Object { [string]$_.id -eq $executedAgentId }) | Select-Object -First 1
+$modelRouteParameters = @{
+    TaskId = $TaskId
+    AgentId = $executedAgentId
+    TaskSelector = $TaskSelector
+    UserInstruction = $UserInstruction
+    RepositoryIds = @($RepositoryIds)
+    ChangedArtifactNames = if ($resumePlan) { @($resumePlan.ChangedArtifactNames) } else { @() }
+    HealthRecoveryRetry = [bool]$HealthRecoveryRetry
+    NoPersist = [bool]$PrepareOnly
+    ConfigPath = $ConfigPath
+    CodexHome = $CodexHome
+}
+$modelRoute = & (Join-Path $PSScriptRoot 'Resolve-AgentModelRoute.ps1') @modelRouteParameters
 $activeRolePrompt = [Collections.Generic.List[string]]::new()
 foreach ($pathValue in @($activeAgent.promptPaths)) {
     $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $config -CodexHome $CodexHome
@@ -145,6 +158,7 @@ All target workspaces: $($workspacePaths -join '; ')
 Repository config IDs: $($RepositoryIds -join ', ')
 Additional user instruction: $UserInstruction
 Execution mode: $executionMode ($workflowSandboxMode)
+Model route: $($modelRoute.complexity) -> $($modelRoute.model) with $($modelRoute.reasoningEffort) reasoning (confidence $($modelRoute.confidence); decision $($modelRoute.decisionId))
 Health recovery retry: $([bool]$HealthRecoveryRetry)
 Resume scope: $resumeScope
 Target agent: $(if ($TargetAgentId) { $TargetAgentId } else { 'none' })
@@ -204,6 +218,7 @@ $result = [pscustomobject]@{
     Prompt = $prompt
     ResumeScope = $resumeScope
     TargetAgentId = $TargetAgentId
+    ModelRoute = $modelRoute
     WorkspaceLease = $workspaceLease
     UnfinishedAgentIds = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
 }
@@ -211,6 +226,7 @@ if ($PrepareOnly) { return $result }
 
 $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
 $startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started through Orchestrator for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Orchestrator is classifying task intake.' }
+$startMessage += " Model route: $($modelRoute.complexity), $($modelRoute.model), reasoning $($modelRoute.reasoningEffort)."
 $startStage = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
 & $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
@@ -220,7 +236,7 @@ $codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
-foreach ($argument in @('-a', $workflowApprovalPolicy, 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
+foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
 $additionalDirectories = @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot))
 foreach ($directory in $additionalDirectories) {
     $resolvedDirectory = [IO.Path]::GetFullPath([string]$directory)
@@ -231,7 +247,7 @@ foreach ($directory in $additionalDirectories) {
 foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalResponsePath, '-')) { $arguments.Add([string]$argument) }
 $workflowStartedAtUtc = [DateTime]::UtcNow
 try {
-    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec' } | ConvertTo-Json -Compress
+    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec'; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $codexCommand = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $codexCommand) { throw 'Codex CLI was not found.' }

@@ -133,6 +133,13 @@
                   <p id="reviewDiffMeta">Read-only Git comparison for the repositories assigned to this task.</p>
                 </div>
                 <div class="outcome-actions">
+                  <label class="review-diff-scope">
+                    Diff scope
+                    <select id="reviewDiffScope">
+                      <option value="reviewed-commit">Latest reviewed commit</option>
+                      <option value="all-task-changes">All task changes</option>
+                    </select>
+                  </label>
                   <button class="button secondary compact-button" id="refreshReviewDiff" type="button">Refresh diff</button>
                   <button class="text-button" id="closeReviewDiff" type="button">Close</button>
                 </div>

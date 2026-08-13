@@ -28,7 +28,9 @@ let reviewDiffIndex = null;
 let selectedDiffRepositoryId = null;
 let selectedDiffFilePath = null;
 let selectedDiffLine = null;
+let reviewDiffScope = 'reviewed-commit';
 let reviewDiffRequestInFlight = false;
+let reviewDiffReloadPending = false;
 let reviewerFeedback = null;
 let reviewerDecisions = [];
 let reviewerTechDebtItems = [];
@@ -283,7 +285,8 @@ function renderTaskDetail(task) {
     const message = document.createElement('p');
     message.textContent = state.message || 'No activity recorded.';
     const time = document.createElement('small');
-    time.textContent = formatDate(state.updatedAtUtc);
+    const modelRoute = state.modelRoute;
+    time.textContent = formatDate(state.updatedAtUtc) + (modelRoute ? ` - ${modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
     logButton.append(top, message, time);
     logButton.addEventListener('click', () => openAgentLog(id));
     const outcomeButton = document.createElement('button');
@@ -424,7 +427,9 @@ function renderAgentOutcome() {
   const availableNames = requiredNames.filter(name => taskArtifacts.some(artifact => artifact.name === name));
   document.querySelector('#agentOutcomePanel').classList.remove('hidden');
   document.querySelector('#agentOutcomeTitle').textContent = `${label} outcome`;
-  document.querySelector('#agentOutcomeMeta').textContent = `${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}`;
+  const modelRoute = state.modelRoute;
+  document.querySelector('#agentOutcomeMeta').textContent = `${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}` +
+    (modelRoute ? ` - ${modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
   document.querySelector('#agentOutcomeSummary').textContent = state.message || 'No persisted outcome summary is available.';
   document.querySelector('#openReviewDiff').classList.toggle('hidden', agentId !== 'reviewer');
   document.querySelectorAll('.agent-state').forEach(card => card.classList.toggle('outcome-selected', card.dataset.agentId === agentId));
@@ -936,8 +941,9 @@ function renderReviewDiffIndex() {
       container.append(button);
     });
   });
+  const scopeLabel = reviewDiffScope === 'reviewed-commit' ? 'latest reviewed commit' : 'all task changes';
   document.querySelector('#reviewDiffMeta').textContent = totalFiles
-    ? totalFiles + ' changed file(s) across ' + repositories.length + ' task repository/repositories. Select a line to attach exact context.'
+    ? totalFiles + ' changed file(s) across ' + repositories.length + ' task repository/repositories for ' + scopeLabel + '. Select a line to attach exact context.'
     : 'No local or branch changes were found for the repositories assigned to this task.';
 }
 
@@ -1068,6 +1074,7 @@ function renderReviewDiffPatch(result) {
 
 async function loadReviewDiffFile(repositoryId, filePath) {
   if (!selectedTaskId || reviewDiffRequestInFlight) return;
+  const requestedScope = reviewDiffScope;
   selectedDiffRepositoryId = repositoryId;
   selectedDiffFilePath = filePath;
   resetReviewDiffCommentEditor();
@@ -1077,9 +1084,9 @@ async function loadReviewDiffFile(repositoryId, filePath) {
   document.querySelector('#reviewDiffLines').replaceChildren();
   reviewDiffRequestInFlight = true;
   try {
-    const query = new URLSearchParams({ repositoryId, filePath });
+    const query = new URLSearchParams({ repositoryId, filePath, scope: requestedScope });
     const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/diff?' + query.toString());
-    if (repositoryId !== selectedDiffRepositoryId || filePath !== selectedDiffFilePath) return;
+    if (requestedScope !== reviewDiffScope || repositoryId !== selectedDiffRepositoryId || filePath !== selectedDiffFilePath) return;
     renderReviewDiffPatch(result.diff);
   } catch (error) {
     document.querySelector('#reviewDiffFileStats').textContent = 'Diff unavailable';
@@ -1087,17 +1094,23 @@ async function loadReviewDiffFile(repositoryId, filePath) {
     log('Error: ' + error.message);
   } finally {
     reviewDiffRequestInFlight = false;
+    if (reviewDiffReloadPending) {
+      reviewDiffReloadPending = false;
+      loadReviewDiff();
+    }
   }
 }
 
 async function loadReviewDiff() {
   if (!selectedTaskId || reviewDiffRequestInFlight) return;
   const taskId = selectedTaskId;
+  const requestedScope = reviewDiffScope;
   reviewDiffRequestInFlight = true;
-  document.querySelector('#reviewDiffMeta').textContent = 'Loading task diff...';
+  document.querySelector('#reviewDiffMeta').textContent = requestedScope === 'reviewed-commit' ? 'Loading latest reviewed commit diff...' : 'Loading all task changes...';
   try {
-    const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/diff');
-    if (selectedTaskId !== taskId) return;
+    const query = new URLSearchParams({ scope: requestedScope });
+    const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/diff?' + query.toString());
+    if (selectedTaskId !== taskId || requestedScope !== reviewDiffScope) return;
     reviewDiffIndex = result.diff;
     const repositories = diffRepositories();
     const stillAvailable = findDiffFile(selectedDiffRepositoryId, selectedDiffFilePath).file;
@@ -1120,11 +1133,17 @@ async function loadReviewDiff() {
     log('Error: ' + error.message);
   } finally {
     reviewDiffRequestInFlight = false;
+    if (reviewDiffReloadPending) {
+      reviewDiffReloadPending = false;
+      loadReviewDiff();
+    }
   }
 }
 
 function openReviewDiff() {
   if (!selectedTaskId) return;
+  reviewDiffScope = 'reviewed-commit';
+  document.querySelector('#reviewDiffScope').value = reviewDiffScope;
   document.querySelector('#reviewDiffPanel').classList.remove('hidden');
   document.querySelector('#reviewFeedbackTitle').textContent = `Reviewer feedback for ${selectedTaskId}`;
   setReviewDiffCommentStatus('');
@@ -1689,6 +1708,14 @@ document.querySelector('#closeAgentOutcome').addEventListener('click', closeAgen
 document.querySelector('#openReviewDiff').addEventListener('click', openReviewDiff);
 document.querySelector('#closeReviewDiff').addEventListener('click', closeReviewDiff);
 document.querySelector('#refreshReviewDiff').addEventListener('click', () => { loadReviewDiff(); loadReviewerFeedback(); });
+document.querySelector('#reviewDiffScope').addEventListener('change', event => {
+  reviewDiffScope = event.target.value === 'all-task-changes' ? 'all-task-changes' : 'reviewed-commit';
+  selectedDiffRepositoryId = null;
+  selectedDiffFilePath = null;
+  selectedDiffLine = null;
+  if (reviewDiffRequestInFlight) reviewDiffReloadPending = true;
+  else loadReviewDiff();
+});
 document.querySelector('#sendReviewDiffComment').addEventListener('click', async () => {
   const button = document.querySelector('#sendReviewDiffComment');
   try {
