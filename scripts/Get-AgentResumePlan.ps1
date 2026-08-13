@@ -64,15 +64,27 @@ $applicableComments = if ($TargetAgentId) {
 } else { @($unacknowledgedComments) }
 
 $artifactIndexPath = Join-Path $taskRoot 'resume-artifact-index.json'
+$artifactConsumerAgentId = if ($TargetAgentId) { $TargetAgentId } else { $orchestratorId }
+$agentFingerprints = [ordered]@{}
 $previousFingerprints = @{}
 if (Test-Path -LiteralPath $artifactIndexPath -PathType Leaf) {
     try {
         $previousIndex = Get-Content -LiteralPath $artifactIndexPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($previousIndex.PSObject.Properties['fingerprints']) {
-            foreach ($property in $previousIndex.fingerprints.PSObject.Properties) { $previousFingerprints[$property.Name] = [string]$property.Value }
+        if ($previousIndex.PSObject.Properties['agentFingerprints']) {
+            foreach ($agentProperty in $previousIndex.agentFingerprints.PSObject.Properties) {
+                $fingerprints = [ordered]@{}
+                foreach ($property in $agentProperty.Value.PSObject.Properties) { $fingerprints[$property.Name] = [string]$property.Value }
+                $agentFingerprints[$agentProperty.Name] = [pscustomobject]$fingerprints
+            }
+            if ($agentFingerprints.Contains($artifactConsumerAgentId)) {
+                foreach ($property in $agentFingerprints[$artifactConsumerAgentId].PSObject.Properties) { $previousFingerprints[$property.Name] = [string]$property.Value }
+            }
         }
     }
-    catch { $previousFingerprints = @{} }
+    catch {
+        $agentFingerprints = [ordered]@{}
+        $previousFingerprints = @{}
+    }
 }
 $shareableArtifacts = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $null = $shareableArtifacts.Add('assigned-task-context.json')
@@ -93,7 +105,8 @@ foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { 
     if ($previousFingerprints.ContainsKey($file.Name) -and $previousFingerprints[$file.Name] -eq $fingerprint) { $unchangedArtifacts.Add($file.Name) }
     else { $changedArtifacts.Add($file.Name) }
 }
-$artifactIndex = [ordered]@{ taskId=$TaskId; generatedAtUtc=[DateTime]::UtcNow.ToString('o'); fingerprints=[pscustomobject]$currentFingerprints }
+$agentFingerprints[$artifactConsumerAgentId] = [pscustomobject]$currentFingerprints
+$artifactIndex = [ordered]@{ taskId=$TaskId; generatedAtUtc=[DateTime]::UtcNow.ToString('o'); agentFingerprints=[pscustomobject]$agentFingerprints }
 if (-not $PreserveArtifactIndex) {
     Write-Utf8NoBom -Path $artifactIndexPath -Content (($artifactIndex | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
 }
