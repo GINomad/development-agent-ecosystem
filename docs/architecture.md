@@ -95,8 +95,10 @@ flowchart LR
     PR[Active PR code + user comments + local notes] --> R
     R -->|findings| K
     R -->|findings, no automatic fix| D
-    U -->|approve / reject / defer| G{Review decision gate}
+    U -->|approve / reject / defer / bypass| G{Review decision gate}
     G -->|approved findings only| D
+    G -->|bypass + linked open debt| TD[(Task tech-debt items)]
+    TD --> P
     O --> P[Azure Pipeline Monitor]
     P -->|clean review: guarded working-branch push| AZP[Azure Pipelines]
     AZP -->|exact SHA result| P
@@ -150,8 +152,10 @@ sequenceDiagram
         R-->>K: successful review outcome
         R-->>O: findings and verdict
         R-->>D: findings for visibility
-        U->>O: approve / reject / defer finding
+        U->>O: approve / reject / defer / bypass finding
         O->>D: approved findings only
+        O->>R: materialize bypassed finding as task-local debt
+        R-->>P: rejected or tracked-bypass review gate
         D->>P: pushed branch and exact commit
         P-->>K: successful exact-SHA outcome for shared knowledge
         P-->>O: delivery status
@@ -199,7 +203,7 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `context-pack.json`: context selected by Knowledge Keeper;
 - `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
 - `implementation-plan.json` and `implementation-result.json`;
-- `review-result.json` and `review-decisions.json`;
+- `review-result.json`, `review-decisions.json`, and `tech-debt-items.json`; a `bypassed` decision is non-resolution and is deliverable only while its linked `TD-REV-NNN` item is open;
 - `delivery-result.json`, `pipeline-result.json`, `pull-request-status.json`, optional `pipeline-remediation-<signature>.json`, `knowledge-update.json`, and final `task-summary.json`;
 - `task-closure.json` plus `revisions/revision-<n>/` snapshots for manual closure and bug/rework reopen.
 - `agent-failure-*.json`, `health-check-result.json`, `health-recovery-result.json`, and health recovery logs.

@@ -126,6 +126,9 @@ foreach ($marker in @('resetReviewDiffCommentEditor','isSameSelection','renderIn
 if ($dashboardHtml -notmatch 'reviewDiffCommentDock' -or $dashboardCss -notmatch 'height:\s*clamp\(420px,\s*68vh,\s*900px\)' -or $dashboardCss -notmatch 'scrollbar-gutter:\s*stable') { throw 'Dashboard diff viewer must keep the selected-line editor in the diff and provide independent file scrolling.' }
 $reviewResultSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-result.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($reviewResultSchema.required) -notcontains 'requirementTraceability' -or -not $reviewResultSchema.properties.requirementTraceability -or -not $reviewResultSchema.'$defs'.finding.properties.codeLocation) { throw 'Review result schema must require requirement traceability and support structured inline code locations.' }
+$reviewDecisionsSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-decisions.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$techDebtSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\tech-debt-items.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if (@($reviewDecisionsSchema.properties.decisions.items.properties.decision.enum) -notcontains 'bypassed' -or -not $reviewDecisionsSchema.properties.decisions.items.properties.techDebtItemId -or -not $techDebtSchema.'$defs'.item.properties.sourceFindingId) { throw 'Review bypass decisions must require a linked task-local technical-debt item.' }
 if ($dashboardServer -notmatch 'ReviewFindingId' -or $dashboardClient -notmatch 'review-finding:' -or $dashboardClient -notmatch 'Send to Reviewer' -or $dashboardClient -notmatch 'Send to Developer') { throw 'Reviewer feedback threads or addressable Reviewer/Developer replies are incomplete.' }
 $reviewReplyRoot = Join-Path $OutputRoot 'review-feedback-reply'
 $reviewReplyConfigPath = Join-Path $reviewReplyRoot 'agents.json'
@@ -138,7 +141,7 @@ $reviewReply = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $review
 $reviewReplyEvent = Get-Content -LiteralPath (Join-Path $reviewReplyTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object eventId -eq $reviewReply.CommentId | Select-Object -First 1
 if ([string]$reviewReply.ReviewFindingId -ne 'REV-001' -or [string]$reviewReply.TargetAgentId -ne 'developer' -or @($reviewReplyEvent.evidence) -notcontains 'review-finding:REV-001') { throw 'Reviewer feedback reply was not durably linked and targeted.' }
 Add-Check -Name 'reviewer-feedback-replies' -Detail 'Reviewer summary/findings/process suggestions are visible; replies persist by finding ID and target Reviewer or Developer'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -544,6 +547,27 @@ Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'review-result.json') -C
 $processReviewContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $processReviewTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$processReviewContinuation.Status -ne 'prepared' -or [string]$processReviewContinuation.NextAgentId -ne 'pipeline_monitor') { throw 'A process-only Reviewer suggestion incorrectly blocks Pipeline Monitor continuation.' }
 Add-Check -Name 'process-suggestion-continuation' -Detail 'A clean product review continues to Pipeline Monitor while process suggestions remain visible and non-blocking'
+
+$bypassTaskId = "review-bypass-$deliveryFixtureId"
+$bypassTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$bypassTaskId"
+New-Item -ItemType Directory -Path $bypassTaskRoot -Force | Out-Null
+$bypassTask = [ordered]@{
+    taskId=$bypassTaskId; selector='synthetic-review-bypass'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId
+    agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='pending' } }
+}
+$bypassFinding = [ordered]@{
+    id='REV-201'; severity='medium'; category='maintainability'; location='sample.ps1:1'
+    evidence='Synthetic evidence.'; impact='Synthetic debt impact.'; correctionDirection='Resolve the synthetic debt.'; decisionStatus='proposed'
+}
+$bypassReview = [ordered]@{ findings=@($bypassFinding); agentProcessFindings=@(); heldScopeViolations=@() }
+Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'task.json') -Content (($bypassTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'review-result.json') -Content (($bypassReview | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$bypassDecision = & (Join-Path $root 'scripts\Set-ReviewDecision.ps1') -TaskId $bypassTaskId -FindingId REV-201 -Decision bypassed -DecidedBy user -Note 'Accepted as tracked technical debt.' -ConfigPath $deliveryConfigPath
+$bypassDebt = Get-Content -LiteralPath (Join-Path $bypassTaskRoot 'tech-debt-items.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$bypassContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $bypassTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
+$bypassDeliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $bypassTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$bypassDecision.decision -ne 'bypassed' -or [string]$bypassDecision.techDebtItemId -ne 'TD-REV-201' -or @($bypassDebt.items | Where-Object { [string]$_.sourceFindingId -eq 'REV-201' -and [string]$_.status -eq 'open' }).Count -ne 1 -or [string]$bypassContinuation.NextAgentId -ne 'pipeline_monitor' -or [string]$bypassDeliveryPlan.repositoryId -ne $deliveryRepositoryId) { throw 'A bypassed Reviewer finding did not create linked open debt and release only the Pipeline Monitor gate.' }
+Add-Check -Name 'review-bypass-technical-debt' -Detail 'Explicit bypass preserves the finding, creates idempotent task-local debt, and permits guarded Pipeline Monitor delivery'
 
 $chainMatrixRoot = Join-Path $deliveryConfig.runtime.stateRoot ('tasks\chain-matrix-' + $deliveryFixtureId)
 New-Item -ItemType Directory -Path $chainMatrixRoot -Force | Out-Null

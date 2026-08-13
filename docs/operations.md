@@ -112,10 +112,10 @@ The local task review diff includes the complete persisted Reviewer summary, pro
 Reviewer records findings but does not authorize changes. Record the human decision separately:
 
 ```powershell
-.\scripts\Set-ReviewDecision.ps1 -TaskId task-1839566 -FindingId R-001 -Decision approved -Reason 'Fix before merge'
+.\scripts\Set-ReviewDecision.ps1 -TaskId task-1839566 -FindingId REV-001 -Decision approved -DecidedBy user -Note 'Fix before merge'
 ```
 
-Allowed decisions are `approved`, `rejected`, and `deferred`. Developer must not apply a finding without an `approved` decision.
+Allowed decisions are `approved`, `rejected`, `deferred`, and `bypassed`. Developer must not apply a finding without an `approved` decision. `deferred` remains blocking. `bypassed` requires a non-empty reason and atomically creates or reuses `TD-REV-NNN` in task-local `tech-debt-items.json`; the finding remains unresolved but Pipeline Monitor may continue. A missing, closed, or mismatched debt item fails the delivery gate.
 
 ## Scheduled tasks
 

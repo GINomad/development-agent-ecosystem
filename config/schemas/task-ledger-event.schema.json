@@ -9,7 +9,7 @@
     "taskId": { "type": "string", "minLength": 1 },
     "timestampUtc": { "type": "string", "format": "date-time" },
     "actor": { "type": "string", "minLength": 1 },
-    "type": { "enum": ["task-created", "task-close-requested", "task-closed", "task-reopened", "workflow-status", "agent-status", "agent-failure", "user-comment", "user-comment-acknowledged", "routing-decision", "workflow-input-routed", "context-issued", "agent-result", "question-opened", "question-resolved", "scope-held", "scope-released", "review-decision", "external-action", "pipeline-analysis", "pipeline-remediation-request", "pr-status", "knowledge-update-requested", "knowledge-updated"] },
+    "type": { "enum": ["task-created", "task-close-requested", "task-closed", "task-reopened", "workflow-status", "agent-status", "agent-failure", "user-comment", "user-comment-acknowledged", "routing-decision", "workflow-input-routed", "context-issued", "agent-result", "question-opened", "question-resolved", "scope-held", "scope-released", "review-decision", "tech-debt-created", "external-action", "pipeline-analysis", "pipeline-remediation-request", "pr-status", "knowledge-update-requested", "knowledge-updated"] },
     "summary": { "type": "string", "minLength": 1 },
     "artifact": { "type": ["string", "null"] },
     "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },

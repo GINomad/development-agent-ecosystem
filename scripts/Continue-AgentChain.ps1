@@ -141,6 +141,8 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             $productFindings = @($review.findings)
             $processFindings = @($review.agentProcessFindings)
             $decisions = Get-LatestDecisions
+            $techDebtPath = Join-Path $taskRoot 'tech-debt-items.json'
+            $techDebtItems = if (Test-Path -LiteralPath $techDebtPath -PathType Leaf) { @((Get-Content -LiteralPath $techDebtPath -Raw -Encoding UTF8 | ConvertFrom-Json).items) } else { @() }
             $approvedProcess = @($processFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
             foreach ($finding in $approvedProcess) {
                 $findingSummary = Get-FindingRoutingSummary -Finding $finding
@@ -148,8 +150,14 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
             if ($productFindings.Count) {
                 $undecided = @($productFindings | Where-Object { -not $decisions.ContainsKey([string]$_.id) })
-                if ($undecided.Count) {
-                    $message = "Reviewer produced $($undecided.Count) product finding(s) that require a human decision."
+                $deferred = @($productFindings | Where-Object { $decisions[[string]$_.id] -eq 'deferred' })
+                $invalidBypasses = @($productFindings | Where-Object {
+                    $findingId = [string]$_.id
+                    $decisions[$findingId] -eq 'bypassed' -and -not @($techDebtItems | Where-Object { [string]$_.sourceFindingId -eq $findingId -and [string]$_.status -eq 'open' }).Count
+                })
+                $blocked = @($undecided) + @($deferred) + @($invalidBypasses)
+                if ($blocked.Count) {
+                    $message = "Reviewer produced $($blocked.Count) product finding(s) that are undecided, deferred, or missing an open bypass tech-debt item."
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_decision_required -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
                 }

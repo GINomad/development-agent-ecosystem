@@ -479,11 +479,12 @@
     {
       "id": "reviewer",
       "name": "development_reviewer",
-      "description": "Read-only reviewer of code and agent work against requirements, knowledge, held scope, tests, and engineering quality.",
+      "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
       "responsibilities": [
         "Review local task diffs, Developer work, and external pull requests against requirements and held scope.",
         "Report product and agent-process findings with evidence, render source-specific findings at exact diff lines, and require human decisions before rework.",
         "Publish requirement-to-code traceability for every analyzed requirement with exact repository-relative file and line evidence without inventing missing mappings.",
+        "Treat an explicit human bypass as a non-resolution decision, preserve the finding, and create a linked task-local technical-debt item before allowing delivery to continue.",
         "Remain read-only and never silently convert a finding into implementation authority.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
