@@ -211,11 +211,10 @@ if ($PrepareOnly) { return $result }
 
 $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
 $startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started through Orchestrator for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Orchestrator is classifying task intake.' }
-& $statusScript -TaskId $TaskId -Status running -Stage orchestrator -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$startStage = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
+& $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
-if ($updateOrchestratorStatus) {
-    & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus running -Stage orchestrator -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-}
+& $statusScript -TaskId $TaskId -AgentId $executedAgentId -AgentStatus running -Stage $executedAgentId -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
 $codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
