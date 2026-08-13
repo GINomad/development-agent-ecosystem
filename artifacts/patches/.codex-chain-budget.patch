@@ -1,0 +1,24 @@
+diff --git a/config/agents.json b/config/agents.json
+--- a/config/agents.json
++++ b/config/agents.json
+@@ -71,1 +71,1 @@
+-      "maxChainSteps": 8,
++      "maxChainSteps": 16,
+diff --git a/config/schemas/agents.schema.json b/config/schemas/agents.schema.json
+--- a/config/schemas/agents.schema.json
++++ b/config/schemas/agents.schema.json
+@@ -150,1 +150,1 @@
+-            "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 8 },
++            "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 32 },
+diff --git a/scripts/AgentEcosystem.psm1 b/scripts/AgentEcosystem.psm1
+--- a/scripts/AgentEcosystem.psm1
++++ b/scripts/AgentEcosystem.psm1
+@@ -81,1 +81,1 @@
+-    if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 8) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
++    if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 32) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -378,1 +378,1 @@
+-if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 8 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 3 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
++if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 16 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 3 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }

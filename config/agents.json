@@ -53,7 +53,7 @@
       "allowMultipleTargets": true,
       "fallbackAgentId": "requirements_analyst",
       "routingArtifact": "workflow-routing.jsonl",
-      "dispatchPriority": ["requirements_analyst", "knowledge_keeper", "developer", "reviewer", "pipeline_monitor", "health_check"]
+      "dispatchPriority": ["health_check", "requirements_analyst", "knowledge_keeper", "developer", "reviewer", "pipeline_monitor"]
     },
     "workspaceScheduling": {
       "enabled": true,
@@ -68,7 +68,7 @@
     },
     "automaticContinuation": {
       "enabled": true,
-      "maxChainSteps": 8,
+      "maxChainSteps": 16,
       "maxTransitionRepeats": 3,
       "useElevatedExecution": true,
       "recoveryGraceSeconds": 60,
@@ -93,6 +93,7 @@
     "dashboardHealthUrl": "http://127.0.0.1:43127/health",
     "automaticRecovery": {
       "enabled": true,
+      "commitVerifiedRepairs": true,
       "maxAttemptsPerFailureSignature": 1,
       "workspace": "${REPO_ROOT}",
       "sandboxMode": "workspace-write",
@@ -342,7 +343,8 @@
         "Persist idempotent routing decisions and keep explicit agent targets and question answers intact.",
         "Start or queue the selected agent while preserving prerequisites, completed artifacts, approval gates, and the existing continuation chain.",
         "Validate terminal delivery signals and route final publication to Knowledge Keeper without performing knowledge work.",
-        "Immediately classify durable authority handoffs returned by agents and route only their remaining out-of-scope work."
+        "Immediately classify durable authority handoffs returned by agents and route only their remaining out-of-scope work.",
+        "Route source-controlled ecosystem scripts, configuration, prompts, skills, dashboard, agent definitions, tests, documentation, and control-plane maintenance to Health Check for bounded ecosystem recovery; never assign those changes to the product Developer by default."
       ],
       "reasoningEffort": "medium",
       "sandboxMode": "read-only",
@@ -546,12 +548,14 @@
     {
       "id": "health_check",
       "name": "development_health_check",
-      "description": "Read-only diagnostics agent that triggers bounded ecosystem recovery or routes verified repairs to the responsible configured agent.",
+      "description": "Ecosystem maintenance owner that diagnoses failures and explicit control-plane change requests, drives bounded ecosystem-only recovery, verifies it, and routes non-ecosystem repairs to the responsible configured agent.",
       "responsibilities": [
         "Diagnose failed or stuck ecosystem agents from bounded recent evidence.",
+        "Own explicit source-controlled changes to the development-agent ecosystem, including scripts, configuration, prompts, skills, dashboard, generated-agent contracts, tests, documentation, and control-plane behavior.",
+        "Translate an ecosystem change request into one bounded ecosystem_recovery plan, require complete ecosystem validation, and report the verified outcome without modifying product repositories.",
         "Apply safe deterministic ecosystem repairs or route a single-owner repair to the responsible agent.",
         "Restart only the failed target after verified repair and stop at human authority or credential gates.",
-        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+        "Return only non-ecosystem comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
       "reasoningEffort": "high",
       "sandboxMode": "read-only",

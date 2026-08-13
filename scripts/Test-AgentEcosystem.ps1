@@ -282,6 +282,12 @@ if ([string]$authorityHandoff.Status -ne 'forwarded' -or [string]$authorityHando
 if ([string]$orchestratorDispatch.NextAgentId -ne 'orchestrator' -or [string]$targetDispatch.NextAgentId -ne 'pipeline_monitor' -or [string]$handoffRoute.Status -ne 'routed' -or @($pipelineHandoffBatch.comments | Where-Object sourceEventId -eq $handoffEventId).Count -ne 1) { throw 'Authority handoff did not automatically prioritize Orchestrator and the newly selected owner across the review gate.' }
 Add-Check -Name 'automatic-authority-handoff' -Detail 'Out-of-scope direct comments return once to Orchestrator with source traceability; host continuation prioritizes Orchestrator and its routed owner without manual restart'
 
+$ecosystemMaintenanceComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $routingTaskId -Text 'Update the ecosystem runner contract and its regression tests.' -ConfigPath $routingConfigPath
+$ecosystemMaintenanceRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $ecosystemMaintenanceComment.CommentId -TargetAgentIds health_check -Rationale 'Source-controlled ecosystem maintenance belongs to Health Check.' -Confidence high -ConfigPath $routingConfigPath
+$healthPriorityDispatch = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $routingTaskId -CompletedAgentId orchestrator -PrepareOnly -ConfigPath $routingConfigPath
+if ([string]$ecosystemMaintenanceRoute.Status -ne 'routed' -or [string]$healthPriorityDispatch.NextAgentId -ne 'health_check') { throw 'Health Check maintenance input did not preempt unrelated pending delivery work.' }
+Add-Check -Name 'ecosystem-maintenance-dispatch' -Detail 'A routed Health Check maintenance request preempts unrelated pending delivery work without changing product scope'
+
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
 $schedulerWorkspace = Join-Path $schedulerRoot 'repository'
 $schedulerConfigPath = Join-Path $schedulerRoot 'agents.json'
@@ -369,7 +375,7 @@ $pipelineWatcherScript = Get-Content -LiteralPath (Join-Path $root 'plugins\deve
 if ($pipelineWatcherScript -notmatch 'azdo-.*NewGuid' -or $pipelineWatcherScript -notmatch 'finally\s*\{\s*if\s*\(Test-Path -LiteralPath \$logFile') { throw 'Pipeline failed-log retrieval must use a unique non-existing temp path and guarantee cleanup.' }
 Add-Check -Name 'pipeline-log-temp-files' -Detail 'Every Azure failed-log download uses a unique path and removes it after bounded extraction'
 if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postPush.maxRemediationCycles -ne 3 -or [int]$config.pipeline.postPush.activityHeartbeatSeconds -ne 60) { throw 'Post-push monitoring must be enabled with a 60-second activity heartbeat and three-cycle remediation ceiling.' }
-if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 8 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 3 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
+if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 16 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 3 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
 if (-not [bool]$config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
 if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
@@ -673,6 +679,7 @@ Add-Check -Name 'health-targeted-resume-legacy-task' -Detail 'Prepare-only targe
 
 $knowledgePrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\knowledge-keeper.md') -Raw -Encoding UTF8
 $taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
+$orchestratorPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\orchestrator.md') -Raw -Encoding UTF8
 $healthPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\health-check.md') -Raw -Encoding UTF8
 $resumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -Raw -Encoding UTF8
 $healthRecoveryScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
@@ -691,9 +698,10 @@ if ($continueChainScript -notmatch 'automatic-continuation\.lock' -or $publishOu
 if ($dashboardHtml -notmatch 'finishing its current work block' -or $dashboardClient -notmatch 'no restart is needed') { throw 'Dashboard does not explain automatic end-of-block comment consumption.' }
 if ($healthPrompt -notmatch 'health-diagnostic-context.json' -or $healthRecoveryScript -notmatch 'Get-BoundedTextTail' -or $healthRecoveryScript -notmatch 'workflowLogTailLines') { throw 'Health Check bounded diagnostic context is incomplete.' }
 if ($healthPrompt -notmatch 'diagnosis is not a terminal outcome' -or $healthRecoveryScript -notmatch 'existingDiagnosis' -or $healthRecoveryScript -notmatch 'health-repair-routing.json' -or $healthRecoverySchema -notmatch 'routeAgentId' -or $healthRecoverySchema -notmatch 'repairOwner') { throw 'Health Check repair-or-route contract is incomplete.' }
+if ($orchestratorPrompt -notmatch 'explicit source-controlled ecosystem maintenance go to health_check' -or $orchestratorPrompt -notmatch 'Do not ask to expand a product task for Developer' -or $healthPrompt -notmatch 'explicit source-controlled ecosystem change' -or $healthPrompt -notmatch 'Do not redirect ecosystem source changes to Developer') { throw 'Ecosystem source maintenance is not owned end to end by Health Check.' }
 if ($workflowScript -notmatch 'health_recovery_handoff' -or $workflowScript -notmatch 'DiagnosisPath' -or $workflowScript -notmatch 'repairOwner' -or $workflowScript -notmatch 'requiresUserInput' -or $workflowScript -notmatch 'health_diagnosis_recovery') { throw 'A waiting or completed non-user-input Health Check diagnosis is not handed to automatic recovery.' }
 if ($continueChainScript -notmatch "PSObject\.Properties\['repositoryIds'\]" -or $continueChainScript -notmatch "PSObject\.Properties\['repositoryId'\]") { throw 'Automatic continuation does not normalize legacy singular repositoryId task scope.' }
-if ($healthPrompt -notmatch 'restart exactly the failed agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the failed agent.' }
+if ($healthPrompt -notmatch 'restart exactly the affected agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the affected agent.' }
 if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or $healthTargetedResumeScript -notmatch 'HealthRecoveryRetry = \$true' -or $healthTargetedResumeScript -notmatch 'maxAttemptsPerFailureSignature' -or $healthTargetedResumeScript -notmatch 'RecoveryEvidencePath') { throw 'Health Check targeted-resume launcher is missing its target, validation, or retry-loop guard.' }
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
@@ -735,10 +743,15 @@ Add-Check -Name 'engineering-skill-routing' -Detail 'Knowledge Keeper, Developer
 
 $healthAgent = @($config.agents | Where-Object id -eq 'health_check') | Select-Object -First 1
 if (-not $healthAgent) { throw 'Health Check Agent is missing from the canonical configuration.' }
+$healthResponsibilities = @($healthAgent.responsibilities) -join [Environment]::NewLine
+if ($healthResponsibilities -notmatch 'source-controlled changes to the development-agent ecosystem' -or $healthResponsibilities -notmatch 'bounded ecosystem_recovery plan') { throw 'Health Check canonical responsibilities do not include ecosystem source maintenance.' }
+if ((@($config.agents | Where-Object id -eq 'orchestrator' | Select-Object -ExpandProperty responsibilities) -join [Environment]::NewLine) -notmatch 'source-controlled ecosystem scripts') { throw 'Orchestrator role directory does not route ecosystem source maintenance to Health Check.' }
 if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
+if (-not [bool]$config.health.automaticRecovery.commitVerifiedRepairs -or $healthRecoveryScript -notmatch 'health_recovery_commit' -or $healthRecoveryScript -notmatch 'git -C \$workspace commit') { throw 'Validated ecosystem repairs are not committed locally by the trusted host.' }
 if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
+if ($dashboardScript -notmatch 'OperatorApprovedDirtyWorktree=\$true' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges') { throw 'Approved elevated Health Check recovery does not preserve and expose the dirty ecosystem baseline.' }
 $targetedResumeConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedResumeConfig.enabled -or -not [bool]$targetedResumeConfig.requireSuccessfulRepair -or [int]$targetedResumeConfig.maxAttemptsPerFailureSignature -ne 1) { throw 'Health Check targeted resume must require validated repair and permit exactly one attempt.' }
 if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'requirements_analyst' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'developer') { throw 'Health Check targeted resume allowlist is unsafe or incomplete.' }
