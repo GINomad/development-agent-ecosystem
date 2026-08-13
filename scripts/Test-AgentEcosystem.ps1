@@ -63,10 +63,10 @@ if ($scheduledTaskInstaller -notmatch '\$backgroundPowerShellArguments\s*=\s*''-
 }
 Add-Check -Name 'scheduled-task-hidden-window' -Detail 'All installed ecosystem PowerShell tasks use the shared -WindowStyle Hidden prefix'
 $continuationHost = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentContinuationRecoveryHost.ps1') -Raw -Encoding UTF8
-if ($scheduledTaskInstaller -notmatch 'Start-AgentContinuationRecoveryHost\.ps1' -or $scheduledTaskInstaller -notmatch '\$continuationArguments.+-RunOnce' -or $scheduledTaskInstaller -notmatch '\$continuationTrigger\s*=\s*New-ScheduledTaskTrigger\s+-Once.+RepetitionInterval' -or $continuationHost -notmatch 'Repair-AgentContinuations\.ps1' -or $continuationHost -notmatch 'if\s*\(\$RunOnce\)\s*\{\s*break\s*\}' -or $continuationHost -notmatch 'Get-EcosystemConfig') {
-    throw 'Continuation recovery must run bounded hidden passes on a recurring trigger so a terminated host cannot lose later handoffs.'
+if ($scheduledTaskInstaller -notmatch 'Start-AgentContinuationRecoveryHost\.ps1' -or $scheduledTaskInstaller -match '\$continuationArguments.+-RunOnce' -or $scheduledTaskInstaller -notmatch '\$continuationTrigger\s*=\s*New-ScheduledTaskTrigger\s+-Once.+RepetitionInterval' -or $scheduledTaskInstaller -notmatch '-MultipleInstances\s+IgnoreNew' -or $continuationHost -notmatch 'Repair-AgentContinuations\.ps1' -or $continuationHost -notmatch 'while\s*\(\$true\)' -or $continuationHost -notmatch '\[Math\]::Min\(60,\s*\$remainingSeconds\)' -or $continuationHost -notmatch 'Get-EcosystemConfig') {
+    throw 'Continuation recovery must keep one resident hidden host and use an ignored-while-running recurring trigger as a watchdog after host termination.'
 }
-Add-Check -Name 'recurring-continuation-recovery' -Detail 'Recovery runs one bounded hidden pass per configured interval and restarts independently after host termination'
+Add-Check -Name 'resident-continuation-watchdog' -Detail 'One resident recovery host reloads config in bounded intervals; recurring triggers are ignored while healthy and relaunch it after termination'
 if ($scheduledTaskInstaller -notmatch 'Development Ecosystem - Knowledge Weekly Report' -or $scheduledTaskInstaller -notmatch 'New-WeeklyKnowledgeReport\.ps1' -or $scheduledTaskInstaller -notmatch 'New-ScheduledTaskTrigger\s+-Weekly' -or $scheduledTaskInstaller -notmatch 'LogonType S4U') { throw 'Friday Knowledge Keeper report is not registered as a non-interactive weekly task.' }
 Add-Check -Name 'weekly-knowledge-schedule' -Detail 'Weekly report uses the configured weekday/time and a non-interactive S4U task to avoid console windows'
 
