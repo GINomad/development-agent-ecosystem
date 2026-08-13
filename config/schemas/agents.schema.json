@@ -10,6 +10,7 @@
     "runtime",
     "operation",
     "workflow",
+    "modelRouting",
     "ui",
     "health",
     "review",
@@ -156,6 +157,52 @@
             "stopStatuses": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["waiting_for_input", "held", "review_pending", "failed", "interrupted"] } }
           }
         }
+      }
+    },
+    "modelRouting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "artifactName", "maxDecisionsPerTask", "maxEvidenceCharacters", "largeEvidenceCharacters", "tiers", "rolePolicies", "complexSignals", "criticalSignals"],
+      "properties": {
+        "enabled": { "const": true },
+        "artifactName": { "const": "model-routing.json" },
+        "maxDecisionsPerTask": { "type": "integer", "minimum": 5, "maximum": 200 },
+        "maxEvidenceCharacters": { "type": "integer", "minimum": 2000, "maximum": 100000 },
+        "largeEvidenceCharacters": { "type": "integer", "minimum": 1000, "maximum": 50000 },
+        "tiers": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "rank", "model", "reasoningEffort"],
+            "properties": {
+              "id": { "enum": ["routine", "standard", "complex", "critical"] },
+              "rank": { "type": "integer", "minimum": 0, "maximum": 3 },
+              "model": { "type": "string", "minLength": 1 },
+              "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+            }
+          }
+        },
+        "rolePolicies": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agentId", "defaultTier", "minimumTier", "maximumTier"],
+            "properties": {
+              "agentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "defaultTier": { "enum": ["routine", "standard", "complex", "critical"] },
+              "minimumTier": { "enum": ["routine", "standard", "complex", "critical"] },
+              "maximumTier": { "enum": ["routine", "standard", "complex", "critical"] }
+            }
+          }
+        },
+        "complexSignals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 3 } },
+        "criticalSignals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 3 } }
       }
     },
     "ui": {
@@ -421,7 +468,7 @@
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "description", "responsibilities", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
+      "required": ["id", "name", "description", "responsibilities", "model", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },

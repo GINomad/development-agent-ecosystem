@@ -77,6 +77,30 @@
       "stopStatuses": ["waiting_for_input", "held", "review_pending", "failed"]
     }
   },
+  "modelRouting": {
+    "enabled": true,
+    "artifactName": "model-routing.json",
+    "maxDecisionsPerTask": 50,
+    "maxEvidenceCharacters": 24000,
+    "largeEvidenceCharacters": 8000,
+    "tiers": [
+      { "id": "routine", "rank": 0, "model": "gpt-5.6-luna", "reasoningEffort": "low" },
+      { "id": "standard", "rank": 1, "model": "gpt-5.6-terra", "reasoningEffort": "medium" },
+      { "id": "complex", "rank": 2, "model": "gpt-5.6-sol", "reasoningEffort": "high" },
+      { "id": "critical", "rank": 3, "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" }
+    ],
+    "rolePolicies": [
+      { "agentId": "orchestrator", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
+      { "agentId": "knowledge_keeper", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
+      { "agentId": "requirements_analyst", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
+      { "agentId": "developer", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
+      { "agentId": "reviewer", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
+      { "agentId": "pipeline_monitor", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
+      { "agentId": "health_check", "defaultTier": "standard", "minimumTier": "routine", "maximumTier": "complex" }
+    ],
+    "complexSignals": ["architecture", "breaking change", "concurrency", "cross-repository", "deadlock", "intermittent", "migration", "multi-repository", "race condition", "rollback", "unknown error"],
+    "criticalSignals": ["authentication", "authorization", "certificate", "code signing", "credential", "digital signature", "key vault", "production deployment", "secret", "security", "token exfiltration", "vulnerability"]
+  },
   "ui": {
     "listenAddress": "127.0.0.1",
     "port": 43127,
@@ -346,7 +370,8 @@
         "Immediately classify durable authority handoffs returned by agents and route only their remaining out-of-scope work.",
         "Route source-controlled ecosystem scripts, configuration, prompts, skills, dashboard, agent definitions, tests, documentation, and control-plane maintenance to Health Check for bounded ecosystem recovery; never assign those changes to the product Developer by default."
       ],
-      "reasoningEffort": "medium",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
       "sandboxMode": "read-only",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
@@ -380,7 +405,8 @@
         "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "reasoningEffort": "high",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
       "sandboxMode": "workspace-write",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
@@ -420,7 +446,8 @@
         "Produce an implementation-ready plan without inventing missing facts or implementing code.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "reasoningEffort": "high",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
@@ -449,7 +476,8 @@
         "Apply Reviewer findings only after the required human approval and stop on unresolved scope.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "reasoningEffort": "high",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
       "sandboxMode": "workspace-write",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
@@ -489,7 +517,8 @@
         "Remain read-only and never silently convert a finding into implementation authority.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "reasoningEffort": "high",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
@@ -525,6 +554,7 @@
         "Track task pull-request lifecycle and report completed-PR closure evidence to Orchestrator for final routing.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
+      "model": "gpt-5.6-luna",
       "reasoningEffort": "low",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -559,7 +589,8 @@
         "Restart only the failed target after verified repair and stop at human authority or credential gates.",
         "Return only non-ecosystem comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "reasoningEffort": "high",
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",

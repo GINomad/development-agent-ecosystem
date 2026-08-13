@@ -347,9 +347,12 @@ try {
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
                     $repositoryId = [string]$request.QueryString['repositoryId']
                     $filePath = [string]$request.QueryString['filePath']
+                    $diffScope = [string]$request.QueryString['scope']
+                    if ([string]::IsNullOrWhiteSpace($diffScope)) { $diffScope = 'reviewed-commit' }
                     if ($repositoryId -and $repositoryId -notmatch '^[a-z0-9][a-z0-9-]*$') { throw 'Repository ID contains unsupported characters.' }
                     if ($filePath.Length -gt 4096 -or $filePath.IndexOf([char]0) -ge 0) { throw 'Diff file path contains unsupported characters.' }
-                    $diffParameters = @{ TaskId=$requestedTaskId; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    if ($diffScope -notin @('reviewed-commit','all-task-changes')) { throw 'Diff scope is not supported.' }
+                    $diffParameters = @{ TaskId=$requestedTaskId; Scope=$diffScope; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
                     if ($repositoryId) { $diffParameters.RepositoryId = $repositoryId }
                     if ($filePath) { $diffParameters.FilePath = $filePath }
                     $diffResult = & (Join-Path $PSScriptRoot 'Get-TaskDiff.ps1') @diffParameters

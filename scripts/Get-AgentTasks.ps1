@@ -48,15 +48,22 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             foreach ($evidenceValue in @($ackEvent.evidence)) { if ($evidenceValue) { $null = $acknowledgedCommentIds.Add([string]$evidenceValue) } }
         }
         $unacknowledgedComments = @($events | Where-Object { [string]$_.type -in @('user-comment','workflow-input-routed') -and -not $acknowledgedCommentIds.Contains([string]$_.eventId) })
+        $modelRouteDecisions = @()
+        $modelRoutingPath = Join-Path $directory.FullName ([string]$config.modelRouting.artifactName)
+        if (Test-Path -LiteralPath $modelRoutingPath -PathType Leaf) {
+            try { $modelRouteDecisions = @((Get-Content -LiteralPath $modelRoutingPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } catch { $modelRouteDecisions = @() }
+        }
         $agentStatuses = [ordered]@{}
         foreach ($agentId in $agentIds) {
             $value = $null
             if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$agentId]) { $value = $task.agentStatuses.$agentId }
+            $modelRoute = @($modelRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
             $agentStatuses[$agentId] = [pscustomobject][ordered]@{
                 status = if ($value) { [string]$value.status } else { 'pending' }
                 updatedAtUtc = if ($value) { [string]$value.updatedAtUtc } else { $null }
                 message = if ($value) { [string]$value.message } else { '' }
                 unreadCommentCount = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $agentId }).Count
+                modelRoute = if ($modelRoute.Count) { [pscustomobject][ordered]@{ complexity=[string]$modelRoute[0].complexity; model=[string]$modelRoute[0].model; reasoningEffort=[string]$modelRoute[0].reasoningEffort; confidence=[double]$modelRoute[0].confidence; decisionId=[string]$modelRoute[0].decisionId } } else { $null }
             }
         }
         $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })

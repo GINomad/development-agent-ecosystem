@@ -67,7 +67,7 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
@@ -92,6 +92,11 @@ function Assert-EcosystemConfig {
     if (-not [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow elevated fallback must require explicit dashboard approval.' }
     if (-not [bool]$Config.runtime.elevatedFallback.installCompatibleAgentsOnDetection -or [string]$Config.runtime.elevatedFallback.agentProfileSuffix -notmatch '^_[a-z0-9_]+$') { throw 'Host-compatible agent profile configuration is invalid.' }
     if ([string]$Config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Host-compatible workflows must use the in-process-runspace launch strategy.' }
+    if (-not [bool]$Config.modelRouting.enabled -or [string]$Config.modelRouting.artifactName -ne 'model-routing.json') { throw 'Deterministic model routing must be enabled with the canonical task artifact.' }
+    if ([int]$Config.modelRouting.largeEvidenceCharacters -ge [int]$Config.modelRouting.maxEvidenceCharacters) { throw 'modelRouting.largeEvidenceCharacters must be lower than maxEvidenceCharacters.' }
+    $modelTiers = @($Config.modelRouting.tiers | Sort-Object { [int]$_.rank })
+    if ((@($modelTiers | ForEach-Object { [string]$_.id }) -join '|') -ne 'routine|standard|complex|critical' -or (@($modelTiers | ForEach-Object { [string][int]$_.rank }) -join '|') -ne '0|1|2|3') { throw 'Model-routing tiers must define ordered routine, standard, complex, and critical levels.' }
+    if (@($modelTiers | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.model) -or [string]$_.reasoningEffort -notin @('low','medium','high','xhigh','max') }).Count) { throw 'Every model-routing tier requires a supported model and reasoning effort.' }
     $compatibilityPrompt = Resolve-EcosystemPath -Value ([string]$Config.runtime.elevatedFallback.compatibilityPromptPath) -Config $Config -CodexHome $CodexHome
     if (-not (Test-Path -LiteralPath $compatibilityPrompt -PathType Leaf)) { throw "Host-compatible agent prompt is missing: $compatibilityPrompt" }
     if ([string]$Config.health.repairMode -ne 'safe-deterministic-only') { throw 'health.repairMode must be safe-deterministic-only.' }
@@ -154,6 +159,25 @@ function Assert-EcosystemConfig {
     foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
         if (-not $agentIds.ContainsKey($requiredId)) { throw "Required agent '$requiredId' is missing." }
     }
+    $modelTierById = @{}
+    foreach ($tier in $modelTiers) { $modelTierById[[string]$tier.id] = $tier }
+    $rolePolicyIds = @{}
+    foreach ($policy in @($Config.modelRouting.rolePolicies)) {
+        $policyAgentId = [string]$policy.agentId
+        if (-not $agentIds.ContainsKey($policyAgentId) -or $rolePolicyIds.ContainsKey($policyAgentId)) { throw "Invalid or duplicate model-routing role policy '$policyAgentId'." }
+        $rolePolicyIds[$policyAgentId] = $true
+        foreach ($tierId in @([string]$policy.minimumTier, [string]$policy.defaultTier, [string]$policy.maximumTier)) {
+            if (-not $modelTierById.ContainsKey($tierId)) { throw "Model-routing policy '$policyAgentId' references unknown tier '$tierId'." }
+        }
+        $minimumRank = [int]$modelTierById[[string]$policy.minimumTier].rank
+        $defaultRank = [int]$modelTierById[[string]$policy.defaultTier].rank
+        $maximumRank = [int]$modelTierById[[string]$policy.maximumTier].rank
+        if ($minimumRank -gt $defaultRank -or $defaultRank -gt $maximumRank) { throw "Model-routing policy tiers are out of order for '$policyAgentId'." }
+        $configuredAgent = @($Config.agents | Where-Object { [string]$_.id -eq $policyAgentId }) | Select-Object -First 1
+        $defaultTier = $modelTierById[[string]$policy.defaultTier]
+        if ([string]$configuredAgent.model -ne [string]$defaultTier.model -or [string]$configuredAgent.reasoningEffort -ne [string]$defaultTier.reasoningEffort) { throw "Agent '$policyAgentId' defaults must match its model-routing default tier." }
+    }
+    if ($rolePolicyIds.Count -ne $agentIds.Count) { throw 'Every configured agent must have exactly one model-routing role policy.' }
     if (-not $agentIds.ContainsKey([string]$Config.workflow.orchestration.fallbackAgentId)) { throw 'The orchestration fallback agent is not configured.' }
     foreach ($dispatchAgentId in @($Config.workflow.orchestration.dispatchPriority)) {
         if ($dispatchAgentId -eq 'orchestrator' -or -not $agentIds.ContainsKey([string]$dispatchAgentId)) { throw "Invalid orchestration dispatch agent '$dispatchAgentId'." }
