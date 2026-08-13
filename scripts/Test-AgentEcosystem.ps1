@@ -746,7 +746,25 @@ if ($healthPrompt -notmatch 'restart exactly the affected agentId' -or $taskProt
 if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or $healthTargetedResumeScript -notmatch 'HealthRecoveryRetry = \$true' -or $healthTargetedResumeScript -notmatch 'maxAttemptsPerFailureSignature' -or $healthTargetedResumeScript -notmatch 'RecoveryEvidencePath') { throw 'Health Check targeted-resume launcher is missing its target, validation, or retry-loop guard.' }
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
-if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'") { throw 'Resume artifact fingerprinting or completed-outcome filtering is incomplete.' }
+if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'" -or $workflowScript -notmatch 'Get-AgentResumePlan\.ps1.+-PreserveArtifactIndex') { throw 'Resume artifact fingerprinting, completed-outcome filtering, or non-consuming bookkeeping is incomplete.' }
+
+$fingerprintRoot = Join-Path $OutputRoot ('resume-fingerprint-' + [guid]::NewGuid().ToString('N'))
+$fingerprintConfigPath = Join-Path $fingerprintRoot 'agents.json'
+$fingerprintConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$fingerprintConfig.runtime.stateRoot = Join-Path $fingerprintRoot 'state'
+Write-Utf8NoBom -Path $fingerprintConfigPath -Content (($fingerprintConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$fingerprintTaskId = 'resume-fingerprint-' + [guid]::NewGuid().ToString('N')
+$fingerprintTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $fingerprintTaskId -TaskSelector synthetic-resume-fingerprint -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $fingerprintConfigPath
+$null = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId developer -ConfigPath $fingerprintConfigPath
+Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-plan.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"scope`":[]}$([Environment]::NewLine)"
+Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-result.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"implemented`"}$([Environment]::NewLine)"
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $fingerprintTaskId -AgentId developer -AgentStatus completed -Stage developer-completed -Message 'Synthetic Developer outcome changed its implementation artifacts.' -ConfigPath $fingerprintConfigPath | Out-Null
+$postDeveloperBookkeepingPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -PreserveArtifactIndex -ConfigPath $fingerprintConfigPath
+$reviewerStartupPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId reviewer -ConfigPath $fingerprintConfigPath
+$reviewerRepeatedPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId reviewer -ConfigPath $fingerprintConfigPath
+$developerArtifacts = @('implementation-plan.json','implementation-result.json')
+if (@($developerArtifacts | Where-Object { $_ -notin @($postDeveloperBookkeepingPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerStartupPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerRepeatedPlan.UnchangedArtifactNames) }).Count) { throw 'Developer-to-Reviewer continuation consumed changed artifact fingerprints during post-Developer bookkeeping.' }
+Add-Check -Name 'developer-reviewer-resume-fingerprints' -Detail 'Post-Developer bookkeeping preserves the fingerprint baseline; Reviewer startup receives changed implementation artifacts and then advances the index once'
 $knowledgeAgent = @($config.agents | Where-Object id -eq 'knowledge_keeper') | Select-Object -First 1
 if (@($knowledgeAgent.requiredArtifacts) -notcontains 'task-summary.json' -or -not (Test-Path -LiteralPath (Join-Path $root 'config\schemas\task-summary.schema.json'))) { throw 'Final per-task summary contract is incomplete.' }
 if ((Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -Raw -Encoding UTF8) -notmatch "latest exact-SHA pipeline result") { throw 'Final task publication does not reject a non-success latest pipeline result.' }
