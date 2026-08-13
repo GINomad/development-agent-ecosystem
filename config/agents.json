@@ -71,6 +71,8 @@
       "maxChainSteps": 8,
       "maxTransitionRepeats": 3,
       "useElevatedExecution": true,
+      "recoveryGraceSeconds": 60,
+      "recoveryPollIntervalMinutes": 1,
       "orderedAgentIds": ["requirements_analyst", "developer", "reviewer", "pipeline_monitor", "knowledge_keeper"],
       "stopStatuses": ["waiting_for_input", "held", "review_pending", "failed"]
     }
@@ -287,7 +289,14 @@
       "revision",
       "observedAtUtc",
       "observedBy"
-    ]
+    ],
+    "weeklyReport": {
+      "enabled": true,
+      "dayOfWeek": "Friday",
+      "localTime": "10:00",
+      "lookbackDays": 7,
+      "outputRoot": "${STATE_ROOT}/reports/knowledge-weekly"
+    }
   },
   "gates": {
     "unresolvedRequirements": {

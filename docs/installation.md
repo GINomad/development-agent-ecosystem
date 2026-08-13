@@ -51,7 +51,7 @@ The UI is available only on loopback. Its URL contains a random session token, a
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Install
 ```
 
-`Install` first runs the new monitor with `-DryRun`. It then registers three `Development Ecosystem - ...` tasks, verifies that they exist, and only then disables the legacy `Codex PR Review - ...` tasks. Legacy task XML is saved under `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
+`Install` first runs the new monitor with `-DryRun`. It then registers five `Development Ecosystem - ...` tasks (review polling, daily review, review dashboard, task PR lifecycle, and a hidden resident durable-continuation host), verifies that they exist, and only then disables the legacy `Codex PR Review - ...` tasks. Legacy task XML is saved under `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
 
 ## Verify the installation
 

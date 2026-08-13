@@ -19,6 +19,15 @@ if (-not [bool]$chainConfig.enabled) { return [pscustomobject]@{ Status='disable
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+$continuationLockPath = Join-Path $taskRoot 'automatic-continuation.lock'
+try {
+    $continuationLock = [IO.File]::Open($continuationLockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+}
+catch [IO.IOException] {
+    return [pscustomobject]@{ Status='busy'; Reason='Another trusted host owns automatic continuation for this task.'; StartedAgents=@() }
+}
+
+try {
 $started = [Collections.Generic.List[string]]::new()
 $currentAgentId = $CompletedAgentId
 $transitionCounts = @{}
@@ -64,11 +73,22 @@ function Add-ApprovedFindingInput {
         foreach ($line in @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8)) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             try { $event = $line | ConvertFrom-Json } catch { continue }
-            if ([string]$event.type -eq 'workflow-input-routed' -and [string]$event.targetAgentId -eq $TargetAgentId -and @($event.evidence) -contains $evidenceKey -and @($event.evidence) -contains 'decision:approved') { return $event }
+            if ([string]$event.type -eq 'workflow-input-routed' -and [string]$event.targetAgentId -eq $TargetAgentId -and @($event.evidence) -contains $evidenceKey -and @($event.evidence) -contains 'decision:approved' -and ([string]$event.summary).Contains($FindingSummary)) { return $event }
         }
     }
     $summary = 'Human-approved Reviewer finding ' + $FindingId + ': ' + $FindingSummary + ' The approval is already recorded; do not reopen the approval gate.'
     return (& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor reviewer -Type workflow-input-routed -Summary $summary -Artifact (Join-Path $taskRoot 'review-decisions.json') -Evidence @($evidenceKey, 'decision:approved', $ReviewPath, (Join-Path $taskRoot 'review-decisions.json')) -TargetAgentId $TargetAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome)
+}
+
+function Get-FindingRoutingSummary {
+    param([Parameter(Mandatory)] $Finding)
+
+    foreach ($propertyName in @('correctionDirection','suggestedCorrection','summary','impact','evidence')) {
+        if ($Finding.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Finding.$propertyName)) {
+            return [string]$Finding.$propertyName
+        }
+    }
+    [string]$Finding.id
 }
 
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
@@ -123,7 +143,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             $decisions = Get-LatestDecisions
             $approvedProcess = @($processFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
             foreach ($finding in $approvedProcess) {
-                $findingSummary = if ($finding.PSObject.Properties['suggestedCorrection']) { [string]$finding.suggestedCorrection } elseif ($finding.PSObject.Properties['summary']) { [string]$finding.summary } else { [string]$finding.id }
+                $findingSummary = Get-FindingRoutingSummary -Finding $finding
                 $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId orchestrator -ReviewPath $reviewPath
             }
             if ($productFindings.Count) {
@@ -136,7 +156,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 $approvedProduct = @($productFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
                 if ($approvedProduct.Count) {
                     foreach ($finding in $approvedProduct) {
-                        $findingSummary = if ($finding.PSObject.Properties['suggestedCorrection']) { [string]$finding.suggestedCorrection } elseif ($finding.PSObject.Properties['summary']) { [string]$finding.summary } else { [string]$finding.id }
+                        $findingSummary = Get-FindingRoutingSummary -Finding $finding
                         $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId developer -ReviewPath $reviewPath
                     }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage approved_review_rework -Message 'Approved Reviewer findings require Developer rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -165,7 +185,29 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_pipeline_fix -Message 'Reviewer must validate the pipeline remediation.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 $nextAgentId = 'developer'
             }
-            else { return [pscustomobject]@{ Status='waiting'; Reason="Pipeline result '$([string]$pipeline.overallResult)' requires human or infrastructure intervention."; StartedAgents=@($started) } }
+            else {
+                $failureSignature = if ($pipeline.PSObject.Properties['remediation']) { [string]$pipeline.remediation.failureSignature } else { '' }
+                $evidenceKey = if ([string]::IsNullOrWhiteSpace($failureSignature)) { "pipeline-result:$([string]$pipeline.overallResult)" } else { "pipeline-failure-signature:$failureSignature" }
+                $existingHandoff = $false
+                $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+                if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
+                    foreach ($line in @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8)) {
+                        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                        try { $event = $line | ConvertFrom-Json } catch { continue }
+                        if ([string]$event.type -eq 'agent-routing-request' -and [string]$event.targetAgentId -eq 'orchestrator' -and @($event.evidence) -contains $evidenceKey) {
+                            $existingHandoff = $true
+                            break
+                        }
+                    }
+                }
+                if ($existingHandoff) {
+                    return [pscustomobject]@{ Status='waiting'; Reason="Pipeline result '$([string]$pipeline.overallResult)' already has an Orchestrator handoff."; StartedAgents=@($started) }
+                }
+                $reason = "Pipeline result '$([string]$pipeline.overallResult)' was not eligible for deterministic Developer remediation. Orchestrator must assign the remaining infrastructure, credential, Health Check, or human-input decision without asking the user to restart an agent."
+                & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type agent-routing-request -Summary $reason -Artifact $pipelinePath -Evidence @($evidenceKey, $pipelinePath) -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId orchestrator -AgentStatus pending -Stage pipeline_authority_handoff -Message $reason -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                $nextAgentId = 'orchestrator'
+            }
         }
         'knowledge_keeper' {
             foreach ($candidate in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
@@ -199,3 +241,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
 }
 
 Stop-AutomaticChain -Reason ('Automatic continuation reached its configured limit of ' + [int]$chainConfig.maxChainSteps + ' steps before reaching a terminal gate.')
+}
+finally {
+    $continuationLock.Dispose()
+}

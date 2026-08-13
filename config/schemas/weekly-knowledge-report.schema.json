@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Knowledge Keeper weekly learning report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reportId", "generatedAtUtc", "period", "summary", "skillsAndPractices", "verifiedLearning", "supersededLearning", "decisions", "completedTasks", "sources"],
+  "properties": {
+    "reportId": { "type": "string", "pattern": "^knowledge-weekly-[0-9]{8}$" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startUtc", "endUtc", "timeZone", "schedule"],
+      "properties": {
+        "startUtc": { "type": "string", "format": "date-time" },
+        "endUtc": { "type": "string", "format": "date-time" },
+        "timeZone": { "type": "string", "minLength": 1 },
+        "schedule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": { "type": "object" },
+    "skillsAndPractices": { "type": "array", "items": { "$ref": "#/$defs/learning" } },
+    "verifiedLearning": { "type": "array", "items": { "$ref": "#/$defs/learning" } },
+    "supersededLearning": { "type": "array", "items": { "$ref": "#/$defs/learning" } },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+    "completedTasks": { "type": "array", "items": { "type": "object" } },
+    "sources": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "id", "status", "statement", "source", "revision", "observedAtUtc", "observedBy", "targetPath"],
+      "properties": {
+        "taskId": { "type": "string" },
+        "id": { "type": "string" },
+        "status": { "enum": ["verified", "superseded"] },
+        "statement": { "type": "string" },
+        "source": { "type": "string" },
+        "revision": { "type": "string" },
+        "observedAtUtc": { "type": "string", "format": "date-time" },
+        "observedBy": { "type": "string" },
+        "targetPath": { "type": "string" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "statement", "source"],
+      "properties": {
+        "taskId": { "type": "string" },
+        "statement": { "type": "string" },
+        "source": { "type": "string" }
+      }
+    }
+  }
+}

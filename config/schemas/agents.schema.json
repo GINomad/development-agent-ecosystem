@@ -144,12 +144,14 @@
         "automaticContinuation": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "maxChainSteps", "maxTransitionRepeats", "useElevatedExecution", "orderedAgentIds", "stopStatuses"],
+          "required": ["enabled", "maxChainSteps", "maxTransitionRepeats", "useElevatedExecution", "recoveryGraceSeconds", "recoveryPollIntervalMinutes", "orderedAgentIds", "stopStatuses"],
           "properties": {
             "enabled": { "type": "boolean" },
             "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 8 },
             "maxTransitionRepeats": { "type": "integer", "minimum": 1, "maximum": 3 },
             "useElevatedExecution": { "type": "boolean" },
+            "recoveryGraceSeconds": { "type": "integer", "minimum": 30, "maximum": 600 },
+            "recoveryPollIntervalMinutes": { "type": "integer", "minimum": 1, "maximum": 60 },
             "orderedAgentIds": { "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] } },
             "stopStatuses": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["waiting_for_input", "held", "review_pending", "failed", "interrupted"] } }
           }
@@ -371,7 +373,7 @@
     "knowledge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["seedSources", "managedRoot", "versionedRoots", "taskHistoryRoot", "publicationPolicy", "requiredEvidenceFields"],
+      "required": ["seedSources", "managedRoot", "versionedRoots", "taskHistoryRoot", "publicationPolicy", "requiredEvidenceFields", "weeklyReport"],
       "properties": {
         "seedSources": {
           "type": "array",
@@ -392,7 +394,19 @@
         "versionedRoots": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
         "taskHistoryRoot": { "type": "string", "minLength": 1 },
         "publicationPolicy": { "const": "verified-evidence-only" },
-        "requiredEvidenceFields": { "type": "array", "minItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        "requiredEvidenceFields": { "type": "array", "minItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "weeklyReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "dayOfWeek", "localTime", "lookbackDays", "outputRoot"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "dayOfWeek": { "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] },
+            "localTime": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "lookbackDays": { "type": "integer", "minimum": 1, "maximum": 31 },
+            "outputRoot": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "gates": { "type": "object" },

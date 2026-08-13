@@ -246,14 +246,44 @@ try {
     if ($TargetAgentId) {
         & (Join-Path $PSScriptRoot 'Resolve-StaleAgentQuestions.ps1') -TaskId $TaskId -AgentId $TargetAgentId -RestartedAtUtc $workflowStartedAtUtc -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
-    if ($TargetAgentId -eq 'health_check' -and -not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled -and [string]$currentTask.agentStatuses.health_check.status -eq 'waiting') {
+    if ($TargetAgentId -eq 'health_check' -and -not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled) {
         $diagnosisPath = Join-Path $task.TaskRoot 'health-check-result.json'
-        $failurePath = $null
-        foreach ($candidate in @(Get-ChildItem -LiteralPath $task.TaskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
-            try { $candidateFailure = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-            if ([string]$candidateFailure.agentId -ne 'health_check') { $failurePath = $candidate.FullName; break }
+        $diagnosis = $null
+        if (Test-Path -LiteralPath $diagnosisPath -PathType Leaf) {
+            $diagnosis = Get-Content -LiteralPath $diagnosisPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
-        if ($failurePath -and (Test-Path -LiteralPath $diagnosisPath -PathType Leaf)) {
+        $healthStatus = [string]$currentTask.agentStatuses.health_check.status
+        $completedEcosystemRecovery = $healthStatus -eq 'completed' -and $diagnosis -and
+            $diagnosis.PSObject.Properties['repairOwner'] -and [string]$diagnosis.repairOwner -eq 'ecosystem_recovery' -and
+            (-not $diagnosis.PSObject.Properties['requiresUserInput'] -or -not [bool]$diagnosis.requiresUserInput)
+        $healthRecoveryEligible = $healthStatus -eq 'waiting' -or $completedEcosystemRecovery
+        $failurePath = $null
+        if ($healthRecoveryEligible -and $completedEcosystemRecovery) {
+            foreach ($candidate in @(Get-ChildItem -LiteralPath $task.TaskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
+                try { $candidateFailure = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+                if ([string]$candidateFailure.stage -eq 'health_diagnosis_recovery' -and @($candidateFailure.evidence) -contains $diagnosisPath) {
+                    $failurePath = $candidate.FullName
+                    break
+                }
+            }
+            if (-not $failurePath) {
+                $affectedAgentId = if ($diagnosis.PSObject.Properties['affectedAgent']) { [string]$diagnosis.affectedAgent } else { '' }
+                $allowedTargets = @($config.health.automaticRecovery.targetedResume.allowedAgentIds | ForEach-Object { [string]$_ })
+                if ($affectedAgentId -notin $allowedTargets) {
+                    $affectedAgentId = if ('orchestrator' -in $allowedTargets) { 'orchestrator' } else { $allowedTargets | Select-Object -First 1 }
+                }
+                if ([string]::IsNullOrWhiteSpace($affectedAgentId)) { throw 'Completed Health Check requested ecosystem recovery without an allowed affected agent.' }
+                $failureResult = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $affectedAgentId -Stage health_diagnosis_recovery -Summary ([string]$diagnosis.summary) -Diagnostic ([string]$diagnosis.rootCause) -Evidence @($diagnosisPath, "health-diagnosis-signature:$([string]$diagnosis.failureSignature)") -ConfigPath $ConfigPath -CodexHome $CodexHome
+                $failurePath = [string]$failureResult.FailurePath
+            }
+        }
+        elseif ($healthRecoveryEligible) {
+            foreach ($candidate in @(Get-ChildItem -LiteralPath $task.TaskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
+                try { $candidateFailure = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+                if ([string]$candidateFailure.agentId -ne 'health_check') { $failurePath = $candidate.FullName; break }
+            }
+        }
+        if ($healthRecoveryEligible -and $failurePath -and $diagnosis) {
             & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_handoff -Summary 'Health Check completed diagnosis and handed the bounded correction to automatic recovery.' -Details "Failure: $failurePath; diagnosis: $diagnosisPath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $recoveryParameters = @{ TaskId=$TaskId; FailurePath=$failurePath; DiagnosisPath=$diagnosisPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved) { $recoveryParameters.ElevatedApproved = $true }
@@ -274,6 +304,12 @@ try {
     }
     if ($TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
         $closureComplete = $TargetAgentId -eq 'knowledge_keeper' -and $currentTask.PSObject.Properties['closure'] -and [string]$currentTask.closure.status -eq 'knowledge-update-pending' -and [string]$currentTask.agentStatuses.knowledge_keeper.status -eq 'completed'
+        $preservePipelineNonSuccess = $false
+        $targetedPipelinePath = Join-Path $task.TaskRoot 'pipeline-result.json'
+        if ($TargetAgentId -eq 'pipeline_monitor' -and (Test-Path -LiteralPath $targetedPipelinePath -PathType Leaf)) {
+            $targetedPipelineResult = Get-Content -LiteralPath $targetedPipelinePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $preservePipelineNonSuccess = [string]$targetedPipelineResult.overallResult -ne 'succeeded'
+        }
         $preserveAwaitingPullRequest = $currentStatus -eq 'interrupted' -and $currentTask.PSObject.Properties['currentStage'] -and [string]$currentTask.currentStage -eq 'awaiting_pull_request'
         if ($closureComplete) {
             $completedAtUtc = [DateTime]::UtcNow.ToString('o')
@@ -286,7 +322,7 @@ try {
             $currentStatus = 'completed'
             $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
-        if (-not $closureComplete -and -not $preserveAwaitingPullRequest) {
+        if (-not $closureComplete -and -not $preserveAwaitingPullRequest -and -not $preservePipelineNonSuccess) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage targeted_agent_completed -Message "Targeted restart for '$TargetAgentId' finished. Remaining agents: $(@($remainingPlan.UnfinishedAgentIds) -join ', ')." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -300,6 +336,11 @@ try {
         }
         elseif ($preserveAwaitingPullRequest) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage awaiting_pull_request -Message "Targeted restart for '$TargetAgentId' finished; exact-commit delivery succeeded and the task is awaiting pull-request lifecycle evidence." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $currentStatus = 'interrupted'
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        elseif ($preservePipelineNonSuccess) {
+            & $statusScript -TaskId $TaskId -Status interrupted -Stage pipeline_non_success -Message "Targeted Pipeline Monitor finished with '$([string]$targetedPipelineResult.overallResult)'; the task remains open for automatic remediation or Orchestrator routing." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $currentStatus = 'interrupted'
             $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
