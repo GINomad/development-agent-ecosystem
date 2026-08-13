@@ -192,6 +192,26 @@ try {
 
     if ([string]$recovery.status -eq 'repaired') {
         $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $recoveryCommit = $null
+        if ([bool]$config.health.automaticRecovery.commitVerifiedRepairs) {
+            $postValidationChanges = @(git -C $workspace status --porcelain)
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the validated ecosystem repair before commit.' }
+            if ($postValidationChanges.Count) {
+                if ($OperatorApprovedDirtyWorktree) {
+                    throw 'Validated recovery started from a dirty worktree and cannot safely auto-commit mixed pre-existing changes.'
+                }
+                & git -C $workspace add --all -- .
+                if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the validated ecosystem repair.' }
+                $commitMessage = "fix(ecosystem): health recovery $($signature.Substring(0, 12))"
+                & git -C $workspace commit -m $commitMessage
+                if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the validated ecosystem repair.' }
+                $recoveryCommit = (& git -C $workspace rev-parse HEAD).Trim()
+                if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to verify the validated ecosystem repair commit.' }
+                $remainingChanges = @(git -C $workspace status --porcelain)
+                if ($LASTEXITCODE -ne 0 -or $remainingChanges.Count) { throw 'The verified ecosystem repair commit did not leave a clean worktree.' }
+                & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_commit -Summary "Validated ecosystem repair committed locally as $recoveryCommit." -Details 'The trusted host created a local commit after complete validation; no push or external write was performed.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
+        }
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus completed -Stage health_recovered -Message "Health recovery completed and $(@($validation.Checks).Count) ecosystem checks passed." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -217,7 +237,7 @@ try {
             & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
-    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath }
+    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null } }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $targetedResume = $null
     if ([string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {

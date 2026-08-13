@@ -653,8 +653,8 @@ try {
                         Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="Validated repair is ready. Health Check started only '$([string]$failure.agentId)' in the approved elevated profile." }
                         continue
                     }
-                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved. After validation it will restart only '$([string]$failure.agentId)'." }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; OperatorApprovedDirtyWorktree=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved, including preservation-aware work over the current ecosystem worktree. After validation it will restart only '$([string]$failure.agentId)'." }
                     continue
                 }
                 if ($path -eq '/api/reviewer-notes') {
