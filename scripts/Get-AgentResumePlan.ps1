@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
+    [switch] $PreserveArtifactIndex,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -93,7 +94,9 @@ foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { 
     else { $changedArtifacts.Add($file.Name) }
 }
 $artifactIndex = [ordered]@{ taskId=$TaskId; generatedAtUtc=[DateTime]::UtcNow.ToString('o'); fingerprints=[pscustomobject]$currentFingerprints }
-Write-Utf8NoBom -Path $artifactIndexPath -Content (($artifactIndex | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
+if (-not $PreserveArtifactIndex) {
+    Write-Utf8NoBom -Path $artifactIndexPath -Content (($artifactIndex | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
+}
 
 [pscustomobject][ordered]@{
     TaskId = $TaskId
