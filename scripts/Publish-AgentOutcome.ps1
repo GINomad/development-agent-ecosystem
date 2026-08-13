@@ -46,6 +46,7 @@ foreach ($name in $required) {
     }
     if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
         $parsedArtifact = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId $AgentId -ArtifactName $name -Path $path -TaskRoot $taskRoot
         if ($name -eq 'task-summary.json') {
             if ([string]$parsedArtifact.taskId -ne $TaskId -or [string]$parsedArtifact.status -ne 'completed') { throw 'task-summary.json must identify this task and have status completed.' }
             foreach ($propertyName in @('completedAtUtc','repositories','outcomes','decisions','verification','knowledgeUpdates','artifacts','residualItems')) {

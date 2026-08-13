@@ -33,6 +33,8 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery using a bounded recent-log diagnostic bundle |
 | `scripts/Save-AgentCheckpoint.ps1` | Private per-role context for running, waiting, or failed attempts; not shared with Knowledge Keeper |
 | `scripts/Publish-AgentOutcome.ps1` | Validates configured artifacts, completes the role, and only then publishes its shared outcome |
+| `scripts/New-DeveloperPublicationEvidence.ps1` | Runs final Pester and read-only Git checks and records machine-readable Developer publication evidence |
+| `scripts/Test-AgentOutcomeArtifact.ps1` | Rejects stale or contradictory outcome evidence before an agent result can be published |
 | `scripts/Invoke-EnhancedReview.ps1` | Per-PR comment fingerprints, pending AI-processing state, and targeted Review Monitor invocation |
 | `dashboard` | Full-width loopback UI with local diff review, external PR reports, persisted statuses, live logs, interventions, manual closure, revision reopen, and tracked elevated runspaces |
 | `knowledge/managed` | Versioned managed knowledge with seed-import provenance |
