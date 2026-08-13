@@ -285,6 +285,23 @@ if ([string]$authorityHandoff.Status -ne 'forwarded' -or [string]$authorityHando
 if ([string]$orchestratorDispatch.NextAgentId -ne 'orchestrator' -or [string]$targetDispatch.NextAgentId -ne 'pipeline_monitor' -or [string]$handoffRoute.Status -ne 'routed' -or @($pipelineHandoffBatch.comments | Where-Object sourceEventId -eq $handoffEventId).Count -ne 1) { throw 'Authority handoff did not automatically prioritize Orchestrator and the newly selected owner across the review gate.' }
 Add-Check -Name 'automatic-authority-handoff' -Detail 'Out-of-scope direct comments return once to Orchestrator with source traceability; host continuation prioritizes Orchestrator and its routed owner without manual restart'
 
+$approvedProcessInput = & (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $routingTaskId -Actor reviewer -Type workflow-input-routed -Summary 'Human-approved Reviewer process finding requires ecosystem maintenance.' -Evidence @('review-finding:REV-011','decision:approved') -TargetAgentId orchestrator -ConfigPath $routingConfigPath
+$approvedProcessRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId ([string]$approvedProcessInput.eventId) -TargetAgentIds health_check -Rationale 'The approved process finding modifies the ecosystem control plane, which Health Check owns.' -Confidence high -ConfigPath $routingConfigPath
+$approvedProcessRouteAgain = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId ([string]$approvedProcessInput.eventId) -TargetAgentIds developer -Rationale 'A duplicate route must preserve the original Health Check decision.' -Confidence low -ConfigPath $routingConfigPath
+$orchestratorAfterApprovedProcess = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
+$healthCheckApprovedProcessBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId health_check -ConfigPath $routingConfigPath
+$preservedRoutedInput = & (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $routingTaskId -Actor orchestrator -Type workflow-input-routed -Summary 'This routed input belongs directly to Reviewer.' -Evidence @('synthetic-explicit-target','routing:synthetic') -TargetAgentId reviewer -ConfigPath $routingConfigPath
+$explicitRoutedTargetPreserved = $false
+try {
+    & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId ([string]$preservedRoutedInput.eventId) -TargetAgentIds developer -Rationale 'This reclassification must be rejected because Reviewer is the explicit target.' -Confidence high -ConfigPath $routingConfigPath | Out-Null
+}
+catch {
+    $explicitRoutedTargetPreserved = $_.Exception.Message -eq "Routed workflow input '$([string]$preservedRoutedInput.eventId)' must be explicitly targeted to 'orchestrator' and cannot be reclassified."
+}
+if ([string]$approvedProcessRoute.Status -ne 'routed' -or [string]$approvedProcessRouteAgain.Status -ne 'already-routed' -or [string]$approvedProcessRoute.Routing.sourceType -ne 'workflow-input-routed' -or @($approvedProcessRoute.Routing.targets) -notcontains 'health_check') { throw 'Approved process input routing was not durable and idempotent.' }
+if (@($orchestratorAfterApprovedProcess.eventIds) -contains [string]$approvedProcessInput.eventId -or @($healthCheckApprovedProcessBatch.comments | Where-Object sourceEventId -eq ([string]$approvedProcessInput.eventId)).Count -ne 1 -or -not $explicitRoutedTargetPreserved) { throw 'Approved process input routing did not preserve acknowledgement, addressability, or explicit targeting semantics.' }
+Add-Check -Name 'approved-process-orchestrator-rerouting' -Detail 'Orchestrator-targeted approved process inputs route once, are acknowledged, remain addressable, and cannot override another explicit target'
+
 $ecosystemMaintenanceComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $routingTaskId -Text 'Update the ecosystem runner contract and its regression tests.' -ConfigPath $routingConfigPath
 $ecosystemMaintenanceRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $ecosystemMaintenanceComment.CommentId -TargetAgentIds health_check -Rationale 'Source-controlled ecosystem maintenance belongs to Health Check.' -Confidence high -ConfigPath $routingConfigPath
 $healthPriorityDispatch = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $routingTaskId -CompletedAgentId orchestrator -PrepareOnly -ConfigPath $routingConfigPath
