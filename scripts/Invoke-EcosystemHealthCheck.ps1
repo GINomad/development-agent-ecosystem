@@ -142,6 +142,34 @@ try {
             if ($invalidLedgerLines) { Add-HealthCheck -Id 'task-ledger' -Status failed -Summary "$invalidLedgerLines invalid JSONL event(s) found." -Evidence @($ledgerPath) }
             else { Add-HealthCheck -Id 'task-ledger' -Status passed -Summary 'Task ledger is readable append-only JSONL.' -Evidence @($ledgerPath) }
 
+            $continuationInspection = & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+            $actionableContinuations = @($continuationInspection.Items | Where-Object { [string]$_.Status -in @('continuation-required','restart-required') })
+            $incompletePublications = @($continuationInspection.Items | Where-Object { [string]$_.Status -eq 'publication-incomplete' })
+            if ($actionableContinuations.Count -and $Repair -and [string]$config.health.repairMode -eq 'safe-deterministic-only') {
+                $continuationRepair = & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') -TaskId $TaskId -Repair -ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome
+                $remainingContinuations = @($continuationRepair.Items | Where-Object { [string]$_.Status -in @('continuation-required','restart-required') })
+                if ($remainingContinuations.Count) {
+                    Add-HealthCheck -Id 'durable-continuation' -Status failed -Summary 'A missing agent continuation remained after deterministic reconciliation.' -Evidence @($ledgerPath)
+                    Add-Repair -Id 'reconcile-agent-continuation' -Status failed -Summary 'The next role was not recovered.'
+                }
+                else {
+                    Add-HealthCheck -Id 'durable-continuation' -Status repaired -Summary 'Recovered a successful agent outcome whose host exited before the next handoff.' -Evidence @($ledgerPath)
+                    Add-Repair -Id 'reconcile-agent-continuation' -Status applied -Summary 'Started only the missing next role through the existing guarded continuation chain.'
+                }
+            }
+            elseif ($actionableContinuations.Count) {
+                Add-HealthCheck -Id 'durable-continuation' -Status failed -Summary "$($actionableContinuations.Count) successful outcome(s) require deterministic continuation reconciliation." -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status requires-approval -Summary 'Run the trusted health check with -Repair or wait for the scheduled continuation reconciler.'
+            }
+            elseif ($incompletePublications.Count) {
+                Add-HealthCheck -Id 'durable-continuation' -Status warning -Summary 'A durable continuation request exists without a complete published agent outcome.' -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status not-applicable -Summary 'Continuation remains fail-closed until successful outcome publication completes.'
+            }
+            else {
+                Add-HealthCheck -Id 'durable-continuation' -Status passed -Summary 'No orphaned successful agent continuation was detected.' -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status not-applicable -Summary 'Every durable continuation is active, gated, or already reconciled.'
+            }
+
             $codexLogPath = Join-Path $taskRoot 'workflow-codex.jsonl'
             if ($taskStatus -eq 'failed') {
                 $failureEvent = @($ledgerEvents | Where-Object { $_.type -eq 'workflow-status' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)

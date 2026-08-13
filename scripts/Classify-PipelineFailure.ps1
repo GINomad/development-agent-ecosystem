@@ -14,7 +14,9 @@ $patterns = [ordered]@{
     test = @(
         '(?im)\b(test run failed|tests? failed|failed tests?|assert(?:ion)? failed|xunit|nunit|jest|vitest|mocha|karma)\b',
         '(?im)\b(expected|actual)\s*:',
-        '(?im)\b(failed|failure)\b.*\b(test|spec)\b'
+        '(?im)\b(failed|failure)\b.*\b(test|spec)\b',
+        '(?im)hosted Office SIP failure-cleanup probe did not observe the expected controlled failure',
+        '(?im)Office SIP registration did not activate the expected OOXML subject GUID|job-created Office SIP registry state remained after cleanup'
     )
     code = @(
         '(?im)\berror\s+CS\d{4}\b',
