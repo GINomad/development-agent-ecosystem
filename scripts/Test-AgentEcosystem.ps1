@@ -141,7 +141,7 @@ $reviewReply = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $review
 $reviewReplyEvent = Get-Content -LiteralPath (Join-Path $reviewReplyTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object eventId -eq $reviewReply.CommentId | Select-Object -First 1
 if ([string]$reviewReply.ReviewFindingId -ne 'REV-001' -or [string]$reviewReply.TargetAgentId -ne 'developer' -or @($reviewReplyEvent.evidence) -notcontains 'review-finding:REV-001') { throw 'Reviewer feedback reply was not durably linked and targeted.' }
 Add-Check -Name 'reviewer-feedback-replies' -Detail 'Reviewer summary/findings/process suggestions are visible; replies persist by finding ID and target Reviewer or Developer'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -728,6 +728,7 @@ $healthTargetedResumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts
 $continueChainScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Continue-AgentChain.ps1') -Raw -Encoding UTF8
 $continuationRecoveryScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -Raw -Encoding UTF8
 $publishOutcomeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -Raw -Encoding UTF8
+$developerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\developer.md') -Raw -Encoding UTF8
 $healthRecoverySchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\health-recovery-result.schema.json') -Raw -Encoding UTF8
 if ($knowledgePrompt -notmatch 'Never cyclically poll' -or $knowledgePrompt -notmatch 'explicit agent knowledge or skill requests') { throw 'Knowledge Keeper is not pull-based or still permits subagent polling.' }
 if ($taskProtocol -notmatch 'Publish-AgentOutcome.ps1' -or $taskProtocol -notmatch 'agent-checkpoints' -or $taskProtocol -notmatch 'autonomous bounded work blocks' -or $taskProtocol -notmatch 'Get-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'Acknowledge-AgentCommentBatch.ps1' -or $taskProtocol -notmatch 'Request-OrchestratorCommentRouting.ps1' -or $taskProtocol -notmatch 'same agent invocation') { throw 'Private checkpoint, autonomous work-block, successful outcome, end-of-block comment, or authority-handoff contract is missing.' }
@@ -747,6 +748,65 @@ if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or 
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
 if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'agentFingerprints' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'" -or $workflowScript -notmatch 'Get-AgentResumePlan\.ps1.+-PreserveArtifactIndex') { throw 'Per-agent resume artifact fingerprinting, completed-outcome filtering, or non-consuming bookkeeping is incomplete.' }
+if ($publishOutcomeScript -notmatch 'Test-AgentOutcomeArtifact\.ps1' -or $developerPrompt -notmatch 'New-DeveloperPublicationEvidence\.ps1' -or $developerPrompt -notmatch 'publicationEvidenceId') { throw 'Developer final-command evidence generation or semantic outcome validation is not wired end to end.' }
+
+$outcomeValidationRoot = Join-Path $OutputRoot ('outcome-validation-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $outcomeValidationRoot -Force | Out-Null
+$outcomeGitRoot = Join-Path $outcomeValidationRoot 'workspace'
+$outcomeRemoteRoot = Join-Path $outcomeValidationRoot 'remote.git'
+New-Item -ItemType Directory -Path $outcomeGitRoot -Force | Out-Null
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('init')
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('config','user.email','ecosystem-test@example.invalid')
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('config','user.name','Ecosystem Test')
+Write-Utf8NoBom -Path (Join-Path $outcomeGitRoot 'baseline.txt') -Content "baseline$([Environment]::NewLine)"
+New-Item -ItemType Directory -Path (Join-Path $outcomeGitRoot 'tests') -Force | Out-Null
+Write-Utf8NoBom -Path (Join-Path $outcomeGitRoot 'tests\Synthetic.Tests.ps1') -Content "Describe 'Synthetic publication evidence' { It 'passes' { 1 | Should Be 1 } }$([Environment]::NewLine)"
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('add','baseline.txt','tests/Synthetic.Tests.ps1')
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('commit','-m','baseline')
+$null = @(& git init --bare $outcomeRemoteRoot 2>&1)
+if ($LASTEXITCODE -ne 0) { throw 'Unable to initialize synthetic outcome-validation remote.' }
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('remote','add','origin',$outcomeRemoteRoot)
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('push','-u','origin','HEAD')
+Write-Utf8NoBom -Path (Join-Path $outcomeGitRoot 'ahead.txt') -Content "ahead$([Environment]::NewLine)"
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('add','ahead.txt')
+$null = Invoke-SchedulerTestGit -Workspace $outcomeGitRoot -Arguments @('commit','-m','ahead')
+$outcomeConfigPath = Join-Path $outcomeValidationRoot 'agents.json'
+$outcomeConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$outcomeConfig.runtime.stateRoot = Join-Path $outcomeValidationRoot 'state'
+Write-Utf8NoBom -Path $outcomeConfigPath -Content (($outcomeConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$outcomeTaskId = 'synthetic-outcome-validation'
+$outcomeTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $outcomeTaskId -TaskSelector synthetic-outcome-validation -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $outcomeConfigPath
+$generatedEvidence = & (Join-Path $root 'scripts\New-DeveloperPublicationEvidence.ps1') -TaskId $outcomeTaskId -Workspace $outcomeGitRoot -PesterPath @('tests\Synthetic.Tests.ps1') -ConfigPath $outcomeConfigPath
+$publicationEvidencePath = [string]$generatedEvidence.EvidencePath
+$publicationEvidence = Get-Content -LiteralPath $publicationEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$liveBranch = [string]$publicationEvidence.branch
+$liveHead = [string]$publicationEvidence.headCommit
+$liveParts = @([int]$publicationEvidence.branchDivergence.behindCount,[int]$publicationEvidence.branchDivergence.aheadCount)
+$pesterRecord = @($publicationEvidence.pester) | Select-Object -First 1
+$validImplementation = [ordered]@{
+    taskId='synthetic-outcome-validation'; branch=$liveBranch; commit=$liveHead; commitState="clean worktree; branch is $([int]$liveParts[1]) local commits ahead"
+    tests=@(
+        [ordered]@{ command=[string]$pesterRecord.command; result=[string]$pesterRecord.result; evidence="Passed $([int]$pesterRecord.passedCount)/$([int]$pesterRecord.totalCount) from the final command."; publicationEvidenceId=[string]$pesterRecord.evidenceId },
+        [ordered]@{ command='git status --porcelain and git rev-list'; result='passed'; evidence="Branch is $([int]$liveParts[1]) local commits ahead."; publicationEvidenceId='git-branch-divergence' }
+    )
+}
+$implementationPath = Join-Path $outcomeTask.TaskRoot 'implementation-result.json'
+Write-Utf8NoBom -Path $implementationPath -Content (($validImplementation | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot
+$contradictoryCount = $validImplementation | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$contradictoryCount.tests[0].result = 'passed 6/6'
+Write-Utf8NoBom -Path $implementationPath -Content (($contradictoryCount | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$countRejected = $false
+try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot }
+catch { $countRejected = $_.Exception.Message -match 'contradictory result/evidence counts' }
+$contradictoryBranch = $validImplementation | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$contradictoryBranch.commitState = "clean worktree; branch is $([int]$liveParts[1] + 1) local commits ahead"
+Write-Utf8NoBom -Path $implementationPath -Content (($contradictoryBranch | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$branchRejected = $false
+try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot }
+catch { $branchRejected = $_.Exception.Message -match 'contradictory branch-divergence evidence' }
+if (-not $countRejected -or -not $branchRejected) { throw 'Developer outcome validation accepted contradictory Pester-count or branch-divergence fields.' }
+Add-Check -Name 'developer-outcome-final-command-evidence' -Detail 'Valid final-command evidence passes; contradictory Pester counts and branch divergence are rejected deterministically'
 
 $fingerprintRoot = Join-Path $OutputRoot ('resume-fingerprint-' + [guid]::NewGuid().ToString('N'))
 $fingerprintConfigPath = Join-Path $fingerprintRoot 'agents.json'
@@ -757,12 +817,13 @@ $fingerprintTaskId = 'resume-fingerprint-' + [guid]::NewGuid().ToString('N')
 $fingerprintTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $fingerprintTaskId -TaskSelector synthetic-resume-fingerprint -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $fingerprintConfigPath
 $null = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId developer -ConfigPath $fingerprintConfigPath
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-plan.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"scope`":[]}$([Environment]::NewLine)"
+Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'developer-publication-evidence.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"synthetic`"}$([Environment]::NewLine)"
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-result.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"implemented`"}$([Environment]::NewLine)"
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $fingerprintTaskId -AgentId developer -AgentStatus completed -Stage developer-completed -Message 'Synthetic Developer outcome changed its implementation artifacts.' -ConfigPath $fingerprintConfigPath | Out-Null
 $postDeveloperBookkeepingPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -PreserveArtifactIndex -ConfigPath $fingerprintConfigPath
 $reviewerStartupPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId reviewer -ConfigPath $fingerprintConfigPath
 $reviewerRepeatedPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId reviewer -ConfigPath $fingerprintConfigPath
-$developerArtifacts = @('implementation-plan.json','implementation-result.json')
+$developerArtifacts = @('implementation-plan.json','developer-publication-evidence.json','implementation-result.json')
 if (@($developerArtifacts | Where-Object { $_ -notin @($postDeveloperBookkeepingPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerStartupPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerRepeatedPlan.UnchangedArtifactNames) }).Count) { throw 'Developer-to-Reviewer continuation consumed changed artifact fingerprints during post-Developer bookkeeping.' }
 Add-Check -Name 'developer-reviewer-resume-fingerprints' -Detail 'Post-Developer bookkeeping preserves the fingerprint baseline; Reviewer startup receives changed implementation artifacts and then advances the index once'
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'review-decisions.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"decisions`":[]}$([Environment]::NewLine)"

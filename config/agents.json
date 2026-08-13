@@ -473,6 +473,7 @@
       ],
       "requiredArtifacts": [
         "implementation-plan.json",
+        "developer-publication-evidence.json",
         "implementation-result.json"
       ]
     },
