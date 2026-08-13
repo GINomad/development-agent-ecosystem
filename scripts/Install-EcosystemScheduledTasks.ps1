@@ -66,7 +66,7 @@ $pollArguments = "$backgroundPowerShellArguments -File $quote$wrapper$quote -Mod
 $dailyArguments = "$backgroundPowerShellArguments -File $quote$wrapper$quote -Mode Daily -ConfigPath $quote$ConfigPath$quote"
 $dashboardArguments = "$backgroundPowerShellArguments -File $quote$dashboard$quote -Server -NoBrowser -DataRoot $quote$($sync.DataRoot)$quote"
 $prLifecycleArguments = "$backgroundPowerShellArguments -File $quote$prLifecycle$quote -ConfigPath $quote$ConfigPath$quote"
-$continuationArguments = "$backgroundPowerShellArguments -File $quote$continuationRecoveryHost$quote -RunOnce -ElevatedApproved -ConfigPath $quote$ConfigPath$quote"
+$continuationArguments = "$backgroundPowerShellArguments -File $quote$continuationRecoveryHost$quote -ElevatedApproved -ConfigPath $quote$ConfigPath$quote"
 $weeklyKnowledgeArguments = "$backgroundPowerShellArguments -File $quote$weeklyKnowledgeReport$quote -ConfigPath $quote$ConfigPath$quote"
 $pollAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $pollArguments
 $dailyAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $dailyArguments
@@ -101,7 +101,7 @@ try {
     Register-ScheduledTask -TaskName $newNames[1] -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the vendored ecosystem PR review monitor daily.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[2] -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves vendored ecosystem review reports on loopback.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and routes completed PR tasks through Orchestrator for final Knowledge Keeper publication.' -Force | Out-Null
-    Register-ScheduledTask -TaskName $newNames[4] -Action $continuationAction -Trigger $continuationTrigger -Settings $continuationSettings -Principal $principal -Description 'Runs a bounded hidden recovery pass on the configured interval so a terminated host cannot permanently lose a durable agent handoff.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $newNames[4] -Action $continuationAction -Trigger $continuationTrigger -Settings $continuationSettings -Principal $principal -Description 'Runs one hidden resident recovery host; the recurring trigger is ignored while healthy and relaunches it after termination.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[5] -Action $weeklyKnowledgeAction -Trigger $weeklyKnowledgeTrigger -Settings $settings -Principal $nonInteractivePrincipal -Description 'Generates a Friday HTML report from verified Knowledge Keeper learning, decisions, and durable evidence without invoking AI.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { throw "New scheduled task '$name' was not registered." }
