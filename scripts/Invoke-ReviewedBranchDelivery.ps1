@@ -30,7 +30,23 @@ else { @() })
 if (-not $taskRepositoryIds.Count) { throw "Task '$TaskId' does not persist a repository scope." }
 if ($RepositoryId -notin $taskRepositoryIds) { throw "Repository '$RepositoryId' is outside the task scope." }
 $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if (@($review.findings).Count -gt 0) { throw 'Product review findings exist. Record human decisions and complete approved rework before delivery.' }
+$productFindings = @($review.findings)
+$decisionsPath = Join-Path $taskRoot 'review-decisions.json'
+$debtPath = Join-Path $taskRoot 'tech-debt-items.json'
+$latestDecisions = @{}
+if (Test-Path -LiteralPath $decisionsPath -PathType Leaf) {
+    foreach ($entry in @((Get-Content -LiteralPath $decisionsPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions)) { $latestDecisions[[string]$entry.findingId] = $entry }
+}
+$techDebtItems = if (Test-Path -LiteralPath $debtPath -PathType Leaf) { @((Get-Content -LiteralPath $debtPath -Raw -Encoding UTF8 | ConvertFrom-Json).items) } else { @() }
+$blockingFindingIds = [Collections.Generic.List[string]]::new()
+foreach ($finding in $productFindings) {
+    $findingId = [string]$finding.id
+    $decision = if ($latestDecisions.ContainsKey($findingId)) { [string]$latestDecisions[$findingId].decision } else { '' }
+    $validBypass = $decision -eq 'bypassed' -and @($techDebtItems | Where-Object { [string]$_.sourceFindingId -eq $findingId -and [string]$_.status -eq 'open' }).Count -gt 0
+    if ($decision -eq 'rejected' -or $validBypass) { continue }
+    $blockingFindingIds.Add($findingId)
+}
+if ($blockingFindingIds.Count) { throw "Product review findings block delivery: $($blockingFindingIds -join ', '). Approved findings require a fresh review; deferred or undecided findings require a human decision; bypassed findings require an open linked tech-debt item." }
 if (@($review.heldScopeViolations).Count -gt 0) { throw 'Held-scope violations block delivery.' }
 if ([string]$task.agentStatuses.reviewer.status -ne 'completed') { throw 'Reviewer has not published a successful outcome.' }
 
@@ -61,7 +77,9 @@ if ($remoteUrl -notmatch [regex]::Escape([string]$repository.repository)) { thro
 $plan = [pscustomobject][ordered]@{
     taskId=$TaskId; repositoryId=$RepositoryId; workspace=$workspace; remote='origin'; remoteUrl=$remoteUrl
     branch=$branch; commit=$commit.ToLowerInvariant(); pushRef="HEAD:refs/heads/$branch"; force=$false; tags=$false
-    reviewPath=$reviewPath; preparedAtUtc=[DateTime]::UtcNow.ToString('o')
+    reviewPath=$reviewPath; reviewDecisionsPath=if (Test-Path -LiteralPath $decisionsPath) { $decisionsPath } else { $null }
+    techDebtItemsPath=if (Test-Path -LiteralPath $debtPath) { $debtPath } else { $null }
+    preparedAtUtc=[DateTime]::UtcNow.ToString('o')
 }
 if ($PrepareOnly -or -not $PSCmdlet.ShouldProcess("origin/$branch", "push reviewed commit $commit and monitor its build")) { return $plan }
 

@@ -13,3 +13,4 @@ description: Review code and developer-agent work against requirements, accepted
 6. Create stable `REV-NNN` findings conforming to `config/schemas/review-result.schema.json`; add structured `codeLocation` to every repository-source finding so it renders inline in the local diff.
 7. Never invent traceability or line evidence. Use an empty code-reference array and explain missing, held, generated, binary-only, or unverifiable evidence.
 8. Mark all findings `proposed`; do not fix or publish them.
+9. Treat an explicit human bypass as unresolved tracked debt, not as a fix or false positive. The trusted host must create or reuse the linked task-local `TD-REV-NNN` item before delivery can continue.
