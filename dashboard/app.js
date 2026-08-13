@@ -30,6 +30,8 @@ let selectedDiffFilePath = null;
 let selectedDiffLine = null;
 let reviewDiffRequestInFlight = false;
 let reviewerFeedback = null;
+let reviewerDecisions = [];
+let reviewerTechDebtItems = [];
 let reviewerFeedbackRequestInFlight = false;
 const agentCommentDrafts = new Map();
 
@@ -473,6 +475,8 @@ function closeReviewDiff() {
   selectedDiffFilePath = null;
   selectedDiffLine = null;
   reviewerFeedback = null;
+  reviewerDecisions = [];
+  reviewerTechDebtItems = [];
   const panel = document.querySelector('#reviewDiffPanel');
   if (panel) panel.classList.add('hidden');
   const lines = document.querySelector('#reviewDiffLines');
@@ -495,10 +499,48 @@ function setReviewerFeedbackStatus(message, state = '') {
   status.dataset.state = state;
 }
 
+function latestReviewerDecision(findingId) {
+  const normalizedId = String(findingId || '').toLowerCase();
+  let latest = null;
+  reviewerDecisions.forEach(decision => {
+    if (String(decision?.findingId || '').toLowerCase() !== normalizedId) return;
+    const currentTimestamp = Date.parse(latest?.decidedAtUtc || latest?.decidedAt || '') || 0;
+    const candidateTimestamp = Date.parse(decision?.decidedAtUtc || decision?.decidedAt || '') || 0;
+    if (!latest || candidateTimestamp >= currentTimestamp) latest = decision;
+  });
+  return latest;
+}
+
+function isReviewerItemBypassedAsDebt(item) {
+  const findingId = String(item?.id || '');
+  const decision = latestReviewerDecision(findingId);
+  if (String(decision?.decision || '').toLowerCase() !== 'bypassed') return false;
+  return reviewerTechDebtItems.some(debt =>
+    String(debt?.sourceFindingId || '').toLowerCase() === findingId.toLowerCase()
+      && String(debt?.status || '').toLowerCase() === 'open'
+  );
+}
+
+function activeReviewerSummary(result) {
+  const summary = String(result?.summary || '').trim();
+  if (!summary) return '';
+  const hiddenFindingIds = [...(result?.findings || []), ...(result?.agentProcessFindings || [])]
+    .filter(isReviewerItemBypassedAsDebt)
+    .map(item => String(item?.id || '').toLowerCase())
+    .filter(Boolean);
+  if (!hiddenFindingIds.length) return summary;
+  return summary
+    .split(/\s+(?=(?:fact|inference|conflict):)/i)
+    .filter(sentence => !hiddenFindingIds.some(id => sentence.toLowerCase().includes(id)))
+    .join(' ')
+    .trim();
+}
+
 function reviewerFeedbackItems(result) {
   const items = [];
-  if (result?.summary) {
-    items.push({ id: 'REVIEW-SUMMARY', kind: 'summary', severity: 'info', summary: String(result.summary) });
+  const summary = activeReviewerSummary(result);
+  if (summary) {
+    items.push({ id: 'REVIEW-SUMMARY', kind: 'summary', severity: 'info', summary });
   }
   const collections = [
     ['finding', result?.findings],
@@ -509,7 +551,8 @@ function reviewerFeedbackItems(result) {
     if (!Array.isArray(values)) return;
     values.forEach((value, index) => {
       const item = value && typeof value === 'object' ? value : { summary: String(value) };
-      items.push({ ...item, id: String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`), kind });
+      const normalizedItem = { ...item, id: String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`), kind };
+      if (!isReviewerItemBypassedAsDebt(normalizedItem)) items.push(normalizedItem);
     });
   });
   return items;
@@ -814,12 +857,21 @@ async function loadReviewerFeedback() {
   reviewerFeedbackRequestInFlight = true;
   document.querySelector('#reviewFeedbackSummary').textContent = 'Loading Reviewer outcome...';
   try {
-    const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/artifacts/review-result.json');
+    const artifactUrl = name => '/api/tasks/' + encodeURIComponent(taskId) + '/artifacts/' + encodeURIComponent(name);
+    const [result, decisionsResult, debtResult] = await Promise.all([
+      api(artifactUrl('review-result.json')),
+      api(artifactUrl('review-decisions.json')).catch(() => null),
+      api(artifactUrl('tech-debt-items.json')).catch(() => null)
+    ]);
     if (selectedTaskId !== taskId) return;
     reviewerFeedback = JSON.parse(result.artifact.content);
+    reviewerDecisions = decisionsResult ? (JSON.parse(decisionsResult.artifact.content).decisions || []) : [];
+    reviewerTechDebtItems = debtResult ? (JSON.parse(debtResult.artifact.content).items || []) : [];
     renderReviewerFeedback();
   } catch (error) {
     reviewerFeedback = null;
+    reviewerDecisions = [];
+    reviewerTechDebtItems = [];
     renderReviewerFeedback();
     setReviewerFeedbackStatus('Reviewer outcome unavailable: ' + error.message, 'error');
   } finally {
