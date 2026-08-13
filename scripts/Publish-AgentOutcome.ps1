@@ -64,7 +64,7 @@ foreach ($name in $required) {
 
 $primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
 $continuationRequest = $null
-if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','pipeline_monitor')) {
+if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
     $requestId = [guid]::NewGuid().ToString('N')
     $continuationRequest = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor ecosystem -Type continuation-requested -Summary "Successful '$AgentId' outcome requires deterministic continuation reconciliation." -Artifact $primaryArtifact -Evidence @("continuation-request:$requestId", "completed-agent:$AgentId") -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
