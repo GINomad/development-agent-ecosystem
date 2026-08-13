@@ -217,6 +217,16 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 $nextAgentId = 'orchestrator'
             }
         }
+        'health_check' {
+            foreach ($candidate in @($chainConfig.orderedAgentIds)) {
+                if ([string]$candidate -in @('orchestrator','health_check')) { continue }
+                $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
+                if ($candidateStatus -in @('pending','skipped')) {
+                    $nextAgentId = [string]$candidate
+                    break
+                }
+            }
+        }
         'knowledge_keeper' {
             foreach ($candidate in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
                 if ([string]$task.agentStatuses.$candidate.status -ne 'completed') { $nextAgentId = $candidate; break }

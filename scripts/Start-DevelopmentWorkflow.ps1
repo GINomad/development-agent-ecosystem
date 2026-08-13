@@ -370,7 +370,7 @@ try {
         try { & (Join-Path $PSScriptRoot 'Resolve-RecoveredControlPlaneStatuses.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
         catch { Write-Warning "Control-plane status reconciliation failed: $($_.Exception.Message)" }
     }
-    if (-not $SkipChainContinuation -and [bool]$config.workflow.automaticContinuation.enabled -and $executedAgentId -ne 'health_check') {
+    if (-not $SkipChainContinuation -and [bool]$config.workflow.automaticContinuation.enabled) {
         $chainTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $manualClosure = $chainTask.PSObject.Properties['closure'] -and [string]$chainTask.closure.kind -eq 'manual'
         if (-not $manualClosure -and [string]$chainTask.agentStatuses.$executedAgentId.status -eq 'completed') {

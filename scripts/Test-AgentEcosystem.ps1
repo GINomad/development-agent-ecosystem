@@ -63,10 +63,10 @@ if ($scheduledTaskInstaller -notmatch '\$backgroundPowerShellArguments\s*=\s*''-
 }
 Add-Check -Name 'scheduled-task-hidden-window' -Detail 'All installed ecosystem PowerShell tasks use the shared -WindowStyle Hidden prefix'
 $continuationHost = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentContinuationRecoveryHost.ps1') -Raw -Encoding UTF8
-if ($scheduledTaskInstaller -notmatch 'Start-AgentContinuationRecoveryHost\.ps1' -or $scheduledTaskInstaller -notmatch '\$continuationTrigger\s*=\s*New-ScheduledTaskTrigger\s+-AtLogOn' -or $continuationHost -notmatch 'Repair-AgentContinuations\.ps1' -or $continuationHost -notmatch 'while\s*\(\$true\)' -or $continuationHost -notmatch '\[Math\]::Min\(60,\s*\$remainingSeconds\)' -or $continuationHost -notmatch 'Get-EcosystemConfig') {
-    throw 'Continuation recovery must use one resident, config-reloading host instead of creating a PowerShell process every polling interval.'
+if ($scheduledTaskInstaller -notmatch 'Start-AgentContinuationRecoveryHost\.ps1' -or $scheduledTaskInstaller -notmatch '\$continuationArguments.+-RunOnce' -or $scheduledTaskInstaller -notmatch '\$continuationTrigger\s*=\s*New-ScheduledTaskTrigger\s+-Once.+RepetitionInterval' -or $continuationHost -notmatch 'Repair-AgentContinuations\.ps1' -or $continuationHost -notmatch 'if\s*\(\$RunOnce\)\s*\{\s*break\s*\}' -or $continuationHost -notmatch 'Get-EcosystemConfig') {
+    throw 'Continuation recovery must run bounded hidden passes on a recurring trigger so a terminated host cannot lose later handoffs.'
 }
-Add-Check -Name 'resident-continuation-recovery' -Detail 'Recovery runs inside one at-logon hidden host, reloads JSON after each pass, and sleeps in bounded chunks'
+Add-Check -Name 'recurring-continuation-recovery' -Detail 'Recovery runs one bounded hidden pass per configured interval and restarts independently after host termination'
 if ($scheduledTaskInstaller -notmatch 'Development Ecosystem - Knowledge Weekly Report' -or $scheduledTaskInstaller -notmatch 'New-WeeklyKnowledgeReport\.ps1' -or $scheduledTaskInstaller -notmatch 'New-ScheduledTaskTrigger\s+-Weekly' -or $scheduledTaskInstaller -notmatch 'LogonType S4U') { throw 'Friday Knowledge Keeper report is not registered as a non-interactive weekly task.' }
 Add-Check -Name 'weekly-knowledge-schedule' -Detail 'Weekly report uses the configured weekday/time and a non-interactive S4U task to avoid console windows'
 
@@ -601,6 +601,7 @@ $chainMatrixTask = [ordered]@{
         reviewer = [ordered]@{ status = 'pending' }
         pipeline_monitor = [ordered]@{ status = 'pending' }
         knowledge_keeper = [ordered]@{ status = 'pending' }
+        health_check = [ordered]@{ status = 'pending' }
     }
 }
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
@@ -627,7 +628,15 @@ $pipelineToDeveloper = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -Ta
 if ([string]$pipelineToDeveloper.Status -ne 'prepared' -or [string]$pipelineToDeveloper.NextAgentId -ne 'developer') { throw 'Pipeline code or test remediation did not schedule Developer from a waiting task gate.' }
 
 $chainMatrixTask.status = 'interrupted'
+$chainMatrixTask.agentStatuses.health_check.status = 'completed'
+$chainMatrixTask.agentStatuses.developer.status = 'pending'
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$healthToDeveloper = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId health_check -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$healthToDeveloper.Status -ne 'prepared' -or [string]$healthToDeveloper.NextAgentId -ne 'developer') { throw 'Completed Health Check did not resume the first pending delivery role.' }
+
+$chainMatrixTask.status = 'interrupted'
 $chainMatrixTask.agentStatuses.knowledge_keeper.status = 'completed'
+$chainMatrixTask.agentStatuses.developer.status = 'completed'
 $chainMatrixTask.agentStatuses.reviewer.status = 'pending'
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $keeperToUnfinished = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId knowledge_keeper -PrepareOnly -ConfigPath $deliveryConfigPath
@@ -736,7 +745,7 @@ if (-not [bool]$config.workflow.orchestration.forwardOutOfScopeComments -or -not
 if ($continueChainScript -notmatch 'reevaluateDeveloperGate' -or $continueChainScript -notmatch 'reevaluatePipelineGate') { throw 'Developer review continuation or Pipeline remediation continuation is blocked by a stale task gate.' }
 if ($continueChainScript -notmatch 'transitionCounts' -or $continueChainScript -notmatch 'maxTransitionRepeats' -or $continueChainScript -notmatch 'automatic_chain_guard' -or $continueChainScript -notmatch 'Start-AgentHealthRecovery.ps1') { throw 'Automatic continuation loop limits do not fail closed into Health Check.' }
 if ($continueChainScript -notmatch 'pipeline_authority_handoff' -or $workflowScript -notmatch 'preservePipelineNonSuccess') { throw 'A non-success pipeline can still close the task or fail to hand unknown ownership to Orchestrator.' }
-if ($continueChainScript -notmatch 'automatic-continuation\.lock' -or $publishOutcomeScript -notmatch 'continuation-requested' -or $continuationRecoveryScript -notmatch 'continuation-reconciled' -or $continuationRecoveryScript -notmatch 'recoveryGraceSeconds') { throw 'Durable, idempotent continuation recovery is incomplete.' }
+if ($continueChainScript -notmatch 'automatic-continuation\.lock' -or $continueChainScript -notmatch '''health_check''\s*\{' -or $publishOutcomeScript -notmatch 'continuation-requested' -or $publishOutcomeScript -notmatch '''health_check''' -or $continuationRecoveryScript -notmatch 'continuation-reconciled' -or $continuationRecoveryScript -notmatch 'recoveryGraceSeconds') { throw 'Durable, idempotent continuation recovery is incomplete.' }
 if ($dashboardHtml -notmatch 'finishing its current work block' -or $dashboardClient -notmatch 'no restart is needed') { throw 'Dashboard does not explain automatic end-of-block comment consumption.' }
 if ($healthPrompt -notmatch 'health-diagnostic-context.json' -or $healthRecoveryScript -notmatch 'Get-BoundedTextTail' -or $healthRecoveryScript -notmatch 'workflowLogTailLines') { throw 'Health Check bounded diagnostic context is incomplete.' }
 if ($healthPrompt -notmatch 'diagnosis is not a terminal outcome' -or $healthRecoveryScript -notmatch 'existingDiagnosis' -or $healthRecoveryScript -notmatch 'health-repair-routing.json' -or $healthRecoverySchema -notmatch 'routeAgentId' -or $healthRecoverySchema -notmatch 'repairOwner') { throw 'Health Check repair-or-route contract is incomplete.' }
