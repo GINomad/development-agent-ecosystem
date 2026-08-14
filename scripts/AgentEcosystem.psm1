@@ -11,6 +11,22 @@ function Get-DefaultCodexHome {
     return [IO.Path]::GetFullPath((Join-Path $HOME '.codex'))
 }
 
+function Resolve-CodexCliPath {
+    $command = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) { return [IO.Path]::GetFullPath([string]$command.Source) }
+
+    $extensionRoots = @(
+        (Join-Path ([string]$env:USERPROFILE) '.vscode\extensions'),
+        (Join-Path ([string]$env:USERPROFILE) '.vscode-insiders\extensions')
+    )
+    foreach ($root in $extensionRoots) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        $candidates = @(Get-ChildItem -Path (Join-Path $root 'openai.chatgpt-*-win32-*\bin\*\codex.exe') -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+        if ($candidates.Count) { return [IO.Path]::GetFullPath([string]$candidates[0].FullName) }
+    }
+    return $null
+}
+
 function Expand-EcosystemValue {
     param(
         [Parameter(Mandatory)][string] $Value,
@@ -247,4 +263,4 @@ function Write-Utf8NoBom {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom

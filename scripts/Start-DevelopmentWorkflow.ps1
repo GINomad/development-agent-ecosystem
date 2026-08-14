@@ -249,9 +249,9 @@ $workflowStartedAtUtc = [DateTime]::UtcNow
 try {
     $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec'; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-    $codexCommand = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $codexCommand) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCommand.Source -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $codexCliPath = Resolve-CodexCliPath
+    if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }

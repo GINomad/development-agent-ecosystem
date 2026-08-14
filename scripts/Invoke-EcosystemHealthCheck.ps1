@@ -40,11 +40,10 @@ if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
 try {
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
 
-    $codexCommand = Get-Command codex.exe -ErrorAction SilentlyContinue
-    if (-not $codexCommand) { $codexCommand = Get-Command codex -ErrorAction SilentlyContinue }
-    if ($codexCommand) {
-        $codexVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
-        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @([string]$codexCommand.Source)
+    $codexCliPath = Resolve-CodexCliPath
+    if ($codexCliPath) {
+        $codexVersion = (& $codexCliPath --version 2>&1 | Out-String).Trim()
+        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @($codexCliPath)
     }
     else {
         Add-HealthCheck -Id 'codex-cli' -Status failed -Summary 'Codex CLI was not found in the workflow environment.'
