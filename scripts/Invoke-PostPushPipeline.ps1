@@ -27,9 +27,15 @@ $workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
 if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Git workspace was not found: $workspace" }
 Push-Location $workspace
 try {
-    if (-not $Branch) { $Branch = (& git branch --show-current).Trim() }
-    if (-not $Commit) { $Commit = (& git rev-parse HEAD).Trim() }
-    if ($LASTEXITCODE -ne 0 -or -not $Branch -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact branch and full commit SHA.' }
+    if (-not $Branch) {
+        $Branch = (& git branch --show-current).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the current Git branch.' }
+    }
+    if (-not $Commit) {
+        $Commit = (& git rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the current Git commit.' }
+    }
+    if (-not $Branch -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact branch and full commit SHA.' }
     $shortBranch = $Branch -replace '^refs/heads/', ''
     $remoteCommit = ([string](& git rev-parse "refs/remotes/origin/$shortBranch" 2>$null)).Trim()
     if ($LASTEXITCODE -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) { throw "origin/$shortBranch does not point to exact pushed commit $Commit. Refusing to monitor or queue an unrelated build." }
