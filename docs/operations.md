@@ -51,7 +51,7 @@ Task execution is serialized across all configured product repositories. `worksp
 
 After an authorized push succeeds, Developer passes the exact repository ID, branch, full pushed SHA, and the UTC timestamp recorded immediately before the push to Pipeline Monitor. `Invoke-PostPushPipeline.ps1` verifies that the local `origin/<branch>` tracking ref equals that SHA, then runs the native watcher once. The watcher performs its own deterministic polling, so no model turn is spent on every status refresh.
 
-The watcher discovers only runs whose full `sourceVersion` equals the pushed SHA. If the canonical JSON contains an approved build definition and no matching run exists, it queues that build once. For `ps-excel-agent`, the standing allowlist contains build 892. Deployment 891 is never auto-queued; `ps-bicep` and `ps-app-delfi` currently have empty auto-queue lists.
+The watcher discovers only runs whose full `sourceVersion` equals the pushed SHA. If canonical JSON contains an ordered approved build sequence, it queues each definition only after the previous definition succeeds. For `ps-excel-agent`, the standing sequence is 814 then a new 892; an earlier 892 is ignored for acceptance. Deployment 891 is never auto-queued; `ps-bicep` and `ps-app-delfi` currently have empty auto-queue lists.
 
 Failed task logs are reduced to the configured tail and byte limit, then classified without an AI call:
 
