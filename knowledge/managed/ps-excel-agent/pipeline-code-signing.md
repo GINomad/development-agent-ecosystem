@@ -28,13 +28,13 @@ Credential values are not repository knowledge. The pipeline references only the
 
 ## Internet-delivered XLAM installation rule
 
-Status: implementation verified locally; exact-commit hosted release proof pending
+Status: verified end-to-end for the cited exact commit and build
 
 Observed by: direct Codex implementation outside the agent workflow
 
-Observed at: 2026-08-14T20:04:23.1536680+03:00
+Observed at: 2026-08-14T21:32:53.5421196+03:00
 
-Source revision: ps-excel-agent commit fdde9d11d1784caddea6ccc2f1415b93458ac0f2 on branch bugfix/ok/marcos-sign-installer-fix
+Source revision: ps-excel-agent commit a2055ff722ceb9876c1fb2a44f3e621b554af9c6 on branch bugfix/ok/marcos-sign-installer-fix; successful Azure definition 814 build 205561
 
 Excel xla/xlam files received from the Internet can be registered but loaded disabled when they retain Mark of the Web. Microsoft explicitly documents that a digital signature and trusted publisher do not override Mark of the Web for Excel add-ins. A released installer therefore must remove the Internet Zone marker from a verified local copy; signing alone is insufficient.
 
@@ -53,12 +53,14 @@ The source-tree placeholder supports local development only. It must never remai
 
 ### Evidence
 
-- C:/Repos/ps-excel-agent/ExcelAddIn/Install-ExcelAddIn.ps1 at fdde9d11d1784caddea6ccc2f1415b93458ac0f2, lines 11, 67-98, and 289-322.
-- C:/Repos/ps-excel-agent/azure-pipelines.yml at fdde9d11d1784caddea6ccc2f1415b93458ac0f2, lines 174-184 and 261-304.
-- C:/Repos/ps-excel-agent/ExcelAddIn/tests/Install-ExcelAddIn.Tests.ps1 at fdde9d11d1784caddea6ccc2f1415b93458ac0f2, lines 42-67.
+- C:/Repos/ps-excel-agent/ExcelAddIn/Install-ExcelAddIn.ps1 at a2055ff722ceb9876c1fb2a44f3e621b554af9c6, lines 11, 67-98, 289-322, and 355-369.
+- C:/Repos/ps-excel-agent/azure-pipelines.yml at a2055ff722ceb9876c1fb2a44f3e621b554af9c6, lines 174-184 and 261-304.
+- C:/Repos/ps-excel-agent/ExcelAddIn/tests/Install-ExcelAddIn.Tests.ps1 at a2055ff722ceb9876c1fb2a44f3e621b554af9c6, lines 44-69 and 135-221.
 - Isolated NTFS regression on 2026-08-14 verified that ZoneId=3 remained on the downloaded source, was absent from the installed copy, SHA-256 remained E24550E894DAC18D0DA1EFB1D4AF4E599A5361549C12CB91D9AB5933AFB8E3B4, and a mismatched embedded hash failed before destination mutation.
 - Validate-ExcelDeliverables.ps1 completed successfully for Main-bck.xlsm, Main.xlsx, and PlanningSpaceExcelAddIn.xlam on 2026-08-14.
+- Azure definition 814 build 205561 completed successfully for exact sourceVersion a2055ff722ceb9876c1fb2a44f3e621b554af9c6 on 2026-08-14: https://dev.azure.com/Aucerna/PlanningSpace/_build/results?buildId=205561&view=results
+- The user confirmed after build 205561 that the delivered installation works.
 - Microsoft: https://learn.microsoft.com/en-us/microsoft-365-apps/security/internet-macros-blocked
 - Microsoft: https://learn.microsoft.com/en-us/microsoft-365-apps/security/trusted-publisher
 
-Do not claim a published artifact is verified from this local evidence alone. The exact commit still requires a successful hosted signing pipeline and inspection of the downloaded release pair.
+This verification applies only to the cited exact commit and build. Future releases must repeat the hash binding, signing, installer tests, hosted pipeline gates, and downloaded-artifact validation before they inherit verified status.
