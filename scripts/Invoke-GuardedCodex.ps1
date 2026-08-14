@@ -17,7 +17,8 @@ $ErrorActionPreference = 'Stop'
 function ConvertTo-WindowsArgument {
     param([AllowEmptyString()][string] $Value)
     if ($Value.Length -and $Value -notmatch '\s' -and -not $Value.Contains([char]34)) { return $Value }
-    return [char]34 + $Value.Replace([char]34, ('\' + [char]34)) + [char]34
+    $quote = [string][char]34
+    return $quote + $Value.Replace($quote, ('\' + $quote)) + $quote
 }
 
 function Get-FailureFingerprint {
