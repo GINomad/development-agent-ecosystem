@@ -70,7 +70,10 @@ Add-Signal -Value "role-default:$([string]$policy.defaultTier)"
 
 $complexTierRank = [int]$tierById['complex'].rank
 $criticalTierRank = [int]$tierById['critical'].rank
-$repositoryCount = @($RepositoryIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique).Count
+$repositoryValues = [string[]]@($RepositoryIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+$repositoryCount = [int](($repositoryValues | Measure-Object).Count)
+$changedArtifactValues = [string[]]@($ChangedArtifactNames)
+$changedArtifactCount = [int](($changedArtifactValues | Measure-Object).Count)
 if ($repositoryCount -gt 1) {
     $selectedRank = [Math]::Max($selectedRank, $complexTierRank)
     Add-Signal -Value "multiple-repositories:$repositoryCount"
@@ -79,18 +82,20 @@ if ($evidence.Length -ge [int]$routing.largeEvidenceCharacters) {
     $selectedRank++
     Add-Signal -Value "large-bounded-context:$($evidence.Length)"
 }
-if (@($ChangedArtifactNames).Count -ge 5) {
+if ($changedArtifactCount -ge 5) {
     $selectedRank = [Math]::Max($selectedRank, $complexTierRank)
-    Add-Signal -Value "many-changed-artifacts:$(@($ChangedArtifactNames).Count)"
+    Add-Signal -Value "many-changed-artifacts:$changedArtifactCount"
 }
 
-$matchedComplex = @($routing.complexSignals | Where-Object { $evidence.ToString().IndexOf([string]$_, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
-if ($matchedComplex.Count) {
+$matchedComplex = [string[]]@($routing.complexSignals | Where-Object { $evidence.ToString().IndexOf([string]$_, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+$matchedComplexCount = [int](($matchedComplex | Measure-Object).Count)
+if ($matchedComplexCount) {
     $selectedRank = [Math]::Max($selectedRank, $complexTierRank)
     Add-Signal -Value ('complex-signals:' + (($matchedComplex | Select-Object -First 3) -join ','))
 }
-$matchedCritical = @($routing.criticalSignals | Where-Object { $evidence.ToString().IndexOf([string]$_, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
-if ($matchedCritical.Count) {
+$matchedCritical = [string[]]@($routing.criticalSignals | Where-Object { $evidence.ToString().IndexOf([string]$_, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+$matchedCriticalCount = [int](($matchedCritical | Measure-Object).Count)
+if ($matchedCriticalCount) {
     $selectedRank = [Math]::Max($selectedRank, $criticalTierRank)
     Add-Signal -Value ('critical-signals:' + (($matchedCritical | Select-Object -First 3) -join ','))
 }
@@ -136,9 +141,10 @@ if (Test-Path -LiteralPath $artifactPath -PathType Leaf) {
     try { $document = Get-Content -LiteralPath $artifactPath -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch { throw "Existing model-routing artifact is invalid: $($_.Exception.Message)" }
 }
-$existing = @()
-if ($document) { $existing = @($document.decisions | Where-Object { [string]$_.agentId -eq $AgentId -and [string]$_.inputFingerprint -eq $inputFingerprint } | Select-Object -Last 1) }
-if ($existing.Count) {
+$existing = [object[]]@()
+if ($document) { $existing = [object[]]@($document.decisions | Where-Object { [string]$_.agentId -eq $AgentId -and [string]$_.inputFingerprint -eq $inputFingerprint } | Select-Object -Last 1) }
+$existingCount = [int](($existing | Measure-Object).Count)
+if ($existingCount) {
     return [pscustomobject][ordered]@{
         decisionId = [string]$existing[0].decisionId
         agentId = $AgentId
@@ -153,7 +159,7 @@ if ($existing.Count) {
     }
 }
 
-$confidence = if ($matchedCritical.Count -or $matchedComplex.Count -or $repositoryCount -gt 1) { 0.95 } elseif ($evidence.Length -ge [int]$routing.largeEvidenceCharacters) { 0.85 } else { 0.90 }
+$confidence = if ($matchedCriticalCount -or $matchedComplexCount -or $repositoryCount -gt 1) { 0.95 } elseif ($evidence.Length -ge [int]$routing.largeEvidenceCharacters) { 0.85 } else { 0.90 }
 $decision = [pscustomobject][ordered]@{
     decisionId = [guid]::NewGuid().ToString('N')
     agentId = $AgentId
@@ -166,14 +172,15 @@ $decision = [pscustomobject][ordered]@{
     inputFingerprint = $inputFingerprint
     evidenceCharacterCount = [int]$evidence.Length
     repositoryCount = $repositoryCount
-    changedArtifactCount = @($ChangedArtifactNames).Count
+    changedArtifactCount = $changedArtifactCount
 }
 
 if (-not $NoPersist) {
-    $decisions = @($decision)
-    if ($document) { $decisions = @($document.decisions) + @($decision) }
+    $decisions = [object[]]@($decision)
+    if ($document) { $decisions = [object[]](@($document.decisions) + @($decision)) }
     $maxDecisions = [int]$routing.maxDecisionsPerTask
-    if ($decisions.Count -gt $maxDecisions) { $decisions = @($decisions | Select-Object -Last $maxDecisions) }
+    $decisionCount = [int](($decisions | Measure-Object).Count)
+    if ($decisionCount -gt $maxDecisions) { $decisions = [object[]]@($decisions | Select-Object -Last $maxDecisions) }
     $output = [ordered]@{ schemaVersion='1.0'; taskId=$TaskId; updatedAtUtc=[DateTime]::UtcNow.ToString('o'); latestDecisionId=$decision.decisionId; decisions=@($decisions) }
     $temporaryPath = "$artifactPath.tmp"
     Write-Utf8NoBom -Path $temporaryPath -Content (($output | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
