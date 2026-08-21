@@ -5,6 +5,58 @@ $resource = if ($resourceIndex -ge 0) { [string]$args[$resourceIndex + 1] } else
 $commit = [string]$env:ECOSYSTEM_MOCK_COMMIT
 $scenario = [string]$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO
 
+if ($scenario -like 'recovery-*') {
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'run') {
+        throw "Recovery scenario '$scenario' must never queue a pipeline."
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
+        if ([Array]::IndexOf([object[]]$args, '--branch') -ge 0) {
+            throw "Recovery scenario '$scenario' must discover configured passive definitions without a feature-branch filter."
+        }
+        $matchingParameters = ([ordered]@{ 'system.pullRequest.sourceCommitId'=$commit } | ConvertTo-Json -Compress)
+        $mismatchedParameters = ([ordered]@{ 'system.pullRequest.sourceCommitId'='ffffffffffffffffffffffffffffffffffffffff' } | ConvertTo-Json -Compress)
+        $runs = switch ($scenario) {
+            'recovery-zero' { @() }
+            'recovery-singleton-string' {
+                [ordered]@{ id=9126; sourceVersion='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; parameters=$matchingParameters; queueTime=[DateTime]::UtcNow.ToString('o'); definition=[ordered]@{ id=17; name='PR validation' } }
+            }
+            'recovery-singleton-object' {
+                [ordered]@{ id=9127; sourceVersion='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'; parameters=[ordered]@{ system=[ordered]@{ pullRequest=[ordered]@{ sourceCommitId=$commit } } }; queueTime=[DateTime]::UtcNow.ToString('o'); definition=[ordered]@{ id=17; name='PR validation object parameters' } }
+            }
+            'recovery-mismatch' {
+                [ordered]@{ id=9128; sourceVersion='cccccccccccccccccccccccccccccccccccccccc'; parameters=$mismatchedParameters; queueTime=[DateTime]::UtcNow.ToString('o'); definition=[ordered]@{ id=17; name='Mismatched PR validation' } }
+            }
+            'recovery-multiple' {
+                @(
+                    [ordered]@{ id=9130; sourceVersion=$commit; queueTime=[DateTime]::UtcNow.AddSeconds(-5).ToString('o'); definition=[ordered]@{ id=17; name='Direct exact commit' } },
+                    [ordered]@{ id=9131; sourceVersion='dddddddddddddddddddddddddddddddddddddddd'; parameters=$matchingParameters; queueTime=[DateTime]::UtcNow.AddSeconds(-4).ToString('o'); definition=[ordered]@{ id=17; name='Matching PR validation' } },
+                    [ordered]@{ id=9132; sourceVersion='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'; parameters=$mismatchedParameters; queueTime=[DateTime]::UtcNow.AddSeconds(-3).ToString('o'); definition=[ordered]@{ id=17; name='Mismatched PR validation' } },
+                    [ordered]@{ id=9133; sourceVersion='1111111111111111111111111111111111111111'; parameters='{malformed'; queueTime=[DateTime]::UtcNow.AddSeconds(-2).ToString('o'); definition=[ordered]@{ id=17; name='Malformed PR parameters' } },
+                    [ordered]@{ id=9134; sourceVersion='2222222222222222222222222222222222222222'; queueTime=[DateTime]::UtcNow.AddSeconds(-1).ToString('o'); definition=[ordered]@{ id=17; name='Absent PR parameters' } },
+                    [ordered]@{ id=9135; sourceVersion=$commit; queueTime=[DateTime]::UtcNow.ToString('o'); definition=[ordered]@{ id=18; name='Unconfigured definition' } }
+                )
+            }
+            default { throw "Unexpected recovery mock scenario: $scenario" }
+        }
+        ConvertTo-Json -InputObject $runs -Depth 10 -Compress
+        exit 0
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'show') {
+        $runIdIndex = [Array]::IndexOf([object[]]$args, '--id')
+        $runId = [int]$args[$runIdIndex + 1]
+        $sourceVersion = switch ($runId) {
+            9126 { 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+            9127 { 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
+            9130 { $commit }
+            9131 { 'dddddddddddddddddddddddddddddddddddddddd' }
+            default { throw "Recovery scenario '$scenario' selected unexpected run $runId." }
+        }
+        [ordered]@{ id=$runId; status='completed'; result='succeeded'; sourceVersion=$sourceVersion; definition=[ordered]@{ id=17; name='PR validation' } } | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+    throw "Unexpected recovery mock Azure CLI arguments: $($args -join ' ')"
+}
+
 if ($scenario -eq 'ordered-success') {
     $statePath = [string]$env:ECOSYSTEM_MOCK_PIPELINE_STATE
     if ([string]::IsNullOrWhiteSpace($statePath)) { throw 'Ordered mock scenario requires ECOSYSTEM_MOCK_PIPELINE_STATE.' }

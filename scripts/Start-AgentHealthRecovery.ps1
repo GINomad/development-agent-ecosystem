@@ -200,8 +200,22 @@ try {
                 if ($OperatorApprovedDirtyWorktree) {
                     throw 'Validated recovery started from a dirty worktree and cannot safely auto-commit mixed pre-existing changes.'
                 }
-                & git -C $workspace add --all -- .
-                if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the validated ecosystem repair.' }
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    # Git can emit non-fatal line-ending warnings on stderr. Under Windows
+                    # PowerShell and ErrorActionPreference=Stop those warnings otherwise
+                    # become terminating NativeCommandError records before LASTEXITCODE is
+                    # inspected. Capture the output and decide strictly from the exit code.
+                    $ErrorActionPreference = 'Continue'
+                    $gitAddOutput = @(& git -C $workspace add --all -- . 2>&1)
+                    $gitAddExitCode = [int]$LASTEXITCODE
+                }
+                finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
+                if ($gitAddExitCode -ne 0) {
+                    throw "Unable to stage the validated ecosystem repair: $($gitAddOutput -join [Environment]::NewLine)"
+                }
                 $commitMessage = "fix(ecosystem): health recovery $($signature.Substring(0, 12))"
                 & git -C $workspace commit -m $commitMessage
                 if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the validated ecosystem repair.' }
