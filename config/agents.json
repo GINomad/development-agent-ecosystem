@@ -248,7 +248,7 @@
       },
       {
         "repositoryId": "azure-palantirplugins-ps-app-delfi",
-        "definitionIds": [],
+        "definitionIds": [17],
         "autoQueueDefinitionIds": []
       }
     ]

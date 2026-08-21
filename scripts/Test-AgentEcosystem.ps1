@@ -492,10 +492,16 @@ if (-not [bool]$config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$con
 if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
 if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; deployment 891 is forbidden.' }
+$delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
+if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or @($delfiPipeline.autoQueueDefinitionIds).Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
 
 $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
 New-Item -ItemType Directory -Path $pipelineTestRoot -Force | Out-Null
+$pipelineRecoveryRoot = Join-Path $pipelineTestRoot ('recovery-' + [guid]::NewGuid().ToString('N'))
+$pipelineRecovery = & (Join-Path $root 'tests\Test-PipelineWatcherRecovery.ps1') -ConfigPath $ConfigPath -OutputRoot $pipelineRecoveryRoot -CodexHome $CodexHome
+if ([string]$pipelineRecovery.collectionShapes -ne 'passed' -or [string]$pipelineRecovery.pullRequestStringCorrelation -ne 'passed' -or [string]$pipelineRecovery.pullRequestObjectCorrelation -ne 'passed' -or [int]$pipelineRecovery.passiveDefinitionId -ne 17 -or [int]$pipelineRecovery.queuedDefinitionCount -ne 0 -or [string]$pipelineRecovery.productionWrapper -ne 'passed' -or [string]$pipelineRecovery.originCommitGate -ne 'passed') { throw 'Bounded pipeline watcher recovery regression did not validate all required contracts.' }
+Add-Check -Name 'pipeline-watcher-recovery' -Detail 'Zero, singleton, and multiple Azure shapes; exact direct/PR source commit correlation; passive definition 17; no queue; production wrapper and origin gate'
 $pipelineResultPath = Join-Path $pipelineTestRoot 'pipeline-result.json'
 $pipelineTestTaskId = 'pipeline-test-' + [guid]::NewGuid().ToString('N')
 $pipelineProgressStages = [Collections.Generic.List[string]]::new()
@@ -978,6 +984,7 @@ if ((@($config.agents | Where-Object id -eq 'orchestrator' | Select-Object -Expa
 if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
 if (-not [bool]$config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$config.health.automaticRecovery.commitVerifiedRepairs -or $healthRecoveryScript -notmatch 'health_recovery_commit' -or $healthRecoveryScript -notmatch 'git -C \$workspace commit') { throw 'Validated ecosystem source repairs are not locally commit-capable through the trusted host.' }
+if ($healthRecoveryScript -notmatch '\$gitAddExitCode' -or $healthRecoveryScript -notmatch '\$ErrorActionPreference\s*=\s*''Continue''' -or $healthRecoveryScript -match '& git -C \$workspace add --all -- \.\s*\r?\n\s*if \(\$LASTEXITCODE') { throw 'Health recovery commit treats non-fatal Git stderr warnings as failures.' }
 if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
 if ($dashboardServer -notmatch 'OperatorApprovedDirtyWorktree=\$true' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges') { throw 'Approved elevated Health Check recovery does not preserve and expose the dirty ecosystem baseline.' }

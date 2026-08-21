@@ -70,6 +70,55 @@ function Invoke-AzJson {
     return $text | ConvertFrom-Json
 }
 
+function ConvertTo-ObjectArray {
+    param([AllowNull()][object]$Value)
+    if ($null -eq $Value) { return }
+    if ($Value -is [array]) {
+        foreach ($item in $Value) { Write-Output -NoEnumerate $item }
+        return
+    }
+    Write-Output -NoEnumerate $Value
+}
+
+function Get-PullRequestSourceCommit {
+    param([AllowNull()][object]$Run)
+    if ($null -eq $Run) { return $null }
+    $parametersProperty = $Run.PSObject.Properties['parameters']
+    if ($null -eq $parametersProperty -or $null -eq $parametersProperty.Value) { return $null }
+
+    $parameters = $parametersProperty.Value
+    if ($parameters -is [string]) {
+        if ([string]::IsNullOrWhiteSpace([string]$parameters)) { return $null }
+        try { $parameters = [string]$parameters | ConvertFrom-Json -ErrorAction Stop }
+        catch { return $null }
+    }
+    if ($null -eq $parameters) { return $null }
+
+    if ($parameters -is [Collections.IDictionary] -and $parameters.Contains('system.pullRequest.sourceCommitId')) {
+        return [string]$parameters['system.pullRequest.sourceCommitId']
+    }
+    $flatProperty = $parameters.PSObject.Properties['system.pullRequest.sourceCommitId']
+    if ($null -ne $flatProperty) { return [string]$flatProperty.Value }
+
+    $systemProperty = $parameters.PSObject.Properties['system']
+    if ($null -eq $systemProperty -or $null -eq $systemProperty.Value) { return $null }
+    $pullRequestProperty = $systemProperty.Value.PSObject.Properties['pullRequest']
+    if ($null -eq $pullRequestProperty -or $null -eq $pullRequestProperty.Value) { return $null }
+    $sourceCommitProperty = $pullRequestProperty.Value.PSObject.Properties['sourceCommitId']
+    if ($null -eq $sourceCommitProperty) { return $null }
+    return [string]$sourceCommitProperty.Value
+}
+
+function Test-RunMatchesCommit {
+    param([AllowNull()][object]$Run, [Parameter(Mandatory)][string]$ExpectedCommit)
+    if ($null -eq $Run) { return $false }
+    $sourceVersionProperty = $Run.PSObject.Properties['sourceVersion']
+    if ($null -ne $sourceVersionProperty -and [string]$sourceVersionProperty.Value -eq $ExpectedCommit) { return $true }
+    $pullRequestSourceCommit = Get-PullRequestSourceCommit -Run $Run
+    return $pullRequestSourceCommit -match '^[0-9a-fA-F]{40}$' -and
+        $pullRequestSourceCommit.Equals($ExpectedCommit, [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-BoundedLogExcerpt {
     param([string[]]$Lines, [int]$MaximumBytes)
     $selected = [Collections.Generic.List[string]]::new()
@@ -174,6 +223,8 @@ if ($Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Commit must be a full 40-cha
 
 $branchRef = if ($Branch.StartsWith('refs/heads/')) { $Branch } else { "refs/heads/$Branch" }
 $Branch = $branchRef -replace '^refs/heads/', ''
+$DefinitionIds = @(ConvertTo-ObjectArray -Value $DefinitionIds | ForEach-Object { [int]$_ })
+$AutoQueueDefinitionIds = @(ConvertTo-ObjectArray -Value $AutoQueueDefinitionIds | ForEach-Object { [int]$_ })
 $queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) { [DateTime]::UtcNow.AddMinutes(-5) } else { $QueuedAfter.ToUniversalTime() }
 Write-Host "Monitoring Azure pipelines for $branchRef at $Commit"
 Write-Host "Queued after: $($queuedAfterUtc.ToString('o'))"
@@ -194,8 +245,7 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
     $definitionId = [int]$AutoQueueDefinitionIds[$sequenceIndex]
     $selectedRun = $null
     if ($sequenceIndex -eq 0) {
-        $runResult = Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')
-        $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } elseif ($null -eq $runResult) { @() } else { @($runResult) }
+        $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')))
         $selectedRun = @($runs | Where-Object {
             $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and [int]$_.definition.id -eq $definitionId -and
             [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc
@@ -205,8 +255,9 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
     if ($null -eq $selectedRun) {
         Write-Host "Queueing approved build definition $definitionId at sequence position $($sequenceIndex + 1) for $branchRef."
         Send-MonitorProgress -Stage pipeline_queueing -Summary "Queueing approved definition $definitionId." -Details "Ordered position $($sequenceIndex + 1) of $($AutoQueueDefinitionIds.Count)." -Force
-        $selectedRun = Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
-        if ($null -eq $selectedRun -or $null -eq $selectedRun.id) { throw "Azure CLI did not return a run ID for definition $definitionId." }
+        $queueResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')))
+        if ($queueResults.Count -ne 1 -or $null -eq $queueResults[0].id) { throw "Azure CLI did not return exactly one run ID for definition $definitionId." }
+        $selectedRun = $queueResults[0]
         $queuedDefinitions.Add($definitionId)
         Write-Host "Queued run $($selectedRun.id) for build definition $definitionId."
         Send-MonitorProgress -Stage pipeline_waiting -Summary "Waiting for definition $definitionId run $($selectedRun.id)." -Details 'The native watcher is polling Azure DevOps without an AI turn.' -Force
@@ -215,7 +266,9 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
     $runId = [string]$selectedRun.id
     $runDeadline = [DateTime]::UtcNow.AddMinutes($RunTimeoutMinutes)
     do {
-        $run = Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')
+        $runResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')))
+        if ($runResults.Count -ne 1) { throw "Azure CLI did not return exactly one result for run $runId." }
+        $run = $runResults[0]
         $state = "$($run.status)/$($run.result)"
         if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
             Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
@@ -264,10 +317,11 @@ if ($discoverPassiveRuns) {
     $stablePasses = 0
     do {
         Send-MonitorProgress -Stage pipeline_discovery -Summary 'Discovering configured exact-SHA pipeline runs.' -Details "Tracked runs: $($tracked.Count)."
-        $runResult = Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')
-        $runs = if ($runResult -is [array]) { @($runResult.GetEnumerator()) } elseif ($null -eq $runResult) { @() } else { @($runResult) }
+        $listArguments = @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--top','100','--output','json')
+        if ($passiveDefinitionIds.Count -eq 0) { $listArguments += @('--branch',$branchRef) }
+        $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson $listArguments))
         $matchingRuns = @($runs | Where-Object {
-            $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and
+            (Test-RunMatchesCommit -Run $_ -ExpectedCommit $Commit) -and
             [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc -and
             ($passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds)
         })
@@ -318,7 +372,9 @@ $deadline = [DateTime]::UtcNow.AddMinutes($RunTimeoutMinutes)
 do {
     foreach ($runId in @($tracked.Keys)) {
         if ($completed.ContainsKey($runId)) { continue }
-        $run = Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')
+        $runResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','runs','show','--id',$runId,'--organization',$Organization,'--project',$Project,'--output','json')))
+        if ($runResults.Count -ne 1) { throw "Azure CLI did not return exactly one result for run $runId." }
+        $run = $runResults[0]
         $state = "$($run.status)/$($run.result)"
         if (-not $lastState.ContainsKey($runId) -or $lastState[$runId] -ne $state) {
             Write-Host "Run $runId [$($run.definition.id)] $($run.definition.name): $state"
@@ -361,7 +417,9 @@ foreach ($run in $completed.Values | Sort-Object id) {
     if ($runResult -ne 'succeeded') {
         Write-Host "Non-success run $($run.id): result=$runResult" -ForegroundColor Red
         Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Analyzing failed tasks for run $($run.id)." -Details "Definition $($run.definition.id); result: $runResult." -Force
-        $timeline = Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')
+        $timelineResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')))
+        if ($timelineResults.Count -ne 1) { throw "Azure CLI did not return exactly one timeline for run $($run.id)." }
+        $timeline = $timelineResults[0]
         foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
             $excerpt = ''
             if ($null -ne $task.log -and $null -ne $task.log.id) {
