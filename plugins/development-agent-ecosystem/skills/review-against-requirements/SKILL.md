@@ -14,3 +14,4 @@ description: Review code and developer-agent work against requirements, accepted
 7. Never invent traceability or line evidence. Use an empty code-reference array and explain missing, held, generated, binary-only, or unverifiable evidence.
 8. Mark all findings `proposed`; do not fix or publish them.
 9. Treat an explicit human bypass as unresolved tracked debt, not as a fix or false positive. The trusted host must create or reuse the linked task-local `TD-REV-NNN` item before delivery can continue.
+10. Answer every line-level review question and answer follow-up linked by `reviewQuestionId`: inspect the exact line, bounded surrounding evidence, and the parent question/answer when present; persist the answer with `Add-ReviewQuestionResponse.ps1`, and only then acknowledge the source comment. Do not turn a question into a finding or Developer instruction unless independent evidence supports it.

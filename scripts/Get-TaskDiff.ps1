@@ -56,11 +56,21 @@ function Invoke-GitText {
     return @($output)
 }
 
+function Get-GitObjectId {
+    param([object[]] $Output)
+    foreach ($line in @($Output)) {
+        $candidate = ([string]$line).Trim()
+        if ($candidate -match '^[0-9a-fA-F]{40,64}$') { return $candidate.ToLowerInvariant() }
+    }
+    return $null
+}
+
 function Get-RepositoryDiffState {
     param([Parameter(Mandatory)] $Repository)
     $workspace = [IO.Path]::GetFullPath([string]$Repository.localWorkspace)
     if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Configured workspace is not a Git repository: $workspace" }
-    $head = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+    $head = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD'))
+    if (-not $head) { throw "Git HEAD in '$workspace' did not resolve to an object ID." }
     $branch = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()
     $diffTarget = $null
     $revisionSource = 'task-branch'
@@ -69,14 +79,15 @@ function Get-RepositoryDiffState {
         $revisionSource = 'current-head'
         if ($reviewedCommit) {
             $verifiedCommitOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--verify',"$reviewedCommit^{commit}") -AllowedExitCodes @(0,128))
-            if ($verifiedCommitOutput.Count) {
-                $diffTarget = [string]$verifiedCommitOutput[0]
+            $verifiedCommit = Get-GitObjectId -Output $verifiedCommitOutput
+            if ($verifiedCommit) {
+                $diffTarget = $verifiedCommit
                 $revisionSource = 'review-result'
             }
         }
         $parentOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse',"$diffTarget^") -AllowedExitCodes @(0,128))
-        if (-not $parentOutput.Count) { throw "Reviewed commit '$diffTarget' has no resolvable first parent." }
-        $diffBase = [string]$parentOutput[0]
+        $diffBase = Get-GitObjectId -Output $parentOutput
+        if (-not $diffBase) { throw "Reviewed commit '$diffTarget' has no resolvable first parent." }
         $baseRef = "$diffTarget^"
     }
     else {
@@ -88,7 +99,8 @@ function Get-RepositoryDiffState {
         }
         if (-not $baseRef) { $baseRef = 'HEAD' }
         $mergeBaseOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$baseRef,'HEAD') -AllowedExitCodes @(0,1))
-        $diffBase = if ($mergeBaseOutput.Count) { [string]$mergeBaseOutput[0] } else { 'HEAD' }
+        $mergeBase = Get-GitObjectId -Output $mergeBaseOutput
+        $diffBase = if ($mergeBase) { $mergeBase } else { 'HEAD' }
     }
 
     $files = [Collections.Generic.List[object]]::new()

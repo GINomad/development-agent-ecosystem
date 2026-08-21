@@ -38,7 +38,16 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         foreach ($resolvedEvent in @($events | Where-Object { $_.type -eq 'question-resolved' })) {
             foreach ($evidenceValue in @($resolvedEvent.evidence)) { if ($evidenceValue) { $null = $resolvedQuestionIds.Add([string]$evidenceValue) } }
         }
-        $openQuestions = @($events | Where-Object { $_.type -eq 'question-opened' -and -not $resolvedQuestionIds.Contains([string]$_.eventId) } | Sort-Object timestampUtc)
+        # One agent owns at most one active input gate. A later question from the
+        # same agent supersedes its earlier wording; once that latest question is
+        # answered, older duplicates must not reappear on the dashboard.
+        $latestQuestionByAgent = [ordered]@{}
+        foreach ($questionEvent in @($events | Where-Object { $_.type -eq 'question-opened' } | Sort-Object timestampUtc)) {
+            $latestQuestionByAgent[[string]$questionEvent.actor] = $questionEvent
+        }
+        $openQuestions = @($latestQuestionByAgent.Values | Where-Object {
+            -not $resolvedQuestionIds.Contains([string]$_.eventId)
+        } | Sort-Object timestampUtc)
         $status = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'created' }
         if (-not $TaskId -and -not $IncludeCompleted -and $status -notin $activeStatuses) { continue }
         $lastEvent = @($events | Sort-Object timestampUtc -Descending | Select-Object -First 1)
@@ -68,6 +77,18 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         }
         $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })
         $eventSlice = if ($EventLimit -gt 0) { @($events | Sort-Object timestampUtc -Descending | Select-Object -First $EventLimit) } else { @($events | Sort-Object timestampUtc -Descending) }
+        if ($EventLimit -gt 0) {
+            $pinnedReviewEvents = @($events | Where-Object { [string]$_.type -in @('review-question-opened','review-question-answered') })
+            $sourceCommentIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($questionEvent in @($pinnedReviewEvents | Where-Object { [string]$_.type -eq 'review-question-opened' })) {
+                $sourceCommentId = @($questionEvent.evidence | Select-Object -First 1)
+                if ($sourceCommentId.Count -and $sourceCommentId[0]) { $null = $sourceCommentIds.Add([string]$sourceCommentId[0]) }
+            }
+            $pinnedReviewEvents += @($events | Where-Object { [string]$_.type -eq 'user-comment' -and $sourceCommentIds.Contains([string]$_.eventId) })
+            $eventById = [ordered]@{}
+            foreach ($projectedEvent in @($eventSlice) + @($pinnedReviewEvents)) { $eventById[[string]$projectedEvent.eventId] = $projectedEvent }
+            $eventSlice = @($eventById.Values | Sort-Object timestampUtc -Descending)
+        }
         $items.Add([pscustomobject][ordered]@{
             taskId = [string]$task.taskId
             selector = [string]$task.selector

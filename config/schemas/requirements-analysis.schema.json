@@ -3,7 +3,7 @@
   "title": "Requirements analysis",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "analyzedAtUtc", "requirements", "conflicts", "questions", "plan", "summary"],
+  "required": ["taskId", "analyzedAtUtc", "requirements", "conflicts", "questions", "plan", "summary", "humanReadable"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "analyzedAtUtc": { "type": "string", "format": "date-time" },
@@ -11,7 +11,8 @@
     "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" } },
     "questions": { "type": "array", "items": { "$ref": "#/$defs/question" } },
     "plan": { "type": "array", "items": { "$ref": "#/$defs/step" } },
-    "summary": { "type": "string", "minLength": 1 }
+    "summary": { "type": "string", "minLength": 1 },
+    "humanReadable": { "$ref": "#/$defs/humanReadable" }
   },
   "$defs": {
     "requirement": {
@@ -62,7 +63,56 @@
         "status": { "enum": ["ready", "held"] },
         "validation": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
       }
+    },
+    "humanReadable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "objective", "requirements", "workflow", "implementationPlan"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "requirements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/humanRequirement" } },
+        "workflow": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/humanWorkflowStep" } },
+        "implementationPlan": { "type": "array", "items": { "$ref": "#/$defs/humanPlanStep" } }
+      }
+    },
+    "humanRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "description", "acceptanceCriteria", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "acceptanceCriteria": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "status": { "enum": ["ready", "held", "rejected", "already-satisfied"] }
+      }
+    },
+    "humanWorkflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "title", "description", "owner", "outputs", "gate"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "outputs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "gate": { "type": "string", "minLength": 1 }
+      }
+    },
+    "humanPlanStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "title", "description", "requirementIds", "validation", "status"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "requirementIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "validation": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "status": { "enum": ["ready", "held"] }
+      }
     }
   }
 }
-

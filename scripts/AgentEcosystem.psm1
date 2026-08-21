@@ -106,6 +106,8 @@ function Assert-EcosystemConfig {
     if ([int]$Config.runtime.executionGuard.maxIdenticalFailures -ne 3) { throw 'runtime.executionGuard.maxIdenticalFailures must be exactly 3.' }
     if ([int]$Config.runtime.executionGuard.maxRunMinutes -lt 5 -or [int]$Config.runtime.executionGuard.maxRunMinutes -gt 1440) { throw 'runtime.executionGuard.maxRunMinutes is outside the supported range.' }
     if (-not [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow elevated fallback must require explicit dashboard approval.' }
+    if (-not [bool]$Config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$Config.health.automaticRecovery.commitVerifiedRepairs) { throw 'Health recovery must permit validated ecosystem-only source changes and local repair commits.' }
+    if ([bool]$Config.health.automaticRecovery.allowProductCodeChanges -or [bool]$Config.health.automaticRecovery.allowExternalWrites) { throw 'Health recovery must not modify product repositories or external systems.' }
     if (-not [bool]$Config.runtime.elevatedFallback.installCompatibleAgentsOnDetection -or [string]$Config.runtime.elevatedFallback.agentProfileSuffix -notmatch '^_[a-z0-9_]+$') { throw 'Host-compatible agent profile configuration is invalid.' }
     if ([string]$Config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Host-compatible workflows must use the in-process-runspace launch strategy.' }
     if (-not [bool]$Config.modelRouting.enabled -or [string]$Config.modelRouting.artifactName -ne 'model-routing.json') { throw 'Deterministic model routing must be enabled with the canonical task artifact.' }

@@ -123,7 +123,7 @@
               <p class="agent-outcome-summary" id="agentOutcomeSummary"></p>
               <div class="agent-outcome-artifacts" id="agentOutcomeArtifacts"></div>
               <p class="agent-outcome-artifact-meta" id="agentOutcomeArtifactMeta"></p>
-              <pre id="agentOutcomeContent"></pre>
+              <div class="agent-outcome-content" id="agentOutcomeContent"></div>
             </section>
             <section class="review-diff-panel hidden" id="reviewDiffPanel" aria-live="polite">
               <div class="review-diff-header">
@@ -153,6 +153,13 @@
                   <p id="reviewFeedbackSummary">Loading Reviewer outcome...</p>
                 </div>
                 <div class="review-feedback-list" id="reviewFeedbackList"></div>
+                <section class="review-question-threads" aria-labelledby="reviewQuestionThreadsTitle">
+                  <div class="review-question-threads-heading">
+                    <h6 id="reviewQuestionThreadsTitle">Reviewer questions and answers</h6>
+                    <p id="reviewQuestionThreadsSummary">Loading question threads...</p>
+                  </div>
+                  <div class="review-question-threads-list" id="reviewQuestionThreadsList"></div>
+                </section>
                 <section class="requirement-traceability" aria-labelledby="requirementTraceabilityTitle">
                   <div class="requirement-traceability-heading">
                     <h6 id="requirementTraceabilityTitle">Requirement Traceability</h6>
@@ -186,8 +193,15 @@
                         </select>
                       </label>
                       <label>
-                        Comment
-                        <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Comment on the selected diff line."></textarea>
+                        Message type
+                        <select id="reviewDiffCommentKind">
+                          <option value="review-question">Question (expects Reviewer answer)</option>
+                          <option value="instruction">Instruction or note</option>
+                        </select>
+                      </label>
+                      <label>
+                        Message
+                        <textarea id="reviewDiffComment" rows="3" maxlength="4000" placeholder="Ask Reviewer about the selected line or leave an instruction."></textarea>
                       </label>
                     </div>
                     <div class="actions">
@@ -195,7 +209,7 @@
                       <button class="button danger" id="sendAndRestartReviewTarget" type="button">Send and restart target</button>
                     </div>
                     <p class="agent-action-status" id="reviewDiffCommentStatus" role="status"></p>
-                    <p class="hint">Comments stay in the task ledger and are not published to Azure DevOps. A Developer-targeted comment does not approve a Reviewer finding; record the formal review decision separately.</p>
+                    <p class="hint">A Reviewer question stays open until Reviewer persists an evidence-based answer, which appears below this diff line. Notes and Developer instructions do not require an answer and do not approve a finding.</p>
                   </div>
                 </div>
               </div>

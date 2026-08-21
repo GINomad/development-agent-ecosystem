@@ -394,6 +394,174 @@ function closeAgentOutcome() {
   document.querySelectorAll('.agent-state.outcome-selected').forEach(card => card.classList.remove('outcome-selected'));
 }
 
+function appendOutcomeList(parent, values, emptyText = '') {
+  const items = Array.isArray(values) ? values.filter(value => String(value || '').trim()) : [];
+  if (!items.length) {
+    if (emptyText) {
+      const empty = document.createElement('p');
+      empty.className = 'requirements-empty';
+      empty.textContent = emptyText;
+      parent.append(empty);
+    }
+    return;
+  }
+  const list = document.createElement('ul');
+  items.forEach(value => {
+    const item = document.createElement('li');
+    item.textContent = String(value);
+    list.append(item);
+  });
+  parent.append(list);
+}
+
+function requirementsPresentation(result) {
+  if (result?.humanReadable) return result.humanReadable;
+  const legacyPlan = Array.isArray(result?.plan) ? result.plan : [];
+  return {
+    title: `Requirements analysis for ${result?.taskId || 'task'}`,
+    objective: result?.summary || 'No objective was published.',
+    legacyDerived: true,
+    requirements: (Array.isArray(result?.requirements) ? result.requirements : []).map(requirement => ({
+      id: requirement.id,
+      title: requirement.id,
+      description: requirement.text,
+      acceptanceCriteria: [],
+      evidence: requirement.evidence,
+      status: requirement.status
+    })),
+    workflow: legacyPlan.map((step, index) => ({
+      order: index + 1,
+      title: step.id || `Step ${index + 1}`,
+      description: step.action,
+      owner: 'Developer',
+      outputs: [],
+      gate: (step.validation || []).join('; ') || 'No validation gate was published.'
+    })),
+    implementationPlan: legacyPlan.map((step, index) => ({
+      order: index + 1,
+      title: step.id || `Step ${index + 1}`,
+      description: step.action,
+      requirementIds: step.requirementIds,
+      validation: step.validation,
+      status: step.status
+    }))
+  };
+}
+
+function renderRequirementsOutcome(rawContent) {
+  let result;
+  try {
+    result = JSON.parse(rawContent);
+  } catch {
+    return false;
+  }
+  const presentation = requirementsPresentation(result);
+  if (!presentation || !Array.isArray(presentation.requirements)) return false;
+  const content = document.querySelector('#agentOutcomeContent');
+  const documentView = document.createElement('article');
+  documentView.className = 'requirements-outcome';
+
+  const heading = document.createElement('header');
+  const title = document.createElement('h5');
+  title.textContent = presentation.title || 'Requirements analysis';
+  const objective = document.createElement('p');
+  objective.textContent = presentation.objective || result.summary || '';
+  heading.append(title, objective);
+  if (presentation.legacyDerived) {
+    const legacy = document.createElement('p');
+    legacy.className = 'requirements-legacy-note';
+    legacy.textContent = 'Legacy outcome: this readable view was derived from the persisted machine fields.';
+    heading.append(legacy);
+  }
+  documentView.append(heading);
+
+  const requirementsSection = document.createElement('section');
+  const requirementsTitle = document.createElement('h6');
+  requirementsTitle.textContent = 'Requirements and acceptance criteria';
+  requirementsSection.append(requirementsTitle);
+  presentation.requirements.forEach(requirement => {
+    const card = document.createElement('article');
+    card.className = 'requirements-card';
+    const cardHeading = document.createElement('div');
+    cardHeading.className = 'requirements-card-heading';
+    const name = document.createElement('strong');
+    name.textContent = `${requirement.id || 'Requirement'} · ${requirement.title || requirement.description || ''}`;
+    const status = document.createElement('span');
+    status.className = `requirements-status ${statusClass(requirement.status)}`;
+    status.textContent = requirement.status || 'unknown';
+    cardHeading.append(name, status);
+    const description = document.createElement('p');
+    description.textContent = requirement.description || '';
+    card.append(cardHeading, description);
+    const criteriaTitle = document.createElement('b');
+    criteriaTitle.textContent = requirement.acceptanceCriteria?.length ? 'Acceptance criteria' : 'Acceptance criteria not separately published';
+    card.append(criteriaTitle);
+    appendOutcomeList(card, requirement.acceptanceCriteria);
+    if (requirement.evidence?.length) {
+      const evidenceTitle = document.createElement('b');
+      evidenceTitle.textContent = 'Evidence';
+      card.append(evidenceTitle);
+      appendOutcomeList(card, requirement.evidence);
+    }
+    requirementsSection.append(card);
+  });
+  documentView.append(requirementsSection);
+
+  const workflowSection = document.createElement('section');
+  const workflowTitle = document.createElement('h6');
+  workflowTitle.textContent = 'Expected workflow';
+  workflowSection.append(workflowTitle);
+  (presentation.workflow || []).forEach(step => {
+    const item = document.createElement('article');
+    item.className = 'requirements-step';
+    const name = document.createElement('strong');
+    name.textContent = `${step.order}. ${step.title}`;
+    const owner = document.createElement('span');
+    owner.textContent = `Owner: ${step.owner}`;
+    const description = document.createElement('p');
+    description.textContent = step.description;
+    const gate = document.createElement('p');
+    gate.className = 'requirements-gate';
+    gate.textContent = `Gate: ${step.gate}`;
+    item.append(name, owner, description, gate);
+    appendOutcomeList(item, step.outputs);
+    workflowSection.append(item);
+  });
+  if (!(presentation.workflow || []).length) appendOutcomeList(workflowSection, [], 'No workflow was published.');
+  documentView.append(workflowSection);
+
+  const planSection = document.createElement('section');
+  const planTitle = document.createElement('h6');
+  planTitle.textContent = 'Implementation plan';
+  planSection.append(planTitle);
+  (presentation.implementationPlan || []).forEach(step => {
+    const item = document.createElement('article');
+    item.className = 'requirements-step';
+    const name = document.createElement('strong');
+    name.textContent = `${step.order}. ${step.title}`;
+    const status = document.createElement('span');
+    status.className = `requirements-status ${statusClass(step.status)}`;
+    status.textContent = step.status || 'unknown';
+    const description = document.createElement('p');
+    description.textContent = step.description;
+    item.append(name, status, description);
+    appendOutcomeList(item, (step.requirementIds || []).map(id => `Requirement: ${id}`));
+    appendOutcomeList(item, step.validation);
+    planSection.append(item);
+  });
+  if (!(presentation.implementationPlan || []).length) appendOutcomeList(planSection, [], 'No implementation is authorized or planned for this outcome.');
+  documentView.append(planSection);
+  content.replaceChildren(documentView);
+  return true;
+}
+
+function renderRawAgentOutcome(rawContent) {
+  const content = document.querySelector('#agentOutcomeContent');
+  const pre = document.createElement('pre');
+  pre.textContent = rawContent || '(empty outcome artifact)';
+  content.replaceChildren(pre);
+}
+
 async function loadAgentOutcomeArtifact(name) {
   if (!selectedTaskId || !selectedOutcomeAgentId) return;
   const taskId = selectedTaskId;
@@ -407,12 +575,15 @@ async function loadAgentOutcomeArtifact(name) {
     if (selectedTaskId !== taskId || selectedOutcomeAgentId !== agentId || selectedOutcomeArtifactName !== name) return;
     const artifact = result.artifact;
     document.querySelector('#agentOutcomeArtifactMeta').textContent = `${artifact.name} - ${artifact.length} bytes - updated ${formatDate(artifact.lastWriteTimeUtc)}${artifact.truncated ? ' - preview limited to 1 MiB' : ''}`;
-    content.textContent = artifact.content || '(empty outcome artifact)';
+    const rendered = agentId === 'requirements_analyst' && name === 'requirements-analysis.json'
+      ? renderRequirementsOutcome(artifact.content || '')
+      : false;
+    if (!rendered) renderRawAgentOutcome(artifact.content || '');
     document.querySelectorAll('.agent-outcome-artifact').forEach(button => button.classList.toggle('selected', button.dataset.name === name));
   } catch (error) {
     if (selectedTaskId === taskId && selectedOutcomeAgentId === agentId) {
       document.querySelector('#agentOutcomeArtifactMeta').textContent = 'Outcome artifact unavailable';
-      content.textContent = error.message;
+      renderRawAgentOutcome(error.message);
     }
   }
 }
@@ -457,7 +628,7 @@ function renderAgentOutcome() {
   } else if (!preferredName) {
     selectedOutcomeArtifactName = null;
     document.querySelector('#agentOutcomeArtifactMeta').textContent = state.status === 'running' ? 'Outcome is still in progress.' : 'No configured outcome artifact was produced.';
-    document.querySelector('#agentOutcomeContent').textContent = '';
+    document.querySelector('#agentOutcomeContent').replaceChildren();
   }
 }
 
@@ -628,8 +799,222 @@ function createInlineReviewerComment(item) {
   return card;
 }
 
+function parseReviewDiffQuestionSource(event) {
+  const lines = String(event?.summary || '').split(/\r?\n/);
+  if (lines[0] !== '[Task diff line comment]') return null;
+  const value = label => {
+    const line = lines.find(candidate => candidate.startsWith(label + ': '));
+    return line ? line.slice(label.length + 2) : '';
+  };
+  const separator = lines.findIndex((line, index) => index > 0 && line === '');
+  const parseLine = valueText => valueText && valueText !== 'n/a' ? Number(valueText) : null;
+  return {
+    repositoryId: value('Repository'),
+    filePath: value('File'),
+    oldLine: parseLine(value('Old line')),
+    newLine: parseLine(value('New line')),
+    diffLine: value('Diff line'),
+    question: lines.slice(separator >= 0 ? separator + 1 : lines.length).join('\n').trim()
+  };
+}
+
+function reviewQuestionsForDiffLine(repositoryId, filePath, oldLine, newLine) {
+  const normalizedPath = normalizeReviewPath(filePath);
+  return allReviewQuestionThreads()
+    .filter(thread => {
+      const context = thread.context;
+      if (!context || context.repositoryId !== repositoryId || normalizeReviewPath(context.filePath) !== normalizedPath) return false;
+      return (context.newLine != null && newLine === context.newLine) || (context.newLine == null && context.oldLine != null && oldLine === context.oldLine);
+    });
+}
+
+function allReviewQuestionThreads() {
+  const events = Array.isArray(selectedTask?.events) ? selectedTask.events : [];
+  return events
+    .filter(event => event?.type === 'review-question-opened')
+    .map(questionEvent => {
+      const sourceCommentId = Array.isArray(questionEvent.evidence) ? questionEvent.evidence[0] : null;
+      const sourceEvent = events.find(event => event?.eventId === sourceCommentId && event?.type === 'user-comment');
+      const context = parseReviewDiffQuestionSource(sourceEvent);
+      const answer = events.find(event => event?.type === 'review-question-answered' && Array.isArray(event.evidence) && event.evidence.includes(questionEvent.eventId));
+      const parentEvidence = Array.isArray(questionEvent.evidence)
+        ? questionEvent.evidence.find(item => String(item).startsWith('parent-review-question:'))
+        : null;
+      const parentQuestionId = parentEvidence ? String(parentEvidence).slice('parent-review-question:'.length) : null;
+      return { questionEvent, sourceEvent, context, answer, parentQuestionId };
+    })
+    .sort((left, right) => String(left.questionEvent.timestampUtc || '').localeCompare(String(right.questionEvent.timestampUtc || '')));
+}
+
+async function openReviewQuestionSource(thread) {
+  const context = thread.context;
+  if (!context) return;
+  reviewDiffScope = 'all-task-changes';
+  document.querySelector('#reviewDiffScope').value = reviewDiffScope;
+  selectedDiffRepositoryId = context.repositoryId;
+  selectedDiffFilePath = context.filePath;
+  await loadReviewDiff();
+  const selector = context.newLine != null
+    ? `#reviewDiffLines .diff-line[data-new-line="${context.newLine}"]`
+    : `#reviewDiffLines .diff-line[data-old-line="${context.oldLine}"]`;
+  const row = document.querySelector(selector);
+  if (row) {
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.focus({ preventScroll: true });
+  }
+}
+
+async function sendReviewQuestionFollowUp(thread, textarea, buttons, restart) {
+  const text = textarea.value.trim();
+  if (!text) throw new Error('Enter a follow-up question.');
+  const context = thread.context;
+  if (!context) throw new Error('The original diff-line context is unavailable.');
+  const comment = [
+    '[Task diff line comment]',
+    'Repository: ' + context.repositoryId,
+    'File: ' + context.filePath,
+    'Old line: ' + (context.oldLine ?? 'n/a'),
+    'New line: ' + (context.newLine ?? 'n/a'),
+    'Diff line: ' + context.diffLine,
+    '',
+    text
+  ].join('\n');
+  if (comment.length > 4000) throw new Error('Follow-up plus diff context exceeds 4000 characters.');
+  if (restart && selectedTask?.status === 'running') throw new Error('Stop the running workflow before restarting Reviewer.');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const saved = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/comments', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: comment,
+        targetAgentId: 'reviewer',
+        commentKind: 'review-question',
+        parentReviewQuestionId: thread.questionEvent.eventId
+      })
+    });
+    let restarted = null;
+    if (restart) {
+      restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/reviewer/resume', {
+        method: 'POST',
+        body: JSON.stringify({ elevated: true })
+      });
+    }
+    textarea.value = '';
+    taskStateRevision += 1;
+    await loadTaskDetail(selectedTaskId, taskStateRevision);
+    renderReviewerFeedback();
+    await loadTaskList({ silent: true });
+    setReviewerFeedbackStatus(restart ? 'Follow-up saved and Reviewer restarted.' : 'Follow-up saved for Reviewer.', 'success');
+    log({ followUp: saved, restart: restarted });
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+function renderReviewQuestionThreads() {
+  const list = document.querySelector('#reviewQuestionThreadsList');
+  const summary = document.querySelector('#reviewQuestionThreadsSummary');
+  if (!list || !summary) return;
+  const threads = allReviewQuestionThreads();
+  const unanswered = threads.filter(thread => !thread.answer).length;
+  summary.textContent = threads.length
+    ? `${threads.length} question(s); ${unanswered} awaiting answer.`
+    : 'No questions have been sent to Reviewer.';
+  list.replaceChildren();
+  threads.forEach(thread => {
+    const context = thread.context;
+    const card = document.createElement('article');
+    card.className = 'review-question-thread-card ' + (thread.answer ? 'answered' : 'pending');
+    const header = document.createElement('div');
+    header.className = 'review-question-thread-header';
+    const location = document.createElement('strong');
+    const line = context?.newLine ?? context?.oldLine;
+    const prefix = thread.parentQuestionId ? 'Follow-up · ' : '';
+    location.textContent = context ? `${prefix}${context.filePath}:${line ?? '?'}` : 'Reviewer question';
+    const status = document.createElement('span');
+    status.textContent = thread.answer ? 'answered' : 'awaiting answer';
+    header.append(location, status);
+    const question = document.createElement('p');
+    question.textContent = context?.question || thread.sourceEvent?.summary || '';
+    card.append(header, question);
+    if (thread.answer) {
+      const answer = document.createElement('div');
+      answer.className = 'review-question-thread-answer';
+      const label = document.createElement('strong');
+      label.textContent = 'Reviewer answer';
+      const text = document.createElement('p');
+      text.textContent = String(thread.answer.summary || '');
+      answer.append(label, text);
+      card.append(answer);
+    }
+    if (context) {
+      const actions = document.createElement('div');
+      actions.className = 'review-question-thread-actions';
+      const openButton = document.createElement('button');
+      openButton.type = 'button';
+      openButton.className = 'button secondary compact-button';
+      openButton.textContent = 'Open source line';
+      openButton.addEventListener('click', () => openReviewQuestionSource(thread).catch(error => log('Error: ' + error.message)));
+      actions.append(openButton);
+      if (thread.answer) {
+        const textarea = document.createElement('textarea');
+        textarea.rows = 2;
+        textarea.maxLength = 4000;
+        textarea.placeholder = 'Reply to this Reviewer answer...';
+        textarea.setAttribute('aria-label', 'Follow-up question to Reviewer');
+        const sendButton = document.createElement('button');
+        sendButton.type = 'button';
+        sendButton.className = 'button primary compact-button';
+        sendButton.textContent = 'Send follow-up';
+        const restartButton = document.createElement('button');
+        restartButton.type = 'button';
+        restartButton.className = 'button danger compact-button';
+        restartButton.textContent = 'Send and restart Reviewer';
+        const buttons = [sendButton, restartButton];
+        sendButton.addEventListener('click', () => sendReviewQuestionFollowUp(thread, textarea, buttons, false).catch(error => {
+          setReviewerFeedbackStatus(error.message, 'error');
+          log('Error: ' + error.message);
+        }));
+        restartButton.addEventListener('click', () => sendReviewQuestionFollowUp(thread, textarea, buttons, true).catch(error => {
+          setReviewerFeedbackStatus(error.message, 'error');
+          log('Error: ' + error.message);
+        }));
+        actions.append(textarea, sendButton, restartButton);
+      }
+      card.append(actions);
+    }
+    list.append(card);
+  });
+}
+
+function createInlineReviewQuestion(thread) {
+  const card = document.createElement('article');
+  card.className = 'review-inline-question ' + (thread.answer ? 'answered' : 'pending');
+  const header = document.createElement('div');
+  header.className = 'review-inline-question-header';
+  const identity = document.createElement('span');
+  identity.textContent = 'Your question to Reviewer';
+  const status = document.createElement('span');
+  status.textContent = thread.answer ? 'answered' : 'awaiting answer';
+  header.append(identity, status);
+  const question = document.createElement('p');
+  question.textContent = thread.context?.question || thread.sourceEvent?.summary || '';
+  card.append(header, question);
+  if (thread.answer) {
+    const answer = document.createElement('div');
+    answer.className = 'review-inline-answer';
+    const label = document.createElement('strong');
+    label.textContent = 'Reviewer answer';
+    const text = document.createElement('p');
+    text.textContent = String(thread.answer.summary || '');
+    answer.append(label, text);
+    card.append(answer);
+  }
+  return card;
+}
+
 function renderInlineReviewerComments() {
-  document.querySelectorAll('.review-inline-comment').forEach(item => item.remove());
+  document.querySelectorAll('.review-inline-comment, .review-inline-question').forEach(item => item.remove());
   document.querySelectorAll('#reviewDiffLines .diff-line[data-selectable="true"]').forEach(row => {
     const items = reviewerItemsForDiffLine(
       row.dataset.repositoryId,
@@ -642,6 +1027,17 @@ function renderInlineReviewerComments() {
       const comment = createInlineReviewerComment(item);
       anchor.insertAdjacentElement('afterend', comment);
       anchor = comment;
+    });
+    const questions = reviewQuestionsForDiffLine(
+      row.dataset.repositoryId,
+      row.dataset.filePath,
+      row.dataset.oldLine ? Number(row.dataset.oldLine) : null,
+      row.dataset.newLine ? Number(row.dataset.newLine) : null
+    );
+    questions.forEach(thread => {
+      const question = createInlineReviewQuestion(thread);
+      anchor.insertAdjacentElement('afterend', question);
+      anchor = question;
     });
   });
 }
@@ -782,6 +1178,7 @@ function renderReviewerFeedback() {
   const list = document.querySelector('#reviewFeedbackList');
   const summary = document.querySelector('#reviewFeedbackSummary');
   list.replaceChildren();
+  renderReviewQuestionThreads();
   const items = reviewerFeedbackItems(reviewerFeedback);
   const findings = items.filter(item => item.kind !== 'summary');
   summary.textContent = reviewerFeedback
@@ -1176,11 +1573,13 @@ async function sendReviewDiffComment({ restart = false } = {}) {
   if (!selectedTaskId) throw new Error('Select a task first.');
   const targetAgentId = document.querySelector('#reviewDiffCommentTarget').value;
   if (!['reviewer', 'developer'].includes(targetAgentId)) throw new Error('Unsupported diff comment target.');
+  const requestedKind = document.querySelector('#reviewDiffCommentKind').value;
+  const commentKind = targetAgentId === 'reviewer' ? requestedKind : 'instruction';
   const comment = buildReviewDiffComment();
   if (restart && selectedTask?.status === 'running') throw new Error('Stop the running workflow before restarting one agent.');
   const saved = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/comments', {
     method: 'POST',
-    body: JSON.stringify({ text: comment, targetAgentId })
+    body: JSON.stringify({ text: comment, targetAgentId, commentKind })
   });
   document.querySelector('#reviewDiffComment').value = '';
   taskStateRevision += 1;
@@ -1715,6 +2114,12 @@ document.querySelector('#reviewDiffScope').addEventListener('change', event => {
   selectedDiffLine = null;
   if (reviewDiffRequestInFlight) reviewDiffReloadPending = true;
   else loadReviewDiff();
+});
+document.querySelector('#reviewDiffCommentTarget').addEventListener('change', event => {
+  const kind = document.querySelector('#reviewDiffCommentKind');
+  const reviewerSelected = event.target.value === 'reviewer';
+  kind.disabled = !reviewerSelected;
+  if (!reviewerSelected) kind.value = 'instruction';
 });
 document.querySelector('#sendReviewDiffComment').addEventListener('click', async () => {
   const button = document.querySelector('#sendReviewDiffComment');

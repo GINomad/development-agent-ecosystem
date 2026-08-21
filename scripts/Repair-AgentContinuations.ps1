@@ -36,6 +36,23 @@ function Get-CompletedAgentId {
     return $null
 }
 
+function Test-ExactHealthRepair {
+    param(
+        [Parameter(Mandatory)] $FailureEvent,
+        [Parameter(Mandatory)][string] $TaskRoot
+    )
+    $failurePath = if ($FailureEvent.PSObject.Properties['artifact']) { [string]$FailureEvent.artifact } else { '' }
+    if (-not $failurePath -or -not (Test-Path -LiteralPath $failurePath -PathType Leaf)) { return $false }
+    try { $failure = Get-Content -LiteralPath $failurePath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { return $false }
+    $recoveryPath = Join-Path $TaskRoot 'health-recovery-result.json'
+    if (-not (Test-Path -LiteralPath $recoveryPath -PathType Leaf)) { return $false }
+    try { $recovery = Get-Content -LiteralPath $recoveryPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { return $false }
+    return [string]$recovery.status -eq 'repaired' -and
+        [string]$recovery.failureSignature -eq [string]$failure.failureSignature
+}
+
 $items = [Collections.Generic.List[object]]::new()
 try {
     if (-not (Test-Path -LiteralPath $tasksRoot -PathType Container)) { return [pscustomobject]@{ Status='completed'; Items=@() } }
@@ -116,6 +133,23 @@ try {
                         & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId ([string]$task.taskId) -Actor ecosystem -Type continuation-reconciled -Summary "Continuation reached successful '$nextAgentId' outcome." -Evidence @("continuation-event:$requestId", "result:completed:$nextAgentId") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     }
                     $items.Add([pscustomobject]@{ TaskId=[string]$task.taskId; Status='already-completed'; RequestId=$requestId; CompletedAgentId=$completedAgentId; NextAgentId=$nextAgentId })
+                    continue
+                }
+                $nextFailure = @($events | Where-Object {
+                    [string]$_.type -eq 'agent-failure' -and [string]$_.actor -eq $nextAgentId -and
+                    (Get-UtcTimestamp -Event $_) -gt $scheduleTime
+                } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+                if ($nextFailure.Count -and -not (Test-ExactHealthRepair -FailureEvent $nextFailure[0] -TaskRoot $directory.FullName)) {
+                    $failurePath = if ($nextFailure[0].PSObject.Properties['artifact']) { [string]$nextFailure[0].artifact } else { $null }
+                    $items.Add([pscustomobject]@{
+                        TaskId=[string]$task.taskId
+                        Status='health-repair-required'
+                        RequestId=$requestId
+                        CompletedAgentId=$completedAgentId
+                        NextAgentId=$nextAgentId
+                        FailurePath=$failurePath
+                        Detail='A failed scheduled agent cannot be restarted by ordinary continuation recovery until an exact-signature Health Check repair is persisted.'
+                    })
                     continue
                 }
                 if (-not $Repair) {
