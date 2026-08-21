@@ -3,7 +3,7 @@
   "title": "Agent context pack",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "recipient", "createdAtUtc", "sources", "acceptedKnowledge", "engineeringGuidance", "openQuestions", "heldScope"],
+  "required": ["taskId", "recipient", "createdAtUtc", "sources", "acceptedKnowledge", "artifactSummaries", "engineeringGuidance", "openQuestions", "heldScope"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "recipient": { "type": "string", "minLength": 1 },

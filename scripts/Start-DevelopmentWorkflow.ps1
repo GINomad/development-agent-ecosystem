@@ -111,6 +111,11 @@ if ($Resume) {
 
 $executedAgentId = if ($TargetAgentId) { $TargetAgentId } else { [string]$config.workflow.orchestration.agentId }
 $activeAgent = @($config.agents | Where-Object { [string]$_.id -eq $executedAgentId }) | Select-Object -First 1
+$contextPack = $null
+if (-not $PrepareOnly) {
+    $contextArtifactNames = if ($resumePlan) { @(@($resumePlan.ChangedArtifactNames) + @($resumePlan.UnchangedArtifactNames) | Select-Object -Unique) } else { @() }
+    $contextPack = & (Join-Path $PSScriptRoot 'Update-AgentContextPack.ps1') -TaskId $TaskId -RecipientAgentId $executedAgentId -ArtifactNames $contextArtifactNames -ConfigPath $ConfigPath -CodexHome $CodexHome
+}
 $modelRouteParameters = @{
     TaskId = $TaskId
     AgentId = $executedAgentId
@@ -152,6 +157,7 @@ Task ID: $TaskId
 Mode: $Mode
 Task selector: $TaskSelector
 Task state: $($task.TaskRoot)
+Validated context pack: $(if ($contextPack) { [string]$contextPack.ContextPath } else { 'prepare-only; not written' })
 Ecosystem root: $(Get-EcosystemRoot)
 Primary workspace: $([IO.Path]::GetFullPath($Workspace))
 All target workspaces: $($workspacePaths -join '; ')
@@ -171,13 +177,13 @@ Resume rules:
 - The trusted workspace coordinator permits only one active task. Never switch branches or use Git stash directly for task scheduling. Before this invocation it selected this task's saved branch and restored its task-specific stash. If another task was active, this task would have remained queued.
 - When a Developer creates or changes the task branch, the current branch becomes this task's branch at the next workspace suspension. Uncommitted tracked and untracked changes are stashed with a task/repository identity before switching away and restored with stash apply before the task resumes. The stash is dropped only after successful restoration.
 - A workspace restore conflict is a human-input gate. Never reset, clean, discard, or silently resolve it.
-- On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 before any newly selected delivery role starts.
+- On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must classify the requested outcome, select the narrowest workflow.orchestration.executionModes entry, and route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 with explicit -ExecutionMode before any newly selected role starts.
 - On an explicit targeted-agent resume, execute that exact role directly in this process. Do not replace it, delegate it, or start another role in that targeted invocation.
 - Orchestrator must use the freshly loaded role directory below, select the smallest sufficient target set, and use Requirements Analyst as the configured fallback when the evidence is actionable but ownership remains unclear.
 - Routed workflow-input events are the only general comments a delivery agent consumes. Explicit agent comments and linked question answers remain direct.
 - A checkpoint resume MUST dispatch only the listed unfinished agents. Do not rerun a completed agent, repeat its completed work, or regenerate its artifacts. Consume completed artifacts as immutable checkpoint input.
 - A targeted-agent resume MUST execute only the exact target role and reach its terminal status before this process returns. No other role may be started, reset, or have its artifacts rewritten.
-- A skipped role in an active checkpoint is unfinished and must be reconsidered when its prerequisite becomes available. When a role is conclusively not applicable, record evidence and mark it completed with a no-op result so future resumes do not repeat it.
+- A role skipped by the active Orchestrator execution policy is intentionally excluded and must not make the checkpoint unfinished. A later routing decision may select it again. Preserve running, completed, waiting, and failed roles when the policy changes.
 - Each permitted agent chooses the largest coherent bounded work block that stays inside ready scope, its role, approval gates, and configured context limits. It may execute successive blocks in the same invocation.
 - At the end of every work block, the active agent calls Get-AgentCommentBatch.ps1 once, applies all applicable comments as one batch, acknowledges the processed IDs once, and decides whether another block is necessary. No restart is needed while that agent is still running. A comment addressed to another agent remains pending for that agent.
 - If a batched comment is wholly or partly outside the active agent's configured responsibilities, that agent calls Request-OrchestratorCommentRouting.ps1 once for the affected IDs instead of acting outside its authority. After the agent publishes a successful outcome, dispatch Orchestrator before the normal next role; after Orchestrator routes the remainder, dispatch its earliest eligible target automatically. Do not require a manual restart for this authority handoff.
@@ -201,7 +207,7 @@ $roleDirectory
 
 $targetExecutionContract
 
-The existing Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper continuation remains unchanged, but each link runs in its own host invocation. In host-compatible mode the current invocation uses the approved host-compatible sandbox. Dispatch Health Check only through the trusted host when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+The trusted host follows only the latest persisted Orchestrator agentSequence. Full delivery remains Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper, while research-only and other narrow modes stop after their configured roles. In host-compatible mode the current invocation uses the approved host-compatible sandbox. Dispatch Health Check only through the trusted host when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
 
 $($activeRolePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@

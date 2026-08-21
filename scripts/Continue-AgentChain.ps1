@@ -91,8 +91,45 @@ function Get-FindingRoutingSummary {
     [string]$Finding.id
 }
 
+function Get-ActiveExecutionPolicy {
+    $defaultMode = $config.workflow.orchestration.executionModes.'full-delivery'
+    $result = [ordered]@{
+        ExecutionMode = 'full-delivery'
+        AgentSequence = @($defaultMode.agentSequence | ForEach-Object { [string]$_ })
+        CodeChangesAllowed = [bool]$defaultMode.codeChangesAllowed
+        ContinueAutomatically = [bool]$defaultMode.continueAutomatically
+    }
+    $routingPath = Join-Path $taskRoot ([string]$config.workflow.orchestration.routingArtifact)
+    if (-not (Test-Path -LiteralPath $routingPath -PathType Leaf)) { return [pscustomobject]$result }
+    $routes = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
+    $latest = @($routes | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
+    if (-not $latest) { return [pscustomobject]$result }
+    $result.ExecutionMode = [string]$latest.executionMode
+    $result.AgentSequence = @($latest.agentSequence | ForEach-Object { [string]$_ })
+    $result.CodeChangesAllowed = [bool]$latest.codeChangesAllowed
+    $result.ContinueAutomatically = [bool]$latest.continueAutomatically
+    return [pscustomobject]$result
+}
+
+function Get-NextPolicyAgent {
+    param(
+        [Parameter(Mandatory)][string] $AgentId,
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)] $ExecutionPolicy
+    )
+    if (-not [bool]$ExecutionPolicy.ContinueAutomatically) { return $null }
+    $sequence = @($ExecutionPolicy.AgentSequence)
+    $currentIndex = [Array]::IndexOf($sequence, $AgentId)
+    if ($currentIndex -lt 0) { return $null }
+    $nextIndex = $currentIndex + 1
+    if ($nextIndex -ge $sequence.Count) { return $null }
+    return [string]$sequence[$nextIndex]
+}
+
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $executionPolicy = Get-ActiveExecutionPolicy
+    $agentSequence = @($executionPolicy.AgentSequence)
     $currentAgentStatus = [string]$task.agentStatuses.$currentAgentId.status
     if ($currentAgentStatus -ne 'completed') {
         if ($currentAgentStatus -eq 'waiting') { return [pscustomobject]@{ Status='waiting'; Reason=('Agent ' + $currentAgentId + ' reached an explicit input or approval gate.'); StartedAgents=@($started) } }
@@ -117,23 +154,24 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     if (-not $authorityHandoffPending -and [string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateDeveloperGate -and -not $reevaluateReviewerGate -and -not $reevaluatePipelineGate -and -not $reevaluateOrchestratorGate) {
         return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
     }
-    if (-not $authorityHandoffPending) {
+    if (-not $authorityHandoffPending -and ($currentAgentId -eq 'orchestrator' -or [bool]$executionPolicy.ContinueAutomatically)) {
     switch ($currentAgentId) {
         'orchestrator' {
             foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+                if ([string]$candidate -notin $agentSequence) { continue }
                 $pendingInput = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId ([string]$candidate) -ConfigPath $ConfigPath -CodexHome $CodexHome
                 if ([int]$pendingInput.count -gt 0) { $nextAgentId = [string]$candidate; break }
             }
-            if (-not $nextAgentId -and [string]$task.status -notin @($chainConfig.stopStatuses)) {
-                foreach ($candidate in @($chainConfig.orderedAgentIds)) {
+            if (-not $nextAgentId -and [bool]$executionPolicy.ContinueAutomatically -and [string]$task.status -notin @($chainConfig.stopStatuses)) {
+                foreach ($candidate in $agentSequence) {
                     if ([string]$candidate -in @('orchestrator','health_check')) { continue }
                     $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
                     if ($candidateStatus -in @('pending','skipped')) { $nextAgentId = [string]$candidate; break }
                 }
             }
         }
-        'requirements_analyst' { $nextAgentId = 'developer' }
-        'developer' { $nextAgentId = 'reviewer' }
+        'requirements_analyst' { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
+        'developer' { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
         'reviewer' {
             $reviewPath = Join-Path $taskRoot 'review-result.json'
             if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Reviewer completed without review-result.json.' }
@@ -169,11 +207,14 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                     }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage approved_review_rework -Message 'Approved Reviewer findings require Developer rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_rework -Message 'Reviewer must validate the approved rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    if ('developer' -notin $agentSequence -or -not [bool]$executionPolicy.CodeChangesAllowed) {
+                        return [pscustomobject]@{ Status='review-pending'; Reason="Approved findings require Developer, but execution mode '$([string]$executionPolicy.ExecutionMode)' forbids that continuation."; StartedAgents=@($started) }
+                    }
                     $nextAgentId = 'developer'
                 }
-                else { $nextAgentId = 'pipeline_monitor' }
+                else { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
             }
-            else { $nextAgentId = 'pipeline_monitor' }
+            else { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
         }
         'pipeline_monitor' {
             $pipelinePath = Join-Path $taskRoot 'pipeline-result.json'
@@ -218,7 +259,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'health_check' {
-            foreach ($candidate in @($chainConfig.orderedAgentIds)) {
+            foreach ($candidate in $agentSequence) {
                 if ([string]$candidate -in @('orchestrator','health_check')) { continue }
                 $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
                 if ($candidateStatus -in @('pending','skipped')) {
@@ -228,7 +269,8 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'knowledge_keeper' {
-            foreach ($candidate in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+            foreach ($candidate in $agentSequence) {
+                if ($candidate -eq 'knowledge_keeper') { continue }
                 if ([string]$task.agentStatuses.$candidate.status -ne 'completed') { $nextAgentId = $candidate; break }
             }
         }

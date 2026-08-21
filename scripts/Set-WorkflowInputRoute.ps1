@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][ValidateLength(1,2000)][string] $Rationale,
     [ValidateSet('high','medium','low')][string] $Confidence = 'medium',
     [ValidateSet('task-intake','workflow-comment')][string] $InputKind = 'workflow-comment',
+    [ValidateSet('full-delivery','research-only','requirements-only','implementation-only','review-only','pipeline-only','knowledge-only','ecosystem-repair')][string] $ExecutionMode = 'full-delivery',
     [switch] $RequiresUserInput,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -18,6 +19,13 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $policy = $config.workflow.orchestration
 if (-not [bool]$policy.enabled) { throw 'Workflow orchestration is disabled.' }
 $orchestratorId = [string]$policy.agentId
+$executionModeProperty = $policy.executionModes.PSObject.Properties[$ExecutionMode]
+if (-not $executionModeProperty) { throw "Execution mode '$ExecutionMode' is not configured." }
+$executionModeDefinition = $executionModeProperty.Value
+$agentSequence = @($executionModeDefinition.agentSequence | ForEach-Object { [string]$_ })
+$codeChangesAllowed = [bool]$executionModeDefinition.codeChangesAllowed
+$continueAutomatically = [bool]$executionModeDefinition.continueAutomatically
+if (-not $agentSequence.Count) { throw "Execution mode '$ExecutionMode' has no agent sequence." }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
@@ -53,16 +61,21 @@ foreach ($candidate in @($TargetAgentIds)) {
     if (-not $target -or $targets.Contains($target)) { continue }
     if ($target -eq $orchestratorId) { throw 'Orchestrator cannot route an input back to itself.' }
     if ($target -notin $knownAgentIds) { throw "Unknown target agent '$target'." }
+    if ($target -notin $agentSequence) { throw "Target agent '$target' is outside execution mode '$ExecutionMode'." }
     $targets.Add($target)
 }
-if (-not $RequiresUserInput -and -not $targets.Count) { $targets.Add([string]$policy.fallbackAgentId) }
+if (-not $RequiresUserInput -and -not $targets.Count) {
+    $fallbackAgentId = [string]$policy.fallbackAgentId
+    $targets.Add($(if ($fallbackAgentId -in $agentSequence) { $fallbackAgentId } else { [string]$agentSequence[0] }))
+}
 if (-not [bool]$policy.allowMultipleTargets -and $targets.Count -gt 1) { throw 'Multiple routing targets are disabled.' }
 if ($RequiresUserInput -and $targets.Count) { throw 'A route that requires user input cannot dispatch agents yet.' }
+if (-not $codeChangesAllowed -and $targets.Contains('developer')) { throw "Execution mode '$ExecutionMode' forbids product code changes." }
 
 $routingId = [guid]::NewGuid().ToString('N')
 $routedEvents = [Collections.Generic.List[object]]::new()
 foreach ($target in $targets) {
-    $routed = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type workflow-input-routed -Summary ([string]$source.summary) -Artifact $routingPath -Evidence @($SourceEventId, "routing:$routingId") -TargetAgentId $target -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $routed = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type workflow-input-routed -Summary ([string]$source.summary) -Artifact $routingPath -Evidence @($SourceEventId, "routing:$routingId", "execution-mode:$ExecutionMode") -TargetAgentId $target -ConfigPath $ConfigPath -CodexHome $CodexHome
     $routedEvents.Add($routed)
 }
 $decision = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type routing-decision -Summary $Rationale.Trim() -Artifact $routingPath -Evidence (@($SourceEventId, "routing:$routingId") + @($routedEvents | ForEach-Object { [string]$_.eventId })) -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -76,6 +89,10 @@ $record = [ordered]@{
     rationale = $Rationale.Trim()
     confidence = $Confidence
     requiresUserInput = [bool]$RequiresUserInput
+    executionMode = $ExecutionMode
+    agentSequence = @($agentSequence)
+    codeChangesAllowed = $codeChangesAllowed
+    continueAutomatically = $continueAutomatically
     routedEventIds = @($routedEvents | ForEach-Object { [string]$_.eventId })
     createdAtUtc = [DateTime]::UtcNow.ToString('o')
 }
@@ -83,6 +100,19 @@ $line = ($record | ConvertTo-Json -Depth 10 -Compress) + [Environment]::NewLine
 $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
 $stream = [IO.File]::Open($routingPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
 try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+
+$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$modeAgentIds = @($policy.executionModes.PSObject.Properties | ForEach-Object { @($_.Value.agentSequence) } | ForEach-Object { [string]$_ } | Select-Object -Unique)
+foreach ($agentId in $modeAgentIds) {
+    if (-not $task.agentStatuses.PSObject.Properties[$agentId]) { continue }
+    $agentStatus = [string]$task.agentStatuses.$agentId.status
+    if ($agentId -in $agentSequence -and $agentStatus -eq 'skipped') {
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $agentId -AgentStatus pending -Stage execution_policy_selected -Message "Selected by Orchestrator execution mode '$ExecutionMode'." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+    elseif ($agentId -notin $agentSequence -and $agentStatus -eq 'pending') {
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $agentId -AgentStatus skipped -Stage execution_policy_excluded -Message "Excluded by Orchestrator execution mode '$ExecutionMode'." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+}
 
 if ([string]$source.type -in $workflowCommentSourceTypes) {
     & (Join-Path $PSScriptRoot 'Acknowledge-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $orchestratorId -EventIds @($SourceEventId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

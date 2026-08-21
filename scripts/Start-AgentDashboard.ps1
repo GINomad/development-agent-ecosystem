@@ -464,10 +464,14 @@ try {
                     $questionId = [string](Get-ObjectPropertyValue -Source $body -Name 'questionId')
                     $reviewFindingId = [string](Get-ObjectPropertyValue -Source $body -Name 'reviewFindingId')
                     $targetAgentId = [string](Get-ObjectPropertyValue -Source $body -Name 'targetAgentId')
+                    $commentKind = [string](Get-ObjectPropertyValue -Source $body -Name 'commentKind')
+                    $parentReviewQuestionId = [string](Get-ObjectPropertyValue -Source $body -Name 'parentReviewQuestionId')
                     $commentParameters = @{ TaskId=$requestedTaskId; Text=$commentText; Author='user'; ConfigPath=$ConfigPath }
                     if (-not [string]::IsNullOrWhiteSpace($questionId)) { $commentParameters.QuestionId = $questionId }
                     if (-not [string]::IsNullOrWhiteSpace($reviewFindingId)) { $commentParameters.ReviewFindingId = $reviewFindingId }
                     if (-not [string]::IsNullOrWhiteSpace($targetAgentId)) { $commentParameters.TargetAgentId = $targetAgentId }
+                    if (-not [string]::IsNullOrWhiteSpace($commentKind)) { $commentParameters.CommentKind = $commentKind }
+                    if (-not [string]::IsNullOrWhiteSpace($parentReviewQuestionId)) { $commentParameters.ParentReviewQuestionId = $parentReviewQuestionId }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $commentParameters.CodexHome = $CodexHome }
                     $comment = & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') @commentParameters
                     $dispatch = [pscustomobject][ordered]@{ status='not-requested'; agentId=$null; reason='The comment was not explicitly addressed to an agent.' }

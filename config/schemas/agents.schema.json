@@ -107,7 +107,7 @@
         "orchestration": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "agentId", "routeUntargetedComments", "preserveExplicitTargets", "forwardOutOfScopeComments", "autoDispatchForwardedComments", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "dispatchPriority"],
+          "required": ["enabled", "agentId", "routeUntargetedComments", "preserveExplicitTargets", "forwardOutOfScopeComments", "autoDispatchForwardedComments", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "executionModes", "dispatchPriority"],
           "properties": {
             "enabled": { "const": true },
             "agentId": { "const": "orchestrator" },
@@ -118,6 +118,27 @@
             "allowMultipleTargets": { "type": "boolean" },
             "fallbackAgentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
             "routingArtifact": { "const": "workflow-routing.jsonl" },
+            "executionModes": {
+              "type": "object",
+              "required": ["full-delivery", "research-only", "requirements-only", "implementation-only", "review-only", "pipeline-only", "knowledge-only", "ecosystem-repair"],
+              "propertyNames": { "enum": ["full-delivery", "research-only", "requirements-only", "implementation-only", "review-only", "pipeline-only", "knowledge-only", "ecosystem-repair"] },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["description", "agentSequence", "codeChangesAllowed", "continueAutomatically"],
+                "properties": {
+                  "description": { "type": "string", "minLength": 1 },
+                  "agentSequence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "health_check"] }
+                  },
+                  "codeChangesAllowed": { "type": "boolean" },
+                  "continueAutomatically": { "type": "boolean" }
+                }
+              }
+            },
             "dispatchPriority": {
               "type": "array",
               "minItems": 1,
@@ -231,9 +252,10 @@
         "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "commitVerifiedRepairs", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
+          "required": ["enabled", "allowEcosystemSourceChanges", "commitVerifiedRepairs", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
           "properties": {
             "enabled": { "type": "boolean" },
+            "allowEcosystemSourceChanges": { "const": true },
             "commitVerifiedRepairs": { "type": "boolean" },
             "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 3 },
             "workspace": { "type": "string", "minLength": 1 },

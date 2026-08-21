@@ -6,6 +6,8 @@ param(
     [ValidatePattern('^[a-fA-F0-9]{32}$')][string] $QuestionId,
     [ValidatePattern('^[A-Za-z0-9._:-]+$')][string] $ReviewFindingId,
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
+    [ValidateSet('instruction','review-question')][string] $CommentKind = 'instruction',
+    [ValidatePattern('^[a-fA-F0-9]{32}$')][string] $ParentReviewQuestionId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -36,14 +38,41 @@ elseif (-not $TargetAgentId -and [bool]$config.workflow.orchestration.enabled -a
     $TargetAgentId = [string]$config.workflow.orchestration.agentId
 }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
+if ($CommentKind -eq 'review-question') {
+    if ($TargetAgentId -ne 'reviewer') { throw 'A review question must target Reviewer.' }
+    if (-not $commentText.StartsWith('[Task diff line comment]', [StringComparison]::Ordinal)) { throw 'A review question must include selected task-diff line context.' }
+    if ($ParentReviewQuestionId) {
+        $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+        $reviewEvents = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
+        $parentQuestion = @($reviewEvents | Where-Object { $_.type -eq 'review-question-opened' -and $_.eventId -eq $ParentReviewQuestionId }) | Select-Object -First 1
+        if (-not $parentQuestion) { throw "Parent Reviewer question '$ParentReviewQuestionId' was not found." }
+        $parentAnswer = @($reviewEvents | Where-Object { $_.type -eq 'review-question-answered' -and @($_.evidence) -contains $ParentReviewQuestionId }) | Select-Object -Last 1
+        if (-not $parentAnswer) { throw "Parent Reviewer question '$ParentReviewQuestionId' has no answer to reply to." }
+    }
+}
+elseif ($ParentReviewQuestionId) {
+    throw 'ParentReviewQuestionId is valid only for a Reviewer question.'
+}
 
 $eventParameters = @{ TaskId=$TaskId; Actor=$Author; Type='user-comment'; Summary=$commentText; Artifact=$taskPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
 if ($TargetAgentId) { $eventParameters.TargetAgentId = $TargetAgentId }
 $commentEvidence = [Collections.Generic.List[string]]::new()
 if ($QuestionId) { $commentEvidence.Add($QuestionId) }
 if ($ReviewFindingId) { $commentEvidence.Add("review-finding:$ReviewFindingId") }
+if ($ParentReviewQuestionId) { $commentEvidence.Add("parent-review-question:$ParentReviewQuestionId") }
 if ($commentEvidence.Count) { $eventParameters.Evidence = @($commentEvidence) }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') @eventParameters
+$reviewQuestionEvent = $null
+if ($CommentKind -eq 'review-question') {
+    $reviewQuestionEvidence = [Collections.Generic.List[string]]::new()
+    $reviewQuestionEvidence.Add([string]$event.eventId)
+    if ($ParentReviewQuestionId) {
+        $reviewQuestionEvidence.Add("parent-review-question:$ParentReviewQuestionId")
+        $reviewQuestionEvidence.Add("parent-review-answer:$([string]$parentAnswer.eventId)")
+    }
+    $reviewQuestionSummary = if ($ParentReviewQuestionId) { 'A follow-up line-level question is waiting for a read-only Reviewer answer.' } else { 'A line-level question is waiting for a read-only Reviewer answer.' }
+    $reviewQuestionEvent = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Author -Type 'review-question-opened' -Summary $reviewQuestionSummary -Artifact $taskPath -Evidence @($reviewQuestionEvidence) -TargetAgentId reviewer -ConfigPath $ConfigPath -CodexHome $CodexHome
+}
 $resolvedEvent = $null
 if ($QuestionId) {
     $resolvedEvent = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Author -Type 'question-resolved' -Summary "User answered question from $([string]$question.actor): $([string]$question.summary)" -Artifact $taskPath -Evidence @($QuestionId, [string]$event.eventId) -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -63,4 +92,4 @@ else {
 }
 Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
-[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
+[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; CommentKind=$CommentKind; ReviewQuestionId=if ($reviewQuestionEvent) { [string]$reviewQuestionEvent.eventId } else { $null }; ParentReviewQuestionId=if ($ParentReviewQuestionId) { $ParentReviewQuestionId } else { $null }; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
