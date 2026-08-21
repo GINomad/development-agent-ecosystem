@@ -122,6 +122,11 @@ function Assert-EcosystemConfig {
     if ([string]$Config.knowledge.weeklyReport.localTime -notmatch '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'knowledge.weeklyReport.localTime must use 24-hour HH:mm format.' }
     if ([string]$Config.knowledge.weeklyReport.dayOfWeek -notin @('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')) { throw 'knowledge.weeklyReport.dayOfWeek is invalid.' }
     if ([int]$Config.knowledge.weeklyReport.lookbackDays -lt 1 -or [int]$Config.knowledge.weeklyReport.lookbackDays -gt 31) { throw 'knowledge.weeklyReport.lookbackDays must be between 1 and 31.' }
+    $globalStandardsPath = Resolve-EcosystemPath -Value ([string]$Config.knowledge.globalStandardsPath) -Config $Config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw "Global coding standards are missing: $globalStandardsPath" }
+    $globalStandardsRoot = Split-Path -Parent $globalStandardsPath
+    $versionedKnowledgeRoots = @($Config.knowledge.versionedRoots | ForEach-Object { Resolve-EcosystemPath -Value ([string]$_) -Config $Config -CodexHome $CodexHome })
+    if (@($versionedKnowledgeRoots | Where-Object { $globalStandardsRoot.StartsWith(([IO.Path]::GetFullPath($_).TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase) -or $globalStandardsRoot.Equals([IO.Path]::GetFullPath($_), [StringComparison]::OrdinalIgnoreCase) }).Count -eq 0) { throw 'Global coding standards must be inside a versioned knowledge root.' }
     if ([bool]$Config.health.automaticRecovery.allowProductCodeChanges) { throw 'Health automatic recovery must not modify product code.' }
     if ([bool]$Config.health.automaticRecovery.allowExternalWrites) { throw 'Health automatic recovery must not perform external writes.' }
     if ([string]$Config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Automatic Health recovery must use workspace-write.' }
