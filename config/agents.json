@@ -353,8 +353,10 @@
       }
     ],
     "managedRoot": "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
+    "globalStandardsPath": "${REPO_ROOT}/knowledge/managed/global/engineering-code-standards.md",
     "versionedRoots": [
       "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
+      "${REPO_ROOT}/knowledge/managed/global",
       "${REPO_ROOT}/knowledge/components",
       "${REPO_ROOT}/knowledge/decisions"
     ],
@@ -453,7 +455,7 @@
       "responsibilities": [
         "Provide bounded verified code, domain, decision, and skill context when another agent requests it.",
         "Ingest only successful final agent outcomes and decide what verified knowledge must be updated.",
-        "Promote confirmed, generalizable review guidance into scoped coding standards with review decision, implementation, and revision evidence; exclude bypassed, deferred, rejected, unresolved, and task-only comments.",
+        "Promote every confirmed review comment about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles into a global or technology-scoped standard after successful implementation when applicable and clean review; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
         "Maintain per-task history and publish the final task summary after delivery completion.",
         "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."

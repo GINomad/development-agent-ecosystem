@@ -79,6 +79,8 @@ foreach ($workspacePath in $workspacePaths) {
 }
 
 $knowledgeImport = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+$globalStandardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
+if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $globalStandardsPath" }
 $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
 if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
 $sync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
@@ -162,6 +164,7 @@ Ecosystem root: $(Get-EcosystemRoot)
 Primary workspace: $([IO.Path]::GetFullPath($Workspace))
 All target workspaces: $($workspacePaths -join '; ')
 Repository config IDs: $($RepositoryIds -join ', ')
+Global coding standards (apply to every repository): $globalStandardsPath
 Additional user instruction: $UserInstruction
 Execution mode: $executionMode ($workflowSandboxMode)
 Model route: $($modelRoute.complexity) -> $($modelRoute.model) with $($modelRoute.reasoningEffort) reasoning (confidence $($modelRoute.confidence); decision $($modelRoute.decisionId))
@@ -220,6 +223,7 @@ $result = [pscustomobject]@{
     Workspaces = @($workspacePaths)
     RepositoryIds = @($RepositoryIds)
     ManagedKnowledgeRoot = $knowledgeImport.ManagedRoot
+    GlobalStandardsPath = $globalStandardsPath
     AgentFiles = @($sync.AgentFiles)
     Prompt = $prompt
     ResumeScope = $resumeScope

@@ -38,6 +38,10 @@ Increase role floors only when representative tasks show a measurable quality ga
 
 `health` controls automatic failure handling. `repairMode` is fixed to `safe-deterministic-only`. `automaticRecovery.workspace` must resolve to this ecosystem repository; `allowEcosystemSourceChanges=true` permits the bounded recovery coordinator to edit it, while product-code changes and external writes remain permanently disabled. After complete validation, `commitVerifiedRepairs=true` permits one local repair-only commit; it never authorizes push or inclusion of a pre-existing dirty baseline. `maxAttemptsPerFailureSignature` prevents recovery loops and defaults to one. Automatic recovery always uses `workspace-write`. `elevatedFallback` permits one `danger-full-access` attempt only after an explicit confirmation in the local dashboard; this is intended solely for Windows process-creation error 1260.
 
+## Knowledge scope
+
+`knowledge.globalStandardsPath` points to the versioned engineering standards applied to every configured repository. Confirmed review guidance about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, and engineering principles is promoted there, or to a technology-scoped section, after applicable implementation and a clean review. Business rules, domain behavior, API contracts, integrations, and product-specific decisions stay under repository-scoped managed knowledge. Bypassed, deferred, rejected, unresolved, speculative, and explicitly task-only comments are not promoted.
+
 ## Loading fresh changes at startup
 
 Every `Start-DevelopmentWorkflow.ps1` invocation:
