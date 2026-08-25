@@ -984,6 +984,11 @@ if ((@($config.agents | Where-Object id -eq 'orchestrator' | Select-Object -Expa
 if ([string]$healthAgent.sandboxMode -ne 'read-only') { throw 'Health Check Agent must remain read-only inside product workflows.' }
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
 if (-not [bool]$config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$config.health.automaticRecovery.commitVerifiedRepairs -or $healthRecoveryScript -notmatch 'health_recovery_commit' -or $healthRecoveryScript -notmatch 'git -C \$workspace commit') { throw 'Validated ecosystem source repairs are not locally commit-capable through the trusted host.' }
+if (-not [bool]$config.health.automaticRecovery.pushVerifiedRepairs -or [string]$config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Verified Health repair delivery is not bound to the exact canonical ecosystem origin.' }
+if ($healthRecoveryScript -notmatch 'Publish-VerifiedHealthRepair' -or $healthRecoveryScript -notmatch 'remote get-url \$remote' -or $healthRecoveryScript -notmatch 'push --set-upstream \$remote \$pushRef' -or $healthRecoveryScript -notmatch 'ls-remote --heads \$remote' -or $healthRecoveryScript -notmatch '\$remoteCommit -ne \$Commit' -or $healthRecoveryScript -notmatch '\$branch -in @\(''main'',''master''\)' -or $healthRecoveryScript -notmatch 'health_recovery_push') { throw 'Trusted-host Health delivery lacks exact remote, branch, push, SHA-verification, or activity gates.' }
+if ($healthRecoveryScript -match '(?i)git[^\r\n]*push[^\r\n]*(--force|\s-f\s|refs/tags/)') { throw 'Health repair delivery must never force-push or publish tags.' }
+$healthPushAuthorization = @($config.gates.externalWrites.standingAuthorizations | Where-Object { [string]$_.operation -eq 'git-push' -and [string]$_.policy -eq 'health.automaticRecovery.pushVerifiedRepairs' })
+if ($healthPushAuthorization.Count -ne 1 -or $healthPrompt -notmatch 'configured `origin` branch policy' -or $healthPrompt -notmatch 'recovery model itself must not commit or push') { throw 'Health verified-repair standing authorization or model/host separation is incomplete.' }
 if ($healthRecoveryScript -notmatch '\$gitAddExitCode' -or $healthRecoveryScript -notmatch '\$ErrorActionPreference\s*=\s*''Continue''' -or $healthRecoveryScript -match '& git -C \$workspace add --all -- \.\s*\r?\n\s*if \(\$LASTEXITCODE') { throw 'Health recovery commit treats non-fatal Git stderr warnings as failures.' }
 if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
@@ -994,7 +999,7 @@ if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($tar
 foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
-Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); ecosystemWrites=$($config.health.automaticRecovery.allowEcosystemSourceChanges); localRepairCommit=$($config.health.automaticRecovery.commitVerifiedRepairs); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; sandbox=workspace-write; elevated=approval-gated; productWrites=false; externalWrites=false"
+Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); ecosystemWrites=$($config.health.automaticRecovery.allowEcosystemSourceChanges); repairCommit=$($config.health.automaticRecovery.commitVerifiedRepairs); exactOriginPush=$($config.health.automaticRecovery.pushVerifiedRepairs); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; sandbox=workspace-write; elevated=approval-gated; productWrites=false; modelExternalWrites=false"
 
 $knowledgeAgent = @($config.agents | Where-Object id -eq 'knowledge_keeper') | Select-Object -First 1
 $knowledgeResponsibilities = @($knowledgeAgent.responsibilities) -join [Environment]::NewLine
@@ -1057,6 +1062,28 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Knowled
 $knowledgeManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if (@($knowledgeManifest.entries).Count -lt 1) { throw 'Knowledge import manifest contains no entries.' }
 Add-Check -Name 'knowledge-import' -Detail "$(@($knowledgeManifest.entries).Count) versioned files"
+
+$knowledgeImportFixtureRoot = Join-Path $OutputRoot 'knowledge-import-conflict'
+$knowledgeImportSourceRoot = Join-Path $knowledgeImportFixtureRoot 'source'
+$knowledgeImportManagedRoot = Join-Path $knowledgeImportFixtureRoot 'managed'
+$knowledgeImportConfigPath = Join-Path $knowledgeImportFixtureRoot 'agents.json'
+New-Item -ItemType Directory -Path $knowledgeImportSourceRoot,$knowledgeImportManagedRoot -Force | Out-Null
+Write-Utf8NoBom -Path (Join-Path $knowledgeImportSourceRoot 'seed.md') -Content ('seed version' + [Environment]::NewLine)
+$knowledgeImportConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$knowledgeImportConfig.knowledge.seedSources = @([pscustomobject][ordered]@{ id='knowledge-import-test'; path=$knowledgeImportSourceRoot; mode='read-only-import'; includeExtensions=@('.md') })
+$knowledgeImportConfig.knowledge.managedRoot = $knowledgeImportManagedRoot
+Write-Utf8NoBom -Path $knowledgeImportConfigPath -Content (($knowledgeImportConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+
+$null = & (Join-Path $root 'scripts\Import-InitialKnowledge.ps1') -SourceId 'knowledge-import-test' -ConfigPath $knowledgeImportConfigPath -CodexHome $CodexHome
+$knowledgeImportTargetPath = Join-Path $knowledgeImportManagedRoot 'seed.md'
+Write-Utf8NoBom -Path $knowledgeImportTargetPath -Content ('managed version' + [Environment]::NewLine)
+$secondKnowledgeImport = & (Join-Path $root 'scripts\Import-InitialKnowledge.ps1') -SourceId 'knowledge-import-test' -ConfigPath $knowledgeImportConfigPath -CodexHome $CodexHome
+$thirdKnowledgeImport = & (Join-Path $root 'scripts\Import-InitialKnowledge.ps1') -SourceId 'knowledge-import-test' -ConfigPath $knowledgeImportConfigPath -CodexHome $CodexHome
+$preservedKnowledge = Get-Content -LiteralPath $knowledgeImportTargetPath -Raw -Encoding UTF8
+if ([int]$secondKnowledgeImport.ConflictCount -ne 1 -or [int]$thirdKnowledgeImport.ConflictCount -ne 1 -or [bool]$thirdKnowledgeImport.ManifestUpdated -or $preservedKnowledge -ne ('managed version' + [Environment]::NewLine)) {
+    throw 'Repeated knowledge import did not preserve an existing managed conflict idempotently.'
+}
+Add-Check -Name 'knowledge-import-conflict-preservation' -Detail 'Repeated imports preserve managed changes and retain skipped-managed-change without manifest churn'
 
 $reviewConfig = & (Join-Path $PSScriptRoot 'Sync-ReviewMonitorConfig.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $reviewConfig.ConfigPath -PathType Leaf)) { throw 'Derived review monitor configuration was not generated.' }

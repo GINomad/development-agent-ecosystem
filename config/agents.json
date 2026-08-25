@@ -169,6 +169,10 @@
       "enabled": true,
       "allowEcosystemSourceChanges": true,
       "commitVerifiedRepairs": true,
+      "pushVerifiedRepairs": true,
+      "pushRemote": "origin",
+      "pushRemoteUrl": "https://github.com/GINomad/development-agent-ecosystem.git",
+      "repairBranchPrefix": "health-recovery",
       "maxAttemptsPerFailureSignature": 1,
       "workspace": "${REPO_ROOT}",
       "sandboxMode": "workspace-write",
@@ -396,6 +400,10 @@
         {
           "operation": "git-push",
           "policy": "pipeline.delivery"
+        },
+        {
+          "operation": "git-push",
+          "policy": "health.automaticRecovery.pushVerifiedRepairs"
         },
         {
           "operation": "queue-pipeline",
