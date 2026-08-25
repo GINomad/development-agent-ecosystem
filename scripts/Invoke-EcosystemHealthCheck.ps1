@@ -58,26 +58,67 @@ try {
     }
 
     $agentInstallRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.agentInstallRoot) -Config $config -CodexHome $CodexHome
-    $missingAgents = @($config.agents | Where-Object { -not (Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name).toml") -PathType Leaf) })
-    if (-not $missingAgents.Count) {
-        Add-HealthCheck -Id 'installed-agents' -Status passed -Summary "All $(@($config.agents).Count) generated agent definitions are installed." -Evidence @($agentInstallRoot)
-        Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Installed agent definitions are complete.'
+    $resolvedCodexHome = Get-DefaultCodexHome -Override $CodexHome
+    $compatibilitySuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
+    $expectCompatibilityProfiles = @($config.agents | Where-Object { Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name)$compatibilitySuffix.toml") -PathType Leaf }).Count -gt 0
+
+    function Get-AgentDefinitionDrift {
+        $drift = [Collections.Generic.List[object]]::new()
+        foreach ($agent in @($config.agents)) {
+            $definitions = [Collections.Generic.List[object]]::new()
+            $definitions.Add([pscustomobject]@{ Agent=$agent; Name=[string]$agent.name })
+            if ($expectCompatibilityProfiles) {
+                $compatibleAgent = [pscustomobject][ordered]@{
+                    id = [string]$agent.id
+                    name = ([string]$agent.name + $compatibilitySuffix)
+                    description = ([string]$agent.description + ' Host-compatible profile for an explicitly confirmed OS-policy fallback.')
+                    responsibilities = @($agent.responsibilities)
+                    model = if ($agent.PSObject.Properties['model']) { [string]$agent.model } else { $null }
+                    reasoningEffort = [string]$agent.reasoningEffort
+                    sandboxMode = [string]$config.runtime.elevatedFallback.sandboxMode
+                    promptPaths = @($agent.promptPaths) + @([string]$config.runtime.elevatedFallback.compatibilityPromptPath)
+                    skillPaths = @($agent.skillPaths)
+                    handoffs = @($agent.handoffs)
+                    requiredArtifacts = @($agent.requiredArtifacts)
+                }
+                $definitions.Add([pscustomobject]@{ Agent=$compatibleAgent; Name=[string]$compatibleAgent.name })
+            }
+            foreach ($definition in $definitions) {
+                $path = Join-Path $agentInstallRoot "$([string]$definition.Name).toml"
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                    $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='missing' })
+                    continue
+                }
+                $expected = New-AgentToml -Agent $definition.Agent -Config $config -CodexHome $resolvedCodexHome
+                $actual = [IO.File]::ReadAllText($path)
+                if (-not [string]::Equals($actual, $expected, [StringComparison]::Ordinal)) {
+                    $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='outdated' })
+                }
+            }
+        }
+        return @($drift)
+    }
+
+    $agentDefinitionDrift = @(Get-AgentDefinitionDrift)
+    if (-not $agentDefinitionDrift.Count) {
+        Add-HealthCheck -Id 'installed-agents' -Status passed -Summary "All installed generated agent definitions match canonical configuration, prompts, and skills." -Evidence @($agentInstallRoot)
+        Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Installed agent definitions are current.'
     }
     elseif ($Repair -and [string]$config.health.repairMode -eq 'safe-deterministic-only') {
-        & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install | Out-Null
-        $stillMissing = @($config.agents | Where-Object { -not (Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name).toml") -PathType Leaf) })
-        if ($stillMissing.Count) {
-            Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Agent definition repair did not restore: $($stillMissing.name -join ', ')." -Evidence @($agentInstallRoot)
-            Add-Repair -Id 'sync-agent-definitions' -Status failed -Summary 'Generated agent definitions remain incomplete.'
+        & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install -IncludeHostCompatibilityProfile:$expectCompatibilityProfiles | Out-Null
+        $remainingAgentDefinitionDrift = @(Get-AgentDefinitionDrift)
+        if ($remainingAgentDefinitionDrift.Count) {
+            Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Agent definition repair left stale files: $($remainingAgentDefinitionDrift.name -join ', ')." -Evidence @($remainingAgentDefinitionDrift.path)
+            Add-Repair -Id 'sync-agent-definitions' -Status failed -Summary 'Generated agent definitions remain missing or outdated.'
         }
         else {
-            Add-HealthCheck -Id 'installed-agents' -Status repaired -Summary 'Missing generated agent definitions were reinstalled.' -Evidence @($agentInstallRoot)
-            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary 'Recompiled and installed agent TOML from canonical JSON, prompts, and skills.'
+            Add-HealthCheck -Id 'installed-agents' -Status repaired -Summary "Recompiled and installed $(@($config.agents).Count) current agent definitions$(if ($expectCompatibilityProfiles) { ' and their host-compatible profiles' } else { '' })." -Evidence @($agentInstallRoot)
+            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary 'Recompiled and installed agent TOML from canonical JSON, prompts, and skills after content drift detection.'
         }
     }
     else {
-        Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Missing agent definitions: $($missingAgents.name -join ', ')." -Evidence @($agentInstallRoot)
-        Add-Repair -Id 'sync-agent-definitions' -Status requires-approval -Summary 'Run the trusted health check with -Repair to reinstall derived agent definitions.'
+        Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Missing or outdated agent definitions: $($agentDefinitionDrift.name -join ', ')." -Evidence @($agentDefinitionDrift.path)
+        Add-Repair -Id 'sync-agent-definitions' -Status requires-approval -Summary 'Run the trusted health check with -Repair to reinstall current derived agent definitions.'
     }
 
     $reviewConfigPath = Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'config.json'
