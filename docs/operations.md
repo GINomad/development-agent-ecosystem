@@ -55,7 +55,7 @@ The watcher discovers only runs whose full `sourceVersion` equals the pushed SHA
 
 Failed task logs are reduced to the configured tail and byte limit, then classified without an AI call:
 
-- `code` and `test`: write a deduplicated `pipeline-remediation-<signature>.json`, set only Developer back to `pending`, and append a targeted `pipeline-remediation-request`;
+- `code` and `test`: write a deduplicated `pipeline-remediation-<signature>.json`, set Developer, Reviewer, and Pipeline Monitor back to `pending`, and append a targeted `pipeline-remediation-request`; this preserves prior artifacts while ensuring the new commit is reviewed and monitored;
 - `infrastructure`, credentials, `unknown`, or `no-run`: keep the result visible for Knowledge Keeper, Health Check, or operator action; do not ask Developer to guess;
 - after three remediation cycles: write `limit-reached` and stop the loop.
 

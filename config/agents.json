@@ -73,7 +73,7 @@
           "continueAutomatically": false
         },
         "implementation-only": {
-          "description": "Implement already-ready scope, review it, and monitor its exact delivery pipelines.",
+          "description": "Implement already-ready scope or an explicitly requested bounded code/test remediation after pipeline evidence, then review it and monitor its exact delivery pipelines.",
           "agentSequence": ["developer", "reviewer", "pipeline_monitor"],
           "codeChangesAllowed": true,
           "continueAutomatically": true
@@ -85,7 +85,7 @@
           "continueAutomatically": false
         },
         "pipeline-only": {
-          "description": "Run Pipeline Monitor only for an explicitly authorized branch, commit, build, or PR observation.",
+          "description": "Run Pipeline Monitor only for read-only observation of an explicitly authorized branch, commit, build, or PR; do not use when the requested outcome includes a source correction.",
           "agentSequence": ["pipeline_monitor"],
           "codeChangesAllowed": false,
           "continueAutomatically": false

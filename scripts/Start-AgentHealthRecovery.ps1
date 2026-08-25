@@ -222,6 +222,7 @@ $guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
 $arguments = @(
     '-a', $recoveryApprovalPolicy,
+    '--config', 'notify=[]',
     'exec',
     '-C', $workspace,
     '-s', $recoverySandboxMode,

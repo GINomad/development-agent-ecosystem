@@ -20,7 +20,8 @@ $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-De
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
-Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI from PATH or the current user VS Code extension'
+if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
+Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
 function Invoke-SchedulerTestGit {
     param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments)
@@ -201,6 +202,7 @@ if ($dashboardServer -notmatch 'Stop-ValidatedWorkflowProcessTree' -or $dashboar
 $activityWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Write-AgentActivity.ps1') -Raw -Encoding UTF8
 $activityReader = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentActivity.ps1') -Raw -Encoding UTF8
 $taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
+if ($taskProtocol -match 'set only Developer back to pending' -or $taskProtocol -notmatch 'set Developer, Reviewer, and Pipeline Monitor back to pending') { throw 'Pipeline remediation protocol must invalidate every required downstream role without restarting unrelated agents.' }
 foreach ($marker in @('Operation','Target','ProgressPercent','NextAction','Evidence')) {
     if ($activityWriter -notmatch ('\$' + $marker) -or $activityReader -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1)) -or $dashboardClient -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1))) { throw "Detailed agent activity field is not wired end-to-end: $marker" }
 }
@@ -564,10 +566,12 @@ $pipelineTestConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 |
 $pipelineTestConfig.runtime.stateRoot = (Join-Path $pipelineTestRoot 'state')
 Write-Utf8NoBom -Path $pipelineTestConfigPath -Content (($pipelineTestConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 $pipelineTestTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $pipelineTestTaskId -TaskSelector synthetic-pipeline-test -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $pipelineTestConfigPath
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $pipelineTestTaskId -AgentId reviewer -AgentStatus completed -ConfigPath $pipelineTestConfigPath | Out-Null
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $pipelineTestTaskId -AgentId pipeline_monitor -AgentStatus completed -ConfigPath $pipelineTestConfigPath | Out-Null
 $firstRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
 $duplicateRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
 $pipelineTaskState = Get-Content -LiteralPath $pipelineTestTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.status -ne 'interrupted' -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Developer pipeline remediation request was not persisted, targeted, deduplicated, or projected as unfinished task work.' }
+if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.status -ne 'interrupted' -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.reviewer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.pipeline_monitor.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Pipeline remediation request was not persisted, deduplicated, or projected through Developer, Reviewer, and Pipeline Monitor as unfinished task work.' }
 Add-Check -Name 'post-push-pipeline-remediation' -Detail 'Exact-SHA run, bounded code/test classification, Developer routing, infrastructure exclusion, and three-cycle ceiling'
 
 $lifecycleTaskId = 'pr-lifecycle-test-' + [guid]::NewGuid().ToString('N')
@@ -848,6 +852,7 @@ if ($dashboardHtml -notmatch 'finishing its current work block' -or $dashboardCl
 if ($healthPrompt -notmatch 'health-diagnostic-context.json' -or $healthRecoveryScript -notmatch 'Get-BoundedTextTail' -or $healthRecoveryScript -notmatch 'workflowLogTailLines') { throw 'Health Check bounded diagnostic context is incomplete.' }
 if ($healthPrompt -notmatch 'diagnosis is not a terminal outcome' -or $healthRecoveryScript -notmatch 'existingDiagnosis' -or $healthRecoveryScript -notmatch 'health-repair-routing.json' -or $healthRecoverySchema -notmatch 'routeAgentId' -or $healthRecoverySchema -notmatch 'repairOwner') { throw 'Health Check repair-or-route contract is incomplete.' }
 if ($orchestratorPrompt -notmatch 'explicit source-controlled ecosystem maintenance go to health_check' -or $orchestratorPrompt -notmatch 'Do not ask to expand a product task for Developer' -or $healthPrompt -notmatch 'explicit source-controlled ecosystem change' -or $healthPrompt -notmatch 'Do not redirect ecosystem source changes to Developer') { throw 'Ecosystem source maintenance is not owned end to end by Health Check.' }
+if ($orchestratorPrompt -notmatch 'diagnose or inspect a pipeline failure and then fix' -or $orchestratorPrompt -notmatch 'pipeline-only` is read-only observation') { throw 'Pipeline investigation plus an explicit source fix can still be misclassified as pipeline-only.' }
 if ($workflowScript -notmatch 'health_recovery_handoff' -or $workflowScript -notmatch 'DiagnosisPath' -or $workflowScript -notmatch 'repairOwner' -or $workflowScript -notmatch 'requiresUserInput' -or $workflowScript -notmatch 'health_diagnosis_recovery') { throw 'A waiting or completed non-user-input Health Check diagnosis is not handed to automatic recovery.' }
 if ($continueChainScript -notmatch "PSObject\.Properties\['repositoryIds'\]" -or $continueChainScript -notmatch "PSObject\.Properties\['repositoryId'\]") { throw 'Automatic continuation does not normalize legacy singular repositoryId task scope.' }
 if ($healthPrompt -notmatch 'restart exactly the affected agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the affected agent.' }

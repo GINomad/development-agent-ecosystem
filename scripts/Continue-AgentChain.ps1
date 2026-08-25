@@ -232,6 +232,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
             elseif ($pipeline.PSObject.Properties['remediation'] -and [string]$pipeline.remediation.targetAgentId -eq 'developer' -and [string]$pipeline.remediation.status -eq 'pending') {
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_pipeline_fix -Message 'Reviewer must validate the pipeline remediation.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus pending -Stage pipeline_after_remediation_review -Message 'Pipeline Monitor must validate the remediated exact commit after reviewed delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 $nextAgentId = 'developer'
             }
             else {
