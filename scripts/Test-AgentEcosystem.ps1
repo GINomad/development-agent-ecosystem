@@ -20,6 +20,7 @@ $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-De
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
+if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
