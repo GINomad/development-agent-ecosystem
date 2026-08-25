@@ -252,11 +252,15 @@
         "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "allowEcosystemSourceChanges", "commitVerifiedRepairs", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
+          "required": ["enabled", "allowEcosystemSourceChanges", "commitVerifiedRepairs", "pushVerifiedRepairs", "pushRemote", "pushRemoteUrl", "repairBranchPrefix", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
           "properties": {
             "enabled": { "type": "boolean" },
             "allowEcosystemSourceChanges": { "const": true },
             "commitVerifiedRepairs": { "type": "boolean" },
+            "pushVerifiedRepairs": { "type": "boolean" },
+            "pushRemote": { "const": "origin" },
+            "pushRemoteUrl": { "const": "https://github.com/GINomad/development-agent-ecosystem.git" },
+            "repairBranchPrefix": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$" },
             "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 3 },
             "workspace": { "type": "string", "minLength": 1 },
             "sandboxMode": { "const": "workspace-write" },

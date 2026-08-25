@@ -40,12 +40,12 @@ foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Sort
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
         $prior = $previousByPath[$relative]
-        if ($prior -and $targetHash -ne [string]$prior.importedHash) {
+        if ($targetHash -eq $sourceHash) {
+            $status = 'unchanged'
+        }
+        elseif ($prior -and ($targetHash -ne [string]$prior.importedHash -or [string]$prior.status -eq 'skipped-managed-change')) {
             $status = 'skipped-managed-change'
             $conflicts.Add($relative)
-        }
-        elseif ($targetHash -eq $sourceHash) {
-            $status = 'unchanged'
         }
     }
     if ($status -eq 'copied') {
