@@ -330,10 +330,23 @@
     "pipeline": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "monitorSkillRoot", "delivery", "pullRequests", "postPush", "repositories"],
+      "required": ["enabled", "monitorSkillRoot", "ownership", "delivery", "pullRequests", "postPush", "repositories"],
       "properties": {
         "enabled": { "type": "boolean" },
         "monitorSkillRoot": { "type": "string", "minLength": 1 },
+        "ownership": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["monitorAgentId", "productRemediationAgentId", "remediationReviewAgentId", "exceptionRoutingAgentId", "ecosystemRecoveryAgentId", "completionAgentId"],
+          "properties": {
+            "monitorAgentId": { "const": "pipeline_monitor" },
+            "productRemediationAgentId": { "const": "developer" },
+            "remediationReviewAgentId": { "const": "reviewer" },
+            "exceptionRoutingAgentId": { "const": "orchestrator" },
+            "ecosystemRecoveryAgentId": { "const": "health_check" },
+            "completionAgentId": { "const": "knowledge_keeper" }
+          }
+        },
         "delivery": {
           "type": "object",
           "additionalProperties": false,

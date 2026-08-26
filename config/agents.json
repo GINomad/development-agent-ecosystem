@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/agents.schema.json",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "namespace": "development-ecosystem",
   "runtime": {
     "maxConcurrentAgents": 4,
@@ -222,6 +222,14 @@
   "pipeline": {
     "enabled": true,
     "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor",
+    "ownership": {
+      "monitorAgentId": "pipeline_monitor",
+      "productRemediationAgentId": "developer",
+      "remediationReviewAgentId": "reviewer",
+      "exceptionRoutingAgentId": "orchestrator",
+      "ecosystemRecoveryAgentId": "health_check",
+      "completionAgentId": "knowledge_keeper"
+    },
     "delivery": {
       "autoPushAfterCleanReview": true,
       "remote": "origin",

@@ -28,26 +28,28 @@ From the dashboard:
 - choose **Answer this question**, enter the answer or corrective command, and send it; the answer is linked to that exact question in the append-only ledger;
 - add a general task comment for Orchestrator to classify and route to the smallest sufficient agent set without falsely resolving a question;
 - resume an existing task without creating a duplicate history directory;
-- after an OS sandbox failure, select **Resume workflow elevated** and confirm one task-specific elevated session;
+- use **Resume workflow elevated** to force the host-compatible profile for an existing interrupted task; the standing configuration already selects this profile for ordinary starts and continuations;
 - attach a Reviewer note to a repository, PR, or task;
 - select **Run review** to read active PR code, user comments, and local notes.
 
 The task action guide is also displayed directly below the buttons:
 
 - **Send comment** appends an operator instruction to the task ledger. A general comment is queued for Orchestrator classification; a selected agent or question target remains direct. At the next checkpoint Orchestrator writes an idempotent route, and the selected agent reads the routed batch after its current coherent block. A stopped workflow remains stopped until Resume.
-- **Resume workflow** computes `resume-plan.json` and continues only unfinished agents in the normal Codex sandbox; completed agents and their artifacts are not rerun.
-- **Resume workflow elevated** applies the same checkpoint plan without the Codex OS sandbox for one confirmed session; all delivery gates remain active.
+- **Resume workflow** computes `resume-plan.json` and continues only unfinished agents with the configured execution profile; the current standing policy resolves it to the host-compatible profile, and completed agents and their artifacts are not rerun.
+- **Resume workflow elevated** explicitly applies the same checkpoint plan without the Codex OS sandbox; all delivery gates remain active.
 - **Restart agent with comment** saves an addressable `targetAgentId` comment and schedules only the selected agent in the default elevated mode used on this machine. If another task owns the shared workspace, this task remains `queued` and starts when the lease is available.
 - **Stop workflow** marks running agents `waiting` and the task `interrupted` after stopping its validated process tree or tracked in-process runspace.
 - **Approve elevated repair** gives Health Check one elevated ecosystem-repair attempt; it neither resumes implementation nor authorizes product-code changes.
 
 The task monitor refreshes every five seconds and reconstructs its state from `%LOCALAPPDATA%\Codex\development-agent-ecosystem\tasks`, so page reloads and dashboard restarts do not erase status. Dashboard and live-log polling are ordinary local HTTP/file reads and consume no AI tokens. A selected agent log refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default). Orchestrator handles new intake, general comments, and durable authority handoffs in one batch per checkpoint and never idle-polls. Each delivery role similarly reads only its direct and routed comment batch; `Request-OrchestratorCommentRouting.ps1` atomically forwards and acknowledges comments outside that role's JSON responsibilities. The successful role handoff automatically prioritizes Orchestrator, so no operator restart is required. Any role that needs information calls `Open-AgentQuestion.ps1`; detailed unfinished context stays in `agent-checkpoints/<agent-id>.json`. Knowledge Keeper remains pull-based and consumes only successful outcomes.
 
-Dashboard workflow and review actions run as tracked in-process PowerShell runspaces. They do not spawn nested `powershell.exe -EncodedCommand` children, so host security products can evaluate the stable dashboard process instead of blocking an encoded bootstrap before `task.json` and the Health Check failure envelope exist. **Start workflow** asks for explicit confirmation before requesting the host-compatible elevated profile; this does not disable CrowdStrike or bypass delivery gates.
+Dashboard workflow and review actions run as tracked in-process PowerShell runspaces. They do not spawn nested `powershell.exe -EncodedCommand` children, so host security products can evaluate the stable dashboard process instead of blocking an encoded bootstrap before `task.json` and the Health Check failure envelope exist. The standing runtime policy resolves starts to the host-compatible profile; the dashboard also presents a warning before its elevated start control. Neither mechanism disables CrowdStrike or bypasses delivery gates.
 
 Task execution is serialized across all configured product repositories. `workspace-coordinator.json` records the single active task. When that task becomes idle, Orchestrator stashes its tracked and untracked changes with a task/repository-specific message, records the current branch in `workspace-session.json`, switches the next task to its recorded branch (or the configured base branch on first activation), and restores its stash with the index. It never uses `git reset`, `git clean`, force checkout, or `git stash pop`. The stash is dropped only after a successful apply. A restore conflict keeps the stash, opens an Orchestrator question, and stops automatic switching until the workspace is safe.
 
 ## Post-push pipeline and Developer remediation
+
+The canonical owners and current definition IDs are listed in [pipeline monitoring and ownership](pipeline-monitoring.md). In short, Pipeline Monitor owns all configured exact-SHA observation; Developer and Reviewer own the bounded product remediation loop; Orchestrator owns exceptional and terminal routing; Health Check owns ecosystem defects; Knowledge Keeper owns final publication.
 
 After an authorized push succeeds, Developer passes the exact repository ID, branch, full pushed SHA, and the UTC timestamp recorded immediately before the push to Pipeline Monitor. `Invoke-PostPushPipeline.ps1` verifies that the local `origin/<branch>` tracking ref equals that SHA, then runs the native watcher once. The watcher performs its own deterministic polling, so no model turn is spent on every status refresh.
 
@@ -83,7 +85,7 @@ Every failed agent handoff includes a structured failure artifact with the agent
 
 `Invoke-GuardedCodex.ps1` supervises the workflow and Health recovery runners. The same normalized failure signature may occur at most three times in one run. Waiting, changing shells, or re-emitting the same native-process error does not reset the counter. At the third occurrence the supervisor terminates the child process, marks the task failed, persists the execution-guard and agent-failure artifacts, and routes those artifacts to Health Check Agent. This prevents an agent from entering an execution or wait loop.
 
-When the evidence contains `CreateProcessWithLogonW 1260`, Health Check automatically recompiles all seven roles as suffixed host-compatible agents. Each derived definition keeps its normal prompts and skills, adds the OS-policy compatibility rules, and changes only the Codex sandbox mode. Health Check marks the task `interrupted` at `os_policy_compatibility_ready`; it does not launch the profiles or repeat sandbox recovery. Confirm **Resume workflow elevated** to select them. The dashboard starts this workflow in a tracked in-process runspace rather than a nested `powershell.exe -EncodedCommand`, then Codex launches directly. This changes Codex process isolation, not CrowdStrike, AppLocker, WDAC, repository permissions, or approval gates.
+When the evidence contains `CreateProcessWithLogonW 1260`, Health Check verifies or recompiles all seven suffixed host-compatible agents. Each derived definition keeps its normal prompts and skills, adds the OS-policy compatibility rules, and changes only the Codex sandbox mode. Health Check marks the task `interrupted` at `os_policy_compatibility_ready`; the standing policy selects the compatible profile on the next targeted resume, while the explicit **Resume workflow elevated** action remains available in the dashboard. The dashboard starts this workflow in a tracked in-process runspace rather than a nested `powershell.exe -EncodedCommand`, then Codex launches directly. This changes Codex process isolation, not CrowdStrike, AppLocker, WDAC, repository permissions, or approval gates.
 
 Health recovery runs in three bounded phases:
 
@@ -97,7 +99,7 @@ When a completed Health Check diagnosis already exists, the coordinator reuses i
 
 Standing user policy selects the host-compatible `danger-full-access` profile for every workflow and Health recovery run to avoid Windows process-creation error 1260. Role, review, credential, and external-write gates still apply. Before Health repair, the trusted host commits every tracked and untracked non-ignored ecosystem change as a separate preservation commit, records `health-recovery-preservation.json`, and starts repair from that clean HEAD. After complete validation it commits any repair on top and may push the final chain under the exact-origin policy.
 
-If the normal development workflow itself is blocked by the OS, select **Resume workflow elevated** and confirm the warning. All agent roles in that resumed orchestration inherit the elevated outer Codex session, but they cannot disable the execution guard or bypass held scope, human review decisions, Git push, PR publication, pipeline queueing, or work-item mutation gates. Use this action only for the affected task.
+If an existing task still records an OS-policy interruption, use **Resume workflow elevated** for that affected task. All agent roles in the resumed orchestration inherit the host-compatible outer Codex session, but they cannot disable the execution guard or bypass held scope, human review decisions, Git push, PR publication, pipeline queueing, or work-item mutation gates.
 
 Manual health check:
 
@@ -121,7 +123,10 @@ Allowed decisions are `approved`, `rejected`, `deferred`, and `bypassed`. Develo
 
 - `Development Ecosystem - PR Review Updates`: polls active assigned PRs;
 - `Development Ecosystem - PR Review Daily`: performs the complete daily pass;
-- `Development Ecosystem - PR Review Dashboard`: starts the loopback report server at logon.
+- `Development Ecosystem - PR Review Dashboard`: starts the loopback report server at logon;
+- `Development Ecosystem - Task PR Lifecycle`: synchronizes task PR state every `pipeline.pullRequests.pollIntervalMinutes` without model polling;
+- `Development Ecosystem - Continuation Recovery`: keeps one hidden resident host that reconciles missing durable continuations;
+- `Development Ecosystem - Knowledge Weekly Report`: renders the configured weekly evidence report without invoking AI.
 
 Review reports are local by default. The monitor writes Markdown and interactive HTML reports to `%LOCALAPPDATA%\Codex\development-agent-ecosystem\azure-pr-review-monitor\reports`; `latest-summary.md` points to the newest run state. Comment hashes are tracked per PR. A changed comment forces only that PR, and `pending-review-changes.json` keeps the change visible as `pending-ai-review` or `requires-human-intervention` until a successful review consumes it. Nothing is emailed or posted to Azure DevOps automatically; publishing a selected finding remains an explicit, approval-gated action.
 

@@ -494,11 +494,21 @@ if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.w
 if (-not [bool]$config.workflow.orchestration.outcomeDrivenTransitions -or [string]$config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Successful role outcomes do not return through the canonical Orchestrator control plane.' }
 if (-not [bool]$config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
 if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
+$pipelineOwnership = $config.pipeline.ownership
+$pipelineOwnershipContract = @(
+    [string]$pipelineOwnership.monitorAgentId,
+    [string]$pipelineOwnership.productRemediationAgentId,
+    [string]$pipelineOwnership.remediationReviewAgentId,
+    [string]$pipelineOwnership.exceptionRoutingAgentId,
+    [string]$pipelineOwnership.ecosystemRecoveryAgentId,
+    [string]$pipelineOwnership.completionAgentId
+) -join ','
+if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,orchestrator,health_check,knowledge_keeper') { throw 'Pipeline ownership must explicitly preserve monitoring, remediation, review, exception, ecosystem recovery, and completion responsibilities.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
 if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; deployment 891 is forbidden.' }
 $delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
 if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or @($delfiPipeline.autoQueueDefinitionIds).Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
-Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count)"
+Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count); pipelineOwners=$pipelineOwnershipContract"
 
 $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
 New-Item -ItemType Directory -Path $pipelineTestRoot -Force | Out-Null
