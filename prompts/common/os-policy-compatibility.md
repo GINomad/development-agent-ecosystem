@@ -1,6 +1,6 @@
 # OS policy compatibility profile
 
-This agent definition is selected only for a user-confirmed host-compatible workflow after Health Check has identified an OS denial such as `CreateProcessWithLogonW 1260`.
+This agent definition is selected by the standing user-authorized host-compatible workflow policy to avoid OS denials such as `CreateProcessWithLogonW 1260`.
 
 - Run tools as the current signed-in user without the Codex Windows sandbox. CrowdStrike, AppLocker, WDAC, credentials, repository permissions, and network controls remain authoritative.
 - Stay within the configured task workspace and ecosystem root. Do not inspect unrelated user or system locations.

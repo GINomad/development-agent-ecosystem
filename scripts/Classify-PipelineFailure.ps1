@@ -14,7 +14,9 @@ $patterns = [ordered]@{
     test = @(
         '(?im)\b(test run failed|tests? failed|failed tests?|assert(?:ion)? failed|xunit|nunit|jest|vitest|mocha|karma)\b',
         '(?im)\b(expected|actual)\s*:',
-        '(?im)\b(failed|failure)\b.*\b(test|spec)\b'
+        '(?im)\b(failed|failure)\b.*\b(test|spec)\b',
+        '(?im)hosted Office SIP failure-cleanup probe did not observe the expected controlled failure',
+        '(?im)Office SIP registration did not activate the expected OOXML subject GUID|job-created Office SIP registry state remained after cleanup'
     )
     code = @(
         '(?im)\berror\s+CS\d{4}\b',
@@ -24,7 +26,8 @@ $patterns = [ordered]@{
         '(?im)\beslint\b.*\berror\b',
         '(?im)\bbuild failed\b.*\b(error|compil)'
         '(?im)\b(yaml|yml|azure-pipelines?)\b.*\b(invalid|syntax|parse|mapping|configuration error)\b',
-        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b'
+        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b',
+        '(?im)Excel deliverable validation failed with exit code\s*\.(?:\s|$)'
     )
     infrastructure = @(
         '(?im)\b(0x)?800B010A\b|\bCERT_E_CHAINING\b|\bcertificate chain\b.*\b(cannot|could not|failed|unable|untrusted|trusted root)\b',

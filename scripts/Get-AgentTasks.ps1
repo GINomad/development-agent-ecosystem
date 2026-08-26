@@ -38,7 +38,16 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         foreach ($resolvedEvent in @($events | Where-Object { $_.type -eq 'question-resolved' })) {
             foreach ($evidenceValue in @($resolvedEvent.evidence)) { if ($evidenceValue) { $null = $resolvedQuestionIds.Add([string]$evidenceValue) } }
         }
-        $openQuestions = @($events | Where-Object { $_.type -eq 'question-opened' -and -not $resolvedQuestionIds.Contains([string]$_.eventId) } | Sort-Object timestampUtc)
+        # One agent owns at most one active input gate. A later question from the
+        # same agent supersedes its earlier wording; once that latest question is
+        # answered, older duplicates must not reappear on the dashboard.
+        $latestQuestionByAgent = [ordered]@{}
+        foreach ($questionEvent in @($events | Where-Object { $_.type -eq 'question-opened' } | Sort-Object timestampUtc)) {
+            $latestQuestionByAgent[[string]$questionEvent.actor] = $questionEvent
+        }
+        $openQuestions = @($latestQuestionByAgent.Values | Where-Object {
+            -not $resolvedQuestionIds.Contains([string]$_.eventId)
+        } | Sort-Object timestampUtc)
         $status = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'created' }
         if (-not $TaskId -and -not $IncludeCompleted -and $status -notin $activeStatuses) { continue }
         $lastEvent = @($events | Sort-Object timestampUtc -Descending | Select-Object -First 1)
@@ -48,19 +57,38 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             foreach ($evidenceValue in @($ackEvent.evidence)) { if ($evidenceValue) { $null = $acknowledgedCommentIds.Add([string]$evidenceValue) } }
         }
         $unacknowledgedComments = @($events | Where-Object { [string]$_.type -in @('user-comment','workflow-input-routed') -and -not $acknowledgedCommentIds.Contains([string]$_.eventId) })
+        $modelRouteDecisions = @()
+        $modelRoutingPath = Join-Path $directory.FullName ([string]$config.modelRouting.artifactName)
+        if (Test-Path -LiteralPath $modelRoutingPath -PathType Leaf) {
+            try { $modelRouteDecisions = @((Get-Content -LiteralPath $modelRoutingPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } catch { $modelRouteDecisions = @() }
+        }
         $agentStatuses = [ordered]@{}
         foreach ($agentId in $agentIds) {
             $value = $null
             if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$agentId]) { $value = $task.agentStatuses.$agentId }
+            $modelRoute = @($modelRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
             $agentStatuses[$agentId] = [pscustomobject][ordered]@{
                 status = if ($value) { [string]$value.status } else { 'pending' }
                 updatedAtUtc = if ($value) { [string]$value.updatedAtUtc } else { $null }
                 message = if ($value) { [string]$value.message } else { '' }
                 unreadCommentCount = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $agentId }).Count
+                modelRoute = if ($modelRoute.Count) { [pscustomobject][ordered]@{ complexity=[string]$modelRoute[0].complexity; model=[string]$modelRoute[0].model; reasoningEffort=[string]$modelRoute[0].reasoningEffort; confidence=[double]$modelRoute[0].confidence; decisionId=[string]$modelRoute[0].decisionId } } else { $null }
             }
         }
         $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })
         $eventSlice = if ($EventLimit -gt 0) { @($events | Sort-Object timestampUtc -Descending | Select-Object -First $EventLimit) } else { @($events | Sort-Object timestampUtc -Descending) }
+        if ($EventLimit -gt 0) {
+            $pinnedReviewEvents = @($events | Where-Object { [string]$_.type -in @('review-question-opened','review-question-answered') })
+            $sourceCommentIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($questionEvent in @($pinnedReviewEvents | Where-Object { [string]$_.type -eq 'review-question-opened' })) {
+                $sourceCommentId = @($questionEvent.evidence | Select-Object -First 1)
+                if ($sourceCommentId.Count -and $sourceCommentId[0]) { $null = $sourceCommentIds.Add([string]$sourceCommentId[0]) }
+            }
+            $pinnedReviewEvents += @($events | Where-Object { [string]$_.type -eq 'user-comment' -and $sourceCommentIds.Contains([string]$_.eventId) })
+            $eventById = [ordered]@{}
+            foreach ($projectedEvent in @($eventSlice) + @($pinnedReviewEvents)) { $eventById[[string]$projectedEvent.eventId] = $projectedEvent }
+            $eventSlice = @($eventById.Values | Sort-Object timestampUtc -Descending)
+        }
         $items.Add([pscustomobject][ordered]@{
             taskId = [string]$task.taskId
             selector = [string]$task.selector

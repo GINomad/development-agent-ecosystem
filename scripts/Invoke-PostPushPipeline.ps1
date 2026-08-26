@@ -7,6 +7,7 @@ param(
     [string] $Commit,
     [datetime] $QueuedAfter = [datetime]::UtcNow.AddMinutes(-5),
     [ValidateRange(0,3)][int] $RemediationCycle = 0,
+    [string] $AzCli,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -27,9 +28,15 @@ $workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
 if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Git workspace was not found: $workspace" }
 Push-Location $workspace
 try {
-    if (-not $Branch) { $Branch = (& git branch --show-current).Trim() }
-    if (-not $Commit) { $Commit = (& git rev-parse HEAD).Trim() }
-    if ($LASTEXITCODE -ne 0 -or -not $Branch -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact branch and full commit SHA.' }
+    if (-not $Branch) {
+        $Branch = (& git branch --show-current).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the current Git branch.' }
+    }
+    if (-not $Commit) {
+        $Commit = (& git rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the current Git commit.' }
+    }
+    if (-not $Branch -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact branch and full commit SHA.' }
     $shortBranch = $Branch -replace '^refs/heads/', ''
     $remoteCommit = ([string](& git rev-parse "refs/remotes/origin/$shortBranch" 2>$null)).Trim()
     if ($LASTEXITCODE -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) { throw "origin/$shortBranch does not point to exact pushed commit $Commit. Refusing to monitor or queue an unrelated build." }
@@ -65,8 +72,10 @@ try {
         ProgressCallback = $activityCallback
         PassThru = $true
     }
-    $result = & $watcher @watcherParameters
-    if (-not $result -or -not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Pipeline watcher did not produce pipeline-result.json.' }
+    if (-not [string]::IsNullOrWhiteSpace($AzCli)) { $watcherParameters.AzCli = $AzCli }
+    $watcherResults = @(& $watcher @watcherParameters)
+    if ($watcherResults.Count -ne 1 -or -not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Pipeline watcher did not produce exactly one pipeline-result.json result.' }
+    $result = $watcherResults[0]
 
     $summary = [string]$result.summary
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pipeline-analysis -Summary $summary -Artifact $resultPath -Evidence @("branch:$shortBranch", "commit:$Commit") -TargetAgentId knowledge_keeper -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

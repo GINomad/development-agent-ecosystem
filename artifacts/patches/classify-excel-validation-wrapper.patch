@@ -1,0 +1,14 @@
+diff --git a/scripts/Classify-PipelineFailure.ps1 b/scripts/Classify-PipelineFailure.ps1
+--- a/scripts/Classify-PipelineFailure.ps1
++++ b/scripts/Classify-PipelineFailure.ps1
+@@ -27 +27,2 @@
+-        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b'
++        '(?im)\b(unexpected value|unexpected property|did not find expected key)\b',
++        '(?im)Excel deliverable validation failed with exit code\s*\.(?:\s|$)'
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -381,0 +382,3 @@
++$excelValidationWrapperClassification = & (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -TaskNames 'Validate and stage Excel workbook add-in package' -LogLines @('Validated Main-bck.xlsm: HASH','Validated Main.xlsx: HASH','Validated PlanningSpaceExcelAddIn.xlam: HASH','Excel deliverable validation failed with exit code .','PowerShell exited with code ''1''.')
++if ([string]$excelValidationWrapperClassification.category -ne 'code' -or -not [bool]$excelValidationWrapperClassification.developerEligible -or @($excelValidationWrapperClassification.matchedSignals) -notcontains 'Excel deliverable validation failed with exit code .') { throw 'The invalid PowerShell LASTEXITCODE wrapper signal must be classified as pipeline code and routed to Developer.' }
++Add-Check -Name 'excel-validation-wrapper-classification' -Detail 'A successful Excel artifact validation followed by an empty LASTEXITCODE wrapper failure routes the YAML defect to Developer'

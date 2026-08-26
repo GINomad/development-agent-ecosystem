@@ -1,5 +1,7 @@
 # PS Excel Agent Coding Style
 
+Universal engineering rules are maintained in ../global/engineering-code-standards.md and apply to every configured repository. This file contains only ps-excel-agent-specific additions or provenance retained from the imported seed knowledge.
+
 Source repository: `C:\Repos\ps-excel-agent`
 Knowledge base path: `C:\Repos\AI Knowledge\ps_excel_agent`
 Created: 2026-06-26

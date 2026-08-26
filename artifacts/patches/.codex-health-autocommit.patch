@@ -1,0 +1,70 @@
+diff --git a/config/agents.json b/config/agents.json
+--- a/config/agents.json
++++ b/config/agents.json
+@@ -94,6 +94,7 @@
+     "automaticRecovery": {
+       "enabled": true,
++      "commitVerifiedRepairs": true,
+       "maxAttemptsPerFailureSignature": 1,
+diff --git a/config/schemas/agents.schema.json b/config/schemas/agents.schema.json
+--- a/config/schemas/agents.schema.json
++++ b/config/schemas/agents.schema.json
+@@ -184,9 +184,10 @@
+         "automaticRecovery": {
+           "type": "object",
+           "additionalProperties": false,
+-          "required": ["enabled", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
++          "required": ["enabled", "commitVerifiedRepairs", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
+           "properties": {
+             "enabled": { "type": "boolean" },
++            "commitVerifiedRepairs": { "type": "boolean" },
+             "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 3 },
+diff --git a/scripts/Start-AgentHealthRecovery.ps1 b/scripts/Start-AgentHealthRecovery.ps1
+--- a/scripts/Start-AgentHealthRecovery.ps1
++++ b/scripts/Start-AgentHealthRecovery.ps1
+@@ -187,6 +187,31 @@
+     if ([string]$recovery.status -eq 'repaired') {
+         $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
++        $recoveryCommit = $null
++        if ([bool]$config.health.automaticRecovery.commitVerifiedRepairs) {
++            $postValidationChanges = @(git -C $workspace status --porcelain)
++            if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the validated ecosystem repair before commit.' }
++            if ($postValidationChanges.Count) {
++                if ($OperatorApprovedDirtyWorktree) {
++                    throw 'Validated recovery started from a dirty worktree and cannot safely auto-commit mixed pre-existing changes.'
++                }
++                & git -C $workspace add --all -- .
++                if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the validated ecosystem repair.' }
++                $commitMessage = "fix(ecosystem): health recovery $($signature.Substring(0, 12))"
++                & git -C $workspace commit -m $commitMessage
++                if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the validated ecosystem repair.' }
++                $recoveryCommit = (& git -C $workspace rev-parse HEAD).Trim()
++                if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to verify the validated ecosystem repair commit.' }
++                $remainingChanges = @(git -C $workspace status --porcelain)
++                if ($LASTEXITCODE -ne 0 -or $remainingChanges.Count) { throw 'The verified ecosystem repair commit did not leave a clean worktree.' }
++                & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_commit -Summary "Validated ecosystem repair committed locally as $recoveryCommit." -Details 'The trusted host created a local commit after complete validation; no push or external write was performed.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
++            }
++        }
+         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+@@ -218,7 +243,7 @@
+-    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath }
++    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null } }
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -750,6 +750,8 @@
+ if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic health recovery boundary is unsafe.' }
++if (-not [bool]$config.health.automaticRecovery.commitVerifiedRepairs -or $healthRecoveryScript -notmatch 'health_recovery_commit' -or $healthRecoveryScript -notmatch 'git -C \$workspace commit') { throw 'Validated ecosystem repairs are not committed locally by the trusted host.' }
+ if ([string]$config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Unattended automatic health recovery must remain sandboxed.' }
+diff --git a/docs/configuration.md b/docs/configuration.md
+--- a/docs/configuration.md
++++ b/docs/configuration.md
+@@ -33,1 +33,1 @@
+-`health` controls automatic failure handling. `repairMode` is fixed to `safe-deterministic-only`. `automaticRecovery.workspace` must resolve to this ecosystem repository; product-code changes and external writes are permanently disabled. `maxAttemptsPerFailureSignature` prevents recovery loops and defaults to one. Automatic recovery always uses `workspace-write`. `elevatedFallback` permits one `danger-full-access` attempt only after an explicit confirmation in the local dashboard; this is intended solely for Windows process-creation error 1260.
++`health` controls automatic failure handling. `repairMode` is fixed to `safe-deterministic-only`. `automaticRecovery.workspace` must resolve to this ecosystem repository; product-code changes and external writes are permanently disabled. `commitVerifiedRepairs` makes the trusted host create one local ecosystem commit only after complete validation; it never pushes that commit. `maxAttemptsPerFailureSignature` prevents recovery loops and defaults to one. Automatic recovery always uses `workspace-write`. `elevatedFallback` permits one `danger-full-access` attempt only after an explicit confirmation in the local dashboard; this is intended solely for Windows process-creation error 1260.
+diff --git a/docs/operations.md b/docs/operations.md
+--- a/docs/operations.md
++++ b/docs/operations.md
+@@ -96,1 +96,1 @@
+-When a completed Health Check diagnosis already exists, the coordinator reuses it instead of spending another model pass on the same evidence. It runs once per failure signature or bounded maintenance request and validates the exact behavior plus `Test-AgentEcosystem.ps1`. A validated ecosystem repair automatically restarts only the affected agent once. A non-ecosystem correction is routed once to its owner: Orchestrator for routing decisions without source mutation, Developer for product code/tests/product pipeline YAML, Requirements Analyst for requirements evidence, Knowledge Keeper for persisted task knowledge, Reviewer for product review work, or Pipeline Monitor for provider-side diagnosis. Credentials, approvals, external authority, and ambiguous evidence stop at `waiting_for_input`.
++When a completed Health Check diagnosis already exists, the coordinator reuses it instead of spending another model pass on the same evidence. It runs once per failure signature or bounded maintenance request and validates the exact behavior plus `Test-AgentEcosystem.ps1`. From a clean baseline, the trusted host commits a validated ecosystem repair locally before restarting only the affected agent once; it never pushes. A non-ecosystem correction is routed once to its owner: Orchestrator for routing decisions without source mutation, Developer for product code/tests/product pipeline YAML, Requirements Analyst for requirements evidence, Knowledge Keeper for persisted task knowledge, Reviewer for product review work, or Pipeline Monitor for provider-side diagnosis. Credentials, approvals, external authority, and ambiguous evidence stop at `waiting_for_input`.

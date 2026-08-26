@@ -1,0 +1,20 @@
+diff --git a/scripts/Start-AgentDashboard.ps1 b/scripts/Start-AgentDashboard.ps1
+--- a/scripts/Start-AgentDashboard.ps1
++++ b/scripts/Start-AgentDashboard.ps1
+@@ -655,2 +655,2 @@
+-                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+-                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved. After validation it will restart only '$([string]$failure.agentId)'." }
++                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; OperatorApprovedDirtyWorktree=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
++                    Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved, including preservation-aware work over the current ecosystem worktree. After validation it will restart only '$([string]$failure.agentId)'." }
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -752,1 +752,2 @@
+ if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery must require explicit dashboard approval.' }
++if ($dashboardScript -notmatch 'OperatorApprovedDirtyWorktree=\$true' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges') { throw 'Approved elevated Health Check recovery does not preserve and expose the dirty ecosystem baseline.' }
+diff --git a/docs/operations.md b/docs/operations.md
+--- a/docs/operations.md
++++ b/docs/operations.md
+@@ -98,1 +98,1 @@
+-If the sandboxed agent is blocked by Windows process-creation error 1260, select **Approve elevated repair** on the task card and confirm the warning. This authorizes one `danger-full-access` retry for that task and failure signature. The launcher still requires a clean ecosystem worktree, starts in the exact ecosystem root without additional writable directories, and keeps product/external writes disabled. The OS does not enforce the repository boundary during that single elevated attempt.
++If the sandboxed agent is blocked by Windows process-creation error 1260, select **Approve elevated repair** on the task card and confirm the warning. This authorizes one `danger-full-access` retry for that task and failure signature. The same explicit approval allows recovery over an ecosystem worktree with existing changes: their paths are captured in `preExistingWorktreeChanges`, and the recovery prompt forbids reverting, cleaning, wholesale overwrite, staging, or committing them. The launcher starts in the exact ecosystem root without additional writable directories and keeps product/external writes disabled. The OS does not enforce the repository boundary during that single elevated attempt.

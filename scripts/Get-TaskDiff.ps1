@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [string] $RepositoryId,
     [string] $FilePath,
+    [ValidateSet('reviewed-commit','all-task-changes')][string] $Scope = 'reviewed-commit',
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -25,6 +26,16 @@ else { @() })
 if (-not $taskRepositoryIds.Count) { throw "Task '$TaskId' does not persist a repository scope." }
 if ($RepositoryId -and $RepositoryId -notin $taskRepositoryIds) { throw "Repository '$RepositoryId' is not part of task '$TaskId'." }
 
+$reviewedCommit = $null
+if ($Scope -eq 'reviewed-commit') {
+    $reviewResultPath = Join-Path $taskRoot 'review-result.json'
+    if (Test-Path -LiteralPath $reviewResultPath -PathType Leaf) {
+        $reviewResult = Get-Content -LiteralPath $reviewResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $reviewedRevision = [string]$reviewResult.reviewedRevision
+        if ($reviewedRevision -match '^git:([0-9a-fA-F]{40,64})(?:;|$)') { $reviewedCommit = $Matches[1].ToLowerInvariant() }
+    }
+}
+
 function Invoke-GitText {
     param(
         [Parameter(Mandatory)][string] $Workspace,
@@ -45,24 +56,58 @@ function Invoke-GitText {
     return @($output)
 }
 
+function Get-GitObjectId {
+    param([object[]] $Output)
+    foreach ($line in @($Output)) {
+        $candidate = ([string]$line).Trim()
+        if ($candidate -match '^[0-9a-fA-F]{40,64}$') { return $candidate.ToLowerInvariant() }
+    }
+    return $null
+}
+
 function Get-RepositoryDiffState {
     param([Parameter(Mandatory)] $Repository)
     $workspace = [IO.Path]::GetFullPath([string]$Repository.localWorkspace)
     if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Configured workspace is not a Git repository: $workspace" }
-    $head = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+    $head = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD'))
+    if (-not $head) { throw "Git HEAD in '$workspace' did not resolve to an object ID." }
     $branch = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()
-    $baseBranch = [string]$config.runtime.defaultBaseBranch
-    $baseRef = $null
-    foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
-        $null = Invoke-GitText -Workspace $workspace -Arguments @('show-ref','--verify','--quiet',$candidate) -AllowedExitCodes @(0,1)
-        if ($LASTEXITCODE -eq 0) { $baseRef = $candidate; break }
+    $diffTarget = $null
+    $revisionSource = 'task-branch'
+    if ($Scope -eq 'reviewed-commit') {
+        $diffTarget = $head
+        $revisionSource = 'current-head'
+        if ($reviewedCommit) {
+            $verifiedCommitOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--verify',"$reviewedCommit^{commit}") -AllowedExitCodes @(0,128))
+            $verifiedCommit = Get-GitObjectId -Output $verifiedCommitOutput
+            if ($verifiedCommit) {
+                $diffTarget = $verifiedCommit
+                $revisionSource = 'review-result'
+            }
+        }
+        $parentOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse',"$diffTarget^") -AllowedExitCodes @(0,128))
+        $diffBase = Get-GitObjectId -Output $parentOutput
+        if (-not $diffBase) { throw "Reviewed commit '$diffTarget' has no resolvable first parent." }
+        $baseRef = "$diffTarget^"
     }
-    if (-not $baseRef) { $baseRef = 'HEAD' }
-    $mergeBaseOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$baseRef,'HEAD') -AllowedExitCodes @(0,1))
-    $diffBase = if ($mergeBaseOutput.Count) { [string]$mergeBaseOutput[0] } else { 'HEAD' }
+    else {
+        $baseBranch = [string]$config.runtime.defaultBaseBranch
+        $baseRef = $null
+        foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
+            $null = Invoke-GitText -Workspace $workspace -Arguments @('show-ref','--verify','--quiet',$candidate) -AllowedExitCodes @(0,1)
+            if ($LASTEXITCODE -eq 0) { $baseRef = $candidate; break }
+        }
+        if (-not $baseRef) { $baseRef = 'HEAD' }
+        $mergeBaseOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$baseRef,'HEAD') -AllowedExitCodes @(0,1))
+        $mergeBase = Get-GitObjectId -Output $mergeBaseOutput
+        $diffBase = if ($mergeBase) { $mergeBase } else { 'HEAD' }
+    }
 
     $files = [Collections.Generic.List[object]]::new()
-    $trackedLines = Invoke-GitText -Workspace $workspace -Arguments @('diff','--name-status','--find-renames',$diffBase,'--')
+    $trackedArguments = @('diff','--name-status','--find-renames',$diffBase)
+    if ($diffTarget) { $trackedArguments += $diffTarget }
+    $trackedArguments += '--'
+    $trackedLines = Invoke-GitText -Workspace $workspace -Arguments $trackedArguments
     foreach ($line in $trackedLines) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         $parts = @($line.Split([char]9))
@@ -72,7 +117,9 @@ function Get-RepositoryDiffState {
         $path = [string]$parts[$parts.Count - 1]
         if (($status.StartsWith('R') -or $status.StartsWith('C')) -and $parts.Count -ge 3) { $oldPath = [string]$parts[1] }
         $numstatArguments = [Collections.Generic.List[string]]::new()
-        foreach ($argument in @('diff','--numstat','--find-renames',$diffBase,'--')) { $numstatArguments.Add($argument) }
+        foreach ($argument in @('diff','--numstat','--find-renames',$diffBase)) { $numstatArguments.Add($argument) }
+        if ($diffTarget) { $numstatArguments.Add($diffTarget) }
+        $numstatArguments.Add('--')
         if ($oldPath) { $numstatArguments.Add($oldPath) }
         $numstatArguments.Add($path)
         $numstat = Invoke-GitText -Workspace $workspace -Arguments @($numstatArguments)
@@ -98,7 +145,7 @@ function Get-RepositoryDiffState {
     }
     $knownPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($file in $files) { $null = $knownPaths.Add([string]$file.path) }
-    foreach ($path in @(Invoke-GitText -Workspace $workspace -Arguments @('ls-files','--others','--exclude-standard'))) {
+    foreach ($path in @(if ($Scope -eq 'all-task-changes') { Invoke-GitText -Workspace $workspace -Arguments @('ls-files','--others','--exclude-standard') } else { @() })) {
         if ([string]::IsNullOrWhiteSpace($path) -or $knownPaths.Contains($path)) { continue }
         $files.Add([pscustomobject][ordered]@{
             path = [string]$path
@@ -118,6 +165,9 @@ function Get-RepositoryDiffState {
         head = $head
         baseRef = $baseRef
         diffBase = $diffBase
+        diffTarget = $diffTarget
+        scope = $Scope
+        revisionSource = $revisionSource
         files = @($files | Sort-Object path)
     }
 }
@@ -134,6 +184,7 @@ if ([string]::IsNullOrWhiteSpace($FilePath)) {
     return [pscustomobject][ordered]@{
         TaskId = $TaskId
         GeneratedAtUtc = [DateTime]::UtcNow.ToString('o')
+        Scope = $Scope
         Repositories = @($repositories | ForEach-Object {
             [pscustomobject][ordered]@{
                 id = $_.id
@@ -142,6 +193,9 @@ if ([string]::IsNullOrWhiteSpace($FilePath)) {
                 head = $_.head
                 baseRef = $_.baseRef
                 diffBase = $_.diffBase
+                diffTarget = $_.diffTarget
+                scope = $_.scope
+                revisionSource = $_.revisionSource
                 files = @($_.files)
             }
         })
@@ -161,7 +215,9 @@ if ([bool]$file.untracked) {
 }
 else {
     $patchArguments = [Collections.Generic.List[string]]::new()
-    foreach ($argument in @('diff','--no-ext-diff','--no-color','--find-renames',"--unified=$contextLines",[string]$repositoryState.diffBase,'--')) { $patchArguments.Add($argument) }
+    foreach ($argument in @('diff','--no-ext-diff','--no-color','--find-renames',"--unified=$contextLines",[string]$repositoryState.diffBase)) { $patchArguments.Add($argument) }
+    if ($repositoryState.diffTarget) { $patchArguments.Add([string]$repositoryState.diffTarget) }
+    $patchArguments.Add('--')
     if ($file.oldPath) { $patchArguments.Add([string]$file.oldPath) }
     $patchArguments.Add([string]$file.path)
     $patchLines = Invoke-GitText -Workspace $repositoryState.workspace -Arguments @($patchArguments)
@@ -182,6 +238,9 @@ if ($truncated) {
     Head = [string]$repositoryState.head
     BaseRef = [string]$repositoryState.baseRef
     DiffBase = [string]$repositoryState.diffBase
+    DiffTarget = [string]$repositoryState.diffTarget
+    Scope = [string]$repositoryState.scope
+    RevisionSource = [string]$repositoryState.revisionSource
     File = $file
     Patch = $patch
     Length = $patchBytes.Length

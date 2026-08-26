@@ -2,7 +2,7 @@
     "sourceId":  "ps-excel-agent-initial",
     "sourceRoot":  "C:\\Repos\\AI Knowledge\\ps_excel_agent",
     "managedRoot":  "C:\\Repos\\development-agent-ecosystem\\knowledge\\managed\\ps-excel-agent",
-    "importedAtUtc":  "2026-08-08T10:24:25.6820118Z",
+    "importedAtUtc":  "2026-08-25T11:46:37.0446765Z",
     "entries":  [
                     {
                         "relativePath":  "coding-knowledge.md",
@@ -16,9 +16,9 @@
                         "relativePath":  "coding-style.md",
                         "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\coding-style.md",
                         "sourceHash":  "358b5f0362856ffad0531afe81afa358171b18b36b00183e20fbe245b17e29d0",
-                        "importedHash":  "358b5f0362856ffad0531afe81afa358171b18b36b00183e20fbe245b17e29d0",
+                        "importedHash":  "cdc34322717f68a996087b96a4157e0c52060b6c5305dc8cbe3c77d3f7e0b05d",
                         "sourceLastWriteUtc":  "2026-07-21T14:55:18.7853557Z",
-                        "status":  "unchanged"
+                        "status":  "skipped-managed-change"
                     },
                     {
                         "relativePath":  "conversation history\\1813945-Define scenario for projects and variables.md",
@@ -616,9 +616,9 @@
                         "relativePath":  "ps-app-delfi_CODE_STYLE_AND_CONVENTIONS.md",
                         "sourcePath":  "C:\\Repos\\AI Knowledge\\ps_excel_agent\\ps-app-delfi_CODE_STYLE_AND_CONVENTIONS.md",
                         "sourceHash":  "239966c71993e562cac04742f320ca154b106898767167317d078491f7940472",
-                        "importedHash":  "239966c71993e562cac04742f320ca154b106898767167317d078491f7940472",
+                        "importedHash":  "12f16c609c35497b3905cc3c081fd8a926e85f9cf19d7dc88025e1a1dc64c814",
                         "sourceLastWriteUtc":  "2026-07-08T14:51:29.9105379Z",
-                        "status":  "unchanged"
+                        "status":  "skipped-managed-change"
                     },
                     {
                         "relativePath":  "ps-app-delfi_DATA_FLOW_AND_EVENT_PROCESSING.md",
@@ -670,6 +670,7 @@
                     }
                 ],
     "conflicts":  [
-
+                      "coding-style.md",
+                      "ps-app-delfi_CODE_STYLE_AND_CONVENTIONS.md"
                   ]
 }

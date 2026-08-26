@@ -10,6 +10,7 @@
     "runtime",
     "operation",
     "workflow",
+    "modelRouting",
     "ui",
     "health",
     "review",
@@ -61,10 +62,11 @@
         "elevatedFallback": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath", "launchStrategy"],
+          "required": ["enabled", "useByDefault", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath", "launchStrategy"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "requiresDashboardApproval": { "const": true },
+            "useByDefault": { "const": true },
+            "requiresDashboardApproval": { "const": false },
             "sandboxMode": { "const": "danger-full-access" },
             "installCompatibleAgentsOnDetection": { "const": true },
             "agentProfileSuffix": { "type": "string", "pattern": "^_[a-z0-9_]+$" },
@@ -106,15 +108,40 @@
         "orchestration": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "agentId", "routeUntargetedComments", "preserveExplicitTargets", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "dispatchPriority"],
+          "required": ["enabled", "agentId", "outcomeDrivenTransitions", "transitionEntryPoint", "routeUntargetedComments", "preserveExplicitTargets", "forwardOutOfScopeComments", "autoDispatchForwardedComments", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "executionModes", "dispatchPriority"],
           "properties": {
             "enabled": { "const": true },
             "agentId": { "const": "orchestrator" },
+            "outcomeDrivenTransitions": { "const": true },
+            "transitionEntryPoint": { "const": "${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1" },
             "routeUntargetedComments": { "const": true },
             "preserveExplicitTargets": { "const": true },
+            "forwardOutOfScopeComments": { "const": true },
+            "autoDispatchForwardedComments": { "const": true },
             "allowMultipleTargets": { "type": "boolean" },
             "fallbackAgentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
             "routingArtifact": { "const": "workflow-routing.jsonl" },
+            "executionModes": {
+              "type": "object",
+              "required": ["full-delivery", "research-only", "requirements-only", "implementation-only", "review-only", "pipeline-only", "knowledge-only", "ecosystem-repair"],
+              "propertyNames": { "enum": ["full-delivery", "research-only", "requirements-only", "implementation-only", "review-only", "pipeline-only", "knowledge-only", "ecosystem-repair"] },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["description", "agentSequence", "codeChangesAllowed", "continueAutomatically"],
+                "properties": {
+                  "description": { "type": "string", "minLength": 1 },
+                  "agentSequence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "health_check"] }
+                  },
+                  "codeChangesAllowed": { "type": "boolean" },
+                  "continueAutomatically": { "type": "boolean" }
+                }
+              }
+            },
             "dispatchPriority": {
               "type": "array",
               "minItems": 1,
@@ -142,15 +169,64 @@
         "automaticContinuation": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "maxChainSteps", "useElevatedExecution", "orderedAgentIds", "stopStatuses"],
+          "required": ["enabled", "maxChainSteps", "maxTransitionRepeats", "useElevatedExecution", "recoveryGraceSeconds", "recoveryPollIntervalMinutes", "orderedAgentIds", "stopStatuses"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "maxChainSteps": { "type": "integer", "minimum": 1, "maximum": 32 },
+            "maxTransitionRepeats": { "type": "integer", "minimum": 1, "maximum": 3 },
             "useElevatedExecution": { "type": "boolean" },
+            "recoveryGraceSeconds": { "type": "integer", "minimum": 30, "maximum": 600 },
+            "recoveryPollIntervalMinutes": { "type": "integer", "minimum": 1, "maximum": 60 },
             "orderedAgentIds": { "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": { "enum": ["knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"] } },
             "stopStatuses": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["waiting_for_input", "held", "review_pending", "failed", "interrupted"] } }
           }
         }
+      }
+    },
+    "modelRouting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "artifactName", "maxDecisionsPerTask", "maxEvidenceCharacters", "largeEvidenceCharacters", "tiers", "rolePolicies", "complexSignals", "criticalSignals"],
+      "properties": {
+        "enabled": { "const": true },
+        "artifactName": { "const": "model-routing.json" },
+        "maxDecisionsPerTask": { "type": "integer", "minimum": 5, "maximum": 200 },
+        "maxEvidenceCharacters": { "type": "integer", "minimum": 2000, "maximum": 100000 },
+        "largeEvidenceCharacters": { "type": "integer", "minimum": 1000, "maximum": 50000 },
+        "tiers": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "rank", "model", "reasoningEffort"],
+            "properties": {
+              "id": { "enum": ["routine", "standard", "complex", "critical"] },
+              "rank": { "type": "integer", "minimum": 0, "maximum": 3 },
+              "model": { "type": "string", "minLength": 1 },
+              "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+            }
+          }
+        },
+        "rolePolicies": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agentId", "defaultTier", "minimumTier", "maximumTier"],
+            "properties": {
+              "agentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "defaultTier": { "enum": ["routine", "standard", "complex", "critical"] },
+              "minimumTier": { "enum": ["routine", "standard", "complex", "critical"] },
+              "maximumTier": { "enum": ["routine", "standard", "complex", "critical"] }
+            }
+          }
+        },
+        "complexSignals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 3 } },
+        "criticalSignals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 3 } }
       }
     },
     "ui": {
@@ -179,19 +255,27 @@
         "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
+          "required": ["enabled", "allowEcosystemSourceChanges", "preserveDirtyWorktreeChanges", "commitVerifiedRepairs", "pushVerifiedRepairs", "pushRemote", "pushRemoteUrl", "repairBranchPrefix", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
           "properties": {
             "enabled": { "type": "boolean" },
+            "allowEcosystemSourceChanges": { "const": true },
+            "preserveDirtyWorktreeChanges": { "const": true },
+            "commitVerifiedRepairs": { "type": "boolean" },
+            "pushVerifiedRepairs": { "type": "boolean" },
+            "pushRemote": { "const": "origin" },
+            "pushRemoteUrl": { "const": "https://github.com/GINomad/development-agent-ecosystem.git" },
+            "repairBranchPrefix": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$" },
             "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 3 },
             "workspace": { "type": "string", "minLength": 1 },
             "sandboxMode": { "const": "workspace-write" },
             "elevatedFallback": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "maxAttemptsPerFailureSignature"],
+              "required": ["enabled", "useByDefault", "requiresDashboardApproval", "sandboxMode", "maxAttemptsPerFailureSignature"],
               "properties": {
                 "enabled": { "type": "boolean" },
-                "requiresDashboardApproval": { "const": true },
+                "useByDefault": { "const": true },
+                "requiresDashboardApproval": { "const": false },
                 "sandboxMode": { "const": "danger-full-access" },
                 "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 1 }
               }
@@ -368,7 +452,7 @@
     "knowledge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["seedSources", "managedRoot", "versionedRoots", "taskHistoryRoot", "publicationPolicy", "requiredEvidenceFields"],
+      "required": ["seedSources", "managedRoot", "globalStandardsPath", "versionedRoots", "taskHistoryRoot", "publicationPolicy", "requiredEvidenceFields", "weeklyReport"],
       "properties": {
         "seedSources": {
           "type": "array",
@@ -386,10 +470,23 @@
           }
         },
         "managedRoot": { "type": "string", "minLength": 1 },
+        "globalStandardsPath": { "type": "string", "minLength": 1 },
         "versionedRoots": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
         "taskHistoryRoot": { "type": "string", "minLength": 1 },
         "publicationPolicy": { "const": "verified-evidence-only" },
-        "requiredEvidenceFields": { "type": "array", "minItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        "requiredEvidenceFields": { "type": "array", "minItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "weeklyReport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "dayOfWeek", "localTime", "lookbackDays", "outputRoot"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "dayOfWeek": { "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] },
+            "localTime": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "lookbackDays": { "type": "integer", "minimum": 1, "maximum": 31 },
+            "outputRoot": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "gates": { "type": "object" },
@@ -403,7 +500,7 @@
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "description", "responsibilities", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
+      "required": ["id", "name", "description", "responsibilities", "model", "reasoningEffort", "sandboxMode", "promptPaths", "skillPaths", "handoffs", "requiredArtifacts"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },

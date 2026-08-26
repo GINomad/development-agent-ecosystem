@@ -1,0 +1,15 @@
+diff --git a/prompts/common/task-protocol.md b/prompts/common/task-protocol.md
+--- a/prompts/common/task-protocol.md
++++ b/prompts/common/task-protocol.md
+@@ -16 +16,4 @@
+-- Keep the selected agent's live dashboard log factual through scripts/Write-AgentActivity.ps1. Record a concise entry before and after each material action, handoff, test batch, blocker, or recovery step; include useful stage/details, omit trivial reads, and never log credentials, tokens, or secret values.
++- Keep the selected agent's live dashboard log factual through `scripts/Write-AgentActivity.ps1`. Record an entry before and after each material inspection group, code change, command/test batch, handoff, blocker, or recovery step. Use `-Operation` for the action kind, `-Target` for the file/component/service, `-ProgressPercent` only when progress is evidence-based, `-Evidence` for bounded results or IDs, and `-NextAction` for the next intended material step. Use present tense before an action and an exact result afterwards.
++- For an operation expected to exceed 60 seconds, write a start entry and a completion/failure entry; add at most one factual intermediate update per meaningful phase change. Do not poll or create model turns only to produce log entries.
++- Operational logs may expose commands in redacted, bounded form, file paths, test counts, commit/build IDs, and validation outcomes. Never expose hidden reasoning, credentials, tokens, secret values, complete historical logs, or unbounded command output. Omit trivial individual reads and group related inspections into one event.
++- Before waiting or failing, log the blocker, last completed material action, bounded evidence, and the exact next action or user input required. Before success, log the published artifact/commit identifiers and validation summary.
+diff --git a/docs/operations.md b/docs/operations.md
+--- a/docs/operations.md
++++ b/docs/operations.md
+@@ -23 +23 @@
+-- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default);
++- click an agent card to open its persistent live activity log; it refreshes every `ui.agentLogRefreshSeconds` (30 seconds by default) and shows the material operation, target, evidence-based progress, bounded evidence, and next action when the agent supplied them;

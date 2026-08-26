@@ -594,3 +594,12 @@ var activeEvents = events
 8. **Testing** - Arrange-Act-Assert, meaningful test names
 9. **Configuration** - Externalize settings, use Key Vault for secrets
 10. **Observability** - Instrument with OpenTelemetry
+
+---
+
+## Calculation Orchestrator sensitivity workflow rules
+
+The following rules are verified for `PlanningSpace.Integration.Delfi.CalculationOrchestrator` at commit `88b4dcb8e457a06103be9e447024f30e9918844a` (task `task-1860579`).
+
+- Resolve and validate sensitivity-variable aliases before `ManageProjects` or any outbound Planning Space request. This keeps invalid aliases fail-fast and prevents partial project mutation. Evidence: approved review finding `REV-005`, user decision `92a31240e899497eae62a1a6b21318ad`, clean review at the cited commit, and `CalculationControllerTests.cs:503-520`.
+- Do not perform the controller-level hierarchy-node lookup merely to construct sensitivity settings when no Economic Limit override is supplied. Only the override path needs that lookup. Evidence: approved review finding `REV-006`, user decision `8074e805b7b1410aa1c9b125ce1cee54`, clean review at the cited commit, and `CalculationControllerTests.cs:598-607`.

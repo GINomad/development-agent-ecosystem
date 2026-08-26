@@ -46,6 +46,7 @@ foreach ($name in $required) {
     }
     if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
         $parsedArtifact = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId $AgentId -ArtifactName $name -Path $path -TaskRoot $taskRoot
         if ($name -eq 'task-summary.json') {
             if ([string]$parsedArtifact.taskId -ne $TaskId -or [string]$parsedArtifact.status -ne 'completed') { throw 'task-summary.json must identify this task and have status completed.' }
             foreach ($propertyName in @('completedAtUtc','repositories','outcomes','decisions','verification','knowledgeUpdates','artifacts','residualItems')) {
@@ -61,9 +62,16 @@ foreach ($name in $required) {
     $validated.Add($path)
 }
 
-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
-$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($Evidence)) -ConfigPath $ConfigPath -CodexHome $CodexHome
+$continuationRequest = $null
+if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
+    $requestId = [guid]::NewGuid().ToString('N')
+    $continuationRequest = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type continuation-requested -Summary "Successful '$AgentId' outcome is returned to Orchestrator for the next deterministic decision." -Artifact $primaryArtifact -Evidence @("continuation-request:$requestId", "completed-agent:$AgentId") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
+}
+
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$continuationEvidence = if ($continuationRequest) { @("continuation-event:$([string]$continuationRequest.eventId)") } else { @() }
+$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($Evidence) + $continuationEvidence) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
 if (Test-Path -LiteralPath $checkpointPath -PathType Leaf) {
     $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw -Encoding UTF8 | ConvertFrom-Json

@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 $targetedConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedConfig.enabled) {
     return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId; TargetAgentId=$null }
@@ -87,13 +88,13 @@ function Write-TargetedResult {
 }
 
 if ($requiresHostCompatibleProfile -and -not $ElevatedApproved) {
-    $message = "Health Check prepared host-compatible profiles, but targeted resume for '$targetAgentId' requires the existing dashboard elevated approval."
+    $message = "Health Check prepared host-compatible profiles, but standing host-compatible execution is unavailable for '$targetAgentId'."
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level waiting -Stage health_targeted_resume -Summary $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     return Write-TargetedResult -Status 'approval-required' -Message $message
 }
 if ($ElevatedApproved) {
-    if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) {
-        throw 'Elevated targeted resume is not enabled behind the dashboard approval gate.'
+    if (-not [bool]$config.runtime.elevatedFallback.enabled) {
+        throw 'Host-compatible targeted resume is not enabled.'
     }
 }
 

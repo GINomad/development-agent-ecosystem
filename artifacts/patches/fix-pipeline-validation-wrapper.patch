@@ -1,0 +1,6 @@
+diff --git a/azure-pipelines.yml b/azure-pipelines.yml
+--- a/azure-pipelines.yml
++++ b/azure-pipelines.yml
+@@ -167,2 +167 @@
+       & "$(System.DefaultWorkingDirectory)\ExcelAddIn\Validate-ExcelDeliverables.ps1"
+-      if ($LASTEXITCODE -ne 0) { throw "Excel deliverable validation failed with exit code $LASTEXITCODE." }

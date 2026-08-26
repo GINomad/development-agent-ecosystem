@@ -21,6 +21,12 @@ function Limit-Text {
     return $text.Substring(0, $Maximum) + '...'
 }
 
+function Get-OptionalPropertyValue {
+    param([AllowNull()][object] $InputObject, [Parameter(Mandatory)][string] $Name)
+    if ($null -eq $InputObject -or -not $InputObject.PSObject.Properties[$Name]) { return $null }
+    return $InputObject.$Name
+}
+
 function Add-ActivityEntry {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]] $Entries,
@@ -31,7 +37,12 @@ function Add-ActivityEntry {
         [AllowNull()][string] $Stage,
         [Parameter(Mandatory)][string] $Summary,
         [AllowNull()][string] $Details,
-        [int] $Sequence
+        [int] $Sequence,
+        [AllowNull()][string] $Operation,
+        [AllowNull()][string] $Target,
+        [AllowNull()][Nullable[int]] $ProgressPercent,
+        [AllowNull()][string] $NextAction,
+        [AllowEmptyCollection()][object[]] $Evidence = @()
     )
     $Entries.Add([pscustomobject][ordered]@{
         id = $Id
@@ -41,6 +52,11 @@ function Add-ActivityEntry {
         stage = $Stage
         summary = Limit-Text -Value $Summary -Maximum 4000
         details = Limit-Text -Value $Details -Maximum 8000
+        operation = Limit-Text -Value $Operation -Maximum 100
+        target = Limit-Text -Value $Target -Maximum 2000
+        progressPercent = if ($null -eq $ProgressPercent) { $null } else { [int]$ProgressPercent }
+        nextAction = Limit-Text -Value $NextAction -Maximum 4000
+        evidence = @($Evidence | Where-Object { $null -ne $_ -and -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 20 | ForEach-Object { Limit-Text -Value $_ -Maximum 2000 })
         sequence = $Sequence
     })
 }
@@ -61,7 +77,21 @@ if (Test-Path -LiteralPath $activityPath -PathType Leaf) {
         try { $record = $line | ConvertFrom-Json } catch { continue }
         if ([string]$record.agentId -ne $AgentId) { continue }
         $sequence++
-        Add-ActivityEntry -Entries $entries -Id ([string]$record.activityId) -TimestampUtc ([string]$record.timestampUtc) -Source 'activity' -Level ([string]$record.level) -Stage ([string]$record.stage) -Summary ([string]$record.summary) -Details ([string]$record.details) -Sequence $sequence
+        Add-ActivityEntry `
+            -Entries $entries `
+            -Id ([string]$record.activityId) `
+            -TimestampUtc ([string]$record.timestampUtc) `
+            -Source 'activity' `
+            -Level ([string]$record.level) `
+            -Stage ([string]$record.stage) `
+            -Summary ([string]$record.summary) `
+            -Details ([string]$record.details) `
+            -Operation ([string](Get-OptionalPropertyValue -InputObject $record -Name 'operation')) `
+            -Target ([string](Get-OptionalPropertyValue -InputObject $record -Name 'target')) `
+            -ProgressPercent (Get-OptionalPropertyValue -InputObject $record -Name 'progressPercent') `
+            -NextAction ([string](Get-OptionalPropertyValue -InputObject $record -Name 'nextAction')) `
+            -Evidence @(Get-OptionalPropertyValue -InputObject $record -Name 'evidence') `
+            -Sequence $sequence
     }
 }
 

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task-local technical debt items",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "items"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceFindingId", "title", "status", "severity", "category", "createdAtUtc", "createdBy", "bypassReason", "reviewArtifact", "evidence", "impact", "correctionDirection"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^TD-REV-[0-9]{3,}$" },
+        "sourceFindingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["open", "resolved", "cancelled"] },
+        "severity": { "enum": ["critical", "high", "medium", "low"] },
+        "category": { "type": "string", "minLength": 1 },
+        "createdAtUtc": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "minLength": 1 },
+        "bypassReason": { "type": "string", "minLength": 1 },
+        "reviewArtifact": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "impact": { "type": "string", "minLength": 1 },
+        "correctionDirection": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

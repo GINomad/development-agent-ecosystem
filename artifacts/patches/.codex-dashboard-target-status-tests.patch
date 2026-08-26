@@ -1,0 +1,15 @@
+diff --git a/scripts/Test-AgentEcosystem.ps1 b/scripts/Test-AgentEcosystem.ps1
+--- a/scripts/Test-AgentEcosystem.ps1
++++ b/scripts/Test-AgentEcosystem.ps1
+@@ -111,6 +111,7 @@ foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff','
+ }
+ if ($dashboardServer -notmatch 'Start-ScriptRunspace' -or $dashboardServer -notmatch 'in-process-runspace') { throw 'Elevated workflow must avoid the nested PowerShell process through a tracked in-process runspace.' }
+ if ($dashboardServer -match 'Start-ScriptProcess' -or $dashboardServer -match 'Start-Process\s+.*powershell' -or $dashboardServer -match 'ExecutionPolicy\s+Bypass') { throw 'Dashboard actions must not create nested PowerShell launchers that host security can block before task state exists.' }
++if ($dashboardServer -notmatch '\$requestError\s*=\s*\$_\.Exception\.Message' -or $dashboardServer -notmatch '\$response\.Abort\(\)') { throw 'Dashboard request failures must fail closed without terminating the listener when the response was already submitted.' }
+ if ($dashboardServer -notmatch '\[string\]::IsNullOrWhiteSpace\(\$ConfigPath\)' -or $dashboardServer -match '\[string\] \$ConfigPath = \(Join-Path') { throw 'Dashboard ConfigPath must be resolved after parameter binding so direct -File startup works in Windows PowerShell 5.1.' }
+@@ -204,6 +205,7 @@ $terminalStateResult = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalSta
+ if (-not [bool]$terminalStateResult.Terminal -or [string]$terminalStateResult.AgentStatus -ne 'completed') { throw 'A valid completed targeted role was rejected by the host lifecycle assertion.' }
+ $targetWorkflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
+ if ($targetWorkflowScript -notmatch 'Execute that role''s work yourself in this Codex process' -or $targetWorkflowScript -notmatch 'do not merely announce or simulate a handoff' -or $targetWorkflowScript -notmatch 'Assert-TargetAgentTerminalState.ps1' -or $targetWorkflowScript -notmatch 'executedAgentId' -or $targetWorkflowScript -notmatch 'automaticContinuation.enabled' -or $targetWorkflowScript -match '\$TargetAgentId -and \$ContinueChain') { throw 'Host terminal lifecycle or configuration-driven automatic continuation is incomplete.' }
++if ($targetWorkflowScript -notmatch '\$startStage\s*=\s*if\s*\(\$TargetAgentId\)' -or $targetWorkflowScript -notmatch '-AgentId\s+\$executedAgentId\s+-AgentStatus\s+running\s+-Stage\s+\$executedAgentId') { throw 'A targeted host must mark the actual target agent and task stage running before Codex execution begins.' }
+ Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the host Codex run; a host exit with running/pending state fails closed instead of leaving an orphaned dashboard status'

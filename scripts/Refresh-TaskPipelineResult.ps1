@@ -33,13 +33,22 @@ $workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
 if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Git workspace was not found: $workspace" }
 Push-Location $workspace
 try {
-    if ([string]::IsNullOrWhiteSpace($Branch)) { $Branch = ([string](& git branch --show-current)).Trim() }
+    if ([string]::IsNullOrWhiteSpace($Branch)) {
+        $Branch = ([string](& git branch --show-current)).Trim()
+        $branchExitCode = $LASTEXITCODE
+        if ($branchExitCode -ne 0) { throw 'Could not resolve the task branch for pipeline refresh.' }
+    }
     $shortBranch = $Branch -replace '^refs/heads/', ''
     if ([string]::IsNullOrWhiteSpace($shortBranch)) { throw 'Could not resolve the task branch for pipeline refresh.' }
-    if ([string]::IsNullOrWhiteSpace($Commit)) { $Commit = ([string](& git rev-parse HEAD)).Trim() }
-    if ($LASTEXITCODE -ne 0 -or $Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact local commit for pipeline refresh.' }
+    if ([string]::IsNullOrWhiteSpace($Commit)) {
+        $Commit = ([string](& git rev-parse HEAD)).Trim()
+        $commitExitCode = $LASTEXITCODE
+        if ($commitExitCode -ne 0) { throw 'Could not resolve an exact local commit for pipeline refresh.' }
+    }
+    if ($Commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve an exact local commit for pipeline refresh.' }
     $remoteCommit = ([string](& git rev-parse "refs/remotes/origin/$shortBranch" 2>$null)).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) {
+    $remoteCommitExitCode = $LASTEXITCODE
+    if ($remoteCommitExitCode -ne 0 -or -not $remoteCommit.Equals($Commit, [StringComparison]::OrdinalIgnoreCase)) {
         throw "origin/$shortBranch does not point to exact local commit $Commit. Read-only refresh will not analyze an unrelated commit."
     }
     if (-not $PSBoundParameters.ContainsKey('QueuedAfter')) {
@@ -47,7 +56,7 @@ try {
     }
 
     $resultPath = Join-Path $taskRoot 'pipeline-result.json'
-    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_refresh -Message "Refreshing existing exact-SHA runs for $($Commit.Substring(0,12)) without queueing or pushing." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status running -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_refresh -Message "Refreshing existing exact-SHA runs for $($Commit.Substring(0,12)) without queueing or pushing." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Level progress -Stage pipeline_refresh -Summary "Refreshing Azure pipeline evidence for $($Commit.Substring(0,12))." -Details 'This observation is read-only and does not depend on pull-request creation.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
     $watcher = Join-Path (Resolve-EcosystemPath -Value ([string]$config.pipeline.monitorSkillRoot) -Config $config -CodexHome $CodexHome) 'scripts\watch_pipeline_runs.ps1'
@@ -88,7 +97,7 @@ try {
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_refresh_succeeded -Message 'Exact-SHA pipeline refresh succeeded; pull-request synchronization is now eligible.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
     elseif ([bool]$remediationRequest.Requested) {
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_remediation_routed -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId pipeline_monitor -AgentStatus completed -Stage pipeline_remediation_routed -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
     else {
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus waiting -Stage pipeline_external_blocker -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
