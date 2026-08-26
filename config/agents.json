@@ -46,6 +46,8 @@
     "orchestration": {
       "enabled": true,
       "agentId": "orchestrator",
+      "outcomeDrivenTransitions": true,
+      "transitionEntryPoint": "${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1",
       "routeUntargetedComments": true,
       "preserveExplicitTargets": true,
       "forwardOutOfScopeComments": true,

@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $CompletedAgentId,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
+    [switch] $OrchestratorAuthorized,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -12,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if (-not $OrchestratorAuthorized -and -not $PrepareOnly) { throw 'Direct agent-chain continuation is forbidden. Use Invoke-OrchestratorContinuation.ps1.' }
 $knownAgentIds = @($config.agents | ForEach-Object { [string]$_.id })
 if ($CompletedAgentId -notin $knownAgentIds) { throw "Unknown completed agent '$CompletedAgentId'." }
 $chainConfig = $config.workflow.automaticContinuation
@@ -287,7 +289,8 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         return [pscustomobject]@{ Status='prepared'; NextAgentId=$nextAgentId; StartedAgents=@($started) }
     }
 
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor ecosystem -Type workflow-status -Summary "Automatic chain continuation scheduled '$nextAgentId' after '$currentAgentId'." -TargetAgentId $nextAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $decision = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type routing-decision -Summary "Orchestrator selected '$nextAgentId' from the successful '$currentAgentId' outcome." -Evidence @("completed-agent:$currentAgentId", "transition:$transitionKey") -TargetAgentId $nextAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type workflow-status -Summary "Orchestrator continuation scheduled '$nextAgentId' after '$currentAgentId'." -Evidence @("orchestrator-decision:$([string]$decision.eventId)") -TargetAgentId $nextAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $repositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() }
     if (-not @($repositoryIds).Count) { throw "Task '$TaskId' has no repository scope for automatic continuation." }
     $workflowParameters = @{
