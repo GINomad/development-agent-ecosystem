@@ -23,7 +23,8 @@
     },
     "elevatedFallback": {
       "enabled": true,
-      "requiresDashboardApproval": true,
+      "useByDefault": true,
+      "requiresDashboardApproval": false,
       "sandboxMode": "danger-full-access",
       "installCompatibleAgentsOnDetection": true,
       "agentProfileSuffix": "_host_compatible",
@@ -170,6 +171,7 @@
     "automaticRecovery": {
       "enabled": true,
       "allowEcosystemSourceChanges": true,
+      "preserveDirtyWorktreeChanges": true,
       "commitVerifiedRepairs": true,
       "pushVerifiedRepairs": true,
       "pushRemote": "origin",
@@ -180,7 +182,8 @@
       "sandboxMode": "workspace-write",
       "elevatedFallback": {
         "enabled": true,
-        "requiresDashboardApproval": true,
+        "useByDefault": true,
+        "requiresDashboardApproval": false,
         "sandboxMode": "danger-full-access",
         "maxAttemptsPerFailureSignature": 1
       },

@@ -22,10 +22,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
 if ($ElevatedApproved) {
-    if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled with an explicit approval gate.' }
+    if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Host-compatible workflow execution is not enabled.' }
     $workflowSandboxMode = [string]$config.runtime.elevatedFallback.sandboxMode
     $workflowApprovalPolicy = 'never'
 }
@@ -203,7 +204,7 @@ Live task control:
 - A dashboard answer is authoritative only when the ledger contains its question-resolved event. Reread the linked user-comment before resuming the held scope.
 - Do not retry an identical failed execution more than $([int]$config.runtime.executionGuard.maxIdenticalFailures) times. On the third failure, stop immediately, persist the failure evidence, and hand it to development_health_check. Do not enter a wait loop after the retry limit.
 - A Health Check targeted retry is the single post-repair attempt for its failure signature. If that retry fails, persist the new failure and stop; do not dispatch Health Check recursively from the retry.
-- In elevated-approved mode, the user approved an OS-sandbox bypass for this task session. Every role may use the available local tools despite error 1260, but this does not authorize external writes, requirement assumptions, unapproved review fixes, or work outside the target workspace and ecosystem root.
+- In elevated-approved mode, the standing user policy selects host-compatible execution for every role to avoid Windows process-creation error 1260. This does not authorize external writes, requirement assumptions, unapproved review fixes, or work outside the target workspace and ecosystem root.
 
 Configured role directory (authoritative for routing):
 $roleDirectory

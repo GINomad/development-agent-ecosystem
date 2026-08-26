@@ -62,10 +62,11 @@
         "elevatedFallback": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath", "launchStrategy"],
+          "required": ["enabled", "useByDefault", "requiresDashboardApproval", "sandboxMode", "installCompatibleAgentsOnDetection", "agentProfileSuffix", "compatibilityPromptPath", "launchStrategy"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "requiresDashboardApproval": { "const": true },
+            "useByDefault": { "const": true },
+            "requiresDashboardApproval": { "const": false },
             "sandboxMode": { "const": "danger-full-access" },
             "installCompatibleAgentsOnDetection": { "const": true },
             "agentProfileSuffix": { "type": "string", "pattern": "^_[a-z0-9_]+$" },
@@ -254,10 +255,11 @@
         "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "allowEcosystemSourceChanges", "commitVerifiedRepairs", "pushVerifiedRepairs", "pushRemote", "pushRemoteUrl", "repairBranchPrefix", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
+          "required": ["enabled", "allowEcosystemSourceChanges", "preserveDirtyWorktreeChanges", "commitVerifiedRepairs", "pushVerifiedRepairs", "pushRemote", "pushRemoteUrl", "repairBranchPrefix", "maxAttemptsPerFailureSignature", "workspace", "sandboxMode", "elevatedFallback", "targetedResume", "allowProductCodeChanges", "allowExternalWrites"],
           "properties": {
             "enabled": { "type": "boolean" },
             "allowEcosystemSourceChanges": { "const": true },
+            "preserveDirtyWorktreeChanges": { "const": true },
             "commitVerifiedRepairs": { "type": "boolean" },
             "pushVerifiedRepairs": { "type": "boolean" },
             "pushRemote": { "const": "origin" },
@@ -269,10 +271,11 @@
             "elevatedFallback": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["enabled", "requiresDashboardApproval", "sandboxMode", "maxAttemptsPerFailureSignature"],
+              "required": ["enabled", "useByDefault", "requiresDashboardApproval", "sandboxMode", "maxAttemptsPerFailureSignature"],
               "properties": {
                 "enabled": { "type": "boolean" },
-                "requiresDashboardApproval": { "const": true },
+                "useByDefault": { "const": true },
+                "requiresDashboardApproval": { "const": false },
                 "sandboxMode": { "const": "danger-full-access" },
                 "maxAttemptsPerFailureSignature": { "type": "integer", "minimum": 0, "maximum": 1 }
               }

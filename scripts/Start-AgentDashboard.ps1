@@ -447,7 +447,7 @@ try {
                     }
                     $elevatedRequested = [bool](Get-ObjectPropertyValue -Source $body -Name 'elevated')
                     if ($elevatedRequested) {
-                        if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                        if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                         $workflowParameters.ElevatedApproved = $true
                     }
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $resolvedTaskId -Parameters $workflowParameters
@@ -509,7 +509,7 @@ try {
                     }
                     $elevated = [bool]$body.elevated
                     if ($elevated) {
-                        if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                        if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                         $parameters.ElevatedApproved = $true
                     }
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
@@ -583,7 +583,7 @@ try {
                 if ($path -match '^/api/tasks/([^/]+)/workflow/elevated$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not [bool]$config.runtime.elevatedFallback.enabled -or -not [bool]$config.runtime.elevatedFallback.requiresDashboardApproval) { throw 'Elevated workflow execution is not enabled.' }
+                    if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -619,7 +619,7 @@ try {
                 if ($path -match '^/api/tasks/([^/]+)/health-recovery/elevated$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery is not enabled.' }
+                    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled) { throw 'Elevated recovery is not enabled.' }
                     $taskRoot = Join-Path $stateRoot "tasks\$requestedTaskId"
                     if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw 'Task was not found.' }
                     $failurePath = Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 -ExpandProperty FullName
@@ -660,7 +660,7 @@ try {
                         Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="Validated repair is ready. Health Check started only '$([string]$failure.agentId)' in the approved elevated profile." }
                         continue
                     }
-                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; OperatorApprovedDirtyWorktree=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved, including preservation-aware work over the current ecosystem worktree. After validation it will restart only '$([string]$failure.agentId)'." }
                     continue
                 }
