@@ -1061,6 +1061,14 @@ foreach ($file in $skillFiles) {
 }
 Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 
+$setupPromptPath = Join-Path $root 'SETUP_WITH_LLM.md'
+if (-not (Test-Path -LiteralPath $setupPromptPath -PathType Leaf)) { throw 'The interactive LLM setup prompt is missing.' }
+$setupPrompt = Get-Content -LiteralPath $setupPromptPath -Raw -Encoding UTF8
+foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','Repositories: for every managed repository','Never ask the developer to paste passwords','az devops login','redacted summary','Start-DevelopmentWorkflow.ps1 -PrepareOnly','separate confirmation before running `scripts/Install-AgentEcosystem.ps1`')) {
+    if ($setupPrompt -notmatch [regex]::Escape($requiredSetupContract)) { throw "The interactive LLM setup prompt is missing contract text: $requiredSetupContract" }
+}
+Add-Check -Name 'llm-guided-installation' -Detail 'The branch contains a provider-aware interactive setup interview with secret handling, preview, validation, prepare-only smoke, and separate installation approval'
+
 $agentOutput = Join-Path $OutputRoot 'agents'
 & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $agentOutput -CodexHome $CodexHome | Out-Null
 $tomlFiles = @(Get-ChildItem -LiteralPath $agentOutput -Filter '*.toml' -File)
