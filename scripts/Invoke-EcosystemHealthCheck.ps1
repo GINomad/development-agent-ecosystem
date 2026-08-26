@@ -235,7 +235,7 @@ try {
                     }
                     else {
                         Add-HealthCheck -Id 'os-policy-compatibility' -Status warning -Summary 'OS policy error 1260 requires derived host-compatible agent profiles.' -Evidence $failureEvidence
-                        Add-Repair -Id 'install-host-compatible-agents' -Status requires-approval -Summary 'Run Health Check with -Repair to compile the compatibility profiles; dashboard confirmation remains required to execute them.'
+                        Add-Repair -Id 'install-host-compatible-agents' -Status available -Summary 'Run Health Check with -Repair to compile the compatibility profiles; standing policy selects them by default.'
                     }
                     Add-HealthCheck -Id 'agent-failure' -Status warning -Summary "Sandboxed workflow stopped: $failureSummary" -Evidence $failureEvidence
                 }
@@ -278,7 +278,7 @@ try {
         $taskResultPath = Join-Path $taskRoot 'health-check-result.json'
         Write-Utf8NoBom -Path $taskResultPath -Content $json
         if ($policyCompatibilityPrepared) {
-            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles for all agents after Windows policy error 1260. Confirm Resume workflow elevated to use them.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles after Windows policy error 1260; standing policy selects them on the next targeted resume.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         $healthStage = if ($policyCompatibilityPrepared) { 'os_policy_compatibility_ready' } else { 'health_check' }
         if ($overallStatus -eq 'unhealthy') {
