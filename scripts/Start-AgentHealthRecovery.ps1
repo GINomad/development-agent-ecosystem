@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$runtimeProvider = Get-AgentRuntimeProvider -Config $config
 if ([bool]$config.health.automaticRecovery.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 
 function Get-BoundedTextTail {
@@ -218,7 +219,15 @@ $logPath = Join-Path $taskRoot 'health-recovery-codex.jsonl'
 $resultPath = Join-Path $taskRoot 'health-recovery-result.json'
 $guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
-$arguments = @(
+$healthAgent = @($config.agents | Where-Object { [string]$_.id -eq 'health_check' }) | Select-Object -First 1
+if ($runtimeProvider -eq 'claude') {
+    & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install | Out-Null
+    $pluginRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.claude.pluginRoot) -Config $config -CodexHome $CodexHome
+    $schemaJson = (Get-Content -LiteralPath $schemaPath -Raw -Encoding UTF8).Trim()
+    $arguments = @('-p','--output-format','json','--model',[string]$healthAgent.model,'--effort',[string]$healthAgent.reasoningEffort,'--permission-mode',[string]$config.runtime.claude.permissionMode,'--max-turns',[string][int]$config.runtime.claude.maxTurns,'--no-session-persistence','--plugin-dir',$pluginRoot,'--agent',('development-agent-ecosystem:' + (Get-ClaudeAgentName -Name ([string]$healthAgent.name))),'--json-schema',$schemaJson,'Return the required structured health-recovery result after following the instruction supplied on standard input.')
+}
+else {
+    $arguments = @(
     '-a', $recoveryApprovalPolicy,
     '--config', 'notify=[]',
     'exec',
@@ -229,15 +238,17 @@ $arguments = @(
     '-o', $resultPath,
     '-'
 )
+}
 
 $recoveryWasValidated = $false
 try {
-    $codexCliPath = Resolve-CodexCliPath
-    if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
-    $codexExitCode = [int]$guardResult.exitCode
+    $agentCliPath = Resolve-AgentCliPath -Config $config
+    if (-not $agentCliPath) { throw 'Configured agent runtime CLI was not found.' }
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedAgentRuntime.ps1') -FilePath $agentCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $runtimeExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
-    if ($codexExitCode -ne 0) { throw "Health recovery Codex exited with code $codexExitCode. See $logPath" }
+    if ($runtimeExitCode -ne 0) { throw "Health recovery runtime exited with code $runtimeExitCode. See $logPath" }
+    if ($runtimeProvider -eq 'claude') { & (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $logPath -OutputPath $resultPath -Structured | Out-Null }
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$recovery.failureSignature -ne $signature) { throw 'Health recovery result has the wrong failure signature.' }

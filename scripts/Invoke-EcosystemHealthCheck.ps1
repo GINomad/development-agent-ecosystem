@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$runtimeProvider = Get-AgentRuntimeProvider -Config $config
 if (-not [bool]$config.health.enabled) { throw 'Health checks are disabled in config/agents.json.' }
 
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
@@ -40,13 +41,13 @@ if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
 try {
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
 
-    $codexCliPath = Resolve-CodexCliPath
-    if ($codexCliPath) {
-        $codexVersion = (& $codexCliPath --version 2>&1 | Out-String).Trim()
-        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @($codexCliPath)
+    $agentCliPath = Resolve-AgentCliPath -Config $config
+    if ($agentCliPath) {
+        $agentRuntimeVersion = (& $agentCliPath --version 2>&1 | Out-String).Trim()
+        Add-HealthCheck -Id 'agent-runtime-cli' -Status passed -Summary "Configured $runtimeProvider CLI is available: $agentRuntimeVersion" -Evidence @($agentCliPath)
     }
     else {
-        Add-HealthCheck -Id 'codex-cli' -Status failed -Summary 'Codex CLI was not found in the workflow environment.'
+        Add-HealthCheck -Id 'agent-runtime-cli' -Status failed -Summary "Configured $runtimeProvider CLI was not found in the workflow environment."
     }
 
     try {
@@ -57,10 +58,11 @@ try {
         Add-HealthCheck -Id 'ecosystem-validation' -Status failed -Summary $_.Exception.Message
     }
 
-    $agentInstallRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.agentInstallRoot) -Config $config -CodexHome $CodexHome
+    $agentInstallValue = if ($runtimeProvider -eq 'claude') { [string]$config.runtime.claude.agentInstallRoot } else { [string]$config.runtime.agentInstallRoot }
+    $agentInstallRoot = Resolve-EcosystemPath -Value $agentInstallValue -Config $config -CodexHome $CodexHome
     $resolvedCodexHome = Get-DefaultCodexHome -Override $CodexHome
     $compatibilitySuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
-    $expectCompatibilityProfiles = @($config.agents | Where-Object { Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name)$compatibilitySuffix.toml") -PathType Leaf }).Count -gt 0
+    $expectCompatibilityProfiles = $runtimeProvider -eq 'codex' -and @($config.agents | Where-Object { Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name)$compatibilitySuffix.toml") -PathType Leaf }).Count -gt 0
 
     function Get-AgentDefinitionDrift {
         $drift = [Collections.Generic.List[object]]::new()
@@ -84,12 +86,14 @@ try {
                 $definitions.Add([pscustomobject]@{ Agent=$compatibleAgent; Name=[string]$compatibleAgent.name })
             }
             foreach ($definition in $definitions) {
-                $path = Join-Path $agentInstallRoot "$([string]$definition.Name).toml"
+                $definitionName = if ($runtimeProvider -eq 'claude') { Get-ClaudeAgentName -Name ([string]$definition.Name) } else { [string]$definition.Name }
+                $extension = if ($runtimeProvider -eq 'claude') { '.md' } else { '.toml' }
+                $path = Join-Path $agentInstallRoot ($definitionName + $extension)
                 if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
                     $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='missing' })
                     continue
                 }
-                $expected = New-AgentToml -Agent $definition.Agent -Config $config -CodexHome $resolvedCodexHome
+                $expected = if ($runtimeProvider -eq 'claude') { New-AgentClaudeMarkdown -Agent $definition.Agent -Config $config -CodexHome $resolvedCodexHome } else { New-AgentToml -Agent $definition.Agent -Config $config -CodexHome $resolvedCodexHome }
                 $actual = [IO.File]::ReadAllText($path)
                 if (-not [string]::Equals($actual, $expected, [StringComparison]::Ordinal)) {
                     $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='outdated' })
@@ -113,7 +117,7 @@ try {
         }
         else {
             Add-HealthCheck -Id 'installed-agents' -Status repaired -Summary "Recompiled and installed $(@($config.agents).Count) current agent definitions$(if ($expectCompatibilityProfiles) { ' and their host-compatible profiles' } else { '' })." -Evidence @($agentInstallRoot)
-            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary 'Recompiled and installed agent TOML from canonical JSON, prompts, and skills after content drift detection.'
+            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary "Recompiled and installed $runtimeProvider agent definitions from canonical JSON, prompts, and skills after content drift detection."
         }
     }
     else {
@@ -218,7 +222,7 @@ try {
                 $failureEvidence = @($taskPath, $ledgerPath)
                 if (Test-Path -LiteralPath $codexLogPath) { $failureEvidence += $codexLogPath }
                 $osPolicyBlocked = $failureSummary -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260' -or $lastDiagnostic -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260'
-                if ($osPolicyBlocked -and [bool]$config.runtime.elevatedFallback.installCompatibleAgentsOnDetection) {
+                if ($runtimeProvider -eq 'codex' -and $osPolicyBlocked -and [bool]$config.runtime.elevatedFallback.installCompatibleAgentsOnDetection) {
                     if ($Repair) {
                         $compatibilitySync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install -IncludeHostCompatibilityProfile
                         $suffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix

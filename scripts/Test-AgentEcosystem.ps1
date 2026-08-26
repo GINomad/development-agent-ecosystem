@@ -19,10 +19,10 @@ function Add-Check {
 $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
-if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
-if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
-if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
-Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
+if ($workflowCliScript -notmatch 'Resolve-AgentCliPath' -or $healthCliScript -notmatch 'Resolve-AgentCliPath' -or $healthCheckCliScript -notmatch 'Resolve-AgentCliPath') { throw 'Foreground and scheduled hosts must share the provider-aware CLI resolver.' }
+if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentClaudeMarkdown' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated Claude-agent content drift, not only missing files.' }
+if ($workflowCliScript -notmatch "'--output-format'" -or $workflowCliScript -notmatch "'stream-json'|runtime\.claude\.outputFormat" -or $healthCliScript -notmatch "'--json-schema'") { throw 'Claude headless workflow and structured Health recovery flags are incomplete.' }
+Add-Check -Name 'scheduled-host-agent-runtime' -Detail 'Workflow, Health Check, and recovery hosts use the provider-aware CLI resolver and Claude headless output contracts'
 
 function Invoke-SchedulerTestGit {
     param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments)
@@ -82,6 +82,9 @@ $jsonFiles = [Collections.Generic.List[IO.FileInfo]]::new()
 foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $root 'config') -Recurse -Filter '*.json' -File)) { $jsonFiles.Add($file) }
 $jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root '.agents\plugins\marketplace.json')))
 $jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\.codex-plugin\plugin.json')))
+$jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root '.claude-plugin\marketplace.json')))
+$jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\.claude-plugin\plugin.json')))
+$jsonFiles.Add((Get-Item -LiteralPath (Join-Path $root '.claude\settings.json')))
 foreach ($file in $jsonFiles) { $null = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json }
 Add-Check -Name 'json-syntax' -Detail "$($jsonFiles.Count) files"
 
@@ -261,8 +264,8 @@ if (-not $orphanRejected) { throw 'A targeted host run was allowed to exit while
 $terminalStateResult = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $terminalStateTaskId -AgentId reviewer -ConfigPath $recoveryStatusConfigPath
 if (-not [bool]$terminalStateResult.Terminal -or [string]$terminalStateResult.AgentStatus -ne 'completed') { throw 'A valid completed targeted role was rejected by the host lifecycle assertion.' }
 $targetWorkflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
-if ($targetWorkflowScript -notmatch 'Execute that role''s work yourself in this Codex process' -or $targetWorkflowScript -notmatch 'do not merely announce or simulate a handoff' -or $targetWorkflowScript -notmatch 'Assert-TargetAgentTerminalState.ps1' -or $targetWorkflowScript -notmatch 'executedAgentId' -or $targetWorkflowScript -notmatch 'automaticContinuation.enabled' -or $targetWorkflowScript -match '\$TargetAgentId -and \$ContinueChain') { throw 'Host terminal lifecycle or configuration-driven automatic continuation is incomplete.' }
-Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the host Codex run; a host exit with running/pending state fails closed instead of leaving an orphaned dashboard status'
+if ($targetWorkflowScript -notmatch 'Execute that role''s work yourself in this \$runtimeDisplayName process' -or $targetWorkflowScript -notmatch 'do not merely announce or simulate a handoff' -or $targetWorkflowScript -notmatch 'Assert-TargetAgentTerminalState.ps1' -or $targetWorkflowScript -notmatch 'executedAgentId' -or $targetWorkflowScript -notmatch 'automaticContinuation.enabled' -or $targetWorkflowScript -match '\$TargetAgentId -and \$ContinueChain') { throw 'Host terminal lifecycle or configuration-driven automatic continuation is incomplete.' }
+Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the selected runtime host; a host exit with running/pending state fails closed instead of leaving an orphaned dashboard status'
 
 $workflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $newTaskScript = Get-Content -LiteralPath (Join-Path $root 'scripts\New-AgentTask.ps1') -Raw -Encoding UTF8
@@ -461,9 +464,9 @@ if ([int]$config.ui.agentLogRefreshSeconds -ne 30) { throw 'Default ui.agentLogR
 if ([int]$config.runtime.contextLimits.maxSourceFiles -gt 100 -or [int]$config.runtime.contextLimits.maxCommandOutputBytes -gt 65536) { throw 'Default AI context limits are too broad.' }
 if ([int]$config.review.maxFilesPerReview -gt 80 -or [int]$config.review.maxDiffCharacters -gt 500000) { throw 'Default PR review model-input limits are too broad.' }
 $pipelineAgent = @($config.agents | Where-Object id -eq 'pipeline_monitor') | Select-Object -First 1
-if ([string]$pipelineAgent.reasoningEffort -ne 'low' -or [string]$pipelineAgent.model -ne 'gpt-5.6-luna') { throw 'Pipeline Monitor must use the routine low-cost model tier for deterministic monitoring.' }
+if ([string]$pipelineAgent.reasoningEffort -ne 'low' -or [string]$pipelineAgent.model -ne 'haiku') { throw 'Pipeline Monitor must use the routine low-cost Claude model tier for deterministic monitoring.' }
 $modelRouter = Get-Content -LiteralPath (Join-Path $root 'scripts\Resolve-AgentModelRoute.ps1') -Raw -Encoding UTF8
-if (-not [bool]$config.modelRouting.enabled -or [string]$config.modelRouting.artifactName -ne 'model-routing.json' -or @($config.modelRouting.tiers).Count -ne 4 -or @($config.modelRouting.rolePolicies).Count -ne @($config.agents).Count -or $workflowRunner -notmatch "--model" -or $workflowRunner -notmatch 'model_reasoning_effort=' -or $workflowRunner -notmatch 'Resolve-AgentModelRoute.ps1' -or $modelRouter -notmatch 'inputFingerprint' -or $modelRouter -notmatch 'role-policy-clamp' -or $getTasksScript -notmatch 'modelRouteDecisions' -or $dashboardClient -notmatch 'modelRoute\.complexity') { throw 'Deterministic per-agent model routing is incomplete.' }
+if (-not [bool]$config.modelRouting.enabled -or [string]$config.modelRouting.artifactName -ne 'model-routing.json' -or @($config.modelRouting.tiers).Count -ne 4 -or @($config.modelRouting.rolePolicies).Count -ne @($config.agents).Count -or $workflowRunner -notmatch "--model" -or $workflowRunner -notmatch "'--effort'" -or $workflowRunner -notmatch 'Resolve-AgentModelRoute.ps1' -or $modelRouter -notmatch 'inputFingerprint' -or $modelRouter -notmatch 'role-policy-clamp' -or $getTasksScript -notmatch 'modelRouteDecisions' -or $dashboardClient -notmatch 'modelRoute\.complexity') { throw 'Deterministic per-agent model routing is incomplete.' }
 $modelRouteRoot = Join-Path $OutputRoot 'model-routing'
 $modelRouteConfigPath = Join-Path $modelRouteRoot 'agents.json'
 $modelRouteConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -476,8 +479,8 @@ $routineRoute = & (Join-Path $root 'scripts\Resolve-AgentModelRoute.ps1') -TaskI
 $reusedRoute = & (Join-Path $root 'scripts\Resolve-AgentModelRoute.ps1') -TaskId $modelRouteTaskId -AgentId pipeline_monitor -TaskSelector 'Classify the known test result.' -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $modelRouteConfigPath
 $criticalRoute = & (Join-Path $root 'scripts\Resolve-AgentModelRoute.ps1') -TaskId $modelRouteTaskId -AgentId developer -TaskSelector 'Correct the security vulnerability in authentication and Key Vault code signing across repositories.' -RepositoryIds @('azure-planningspace-ps-excel-agent','azure-planningspace-ps-bicep') -ConfigPath $modelRouteConfigPath
 $routingArtifact = Get-Content -LiteralPath (Join-Path $modelRouteConfig.runtime.stateRoot "tasks\$modelRouteTaskId\model-routing.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$routineRoute.complexity -ne 'routine' -or [string]$routineRoute.model -ne 'gpt-5.6-luna' -or -not [bool]$reusedRoute.reused -or [string]$criticalRoute.complexity -ne 'critical' -or [string]$criticalRoute.model -ne 'gpt-5.6-sol' -or @($routingArtifact.decisions).Count -ne 2) { throw 'Model router did not preserve routine cost, reuse an unchanged fingerprint, or escalate critical multi-repository security work.' }
-Add-Check -Name 'deterministic-model-routing' -Detail 'Every Codex role run receives an auditable JSON-selected model/effort with deterministic reuse, risk escalation, and role floors/caps'
+if ([string]$routineRoute.complexity -ne 'routine' -or [string]$routineRoute.model -ne 'haiku' -or -not [bool]$reusedRoute.reused -or [string]$criticalRoute.complexity -ne 'critical' -or [string]$criticalRoute.model -ne 'opus' -or @($routingArtifact.decisions).Count -ne 2) { throw 'Model router did not preserve routine cost, reuse an unchanged fingerprint, or escalate critical multi-repository security work.' }
+Add-Check -Name 'deterministic-model-routing' -Detail 'Every Claude role run receives an auditable JSON-selected model/effort with deterministic reuse, risk escalation, and role floors/caps'
 $pipelinePrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\pipeline-monitor.md') -Raw -Encoding UTF8
 if ($pipelinePrompt -notmatch 'Refresh-TaskPipelineResult.ps1' -or $pipelinePrompt -notmatch 'Pull-request creation is never a prerequisite' -or $pipelinePrompt -notmatch 'older in-progress retry must not hide a newer terminal run') { throw 'Pipeline Monitor targeted restart must refresh the newest exact-SHA logs before PR synchronization.' }
 $pipelineRefreshScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Refresh-TaskPipelineResult.ps1') -Raw -Encoding UTF8
@@ -1024,7 +1027,7 @@ Add-Check -Name 'health-dirty-baseline-preservation' -Detail "tracked and untrac
 $targetedResumeConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedResumeConfig.enabled -or -not [bool]$targetedResumeConfig.requireSuccessfulRepair -or [int]$targetedResumeConfig.maxAttemptsPerFailureSignature -ne 1) { throw 'Health Check targeted resume must require validated repair and permit exactly one attempt.' }
 if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'requirements_analyst' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'developer') { throw 'Health Check targeted resume allowlist is unsafe or incomplete.' }
-foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Save-EcosystemRecoveryBaseline.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1')) {
+foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Save-EcosystemRecoveryBaseline.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedAgentRuntime.ps1','Export-ClaudeResult.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
 Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); ecosystemWrites=$($config.health.automaticRecovery.allowEcosystemSourceChanges); preservationCommit=$($config.health.automaticRecovery.preserveDirtyWorktreeChanges); repairCommit=$($config.health.automaticRecovery.commitVerifiedRepairs); exactOriginPush=$($config.health.automaticRecovery.pushVerifiedRepairs); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; elevated=standing-default; productWrites=false; modelExternalWrites=false"
@@ -1043,7 +1046,7 @@ Add-Check -Name 'review-derived-coding-standards' -Detail 'Every confirmed code-
 $guardTestRoot = Join-Path $OutputRoot 'execution-guard'
 if (Test-Path -LiteralPath $guardTestRoot) { Remove-Item -LiteralPath $guardTestRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $guardTestRoot -Force | Out-Null
-$guardTest = & (Join-Path $root 'scripts\Invoke-GuardedCodex.ps1') -FilePath 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tests\fixtures\Emit-RepeatedCodexFailures.ps1'),'reasoning_effort=medium') -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $guardTestRoot 'events.jsonl') -GuardArtifactPath (Join-Path $guardTestRoot 'guard.json') -MaxIdenticalFailures 3 -MaxRunMinutes 1 -PollMilliseconds 100
+$guardTest = & (Join-Path $root 'scripts\Invoke-GuardedAgentRuntime.ps1') -FilePath 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tests\fixtures\Emit-RepeatedCodexFailures.ps1'),'reasoning_effort=medium') -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $guardTestRoot 'events.jsonl') -GuardArtifactPath (Join-Path $guardTestRoot 'guard.json') -MaxIdenticalFailures 3 -MaxRunMinutes 1 -PollMilliseconds 100
 $guardTemporaryFiles = @(Get-ChildItem -LiteralPath $guardTestRoot -File | Where-Object Name -Match '\.(stdin\.txt|stdout\.tmp)$')
 if (-not [bool]$guardTest.guardTriggered -or [int]$guardTest.identicalFailureCount -ne 3 -or [int]$guardTest.exitCode -ne 1 -or [string]$guardTest.reason -notmatch 'retry limit' -or -not (Test-Path -LiteralPath (Join-Path $guardTestRoot 'guard.json') -PathType Leaf) -or $guardTemporaryFiles.Count -ne 0) { throw 'Execution guard did not stop the deterministic repeated-failure fixture after exactly three attempts and clean up redirected temporary files.' }
 Add-Check -Name 'execution-retry-guard' -Detail 'Three identical failures stop execution, produce a guard artifact, and release redirected temporary files'
@@ -1063,27 +1066,20 @@ Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 
 $agentOutput = Join-Path $OutputRoot 'agents'
 & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $agentOutput -CodexHome $CodexHome | Out-Null
-$tomlFiles = @(Get-ChildItem -LiteralPath $agentOutput -Filter '*.toml' -File)
-if ($tomlFiles.Count -ne @($config.agents).Count) { throw 'Generated agent definition count does not match configuration.' }
-foreach ($file in $tomlFiles) {
+$claudeAgentFiles = @(Get-ChildItem -LiteralPath $agentOutput -Filter '*.md' -File)
+if ($claudeAgentFiles.Count -ne @($config.agents).Count) { throw 'Generated Claude agent definition count does not match configuration.' }
+foreach ($file in $claudeAgentFiles) {
     $content = Get-Content -LiteralPath $file.FullName -Raw
-    if ($content -notmatch '(?m)^name = ' -or $content -notmatch '(?m)^developer_instructions = ' -or $content -notmatch '(?m)^\[\[skills\.config\]\]') {
-        throw "Generated agent TOML is incomplete: $($file.FullName)"
+    if ($content -notmatch '(?s)^---\r?\nname:\s+''[a-z0-9-]+''' -or $content -notmatch '(?m)^model:' -or $content -notmatch '(?m)^skills:' -or $content -notmatch 'Generated by development-agent-ecosystem') {
+        throw "Generated Claude agent Markdown is incomplete: $($file.FullName)"
     }
 }
-Add-Check -Name 'agent-compilation' -Detail "$($tomlFiles.Count) TOML definitions"
+Add-Check -Name 'agent-compilation' -Detail "$($claudeAgentFiles.Count) Claude plugin-agent definitions"
 
-$compatibleAgentOutput = Join-Path $OutputRoot 'agents-host-compatible'
-& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $compatibleAgentOutput -CodexHome $CodexHome -IncludeHostCompatibilityProfile | Out-Null
-$compatibleTomlFiles = @(Get-ChildItem -LiteralPath $compatibleAgentOutput -Filter '*.toml' -File)
-$profileSuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
-$profileTomlFiles = @($compatibleTomlFiles | Where-Object BaseName -like "*$profileSuffix")
-if ($compatibleTomlFiles.Count -ne (@($config.agents).Count * 2) -or $profileTomlFiles.Count -ne @($config.agents).Count) { throw 'Host-compatible agent profile count is incorrect.' }
-foreach ($file in $profileTomlFiles) {
-    $content = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
-    if ($content -notmatch 'sandbox_mode = "danger-full-access"' -or $content -notmatch 'OS policy compatibility profile') { throw "Host-compatible agent definition is incomplete: $($file.FullName)" }
-}
-Add-Check -Name 'host-compatible-agent-compilation' -Detail "$($profileTomlFiles.Count) derived profiles preserve prompts and use current-user execution"
+$setupPrompt = Get-Content -LiteralPath (Join-Path $root 'SETUP_WITH_LLM.md') -Raw -Encoding UTF8
+$claudeGuide = Get-Content -LiteralPath (Join-Path $root 'docs\claude-code.md') -Raw -Encoding UTF8
+if ($setupPrompt -notmatch 'Interview protocol' -or $setupPrompt -notmatch 'Never ask the developer to paste secrets' -or $setupPrompt -notmatch 'repository.*clone URL' -or $setupPrompt -notmatch 'claude auth status' -or $setupPrompt -notmatch 'PrepareOnly' -or $claudeGuide -notmatch 'claude plugin validate' -or $claudeGuide -notmatch 'PowerShell trusted host') { throw 'Claude onboarding and port-specific operator instructions are incomplete.' }
+Add-Check -Name 'claude-onboarding' -Detail 'Interactive setup prompt covers repositories, auth without secret disclosure, preview, validation, prepare-only smoke test, and Claude plugin setup'
 
 $manifestPath = Join-Path (Resolve-EcosystemPath -Value ([string]$config.knowledge.managedRoot) -Config $config -CodexHome $CodexHome) '.knowledge-import.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Knowledge import manifest is missing: $manifestPath" }
