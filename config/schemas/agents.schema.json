@@ -107,10 +107,12 @@
         "orchestration": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "agentId", "routeUntargetedComments", "preserveExplicitTargets", "forwardOutOfScopeComments", "autoDispatchForwardedComments", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "executionModes", "dispatchPriority"],
+          "required": ["enabled", "agentId", "outcomeDrivenTransitions", "transitionEntryPoint", "routeUntargetedComments", "preserveExplicitTargets", "forwardOutOfScopeComments", "autoDispatchForwardedComments", "allowMultipleTargets", "fallbackAgentId", "routingArtifact", "executionModes", "dispatchPriority"],
           "properties": {
             "enabled": { "const": true },
             "agentId": { "const": "orchestrator" },
+            "outcomeDrivenTransitions": { "const": true },
+            "transitionEntryPoint": { "const": "${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1" },
             "routeUntargetedComments": { "const": true },
             "preserveExplicitTargets": { "const": true },
             "forwardOutOfScopeComments": { "const": true },

@@ -400,7 +400,7 @@ try {
         $chainTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $manualClosure = $chainTask.PSObject.Properties['closure'] -and [string]$chainTask.closure.kind -eq 'manual'
         if (-not $manualClosure -and [string]$chainTask.agentStatuses.$executedAgentId.status -eq 'completed') {
-            & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Invoke-OrchestratorContinuation.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
     if (-not $SkipChainContinuation) {

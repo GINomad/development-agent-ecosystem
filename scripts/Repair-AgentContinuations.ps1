@@ -103,7 +103,7 @@ try {
 
             $schedule = @($events | Where-Object {
                 [string]$_.type -eq 'workflow-status' -and (Get-UtcTimestamp -Event $_) -gt $requestTime -and
-                [string]$_.summary -like "Automatic chain continuation scheduled '*' after '$completedAgentId'."
+                [string]$_.summary -like "Orchestrator continuation scheduled '*' after '$completedAgentId'."
             } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
             $processAlive = $false
             if ($task.PSObject.Properties['workflowProcessId']) {
@@ -171,8 +171,8 @@ try {
             }
             $continueParameters = @{ TaskId=[string]$task.taskId; CompletedAgentId=$completedAgentId; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved -or [bool]$policy.useElevatedExecution) { $continueParameters.ElevatedApproved=$true }
-            $continuationResult = & (Join-Path $PSScriptRoot 'Continue-AgentChain.ps1') @continueParameters
-            & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId ([string]$task.taskId) -Actor ecosystem -Type continuation-reconciled -Summary "Reconciled missing continuation after '$completedAgentId' with result '$([string]$continuationResult.Status)'." -Evidence @("continuation-event:$requestId", "result:$([string]$continuationResult.Status)") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $continuationResult = & (Join-Path $PSScriptRoot 'Invoke-OrchestratorContinuation.ps1') @continueParameters
+            & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId ([string]$task.taskId) -Actor orchestrator -Type continuation-reconciled -Summary "Orchestrator reconciled missing continuation after '$completedAgentId' with result '$([string]$continuationResult.Status)'." -Evidence @("continuation-event:$requestId", "result:$([string]$continuationResult.Status)") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $items.Add([pscustomobject]@{ TaskId=[string]$task.taskId; Status='reconciled'; RequestId=$requestId; CompletedAgentId=$completedAgentId; Result=$continuationResult })
         }
     }

@@ -88,6 +88,7 @@ function Assert-EcosystemConfig {
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
     if (-not [bool]$Config.workflow.orchestration.enabled -or [string]$Config.workflow.orchestration.agentId -ne 'orchestrator') { throw 'workflow.orchestration must enable the configured orchestrator.' }
+    if (-not [bool]$Config.workflow.orchestration.outcomeDrivenTransitions -or [string]$Config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Every successful role outcome must return through the canonical Orchestrator transition entry point.' }
     if (-not [bool]$Config.workflow.orchestration.routeUntargetedComments -or -not [bool]$Config.workflow.orchestration.preserveExplicitTargets) { throw 'Workflow intake must route untargeted comments and preserve explicit targets.' }
     if (-not [bool]$Config.workflow.orchestration.forwardOutOfScopeComments -or -not [bool]$Config.workflow.orchestration.autoDispatchForwardedComments) { throw 'Out-of-scope agent comments must be forwarded to and automatically dispatched through Orchestrator.' }
     if ([IO.Path]::GetFileName([string]$Config.workflow.orchestration.routingArtifact) -ne [string]$Config.workflow.orchestration.routingArtifact) { throw 'workflow.orchestration.routingArtifact must be a direct task artifact.' }
