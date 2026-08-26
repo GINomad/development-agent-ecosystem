@@ -27,6 +27,8 @@ For the detailed repository composition, see [repository-architecture.svg](docs/
 
 Model selection is cost-aware and configuration-driven. Before every Orchestrator or targeted-agent `codex exec`, `scripts/Resolve-AgentModelRoute.ps1` classifies bounded task evidence without an additional AI call, applies the agent's configured tier floor and cap, and persists the explainable decision in task-local `model-routing.json`. Unchanged inputs reuse the existing fingerprinted decision. The defaults are Luna/low for routine work, Terra/medium for standard work, Sol/high for complex work, and Sol/xhigh for critical work. Security, credentials, code signing, multi-repository work, large bounded evidence, a prior failure, or a post-repair retry can raise the tier.
 
+For a new machine or developer, give this repository directory to an LLM and ask it to follow [SETUP_WITH_LLM.md](SETUP_WITH_LLM.md). The LLM reads the canonical documentation, conducts an interactive configuration interview, never requests secret values in chat, shows a redacted preview, and validates the setup before installation.
+
 ```powershell
 cd C:\Repos\development-agent-ecosystem
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
