@@ -185,6 +185,19 @@ function Assert-EcosystemConfig {
     foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
         if (-not $agentIds.ContainsKey($requiredId)) { throw "Required agent '$requiredId' is missing." }
     }
+    $pipelineOwners = [ordered]@{
+        monitorAgentId = 'pipeline_monitor'
+        productRemediationAgentId = 'developer'
+        remediationReviewAgentId = 'reviewer'
+        exceptionRoutingAgentId = 'orchestrator'
+        ecosystemRecoveryAgentId = 'health_check'
+        completionAgentId = 'knowledge_keeper'
+    }
+    foreach ($property in $pipelineOwners.Keys) {
+        $configuredAgentId = [string]$Config.pipeline.ownership.$property
+        if ($configuredAgentId -ne [string]$pipelineOwners[$property]) { throw "pipeline.ownership.$property must be '$($pipelineOwners[$property])'." }
+        if (-not $agentIds.ContainsKey($configuredAgentId)) { throw "pipeline.ownership.$property references missing agent '$configuredAgentId'." }
+    }
     $modelTierById = @{}
     foreach ($tier in $modelTiers) { $modelTierById[[string]$tier.id] = $tier }
     $rolePolicyIds = @{}

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1220" viewBox="0 0 1800 1220" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem repository architecture</title>
-  <desc id="desc">Repository source of truth, prompts, skills, Orchestrator routing, single-task workspace lease and queue, task-specific Git branch and stash restoration, event-driven chain scripts, seven agents, guarded Azure delivery, and revisioned task state.</desc>
+  <desc id="desc">Repository source of truth, prompts, skills, Orchestrator routing, explicit pipeline ownership and definition allowlists, single-task workspace lease and queue, task-specific Git branch and stash restoration, event-driven chain scripts, seven agents, guarded Azure delivery, and revisioned task state.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/><stop offset="0.55" stop-color="#0b1420"/><stop offset="1" stop-color="#12192a"/>
