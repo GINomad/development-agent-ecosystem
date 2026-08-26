@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/development-agent-ecosystem/model-routing.schema.json",
+  "title": "Per-task model routing decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "updatedAtUtc", "latestDecisionId", "decisions"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "taskId": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "updatedAtUtc": { "type": "string", "format": "date-time" },
+    "latestDecisionId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "decisions": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "agentId", "createdAtUtc", "complexity", "model", "reasoningEffort", "confidence", "signals", "inputFingerprint", "evidenceCharacterCount", "repositoryCount", "changedArtifactCount"],
+      "properties": {
+        "decisionId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+        "agentId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "createdAtUtc": { "type": "string", "format": "date-time" },
+        "complexity": { "enum": ["routine", "standard", "complex", "critical"] },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "signals": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "inputFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "evidenceCharacterCount": { "type": "integer", "minimum": 0 },
+        "repositoryCount": { "type": "integer", "minimum": 0 },
+        "changedArtifactCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

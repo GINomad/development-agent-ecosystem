@@ -28,12 +28,31 @@ $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($task.PSObject.Properties['closure'] -and [string]$task.closure.status -in @('knowledge-update-pending','completed')) { return [pscustomobject]@{ Status=[string]$task.closure.status; TaskId=$TaskId } }
+if ([string]$task.status -in @('waiting_for_input','held','review_pending','failed')) {
+    return [pscustomobject]@{ Status='task-gated'; TaskId=$TaskId; Gate=[string]$task.status }
+}
 
 $deliveryPath = Join-Path $taskRoot 'delivery-result.json'
 $pipelinePath = Join-Path $taskRoot 'pipeline-result.json'
+$delivery = if (Test-Path -LiteralPath $deliveryPath -PathType Leaf) { Get-Content -LiteralPath $deliveryPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+$pipeline = if (Test-Path -LiteralPath $pipelinePath -PathType Leaf) { Get-Content -LiteralPath $pipelinePath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+$ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+$ledgerEvents = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
+$latestDeveloperOutcome = @($ledgerEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'developer' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+if ($latestDeveloperOutcome.Count) {
+    $expectedCommitEvidence = @($latestDeveloperOutcome[0].evidence | Where-Object { [string]$_ -match '^commit:[0-9a-fA-F]{40}$' } | Select-Object -First 1)
+    if ($expectedCommitEvidence.Count) {
+        $expectedCommit = ([string]$expectedCommitEvidence[0]).Substring('commit:'.Length)
+        $deliveryCommit = if ($delivery -and $delivery.PSObject.Properties['commit']) { [string]$delivery.commit } else { '' }
+        $pipelineCommit = if ($pipeline -and $pipeline.PSObject.Properties['commit']) { [string]$pipeline.commit } else { '' }
+        if ($deliveryCommit -ne $expectedCommit -or $pipelineCommit -ne $expectedCommit -or [string]$pipeline.overallResult -ne 'succeeded') {
+            return [pscustomobject]@{ Status='stale-exact-sha'; TaskId=$TaskId; ExpectedCommit=$expectedCommit; DeliveryCommit=$deliveryCommit; PipelineCommit=$pipelineCommit }
+        }
+    }
+}
 $branch = $null
-if (Test-Path -LiteralPath $deliveryPath -PathType Leaf) { $branch = [string](Get-Content -LiteralPath $deliveryPath -Raw -Encoding UTF8 | ConvertFrom-Json).branch }
-elseif (Test-Path -LiteralPath $pipelinePath -PathType Leaf) { $branch = [string](Get-Content -LiteralPath $pipelinePath -Raw -Encoding UTF8 | ConvertFrom-Json).branch }
+if ($delivery) { $branch = [string]$delivery.branch }
+elseif ($pipeline) { $branch = [string]$pipeline.branch }
 if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch is required before PR synchronization.' }
 $sourceRef = 'refs/heads/' + ($branch -replace '^refs/heads/','')
 
@@ -78,7 +97,7 @@ $previousStatus = $null
 if (Test-Path -LiteralPath $resultPath -PathType Leaf) { try { $previousStatus = [string](Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json).status } catch {} }
 Write-Utf8NoBom -Path $resultPath -Content (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 if ($previousStatus -ne $status) {
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pr-status -Summary "Pull request status for '$branch' changed to '$status'." -Artifact $resultPath -Evidence @("pr:$($result.pullRequestId)") -TargetAgentId knowledge_keeper -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pr-status -Summary "Pull request status for '$branch' changed to '$status'." -Artifact $resultPath -Evidence @("pr:$($result.pullRequestId)") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
 if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
@@ -87,8 +106,8 @@ if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
     if (-not $DoNotStartKnowledgeUpdate) {
         $workflowParameters = @{
             Mode=[string]$task.mode; TaskSelector=[string]$task.selector; TaskId=$TaskId; RepositoryIds=@($task.repositoryIds)
-            UserInstruction='The task PR completed. Run only Knowledge Keeper to update verified knowledge and publish the final task summary.'
-            Resume=$true; TargetAgentId='knowledge_keeper'; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+            UserInstruction='The task PR completed. Run only Orchestrator to validate the terminal evidence and route the final publication command to Knowledge Keeper.'
+            Resume=$true; TargetAgentId='orchestrator'; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
         }
         & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
     }

@@ -21,11 +21,21 @@ $acknowledged = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ord
 foreach ($ack in @($events | Where-Object { $_.type -eq 'user-comment-acknowledged' })) {
     foreach ($eventId in @($ack.evidence)) { if ($eventId) { $null = $acknowledged.Add([string]$eventId) } }
 }
+$reviewQuestionsByComment = @{}
+foreach ($questionEvent in @($events | Where-Object { [string]$_.type -eq 'review-question-opened' })) {
+    $sourceCommentId = @($questionEvent.evidence | Select-Object -First 1)[0]
+    if ($sourceCommentId) { $reviewQuestionsByComment[[string]$sourceCommentId] = $questionEvent }
+}
+$answeredReviewQuestionIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($answerEvent in @($events | Where-Object { [string]$_.type -eq 'review-question-answered' })) {
+    foreach ($evidenceValue in @($answerEvent.evidence)) { if ($evidenceValue) { $null = $answeredReviewQuestionIds.Add([string]$evidenceValue) } }
+}
 $comments = @($events | Where-Object {
-    [string]$_.type -in @('user-comment','workflow-input-routed') -and
+    [string]$_.type -in @('user-comment','agent-routing-request','workflow-input-routed') -and
     -not $acknowledged.Contains([string]$_.eventId) -and
     (-not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $AgentId)
 } | Sort-Object timestampUtc | ForEach-Object {
+    $reviewQuestion = if ($reviewQuestionsByComment.ContainsKey([string]$_.eventId)) { $reviewQuestionsByComment[[string]$_.eventId] } else { $null }
     [pscustomobject][ordered]@{
         eventId = [string]$_.eventId
         timestampUtc = [string]$_.timestampUtc
@@ -35,6 +45,8 @@ $comments = @($events | Where-Object {
         sourceEventId = if ([string]$_.type -eq 'workflow-input-routed' -and @($_.evidence).Count) { [string]$_.evidence[0] } else { [string]$_.eventId }
         targetAgentId = if ($_.PSObject.Properties['targetAgentId']) { [string]$_.targetAgentId } else { $null }
         evidence = @($_.evidence)
+        reviewQuestionId = if ($reviewQuestion) { [string]$reviewQuestion.eventId } else { $null }
+        requiresResponse = [bool]($reviewQuestion -and -not $answeredReviewQuestionIds.Contains([string]$reviewQuestion.eventId))
     }
 })
 [pscustomobject][ordered]@{

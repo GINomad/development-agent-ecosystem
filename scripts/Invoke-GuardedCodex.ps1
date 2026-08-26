@@ -17,7 +17,8 @@ $ErrorActionPreference = 'Stop'
 function ConvertTo-WindowsArgument {
     param([AllowEmptyString()][string] $Value)
     if ($Value.Length -and $Value -notmatch '\s' -and -not $Value.Contains([char]34)) { return $Value }
-    return [char]34 + $Value.Replace([char]34, ('\' + [char]34)) + [char]34
+    $quote = [string][char]34
+    return $quote + $Value.Replace($quote, ('\' + $quote)) + $quote
 }
 
 function Get-FailureFingerprint {
@@ -35,6 +36,30 @@ function Get-FailureFingerprint {
     [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail }
 }
 
+function Remove-TemporaryFileWithRetry {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [ValidateRange(1,50)][int] $MaxAttempts = 20,
+        [ValidateRange(10,1000)][int] $DelayMilliseconds = 100
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $Path -PathType Leaf) {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            }
+            return
+        }
+        catch {
+            if ($attempt -eq $MaxAttempts) {
+                Write-Warning ("Temporary runner file remains locked after {0} attempts: {1}. {2}" -f $MaxAttempts,$Path,$_.Exception.Message)
+                return
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 $encoding = New-Object Text.UTF8Encoding($false)
 $runId = [guid]::NewGuid().ToString('N')
 $promptPath = $LogPath + '.' + $runId + '.stdin.txt'
@@ -47,6 +72,7 @@ foreach ($temporaryPath in @($stdoutPath,$stderrPath)) {
 $argumentLine = (@($Arguments | ForEach-Object { ConvertTo-WindowsArgument -Value ([string]$_) }) -join ' ')
 $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -RedirectStandardInput $promptPath -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -NoNewWindow -PassThru
 $process = Get-Process -Id $process.Id -ErrorAction Stop
+$processId = $process.Id
 $startedAtUtc = [DateTime]::UtcNow
 $lineIndex = 0
 $lastFailureSignature = $null
@@ -55,6 +81,7 @@ $guardTriggered = $false
 $guardReason = $null
 $lastFailure = $null
 $monitorCompleted = $false
+$nativeExitCode = $null
 
 try {
     while (-not $process.HasExited) {
@@ -138,14 +165,15 @@ $result = [ordered]@{
     maxRunMinutes = $MaxRunMinutes
     startedAtUtc = $startedAtUtc.ToString('o')
     completedAtUtc = [DateTime]::UtcNow.ToString('o')
-    processId = $process.Id
+    processId = $processId
     exitCode = $resolvedExitCode
     exitCodeSource = if ($null -ne $nativeExitCode) { 'native' } else { 'codex-event-fallback' }
     logPath = $LogPath
     stderrPath = $stderrPath
 }
 [IO.File]::WriteAllText($GuardArtifactPath, (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine), $encoding)
+$process.Dispose()
 foreach ($temporaryPath in @($promptPath,$stdoutPath)) {
-    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
+    Remove-TemporaryFileWithRetry -Path $temporaryPath
 }
 [pscustomobject]$result

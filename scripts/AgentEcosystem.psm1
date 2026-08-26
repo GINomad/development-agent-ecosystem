@@ -11,6 +11,22 @@ function Get-DefaultCodexHome {
     return [IO.Path]::GetFullPath((Join-Path $HOME '.codex'))
 }
 
+function Resolve-CodexCliPath {
+    $command = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) { return [IO.Path]::GetFullPath([string]$command.Source) }
+
+    $extensionRoots = @(
+        (Join-Path ([string]$env:USERPROFILE) '.vscode\extensions'),
+        (Join-Path ([string]$env:USERPROFILE) '.vscode-insiders\extensions')
+    )
+    foreach ($root in $extensionRoots) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        $candidates = @(Get-ChildItem -Path (Join-Path $root 'openai.chatgpt-*-win32-*\bin\*\codex.exe') -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+        if ($candidates.Count) { return [IO.Path]::GetFullPath([string]$candidates[0].FullName) }
+    }
+    return $null
+}
+
 function Expand-EcosystemValue {
     param(
         [Parameter(Mandatory)][string] $Value,
@@ -67,17 +83,22 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
     if (-not [bool]$Config.workflow.orchestration.enabled -or [string]$Config.workflow.orchestration.agentId -ne 'orchestrator') { throw 'workflow.orchestration must enable the configured orchestrator.' }
+    if (-not [bool]$Config.workflow.orchestration.outcomeDrivenTransitions -or [string]$Config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Every successful role outcome must return through the canonical Orchestrator transition entry point.' }
     if (-not [bool]$Config.workflow.orchestration.routeUntargetedComments -or -not [bool]$Config.workflow.orchestration.preserveExplicitTargets) { throw 'Workflow intake must route untargeted comments and preserve explicit targets.' }
+    if (-not [bool]$Config.workflow.orchestration.forwardOutOfScopeComments -or -not [bool]$Config.workflow.orchestration.autoDispatchForwardedComments) { throw 'Out-of-scope agent comments must be forwarded to and automatically dispatched through Orchestrator.' }
     if ([IO.Path]::GetFileName([string]$Config.workflow.orchestration.routingArtifact) -ne [string]$Config.workflow.orchestration.routingArtifact) { throw 'workflow.orchestration.routingArtifact must be a direct task artifact.' }
     if (-not [bool]$Config.workflow.workspaceScheduling.enabled -or [int]$Config.workflow.workspaceScheduling.maxActiveTasks -ne 1 -or -not [bool]$Config.workflow.workspaceScheduling.queueWhenBusy) { throw 'Workspace scheduling must serialize tasks through one active lease.' }
     if (-not [bool]$Config.workflow.workspaceScheduling.stashUncommittedChanges -or -not [bool]$Config.workflow.workspaceScheduling.restoreStashOnActivation) { throw 'Workspace scheduling must preserve and restore uncommitted task changes.' }
     if ([int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -lt 5 -or [int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -gt 120) { throw 'Workspace scheduling lock timeout is outside the supported range.' }
-    if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 8) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
+    if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 32) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
+    if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 3) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 3.' }
+    if ([int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -lt 30 -or [int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -gt 600) { throw 'workflow.automaticContinuation.recoveryGraceSeconds is outside the supported range.' }
+    if ([int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -lt 1 -or [int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -gt 60) { throw 'workflow.automaticContinuation.recoveryPollIntervalMinutes is outside the supported range.' }
     if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
     if ([string]$Config.ui.listenAddress -ne '127.0.0.1') { throw 'The dashboard must listen on 127.0.0.1.' }
     if ([int]$Config.ui.port -lt 1024 -or [int]$Config.ui.port -gt 65535) { throw 'ui.port must be between 1024 and 65535.' }
@@ -85,17 +106,34 @@ function Assert-EcosystemConfig {
     if ([int]$Config.ui.agentLogRefreshSeconds -lt 2 -or [int]$Config.ui.agentLogRefreshSeconds -gt 300) { throw 'ui.agentLogRefreshSeconds must be between 2 and 300.' }
     if ([int]$Config.runtime.executionGuard.maxIdenticalFailures -ne 3) { throw 'runtime.executionGuard.maxIdenticalFailures must be exactly 3.' }
     if ([int]$Config.runtime.executionGuard.maxRunMinutes -lt 5 -or [int]$Config.runtime.executionGuard.maxRunMinutes -gt 1440) { throw 'runtime.executionGuard.maxRunMinutes is outside the supported range.' }
-    if (-not [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow elevated fallback must require explicit dashboard approval.' }
+    if (-not [bool]$Config.runtime.elevatedFallback.useByDefault -or [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow host-compatible execution must be enabled by default under the standing user authorization.' }
+    if (-not [bool]$Config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$Config.health.automaticRecovery.preserveDirtyWorktreeChanges -or -not [bool]$Config.health.automaticRecovery.commitVerifiedRepairs -or -not [bool]$Config.health.automaticRecovery.pushVerifiedRepairs) { throw 'Health recovery must preserve an existing dirty baseline, permit validated ecosystem-only source changes, and deliver the verified commit chain.' }
+    if ([string]$Config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$Config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Health recovery push destination must be the exact canonical ecosystem origin.' }
+    if ([string]$Config.health.automaticRecovery.repairBranchPrefix -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9]$') { throw 'Health recovery repair branch prefix is invalid.' }
+    if ([bool]$Config.health.automaticRecovery.allowProductCodeChanges -or [bool]$Config.health.automaticRecovery.allowExternalWrites) { throw 'Health recovery must not modify product repositories or external systems.' }
     if (-not [bool]$Config.runtime.elevatedFallback.installCompatibleAgentsOnDetection -or [string]$Config.runtime.elevatedFallback.agentProfileSuffix -notmatch '^_[a-z0-9_]+$') { throw 'Host-compatible agent profile configuration is invalid.' }
     if ([string]$Config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Host-compatible workflows must use the in-process-runspace launch strategy.' }
+    if (-not [bool]$Config.modelRouting.enabled -or [string]$Config.modelRouting.artifactName -ne 'model-routing.json') { throw 'Deterministic model routing must be enabled with the canonical task artifact.' }
+    if ([int]$Config.modelRouting.largeEvidenceCharacters -ge [int]$Config.modelRouting.maxEvidenceCharacters) { throw 'modelRouting.largeEvidenceCharacters must be lower than maxEvidenceCharacters.' }
+    $modelTiers = @($Config.modelRouting.tiers | Sort-Object { [int]$_.rank })
+    if ((@($modelTiers | ForEach-Object { [string]$_.id }) -join '|') -ne 'routine|standard|complex|critical' -or (@($modelTiers | ForEach-Object { [string][int]$_.rank }) -join '|') -ne '0|1|2|3') { throw 'Model-routing tiers must define ordered routine, standard, complex, and critical levels.' }
+    if (@($modelTiers | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.model) -or [string]$_.reasoningEffort -notin @('low','medium','high','xhigh','max') }).Count) { throw 'Every model-routing tier requires a supported model and reasoning effort.' }
     $compatibilityPrompt = Resolve-EcosystemPath -Value ([string]$Config.runtime.elevatedFallback.compatibilityPromptPath) -Config $Config -CodexHome $CodexHome
     if (-not (Test-Path -LiteralPath $compatibilityPrompt -PathType Leaf)) { throw "Host-compatible agent prompt is missing: $compatibilityPrompt" }
     if ([string]$Config.health.repairMode -ne 'safe-deterministic-only') { throw 'health.repairMode must be safe-deterministic-only.' }
     if ([string]$Config.health.dashboardHealthUrl -notmatch '^http://127\.0\.0\.1:[0-9]+/health$') { throw 'health.dashboardHealthUrl must use the loopback health endpoint.' }
+    if ([string]$Config.knowledge.weeklyReport.localTime -notmatch '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'knowledge.weeklyReport.localTime must use 24-hour HH:mm format.' }
+    if ([string]$Config.knowledge.weeklyReport.dayOfWeek -notin @('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')) { throw 'knowledge.weeklyReport.dayOfWeek is invalid.' }
+    if ([int]$Config.knowledge.weeklyReport.lookbackDays -lt 1 -or [int]$Config.knowledge.weeklyReport.lookbackDays -gt 31) { throw 'knowledge.weeklyReport.lookbackDays must be between 1 and 31.' }
+    $globalStandardsPath = Resolve-EcosystemPath -Value ([string]$Config.knowledge.globalStandardsPath) -Config $Config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw "Global coding standards are missing: $globalStandardsPath" }
+    $globalStandardsRoot = Split-Path -Parent $globalStandardsPath
+    $versionedKnowledgeRoots = @($Config.knowledge.versionedRoots | ForEach-Object { Resolve-EcosystemPath -Value ([string]$_) -Config $Config -CodexHome $CodexHome })
+    if (@($versionedKnowledgeRoots | Where-Object { $globalStandardsRoot.StartsWith(([IO.Path]::GetFullPath($_).TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase) -or $globalStandardsRoot.Equals([IO.Path]::GetFullPath($_), [StringComparison]::OrdinalIgnoreCase) }).Count -eq 0) { throw 'Global coding standards must be inside a versioned knowledge root.' }
     if ([bool]$Config.health.automaticRecovery.allowProductCodeChanges) { throw 'Health automatic recovery must not modify product code.' }
     if ([bool]$Config.health.automaticRecovery.allowExternalWrites) { throw 'Health automatic recovery must not perform external writes.' }
     if ([string]$Config.health.automaticRecovery.sandboxMode -ne 'workspace-write') { throw 'Automatic Health recovery must use workspace-write.' }
-    if ([string]$Config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$Config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated Health recovery must require explicit dashboard approval.' }
+    if ([string]$Config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$Config.health.automaticRecovery.elevatedFallback.useByDefault -or [bool]$Config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Host-compatible Health recovery must be enabled by default under the standing user authorization.' }
     if ([int]$Config.health.automaticRecovery.elevatedFallback.maxAttemptsPerFailureSignature -lt 0 -or [int]$Config.health.automaticRecovery.elevatedFallback.maxAttemptsPerFailureSignature -gt 1) { throw 'Elevated Health recovery allows at most one attempt per failure signature.' }
     if ([int]$Config.health.automaticRecovery.maxAttemptsPerFailureSignature -lt 0 -or [int]$Config.health.automaticRecovery.maxAttemptsPerFailureSignature -gt 3) { throw 'Health automatic recovery attempts must be between 0 and 3.' }
 
@@ -147,6 +185,25 @@ function Assert-EcosystemConfig {
     foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
         if (-not $agentIds.ContainsKey($requiredId)) { throw "Required agent '$requiredId' is missing." }
     }
+    $modelTierById = @{}
+    foreach ($tier in $modelTiers) { $modelTierById[[string]$tier.id] = $tier }
+    $rolePolicyIds = @{}
+    foreach ($policy in @($Config.modelRouting.rolePolicies)) {
+        $policyAgentId = [string]$policy.agentId
+        if (-not $agentIds.ContainsKey($policyAgentId) -or $rolePolicyIds.ContainsKey($policyAgentId)) { throw "Invalid or duplicate model-routing role policy '$policyAgentId'." }
+        $rolePolicyIds[$policyAgentId] = $true
+        foreach ($tierId in @([string]$policy.minimumTier, [string]$policy.defaultTier, [string]$policy.maximumTier)) {
+            if (-not $modelTierById.ContainsKey($tierId)) { throw "Model-routing policy '$policyAgentId' references unknown tier '$tierId'." }
+        }
+        $minimumRank = [int]$modelTierById[[string]$policy.minimumTier].rank
+        $defaultRank = [int]$modelTierById[[string]$policy.defaultTier].rank
+        $maximumRank = [int]$modelTierById[[string]$policy.maximumTier].rank
+        if ($minimumRank -gt $defaultRank -or $defaultRank -gt $maximumRank) { throw "Model-routing policy tiers are out of order for '$policyAgentId'." }
+        $configuredAgent = @($Config.agents | Where-Object { [string]$_.id -eq $policyAgentId }) | Select-Object -First 1
+        $defaultTier = $modelTierById[[string]$policy.defaultTier]
+        if ([string]$configuredAgent.model -ne [string]$defaultTier.model -or [string]$configuredAgent.reasoningEffort -ne [string]$defaultTier.reasoningEffort) { throw "Agent '$policyAgentId' defaults must match its model-routing default tier." }
+    }
+    if ($rolePolicyIds.Count -ne $agentIds.Count) { throw 'Every configured agent must have exactly one model-routing role policy.' }
     if (-not $agentIds.ContainsKey([string]$Config.workflow.orchestration.fallbackAgentId)) { throw 'The orchestration fallback agent is not configured.' }
     foreach ($dispatchAgentId in @($Config.workflow.orchestration.dispatchPriority)) {
         if ($dispatchAgentId -eq 'orchestrator' -or -not $agentIds.ContainsKey([string]$dispatchAgentId)) { throw "Invalid orchestration dispatch agent '$dispatchAgentId'." }
@@ -216,4 +273,4 @@ function Write-Utf8NoBom {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom

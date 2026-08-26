@@ -40,11 +40,10 @@ if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
 try {
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
 
-    $codexCommand = Get-Command codex.exe -ErrorAction SilentlyContinue
-    if (-not $codexCommand) { $codexCommand = Get-Command codex -ErrorAction SilentlyContinue }
-    if ($codexCommand) {
-        $codexVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
-        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @([string]$codexCommand.Source)
+    $codexCliPath = Resolve-CodexCliPath
+    if ($codexCliPath) {
+        $codexVersion = (& $codexCliPath --version 2>&1 | Out-String).Trim()
+        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @($codexCliPath)
     }
     else {
         Add-HealthCheck -Id 'codex-cli' -Status failed -Summary 'Codex CLI was not found in the workflow environment.'
@@ -59,26 +58,67 @@ try {
     }
 
     $agentInstallRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.agentInstallRoot) -Config $config -CodexHome $CodexHome
-    $missingAgents = @($config.agents | Where-Object { -not (Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name).toml") -PathType Leaf) })
-    if (-not $missingAgents.Count) {
-        Add-HealthCheck -Id 'installed-agents' -Status passed -Summary "All $(@($config.agents).Count) generated agent definitions are installed." -Evidence @($agentInstallRoot)
-        Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Installed agent definitions are complete.'
+    $resolvedCodexHome = Get-DefaultCodexHome -Override $CodexHome
+    $compatibilitySuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
+    $expectCompatibilityProfiles = @($config.agents | Where-Object { Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name)$compatibilitySuffix.toml") -PathType Leaf }).Count -gt 0
+
+    function Get-AgentDefinitionDrift {
+        $drift = [Collections.Generic.List[object]]::new()
+        foreach ($agent in @($config.agents)) {
+            $definitions = [Collections.Generic.List[object]]::new()
+            $definitions.Add([pscustomobject]@{ Agent=$agent; Name=[string]$agent.name })
+            if ($expectCompatibilityProfiles) {
+                $compatibleAgent = [pscustomobject][ordered]@{
+                    id = [string]$agent.id
+                    name = ([string]$agent.name + $compatibilitySuffix)
+                    description = ([string]$agent.description + ' Host-compatible profile for an explicitly confirmed OS-policy fallback.')
+                    responsibilities = @($agent.responsibilities)
+                    model = if ($agent.PSObject.Properties['model']) { [string]$agent.model } else { $null }
+                    reasoningEffort = [string]$agent.reasoningEffort
+                    sandboxMode = [string]$config.runtime.elevatedFallback.sandboxMode
+                    promptPaths = @($agent.promptPaths) + @([string]$config.runtime.elevatedFallback.compatibilityPromptPath)
+                    skillPaths = @($agent.skillPaths)
+                    handoffs = @($agent.handoffs)
+                    requiredArtifacts = @($agent.requiredArtifacts)
+                }
+                $definitions.Add([pscustomobject]@{ Agent=$compatibleAgent; Name=[string]$compatibleAgent.name })
+            }
+            foreach ($definition in $definitions) {
+                $path = Join-Path $agentInstallRoot "$([string]$definition.Name).toml"
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                    $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='missing' })
+                    continue
+                }
+                $expected = New-AgentToml -Agent $definition.Agent -Config $config -CodexHome $resolvedCodexHome
+                $actual = [IO.File]::ReadAllText($path)
+                if (-not [string]::Equals($actual, $expected, [StringComparison]::Ordinal)) {
+                    $drift.Add([pscustomobject]@{ name=[string]$definition.Name; path=$path; reason='outdated' })
+                }
+            }
+        }
+        return @($drift)
+    }
+
+    $agentDefinitionDrift = @(Get-AgentDefinitionDrift)
+    if (-not $agentDefinitionDrift.Count) {
+        Add-HealthCheck -Id 'installed-agents' -Status passed -Summary "All installed generated agent definitions match canonical configuration, prompts, and skills." -Evidence @($agentInstallRoot)
+        Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Installed agent definitions are current.'
     }
     elseif ($Repair -and [string]$config.health.repairMode -eq 'safe-deterministic-only') {
-        & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install | Out-Null
-        $stillMissing = @($config.agents | Where-Object { -not (Test-Path -LiteralPath (Join-Path $agentInstallRoot "$($_.name).toml") -PathType Leaf) })
-        if ($stillMissing.Count) {
-            Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Agent definition repair did not restore: $($stillMissing.name -join ', ')." -Evidence @($agentInstallRoot)
-            Add-Repair -Id 'sync-agent-definitions' -Status failed -Summary 'Generated agent definitions remain incomplete.'
+        & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install -IncludeHostCompatibilityProfile:$expectCompatibilityProfiles | Out-Null
+        $remainingAgentDefinitionDrift = @(Get-AgentDefinitionDrift)
+        if ($remainingAgentDefinitionDrift.Count) {
+            Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Agent definition repair left stale files: $($remainingAgentDefinitionDrift.name -join ', ')." -Evidence @($remainingAgentDefinitionDrift.path)
+            Add-Repair -Id 'sync-agent-definitions' -Status failed -Summary 'Generated agent definitions remain missing or outdated.'
         }
         else {
-            Add-HealthCheck -Id 'installed-agents' -Status repaired -Summary 'Missing generated agent definitions were reinstalled.' -Evidence @($agentInstallRoot)
-            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary 'Recompiled and installed agent TOML from canonical JSON, prompts, and skills.'
+            Add-HealthCheck -Id 'installed-agents' -Status repaired -Summary "Recompiled and installed $(@($config.agents).Count) current agent definitions$(if ($expectCompatibilityProfiles) { ' and their host-compatible profiles' } else { '' })." -Evidence @($agentInstallRoot)
+            Add-Repair -Id 'sync-agent-definitions' -Status applied -Summary 'Recompiled and installed agent TOML from canonical JSON, prompts, and skills after content drift detection.'
         }
     }
     else {
-        Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Missing agent definitions: $($missingAgents.name -join ', ')." -Evidence @($agentInstallRoot)
-        Add-Repair -Id 'sync-agent-definitions' -Status requires-approval -Summary 'Run the trusted health check with -Repair to reinstall derived agent definitions.'
+        Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Missing or outdated agent definitions: $($agentDefinitionDrift.name -join ', ')." -Evidence @($agentDefinitionDrift.path)
+        Add-Repair -Id 'sync-agent-definitions' -Status requires-approval -Summary 'Run the trusted health check with -Repair to reinstall current derived agent definitions.'
     }
 
     $reviewConfigPath = Join-Path (Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome) 'config.json'
@@ -142,6 +182,34 @@ try {
             if ($invalidLedgerLines) { Add-HealthCheck -Id 'task-ledger' -Status failed -Summary "$invalidLedgerLines invalid JSONL event(s) found." -Evidence @($ledgerPath) }
             else { Add-HealthCheck -Id 'task-ledger' -Status passed -Summary 'Task ledger is readable append-only JSONL.' -Evidence @($ledgerPath) }
 
+            $continuationInspection = & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+            $actionableContinuations = @($continuationInspection.Items | Where-Object { [string]$_.Status -in @('continuation-required','restart-required') })
+            $incompletePublications = @($continuationInspection.Items | Where-Object { [string]$_.Status -eq 'publication-incomplete' })
+            if ($actionableContinuations.Count -and $Repair -and [string]$config.health.repairMode -eq 'safe-deterministic-only') {
+                $continuationRepair = & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') -TaskId $TaskId -Repair -ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome
+                $remainingContinuations = @($continuationRepair.Items | Where-Object { [string]$_.Status -in @('continuation-required','restart-required') })
+                if ($remainingContinuations.Count) {
+                    Add-HealthCheck -Id 'durable-continuation' -Status failed -Summary 'A missing agent continuation remained after deterministic reconciliation.' -Evidence @($ledgerPath)
+                    Add-Repair -Id 'reconcile-agent-continuation' -Status failed -Summary 'The next role was not recovered.'
+                }
+                else {
+                    Add-HealthCheck -Id 'durable-continuation' -Status repaired -Summary 'Recovered a successful agent outcome whose host exited before the next handoff.' -Evidence @($ledgerPath)
+                    Add-Repair -Id 'reconcile-agent-continuation' -Status applied -Summary 'Started only the missing next role through the existing guarded continuation chain.'
+                }
+            }
+            elseif ($actionableContinuations.Count) {
+                Add-HealthCheck -Id 'durable-continuation' -Status failed -Summary "$($actionableContinuations.Count) successful outcome(s) require deterministic continuation reconciliation." -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status requires-approval -Summary 'Run the trusted health check with -Repair or wait for the scheduled continuation reconciler.'
+            }
+            elseif ($incompletePublications.Count) {
+                Add-HealthCheck -Id 'durable-continuation' -Status warning -Summary 'A durable continuation request exists without a complete published agent outcome.' -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status not-applicable -Summary 'Continuation remains fail-closed until successful outcome publication completes.'
+            }
+            else {
+                Add-HealthCheck -Id 'durable-continuation' -Status passed -Summary 'No orphaned successful agent continuation was detected.' -Evidence @($ledgerPath)
+                Add-Repair -Id 'reconcile-agent-continuation' -Status not-applicable -Summary 'Every durable continuation is active, gated, or already reconciled.'
+            }
+
             $codexLogPath = Join-Path $taskRoot 'workflow-codex.jsonl'
             if ($taskStatus -eq 'failed') {
                 $failureEvent = @($ledgerEvents | Where-Object { $_.type -eq 'workflow-status' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
@@ -167,7 +235,7 @@ try {
                     }
                     else {
                         Add-HealthCheck -Id 'os-policy-compatibility' -Status warning -Summary 'OS policy error 1260 requires derived host-compatible agent profiles.' -Evidence $failureEvidence
-                        Add-Repair -Id 'install-host-compatible-agents' -Status requires-approval -Summary 'Run Health Check with -Repair to compile the compatibility profiles; dashboard confirmation remains required to execute them.'
+                        Add-Repair -Id 'install-host-compatible-agents' -Status available -Summary 'Run Health Check with -Repair to compile the compatibility profiles; standing policy selects them by default.'
                     }
                     Add-HealthCheck -Id 'agent-failure' -Status warning -Summary "Sandboxed workflow stopped: $failureSummary" -Evidence $failureEvidence
                 }
@@ -210,7 +278,7 @@ try {
         $taskResultPath = Join-Path $taskRoot 'health-check-result.json'
         Write-Utf8NoBom -Path $taskResultPath -Content $json
         if ($policyCompatibilityPrepared) {
-            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles for all agents after Windows policy error 1260. Confirm Resume workflow elevated to use them.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage os_policy_compatibility_ready -Message 'Health Check installed host-compatible profiles after Windows policy error 1260; standing policy selects them on the next targeted resume.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         $healthStage = if ($policyCompatibilityPrepared) { 'os_policy_compatibility_ready' } else { 'health_check' }
         if ($overallStatus -eq 'unhealthy') {

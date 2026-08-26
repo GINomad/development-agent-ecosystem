@@ -14,13 +14,19 @@
         "required": ["findingId", "decision", "decidedAtUtc", "decidedBy", "note"],
         "properties": {
           "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
-          "decision": { "enum": ["approved", "rejected", "deferred"] },
+          "decision": { "enum": ["approved", "rejected", "deferred", "bypassed"] },
           "decidedAtUtc": { "type": "string", "format": "date-time" },
           "decidedBy": { "type": "string", "minLength": 1 },
-          "note": { "type": "string" }
-        }
+          "note": { "type": "string" },
+          "techDebtItemId": { "type": "string", "pattern": "^TD-REV-[0-9]{3,}$" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "decision": { "const": "bypassed" } }, "required": ["decision"] },
+            "then": { "required": ["techDebtItemId"], "properties": { "note": { "minLength": 1 } } }
+          }
+        ]
       }
     }
   }
 }
-

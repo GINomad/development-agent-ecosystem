@@ -55,6 +55,8 @@ $request = [ordered]@{
 Write-Utf8NoBom -Path $artifactPath -Content (($request | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 
 $summary = "Pipeline $($request.category) failure on $($request.branch)@$($request.commit.Substring(0, 12)) routed to Developer (cycle $($request.cycle)/$($request.maxCycles))."
-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage pipeline_remediation_pending -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_pipeline_fix -Message 'Reviewer must validate the pipeline remediation.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus pending -Stage pipeline_after_remediation_review -Message 'Pipeline Monitor must validate the remediated exact commit after reviewed delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId developer -AgentStatus pending -Stage pipeline_remediation_pending -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pipeline-remediation-request -Summary $summary -Artifact $artifactPath -Evidence @($PipelineResultPath, $signatureEvidence) -TargetAgentId developer -ConfigPath $ConfigPath -CodexHome $CodexHome
 [pscustomobject]@{ Requested=$true; Reason=$summary; Artifact=$artifactPath; EventId=[string]$event.eventId }

@@ -4,7 +4,6 @@ param(
     [Parameter(Mandatory)][string] $FailurePath,
     [string] $DiagnosisPath,
     [switch] $ElevatedApproved,
-    [switch] $OperatorApprovedDirtyWorktree,
     [ValidateRange(0,2)][int] $RecoveryDepth = 0,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -14,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([bool]$config.health.automaticRecovery.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 
 function Get-BoundedTextTail {
     param([string] $Path, [int] $TailLines, [int] $MaximumBytes)
@@ -25,6 +25,60 @@ function Get-BoundedTextTail {
     $offset = $bytes.Length - $MaximumBytes
     return '[truncated to configured byte tail]' + [Environment]::NewLine + $encoding.GetString($bytes, $offset, $MaximumBytes)
 }
+
+function Publish-VerifiedHealthRepair {
+    param(
+        [Parameter(Mandatory)][string] $Workspace,
+        [Parameter(Mandatory)][string] $Commit,
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $FailureSignature,
+        [Parameter(Mandatory)][psobject] $Policy
+    )
+    $remote = [string]$Policy.pushRemote
+    if ($remote -ne 'origin') { throw 'Health recovery may push only to the configured origin remote.' }
+    $configuredRemoteUrl = [string]$Policy.pushRemoteUrl
+    $actualRemoteUrl = ([string](& git -C $Workspace remote get-url $remote)).Trim()
+    if ($LASTEXITCODE -ne 0 -or $actualRemoteUrl -ne $configuredRemoteUrl) { throw 'Health recovery origin does not match the exact configured ecosystem remote URL.' }
+
+    $branch = ([string](& git -C $Workspace branch --show-current)).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($branch)) { throw 'Validated ecosystem repair cannot be pushed from a detached HEAD.' }
+    if ($branch -in @('main','master')) {
+        $signaturePrefix = $FailureSignature.Substring(0, [Math]::Min(12, $FailureSignature.Length))
+        $branch = '{0}/{1}-{2}' -f ([string]$Policy.repairBranchPrefix).TrimEnd('/'), $TaskId, $signaturePrefix
+        $branchRef = 'refs/heads/{0}' -f $branch
+        $existingCommit = ([string](& git -C $Workspace show-ref --verify --hash $branchRef 2>$null)).Trim()
+        $showRefExitCode = [int]$LASTEXITCODE
+        if ($showRefExitCode -eq 0) {
+            if ($existingCommit -ne $Commit) { throw ('Existing repair branch does not point to the validated repair commit: {0}' -f $branch) }
+            & git -C $Workspace switch $branch
+        }
+        elseif ($showRefExitCode -eq 1) { & git -C $Workspace switch -c $branch }
+        else { throw ('Unable to inspect repair branch: {0}' -f $branch) }
+        if ($LASTEXITCODE -ne 0) { throw ('Unable to select repair branch: {0}' -f $branch) }
+    }
+    if ($branch -in @('main','master') -or $branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw 'Health recovery selected an unsafe push branch.' }
+
+    $pushRef = 'HEAD:refs/heads/{0}' -f $branch
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $pushOutput = @(& git -C $Workspace push --set-upstream $remote $pushRef 2>&1)
+        $pushExitCode = [int]$LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousErrorActionPreference }
+    if ($pushExitCode -ne 0) { throw ('Unable to push the validated ecosystem repair: {0}' -f ($pushOutput -join [Environment]::NewLine)) }
+
+    try {
+        $ErrorActionPreference = 'Continue'
+        $remoteOutput = @(& git -C $Workspace ls-remote --heads $remote ('refs/heads/{0}' -f $branch) 2>&1)
+        $remoteExitCode = [int]$LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousErrorActionPreference }
+    $remoteLine = @($remoteOutput | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^[a-f0-9]{40}\s+refs/heads/' } | Select-Object -First 1)
+    $remoteCommit = if ($remoteLine.Count) { ($remoteLine[0] -split '\s+')[0] } else { '' }
+    if ($remoteExitCode -ne 0 -or $remoteCommit -ne $Commit) { throw 'The remote repair branch does not point to the exact validated repair commit.' }
+    [pscustomobject][ordered]@{ remote=$remote; remoteUrl=$actualRemoteUrl; branch=$branch; commit=$Commit; pushRef=$pushRef; verifiedAtUtc=[DateTime]::UtcNow.ToString('o') }
+}
 if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
 if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure artifact was not found: $FailurePath" }
 
@@ -33,7 +87,7 @@ if ([IO.Path]::GetFullPath($workspace) -ne [IO.Path]::GetFullPath((Get-Ecosystem
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic recovery boundary is invalid.' }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
 if ($ElevatedApproved) {
-    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled -or -not [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Elevated recovery is not enabled with an explicit approval gate.' }
+    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled) { throw 'Host-compatible Health recovery is not enabled.' }
     $recoverySandboxMode = [string]$config.health.automaticRecovery.elevatedFallback.sandboxMode
     $maximumAttempts = [int]$config.health.automaticRecovery.elevatedFallback.maxAttemptsPerFailureSignature
     $recoveryApprovalPolicy = 'never'
@@ -87,16 +141,12 @@ if ($attemptCount -ge $maximumAttempts) {
     return [pscustomobject]@{ Status='attempt-limit'; TaskId=$TaskId; FailureSignature=$signature; Attempts=$attemptCount }
 }
 
-$dirtyFiles = @(git -C $workspace status --porcelain)
-if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the ecosystem Git worktree.' }
-if ($dirtyFiles.Count -and -not $OperatorApprovedDirtyWorktree) {
-    $message = 'Automatic source recovery is waiting because the ecosystem repository has uncommitted changes.'
-    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary $message -NextStep 'Resolve or preserve the existing worktree changes before automatic repair.' -EvidenceRefs (@($FailurePath) + @($dirtyFiles)) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    return [pscustomobject]@{ Status='dirty-worktree'; TaskId=$TaskId; Files=$dirtyFiles }
-}
-if ($OperatorApprovedDirtyWorktree -and -not $ElevatedApproved) {
-    throw 'An operator-approved dirty-worktree recovery must also use the explicit elevated approval path.'
+$preservationPath = Join-Path $taskRoot 'health-recovery-preservation.json'
+$preservation = & (Join-Path $PSScriptRoot 'Save-EcosystemRecoveryBaseline.ps1') -Workspace $workspace -TaskId $TaskId -FailureSignature $signature -ArtifactPath $preservationPath -RepairBranchPrefix ([string]$config.health.automaticRecovery.repairBranchPrefix)
+$dirtyFiles = @($preservation.Files)
+$preservationCommit = if ($preservation.Commit) { [string]$preservation.Commit } else { $null }
+if ($preservationCommit) {
+    & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_preservation -Summary "Committed the complete pre-recovery ecosystem worktree as $preservationCommit." -Details 'The trusted host preserved tracked and untracked non-ignored files in a separate commit before Health Check repair.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
 $attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
@@ -120,7 +170,9 @@ $diagnosticContext = [ordered]@{
     failureSignature = $signature
     failure = $failure
     existingDiagnosis = $existingDiagnosis
-    preExistingWorktreeChanges = if ($OperatorApprovedDirtyWorktree) { @($dirtyFiles) } else { @() }
+    preExistingWorktreeChanges = @($dirtyFiles)
+    preservationCommit = $preservationCommit
+    preservationArtifact = if ($preservationCommit) { $preservationPath } else { $null }
     taskStatus = [ordered]@{
         status = [string]$taskSnapshot.status
         stage = if ($taskSnapshot.PSObject.Properties['currentStage']) { [string]$taskSnapshot.currentStage } else { [string]$taskSnapshot.status }
@@ -139,14 +191,14 @@ $diagnosisInstruction = if ($existingDiagnosis) {
 else {
     'First delegate evidence analysis to the custom agent development_health_check. Pass only the bounded diagnostic payload. Do not read complete workflow or ledger history.'
 }
-$dirtyInstruction = if ($OperatorApprovedDirtyWorktree) {
-    'The operator explicitly approved this one recovery in a dirty ecosystem worktree. Preserve every pre-existing change listed in preExistingWorktreeChanges. Do not revert, overwrite wholesale, stage, commit, or clean those changes; make only the smallest additive repair needed for this failure.'
+$dirtyInstruction = if ($preservationCommit) {
+    "The trusted host preserved every pre-existing worktree change in commit $preservationCommit before this recovery. Start from that clean HEAD, do not amend or rewrite the preservation commit, and place the smallest repair on top."
 }
 else { 'The ecosystem worktree was verified clean before recovery.' }
 $healthPrompt = @"
 You are the bounded recovery coordinator for the Development Agent Ecosystem.
 
-Execution mode: $executionMode ($recoverySandboxMode). If this is elevated-approved, the user approved this one recovery attempt because the Windows sandbox failed with process-creation error 1260. The absence of an OS sandbox does not expand your authority: every read, write, and command must remain inside $workspace. Do not follow symlinks or junctions outside it.
+Execution mode: $executionMode ($recoverySandboxMode). The standing user policy selects host-compatible execution to avoid Windows process-creation error 1260. The absence of an OS sandbox does not expand your role authority: every read, write, and command must remain inside $workspace. Do not follow symlinks or junctions outside it.
 
 Task: $TaskId
 Bounded diagnostic artifact: $diagnosticContextPath
@@ -168,6 +220,7 @@ $guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
 $arguments = @(
     '-a', $recoveryApprovalPolicy,
+    '--config', 'notify=[]',
     'exec',
     '-C', $workspace,
     '-s', $recoverySandboxMode,
@@ -179,9 +232,9 @@ $arguments = @(
 
 $recoveryWasValidated = $false
 try {
-    $codexCommand = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $codexCommand) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCommand.Source -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $codexCliPath = Resolve-CodexCliPath
+    if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Health recovery Codex exited with code $codexExitCode. See $logPath" }
@@ -189,9 +242,48 @@ try {
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$recovery.failureSignature -ne $signature) { throw 'Health recovery result has the wrong failure signature.' }
     $routedAgentId = ''
+    $recoveryCommit = $preservationCommit
+    $recoveryPush = $null
 
     if ([string]$recovery.status -eq 'repaired') {
         $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+        if ([bool]$config.health.automaticRecovery.commitVerifiedRepairs) {
+            $postValidationChanges = @(git -C $workspace status --porcelain)
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the validated ecosystem repair before commit.' }
+            if ($postValidationChanges.Count) {
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    # Git can emit non-fatal line-ending warnings on stderr. Under Windows
+                    # PowerShell and ErrorActionPreference=Stop those warnings otherwise
+                    # become terminating NativeCommandError records before LASTEXITCODE is
+                    # inspected. Capture the output and decide strictly from the exit code.
+                    $ErrorActionPreference = 'Continue'
+                    $gitAddOutput = @(& git -C $workspace add --all -- . 2>&1)
+                    $gitAddExitCode = [int]$LASTEXITCODE
+                }
+                finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
+                if ($gitAddExitCode -ne 0) {
+                    throw "Unable to stage the validated ecosystem repair: $($gitAddOutput -join [Environment]::NewLine)"
+                }
+                $commitMessage = "fix(ecosystem): health recovery $($signature.Substring(0, 12))"
+                & git -C $workspace commit -m $commitMessage
+                if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the validated ecosystem repair.' }
+                $recoveryCommit = (& git -C $workspace rev-parse HEAD).Trim()
+                if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to verify the validated ecosystem repair commit.' }
+                $remainingChanges = @(git -C $workspace status --porcelain)
+                if ($LASTEXITCODE -ne 0 -or $remainingChanges.Count) { throw 'The verified ecosystem repair commit did not leave a clean worktree.' }
+                & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_commit -Summary "Validated ecosystem repair committed locally as $recoveryCommit." -Details 'The trusted host created a repair commit on top of any separate preservation commit after complete validation and before configured delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
+        }
+        if ($recoveryCommit -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
+            $recoveryPush = Publish-VerifiedHealthRepair -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
+            $recoveryDeliveryPath = Join-Path $taskRoot 'health-recovery-delivery.json'
+            Write-Utf8NoBom -Path $recoveryDeliveryPath -Content (($recoveryPush | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details 'Trusted host verified the exact remote branch commit after a normal non-force, non-tag push.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type external-action -Summary ('Health Check published verified ecosystem repair {0}.' -f $recoveryCommit) -Artifact $recoveryDeliveryPath -Evidence @($resultPath) -TargetAgentId health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         & (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $TaskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus completed -Stage health_recovered -Message "Health recovery completed and $(@($validation.Checks).Count) ecosystem checks passed." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -217,7 +309,7 @@ try {
             & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
-    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath }
+    $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; preservationCommit=$preservationCommit; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null }; push=if ($recoveryWasValidated -and $recoveryPush) { $recoveryPush } else { $null } }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $targetedResume = $null
     if ([string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
@@ -252,11 +344,10 @@ try {
             & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary "The targeted '$([string]$failure.agentId)' retry returned failed; Health Check accepted its new bounded failure envelope." -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $followupFailurePath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $followupParameters = @{ TaskId=$TaskId; FailurePath=$followupFailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
-            if ($OperatorApprovedDirtyWorktree) { $followupParameters.OperatorApprovedDirtyWorktree = $true }
             return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
         }
     }
-    [pscustomobject]@{ Status=[string]$recovery.status; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; TargetedResume=$targetedResume }
+    [pscustomobject]@{ Status=[string]$recovery.status; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; PreservationCommit=$preservationCommit; RecoveryCommit=$recoveryCommit; RecoveryPush=$recoveryPush; TargetedResume=$targetedResume }
 }
 catch {
     $failedAttempt = [ordered]@{ type='recovery-failed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); error=$_.Exception.Message }
@@ -268,7 +359,6 @@ catch {
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary 'A validated repair exposed a different ecosystem failure during targeted resume; Health Check accepted the new bounded failure envelope.' -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $([string]$followup.FailurePath)" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         $followupParameters = @{ TaskId=$TaskId; FailurePath=[string]$followup.FailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
         if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
-        if ($OperatorApprovedDirtyWorktree) { $followupParameters.OperatorApprovedDirtyWorktree = $true }
         return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
     }
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus failed -Stage health_recovery -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
