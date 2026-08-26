@@ -22,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$runtimeProvider = Get-AgentRuntimeProvider -Config $config
 if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
@@ -93,7 +94,7 @@ $workspaceLease = & (Join-Path $PSScriptRoot 'Switch-TaskWorkspace.ps1') -TaskId
 if ([string]$workspaceLease.Status -in @('queued','restore-conflict')) {
     return [pscustomobject]@{ Mode=$Mode; TaskId=$TaskId; TaskRoot=$task.TaskRoot; RepositoryIds=@($RepositoryIds); WorkspaceLease=$workspaceLease; Status=[string]$workspaceLease.Status }
 }
-$agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
+$agentProfileSuffix = if ($runtimeProvider -eq 'codex' -and $ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
 $orchestratorAgentName = 'development_workflow_orchestrator' + $agentProfileSuffix
 $knowledgeAgentName = 'development_knowledge_keeper' + $agentProfileSuffix
 $requirementsAgentName = 'development_requirements_analyst' + $agentProfileSuffix
@@ -141,16 +142,17 @@ $roleDirectory = @($config.agents | Where-Object { [string]$_.id -ne [string]$co
     $responsibilities = @($_.responsibilities | ForEach-Object { [string]$_ }) -join ' | '
     "$([string]$_.id): $([string]$_.description) Responsibilities: $responsibilities"
 }) -join [Environment]::NewLine
-$executionIdentity = if ($TargetAgentId) { "You are the '$TargetAgentId' role for this exact targeted run. Execute that role's work yourself in this Codex process; do not merely announce or simulate a handoff." } else { 'You are the primary workflow coordinator for the configured development agent ecosystem. Orchestrator owns intake classification and dispatch; Knowledge Keeper is an on-demand knowledge service and final knowledge publisher.' }
+$runtimeDisplayName = if ($runtimeProvider -eq 'claude') { 'Claude Code' } else { 'Codex' }
+$executionIdentity = if ($TargetAgentId) { "You are the '$TargetAgentId' role for this exact targeted run. Execute that role's work yourself in this $runtimeDisplayName process; do not merely announce or simulate a handoff." } else { 'You are the primary workflow coordinator for the configured development agent ecosystem. Orchestrator owns intake classification and dispatch; Knowledge Keeper is an on-demand knowledge service and final knowledge publisher.' }
 $targetExecutionContract = if ($TargetAgentId) { @"
 Targeted execution contract:
-- Perform the '$TargetAgentId' work directly under the role prompt below. The installed custom-agent name is a policy reference, not a background process that survives this `codex exec` run.
+- Perform the '$TargetAgentId' work directly under the role prompt below. The selected custom-agent definition is a policy reference, not a background process that survives this headless run.
 - Do not call collaboration spawn or wait, do not claim that another agent is active, and do not stop after merely setting '$TargetAgentId' to running.
 - Before returning, leave '$TargetAgentId' in exactly one terminal status: completed after validated outcome publication, waiting after an explicit input gate, or failed with structured failure evidence. A running or pending status at host exit is an execution failure.
 - Execute no other role. After a successful terminal outcome, return to the trusted PowerShell host, which alone decides automatic chain continuation.
 "@ } else { @"
 Coordinator execution contract:
-- Execute Orchestrator work directly in this Codex process. Do not claim a delivery agent is running unless its separate targeted host run has actually started.
+- Execute Orchestrator work directly in this $runtimeDisplayName process. Do not claim a delivery agent is running unless its separate targeted host run has actually started.
 - Publish the Orchestrator outcome and return to the trusted PowerShell host; the host starts the selected role in a separate targeted invocation.
 "@ }
 $prompt = @"
@@ -247,7 +249,14 @@ $codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
-foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
+$activeRuntimeAgentName = Get-ClaudeAgentName -Name ([string]$activeAgent.name)
+if ($runtimeProvider -eq 'claude') {
+    $pluginRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.claude.pluginRoot) -Config $config -CodexHome $CodexHome
+    foreach ($argument in @('-p','--output-format',[string]$config.runtime.claude.outputFormat,'--verbose','--model',[string]$modelRoute.model,'--effort',[string]$modelRoute.reasoningEffort,'--permission-mode',[string]$config.runtime.claude.permissionMode,'--max-turns',[string][int]$config.runtime.claude.maxTurns,'--no-session-persistence','--plugin-dir',$pluginRoot,'--agent',("development-agent-ecosystem:" + $activeRuntimeAgentName))) { $arguments.Add([string]$argument) }
+}
+else {
+    foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
+}
 $additionalDirectories = @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot))
 foreach ($directory in $additionalDirectories) {
     $resolvedDirectory = [IO.Path]::GetFullPath([string]$directory)
@@ -255,17 +264,23 @@ foreach ($directory in $additionalDirectories) {
     $arguments.Add('--add-dir')
     $arguments.Add($resolvedDirectory)
 }
-foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalResponsePath, '-')) { $arguments.Add([string]$argument) }
+if ($runtimeProvider -eq 'claude') {
+    $arguments.Add('Follow the complete workflow instruction supplied on standard input.')
+}
+else {
+    foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalResponsePath, '-')) { $arguments.Add([string]$argument) }
+}
 $workflowStartedAtUtc = [DateTime]::UtcNow
 try {
-    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec'; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
+    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner=$(if ($runtimeProvider -eq 'claude') { 'claude -p' } else { 'codex exec' }); provider=$runtimeProvider; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-    $codexCliPath = Resolve-CodexCliPath
-    if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
-    $codexExitCode = [int]$guardResult.exitCode
+    $agentCliPath = Resolve-AgentCliPath -Config $config
+    if (-not $agentCliPath) { throw "$runtimeDisplayName CLI was not found. See docs/claude-code.md for setup." }
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedAgentRuntime.ps1') -FilePath $agentCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $runtimeExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
-    if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
+    if ($runtimeExitCode -ne 0) { throw "$runtimeDisplayName exited with code $runtimeExitCode. See $codexLogPath" }
+    if ($runtimeProvider -eq 'claude') { & (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $codexLogPath -OutputPath $finalResponsePath | Out-Null }
     & (Join-Path $PSScriptRoot 'Assert-TargetAgentTerminalState.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
@@ -416,7 +431,7 @@ catch {
     & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $failureEvidence = @($codexLogPath, $finalResponsePath, $guardArtifactPath) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
     $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and [bool]$guardResult.guardTriggered) { [string]$guardResult.failureDetail } elseif (Test-Path -LiteralPath $codexLogPath -PathType Leaf) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureMessage }
-    $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
+    $failureExitCode = if (Get-Variable -Name runtimeExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$runtimeExitCode } else { $null }
     $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
     $hostCompatibilityReady = $false
     $automaticTargetedResume = $null

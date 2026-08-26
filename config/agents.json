@@ -3,10 +3,19 @@
   "schemaVersion": "1.0.0",
   "namespace": "development-ecosystem",
   "runtime": {
+    "provider": "claude",
     "maxConcurrentAgents": 4,
     "approvalPolicy": "on-request",
-    "stateRoot": "${LOCALAPPDATA}/Codex/development-agent-ecosystem",
+    "stateRoot": "${LOCALAPPDATA}/Claude/development-agent-ecosystem",
     "agentInstallRoot": "${CODEX_HOME}/agents",
+    "claude": {
+      "cliCommand": "claude",
+      "agentInstallRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/agents",
+      "pluginRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem",
+      "permissionMode": "auto",
+      "outputFormat": "stream-json",
+      "maxTurns": 120
+    },
     "historyFormat": "jsonl",
     "defaultBaseBranch": "main",
     "executionGuard": {
@@ -137,10 +146,10 @@
     "maxEvidenceCharacters": 24000,
     "largeEvidenceCharacters": 8000,
     "tiers": [
-      { "id": "routine", "rank": 0, "model": "gpt-5.6-luna", "reasoningEffort": "low" },
-      { "id": "standard", "rank": 1, "model": "gpt-5.6-terra", "reasoningEffort": "medium" },
-      { "id": "complex", "rank": 2, "model": "gpt-5.6-sol", "reasoningEffort": "high" },
-      { "id": "critical", "rank": 3, "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" }
+      { "id": "routine", "rank": 0, "model": "haiku", "reasoningEffort": "low" },
+      { "id": "standard", "rank": 1, "model": "sonnet", "reasoningEffort": "medium" },
+      { "id": "complex", "rank": 2, "model": "opus", "reasoningEffort": "high" },
+      { "id": "critical", "rank": 3, "model": "opus", "reasoningEffort": "xhigh" }
     ],
     "rolePolicies": [
       { "agentId": "orchestrator", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
@@ -437,7 +446,7 @@
         "Immediately classify durable authority handoffs returned by agents and route only their remaining out-of-scope work.",
         "Route source-controlled ecosystem scripts, configuration, prompts, skills, dashboard, agent definitions, tests, documentation, and control-plane maintenance to Health Check for bounded ecosystem recovery; never assign those changes to the product Developer by default."
       ],
-      "model": "gpt-5.6-luna",
+      "model": "haiku",
       "reasoningEffort": "low",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -473,7 +482,7 @@
         "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-luna",
+      "model": "haiku",
       "reasoningEffort": "low",
       "sandboxMode": "workspace-write",
       "promptPaths": [
@@ -515,7 +524,7 @@
         "Publish a plain-language requirements, workflow, and implementation-plan presentation for the dashboard.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-terra",
+      "model": "sonnet",
       "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -545,7 +554,7 @@
         "Apply Reviewer findings only after the required human approval and stop on unresolved scope.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-terra",
+      "model": "sonnet",
       "reasoningEffort": "medium",
       "sandboxMode": "workspace-write",
       "promptPaths": [
@@ -587,7 +596,7 @@
         "Remain read-only and never silently convert a finding into implementation authority.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-terra",
+      "model": "sonnet",
       "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -624,7 +633,7 @@
         "Track task pull-request lifecycle and report completed-PR closure evidence to Orchestrator for final routing.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-luna",
+      "model": "haiku",
       "reasoningEffort": "low",
       "sandboxMode": "read-only",
       "promptPaths": [
@@ -659,7 +668,7 @@
         "Restart only the failed target after verified repair and stop at human authority or credential gates.",
         "Return only non-ecosystem comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
-      "model": "gpt-5.6-terra",
+      "model": "sonnet",
       "reasoningEffort": "medium",
       "sandboxMode": "read-only",
       "promptPaths": [

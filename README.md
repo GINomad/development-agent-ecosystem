@@ -1,8 +1,8 @@
 # Development Agent Ecosystem
 
-An evidence-first local Codex ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, code and agent-work review, and Azure Pipelines monitoring.
+An evidence-first local Claude Code ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, code and agent-work review, and Azure Pipelines monitoring.
 
-The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Codex agent TOML definitions. Do not edit generated TOML files manually.
+The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Claude Code plugin agents. Do not edit generated agent Markdown files manually.
 
 ## Included components
 
@@ -25,7 +25,9 @@ For the detailed repository composition, see [repository-architecture.svg](docs/
 
 ## Quick start
 
-Model selection is cost-aware and configuration-driven. Before every Orchestrator or targeted-agent `codex exec`, `scripts/Resolve-AgentModelRoute.ps1` classifies bounded task evidence without an additional AI call, applies the agent's configured tier floor and cap, and persists the explainable decision in task-local `model-routing.json`. Unchanged inputs reuse the existing fingerprinted decision. The defaults are Luna/low for routine work, Terra/medium for standard work, Sol/high for complex work, and Sol/xhigh for critical work. Security, credentials, code signing, multi-repository work, large bounded evidence, a prior failure, or a post-repair retry can raise the tier.
+Model selection is cost-aware and configuration-driven. Before every Orchestrator or targeted-agent `claude -p` run, `scripts/Resolve-AgentModelRoute.ps1` classifies bounded task evidence without an additional AI call, applies the agent's configured tier floor and cap, and persists the explainable decision in task-local `model-routing.json`. Unchanged inputs reuse the existing fingerprinted decision. The defaults are Haiku/low for routine work, Sonnet/medium for standard work, Opus/high for complex work, and Opus/xhigh for critical work. Security, credentials, code signing, multi-repository work, large bounded evidence, a prior failure, or a post-repair retry can raise the tier.
+
+For a new machine or developer, give the repository directory to an LLM and ask it to follow [SETUP_WITH_LLM.md](SETUP_WITH_LLM.md). It conducts an interactive configuration interview, never requests secret values in chat, validates the resulting configuration, and explains any login step the developer must perform directly.
 
 ```powershell
 cd C:\Repos\development-agent-ecosystem
@@ -37,7 +39,7 @@ The loopback dashboard is full-width and persists across reloads. It supports mu
 
 Every Codex runner is supervised. Three identical execution failures terminate the run, persist a guard and agent-failure report, fail the task, and hand bounded recent evidence to Health Check Agent. Initial, resume, targeted, recovery, and queued-task entry points all return successful role outcomes to one trusted host state machine; no UI flag is required to continue the configured chain. Before an agent is marked completed, outcome publication appends a durable continuation request. A deterministic scheduled reconciler detects a host that exited before dispatch, restarts only the missing next link, and uses per-task locking to prevent duplicate runs. It consumes no AI tokens unless an actual missing role must be launched. The host allows no more than sixteen handoffs and three repetitions of the same transition before failing closed into Health Check. Orchestrator routes intake without polling roles and grants a single global workspace lease: one task runs at a time, later tasks remain `queued`, and an idle task yields to the oldest queued task. Before switching away, tracked and untracked changes are saved in task-specific Git stashes; the task branch and stash are restored on return, and the stash is dropped only after a successful apply. Knowledge Keeper answers bounded knowledge requests and consumes only successful outcomes. Roles keep unfinished context in private checkpoints and publish one shared outcome only after success. A running role sizes its own coherent work blocks, reads one direct or routed comment batch after each block, and continues without restart when more ready work remains. Unchanged artifacts are represented by fingerprints and summaries, and a final `task-summary.json` is written only after the whole task completes. For Windows policy error 1260, Health Check automatically compiles host-compatible variants of all seven agents; an explicitly confirmed elevated resume selects those variants without disabling CrowdStrike or any delivery gate.
 
-See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
+See [Claude Code setup](docs/claude-code.md), [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), and [operations and rollback](docs/operations.md).
 
 ## Common commands
 

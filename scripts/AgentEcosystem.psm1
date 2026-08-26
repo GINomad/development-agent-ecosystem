@@ -27,6 +27,36 @@ function Resolve-CodexCliPath {
     return $null
 }
 
+function Get-AgentRuntimeProvider {
+    param([Parameter(Mandatory)] $Config)
+    $provider = if ($Config.runtime.PSObject.Properties['provider']) { [string]$Config.runtime.provider } else { 'codex' }
+    if ($provider -notin @('codex','claude')) { throw "Unsupported agent runtime provider '$provider'." }
+    return $provider
+}
+
+function Resolve-ClaudeCliPath {
+    $command = Get-Command claude.exe, claude.cmd, claude -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and $command.Source -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) {
+        return [IO.Path]::GetFullPath([string]$command.Source)
+    }
+    $nativePath = Join-Path ([string]$env:USERPROFILE) '.local\bin\claude.exe'
+    if (Test-Path -LiteralPath $nativePath -PathType Leaf) { return [IO.Path]::GetFullPath($nativePath) }
+    return $null
+}
+
+function Resolve-AgentCliPath {
+    param([Parameter(Mandatory)] $Config)
+    switch (Get-AgentRuntimeProvider -Config $Config) {
+        'claude' { return Resolve-ClaudeCliPath }
+        default { return Resolve-CodexCliPath }
+    }
+}
+
+function Get-ClaudeAgentName {
+    param([Parameter(Mandatory)][string] $Name)
+    return (($Name -replace '_','-') -replace '[^a-z0-9-]','-').Trim('-')
+}
+
 function Expand-EcosystemValue {
     param(
         [Parameter(Mandatory)][string] $Value,
@@ -106,6 +136,15 @@ function Assert-EcosystemConfig {
     if ([int]$Config.ui.agentLogRefreshSeconds -lt 2 -or [int]$Config.ui.agentLogRefreshSeconds -gt 300) { throw 'ui.agentLogRefreshSeconds must be between 2 and 300.' }
     if ([int]$Config.runtime.executionGuard.maxIdenticalFailures -ne 3) { throw 'runtime.executionGuard.maxIdenticalFailures must be exactly 3.' }
     if ([int]$Config.runtime.executionGuard.maxRunMinutes -lt 5 -or [int]$Config.runtime.executionGuard.maxRunMinutes -gt 1440) { throw 'runtime.executionGuard.maxRunMinutes is outside the supported range.' }
+    $runtimeProvider = Get-AgentRuntimeProvider -Config $Config
+    if ($runtimeProvider -eq 'claude') {
+        foreach ($property in @('cliCommand','agentInstallRoot','pluginRoot','permissionMode','outputFormat','maxTurns')) {
+            if (-not $Config.runtime.claude.PSObject.Properties[$property]) { throw "runtime.claude.$property is required." }
+        }
+        if ([string]$Config.runtime.claude.permissionMode -ne 'auto') { throw 'runtime.claude.permissionMode must remain auto in committed configuration.' }
+        if ([string]$Config.runtime.claude.outputFormat -ne 'stream-json') { throw 'runtime.claude.outputFormat must be stream-json.' }
+        if ([int]$Config.runtime.claude.maxTurns -lt 1 -or [int]$Config.runtime.claude.maxTurns -gt 500) { throw 'runtime.claude.maxTurns is outside the supported range.' }
+    }
     if (-not [bool]$Config.runtime.elevatedFallback.useByDefault -or [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow host-compatible execution must be enabled by default under the standing user authorization.' }
     if (-not [bool]$Config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$Config.health.automaticRecovery.preserveDirtyWorktreeChanges -or -not [bool]$Config.health.automaticRecovery.commitVerifiedRepairs -or -not [bool]$Config.health.automaticRecovery.pushVerifiedRepairs) { throw 'Health recovery must preserve an existing dirty baseline, permit validated ecosystem-only source changes, and deliver the verified commit chain.' }
     if ([string]$Config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$Config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Health recovery push destination must be the exact canonical ecosystem origin.' }
@@ -266,6 +305,48 @@ function New-AgentToml {
     return ($lines -join [Environment]::NewLine) + [Environment]::NewLine
 }
 
+function ConvertTo-YamlSingleQuotedString {
+    param([AllowEmptyString()][string] $Value)
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function New-AgentClaudeMarkdown {
+    param(
+        [Parameter(Mandatory)] $Agent,
+        [Parameter(Mandatory)] $Config,
+        [string] $CodexHome
+    )
+    $agentName = Get-ClaudeAgentName -Name ([string]$Agent.name)
+    $promptSections = [Collections.Generic.List[string]]::new()
+    foreach ($pathValue in @($Agent.promptPaths)) {
+        $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $Config -CodexHome $CodexHome
+        $promptSections.Add("Source: $([string]$pathValue)`n$((Get-Content -LiteralPath $path -Raw).Trim())")
+    }
+    $handoffs = @($Agent.handoffs) -join ', '
+    $artifacts = @($Agent.requiredArtifacts) -join ', '
+    $responsibilities = @($Agent.responsibilities | ForEach-Object { "- $([string]$_)" }) -join "`n"
+    $promptSections.Add("Configured responsibilities:`n$responsibilities`n`nConfigured handoffs: $handoffs`nRequired artifacts: $artifacts")
+    $skills = @($Agent.skillPaths | ForEach-Object { 'development-agent-ecosystem:' + (Split-Path -Leaf (Split-Path -Parent ([string]$_))) } | Select-Object -Unique)
+
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add('---')
+    $lines.Add("name: $(ConvertTo-YamlSingleQuotedString $agentName)")
+    $lines.Add("description: $(ConvertTo-YamlSingleQuotedString ([string]$Agent.description))")
+    $lines.Add("model: $(ConvertTo-YamlSingleQuotedString ([string]$Agent.model))")
+    $lines.Add("effort: $(ConvertTo-YamlSingleQuotedString ([string]$Agent.reasoningEffort))")
+    $lines.Add("maxTurns: $([int]$Config.runtime.claude.maxTurns)")
+    if ($skills.Count) {
+        $lines.Add('skills:')
+        foreach ($skill in $skills) { $lines.Add("  - $(ConvertTo-YamlSingleQuotedString ([string]$skill))") }
+    }
+    $lines.Add('---')
+    $lines.Add('')
+    $lines.Add('Generated by development-agent-ecosystem. Edit config/agents.json and prompt files, not this file.')
+    $lines.Add('')
+    $lines.Add(($promptSections -join "`n`n"))
+    return ($lines -join [Environment]::NewLine) + [Environment]::NewLine
+}
+
 function Write-Utf8NoBom {
     param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
     $parent = Split-Path -Parent $Path
@@ -273,4 +354,4 @@ function Write-Utf8NoBom {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Get-AgentRuntimeProvider, Resolve-CodexCliPath, Resolve-ClaudeCliPath, Resolve-AgentCliPath, Get-ClaudeAgentName, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, ConvertTo-YamlSingleQuotedString, New-AgentClaudeMarkdown, Write-Utf8NoBom

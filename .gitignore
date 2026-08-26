@@ -2,4 +2,4 @@
 .test-output/
 *.local.json
 *.log
-
+.claude/settings.local.json

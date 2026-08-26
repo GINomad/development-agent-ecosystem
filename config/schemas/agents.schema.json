@@ -29,12 +29,26 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "historyFormat", "defaultBaseBranch", "executionGuard", "contextLimits", "elevatedFallback"],
+      "required": ["provider", "maxConcurrentAgents", "approvalPolicy", "stateRoot", "agentInstallRoot", "claude", "historyFormat", "defaultBaseBranch", "executionGuard", "contextLimits", "elevatedFallback"],
       "properties": {
+        "provider": { "const": "claude" },
         "maxConcurrentAgents": { "type": "integer", "minimum": 1, "maximum": 16 },
         "approvalPolicy": { "enum": ["untrusted", "on-request", "never"] },
         "stateRoot": { "type": "string", "minLength": 1 },
         "agentInstallRoot": { "type": "string", "minLength": 1 },
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cliCommand", "agentInstallRoot", "pluginRoot", "permissionMode", "outputFormat", "maxTurns"],
+          "properties": {
+            "cliCommand": { "const": "claude" },
+            "agentInstallRoot": { "type": "string", "minLength": 1 },
+            "pluginRoot": { "type": "string", "minLength": 1 },
+            "permissionMode": { "const": "auto" },
+            "outputFormat": { "const": "stream-json" },
+            "maxTurns": { "type": "integer", "minimum": 1, "maximum": 500 }
+          }
+        },
         "historyFormat": { "const": "jsonl" },
         "defaultBaseBranch": { "type": "string", "minLength": 1 },
         "executionGuard": {

@@ -1,0 +1,13 @@
+{
+  "name": "planning-space-development",
+  "owner": {
+    "name": "PlanningSpace Engineering"
+  },
+  "plugins": [
+    {
+      "name": "development-agent-ecosystem",
+      "source": "./plugins/development-agent-ecosystem",
+      "description": "Evidence-first development delivery workflow for Claude Code."
+    }
+  ]
+}
