@@ -16,6 +16,7 @@ param(
     [string]$RepositoryId = 'unknown',
     [string]$ResultPath,
     [string]$ClassifierScript,
+    [string]$QueueDiagnosticsScript,
     [ValidateRange(20,500)][int]$FailureLogTailLines = 120,
     [ValidateRange(4096,262144)][int]$FailureLogMaxBytes = 65536,
     [ValidateRange(0,3)][int]$RemediationCycle = 0,
@@ -60,14 +61,36 @@ if (-not $ClassifierScript) {
     $ClassifierScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\..\scripts\Classify-PipelineFailure.ps1'))
 }
 if (-not (Test-Path -LiteralPath $ClassifierScript -PathType Leaf)) { throw "Pipeline failure classifier was not found: $ClassifierScript" }
+if (-not $QueueDiagnosticsScript) {
+    $QueueDiagnosticsScript = Join-Path $PSScriptRoot 'diagnose_queue_validation.ps1'
+}
+if (-not (Test-Path -LiteralPath $QueueDiagnosticsScript -PathType Leaf)) { throw "Pipeline queue diagnostics script was not found: $QueueDiagnosticsScript" }
+
+function Invoke-AzJsonResult {
+    param([string[]]$Arguments)
+    try {
+        $output = @(& $AzCli @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        $output = @($_)
+        $exitCode = 1
+    }
+    $text = (@($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+    $value = $null
+    $parseError = $null
+    if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($text)) {
+        try { $value = $text | ConvertFrom-Json -ErrorAction Stop }
+        catch { $parseError = "Azure CLI returned invalid JSON: $($_.Exception.Message)" }
+    }
+    [pscustomobject]@{ succeeded=($exitCode -eq 0 -and $null -eq $parseError); exitCode=$exitCode; value=$value; output=@($output); parseError=$parseError }
+}
 
 function Invoke-AzJson {
     param([string[]]$Arguments)
-    $output = & $AzCli @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Azure CLI failed: $($output -join [Environment]::NewLine)" }
-    $text = $output -join [Environment]::NewLine
-    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-    return $text | ConvertFrom-Json
+    $result = Invoke-AzJsonResult -Arguments $Arguments
+    if (-not $result.succeeded) { throw "Azure CLI failed: $(@($result.output) -join [Environment]::NewLine)$($result.parseError)" }
+    return $result.value
 }
 
 function ConvertTo-ObjectArray {
@@ -150,7 +173,8 @@ function New-PipelineResult {
         [ValidateSet('succeeded','non-success','no-run')][string]$OverallResult,
         $Classification,
         [int[]]$QueuedIds,
-        [string]$Summary
+        [string]$Summary,
+        [AllowNull()][object]$QueueFailure
     )
     $signature = $null
     if ($OverallResult -ne 'succeeded') {
@@ -190,6 +214,7 @@ function New-PipelineResult {
         runs = @($Runs)
         overallResult = $OverallResult
         failureClassification = $Classification
+        queueFailure = $QueueFailure
         remediation = [pscustomobject][ordered]@{
             status = $remediationStatus
             cycle = $nextCycle
@@ -255,7 +280,35 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
     if ($null -eq $selectedRun) {
         Write-Host "Queueing approved build definition $definitionId at sequence position $($sequenceIndex + 1) for $branchRef."
         Send-MonitorProgress -Stage pipeline_queueing -Summary "Queueing approved definition $definitionId." -Details "Ordered position $($sequenceIndex + 1) of $($AutoQueueDefinitionIds.Count)." -Force
-        $queueResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')))
+        $queueAttempt = Invoke-AzJsonResult -Arguments @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
+        if (-not $queueAttempt.succeeded) {
+            Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Diagnosing queue rejection for definition $definitionId." -Details 'Running Azure dry-run preview and read-only resource checks; no second run will be queued.' -Force
+            try {
+                $queueFailures = @(& $QueueDiagnosticsScript -Organization $Organization -Project $Project -DefinitionId $definitionId -Branch $Branch -Commit $Commit -QueueError (@($queueAttempt.output) -join [Environment]::NewLine) -AzCli $AzCli)
+                if ($queueFailures.Count -ne 1) { throw "Queue diagnostics returned $($queueFailures.Count) results instead of one." }
+                $queueFailure = $queueFailures[0]
+            }
+            catch {
+                $queueFailure = [pscustomobject][ordered]@{
+                    diagnosticType='queue-validation'; definitionId=$definitionId; category='infrastructure'; developerEligible=$false
+                    matchedSignals=@('Azure rejected the queue request.','The read-only diagnostic helper failed before producing safe evidence.')
+                    summary="Definition $definitionId queue validation failed; the read-only diagnostic helper did not produce a safe result."
+                    queueError='Azure rejected the queue request.'; definition=$null; preview=$null; resourceChecks=@()
+                }
+            }
+            $classification = [pscustomobject]@{
+                category=[string]$queueFailure.category
+                developerEligible=[bool]$queueFailure.developerEligible
+                matchedSignals=@($queueFailure.matchedSignals)
+            }
+            $result = New-PipelineResult -Runs @() -OverallResult non-success -Classification $classification -QueuedIds @($queuedDefinitions) -Summary ([string]$queueFailure.summary) -QueueFailure $queueFailure
+            Write-PipelineResult -Result $result
+            Send-MonitorProgress -Stage pipeline_terminal -Summary ([string]$queueFailure.summary) -Details 'Queue validation diagnostics completed without creating another run.' -Force
+            if ($PassThru) { return $result }
+            Write-Error -ErrorAction Continue $result.summary
+            exit 4
+        }
+        $queueResults = @(ConvertTo-ObjectArray -Value $queueAttempt.value)
         if ($queueResults.Count -ne 1 -or $null -eq $queueResults[0].id) { throw "Azure CLI did not return exactly one run ID for definition $definitionId." }
         $selectedRun = $queueResults[0]
         $queuedDefinitions.Add($definitionId)
