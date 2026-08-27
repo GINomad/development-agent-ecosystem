@@ -293,7 +293,17 @@ $staleQuestionConfig.runtime.stateRoot = Join-Path $staleQuestionRoot 'state'
 Write-Utf8NoBom -Path $staleQuestionConfigPath -Content (($staleQuestionConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 $staleQuestionTaskId = 'stale-question-' + [guid]::NewGuid().ToString('N')
 $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $staleQuestionTaskId -TaskSelector synthetic-stale-question -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $staleQuestionConfigPath
-$staleQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $staleQuestionTaskId -AgentId pipeline_monitor -Question 'Is this prior input still required?' -ConfigPath $staleQuestionConfigPath
+$questionReason = 'The ecosystem cannot infer this task-specific decision safely from repository evidence.'
+$questionOptions = @('Provide the requested decision.', 'Revise the task so the decision is no longer required.')
+$questionRecommendation = $questionOptions[0]
+$questionRecommendationRationale = 'Providing the decision preserves the requested scope and lets the owning agent continue.'
+$unstructuredQuestionRejected = $false
+try {
+    & (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $staleQuestionTaskId -Actor pipeline_monitor -Type question-opened -Summary 'Bare blocker without guidance.' -ConfigPath $staleQuestionConfigPath | Out-Null
+}
+catch { $unstructuredQuestionRejected = $_.Exception.Message -match 'structured human-intervention guidance' }
+if (-not $unstructuredQuestionRejected) { throw 'A bare question-opened event bypassed the structured human-intervention contract.' }
+$staleQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $staleQuestionTaskId -AgentId pipeline_monitor -Question 'Is this prior input still required?' -Reason $questionReason -Options $questionOptions -RecommendedOption $questionRecommendation -RecommendationRationale $questionRecommendationRationale -ConfigPath $staleQuestionConfigPath
 $restartCutoff = [DateTime]::Parse([string]$staleQuestion.TimestampUtc).ToUniversalTime().AddMilliseconds(1)
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $staleQuestionTaskId -Status interrupted -AgentId pipeline_monitor -AgentStatus completed -Stage targeted_agent_completed -Message 'Targeted restart completed without an input gate.' -ConfigPath $staleQuestionConfigPath | Out-Null
 $staleResolution = & (Join-Path $root 'scripts\Resolve-StaleAgentQuestions.ps1') -TaskId $staleQuestionTaskId -AgentId pipeline_monitor -RestartedAtUtc $restartCutoff -ConfigPath $staleQuestionConfigPath
@@ -301,17 +311,26 @@ $staleQuestionView = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $s
 if (@($staleResolution.SupersededQuestionIds) -notcontains [string]$staleQuestion.QuestionId -or @($staleQuestionView.Tasks[0].openQuestions).Count -ne 0) { throw 'A question made obsolete by a successful targeted restart remained visible on the dashboard.' }
 $activeQuestionTaskId = 'active-question-' + [guid]::NewGuid().ToString('N')
 $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $activeQuestionTaskId -TaskSelector synthetic-active-question -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $staleQuestionConfigPath
-$activeQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $activeQuestionTaskId -AgentId reviewer -Question 'This input is still required.' -ConfigPath $staleQuestionConfigPath
+$activeQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $activeQuestionTaskId -AgentId reviewer -Question 'This input is still required.' -Reason $questionReason -Options $questionOptions -RecommendedOption $questionRecommendation -RecommendationRationale $questionRecommendationRationale -ConfigPath $staleQuestionConfigPath
 $activeCutoff = [DateTime]::Parse([string]$activeQuestion.TimestampUtc).ToUniversalTime().AddMilliseconds(1)
 $activeResolution = & (Join-Path $root 'scripts\Resolve-StaleAgentQuestions.ps1') -TaskId $activeQuestionTaskId -AgentId reviewer -RestartedAtUtc $activeCutoff -ConfigPath $staleQuestionConfigPath
 $activeQuestionView = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $activeQuestionTaskId -ConfigPath $staleQuestionConfigPath
 if (@($activeResolution.PreservedQuestionIds) -notcontains [string]$activeQuestion.QuestionId -or @($activeQuestionView.Tasks[0].openQuestions).Count -ne 1) { throw 'An agent still waiting_for_input lost its active question.' }
+$activeQuestionEvent = $activeQuestionView.Tasks[0].openQuestions[0]
+if (
+    -not [bool]$activeQuestionEvent.humanIntervention.required -or
+    @($activeQuestionEvent.humanIntervention.options).Count -lt 1 -or
+    [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.reason) -or
+    [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.recommendedOption) -or
+    [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.recommendationRationale) -or
+    [string]$activeQuestionEvent.summary -notmatch 'Why human intervention is required:'
+) { throw 'A waiting outcome did not expose a reason, options, recommendation, and recommendation rationale.' }
 Add-Check -Name 'stale-question-reconciliation' -Detail 'Successful targeted restart supersedes obsolete questions while an active waiting_for_input gate remains visible'
 
 $duplicateQuestionTaskId = 'duplicate-question-' + [guid]::NewGuid().ToString('N')
 $duplicateQuestionTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $duplicateQuestionTaskId -TaskSelector synthetic-duplicate-question -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $staleQuestionConfigPath
-$olderDuplicateQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $duplicateQuestionTaskId -AgentId requirements_analyst -Question 'Provide the sensitivity mapping.' -ConfigPath $staleQuestionConfigPath
-$latestDuplicateQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $duplicateQuestionTaskId -AgentId requirements_analyst -Question 'Provide the refined sensitivity mapping.' -ConfigPath $staleQuestionConfigPath
+$olderDuplicateQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $duplicateQuestionTaskId -AgentId requirements_analyst -Question 'Provide the sensitivity mapping.' -Reason $questionReason -Options $questionOptions -RecommendedOption $questionRecommendation -RecommendationRationale $questionRecommendationRationale -ConfigPath $staleQuestionConfigPath
+$latestDuplicateQuestion = & (Join-Path $root 'scripts\Open-AgentQuestion.ps1') -TaskId $duplicateQuestionTaskId -AgentId requirements_analyst -Question 'Provide the refined sensitivity mapping.' -Reason $questionReason -Options $questionOptions -RecommendedOption $questionRecommendation -RecommendationRationale $questionRecommendationRationale -ConfigPath $staleQuestionConfigPath
 $duplicateQuestionView = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $duplicateQuestionTaskId -ConfigPath $staleQuestionConfigPath
 if (@($duplicateQuestionView.Tasks[0].openQuestions).Count -ne 1 -or [string]$duplicateQuestionView.Tasks[0].openQuestions[0].eventId -ne [string]$latestDuplicateQuestion.QuestionId) { throw 'Dashboard did not collapse duplicate questions from one agent to its latest active input gate.' }
 & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $duplicateQuestionTaskId -QuestionId ([string]$latestDuplicateQuestion.QuestionId) -Text 'Use the accepted sensitivity mapping.' -ConfigPath $staleQuestionConfigPath | Out-Null
@@ -584,6 +603,15 @@ finally {
 $queueAttempts = @(Get-Content -LiteralPath $queueDiagnosticStatePath)
 $missingEnvironmentCheck = @($queueDiagnosticResult.queueFailure.resourceChecks | Where-Object { [string]$_.kind -eq 'environment' -and [string]$_.name -eq 'promote-to-cloudops' -and [string]$_.status -eq 'not-visible' })
 if ([string]$queueDiagnosticResult.overallResult -ne 'non-success' -or [string]$queueDiagnosticResult.failureClassification.category -ne 'infrastructure' -or -not [bool]$queueDiagnosticResult.queueFailure.preview.succeeded -or $missingEnvironmentCheck.Count -ne 1) { throw 'Queue rejection was not converted into actionable missing-Environment diagnostics.' }
+$queueGuidance = $queueDiagnosticResult.queueFailure.humanIntervention
+$reuseEnvironmentOption = @($queueGuidance.options | Where-Object { [string]$_.id -eq 'reuse-visible-environment' -and [string]$_.action -match 'cloudops-promote' })
+if (
+    -not [bool]$queueGuidance.required -or
+    [string]::IsNullOrWhiteSpace([string]$queueGuidance.reason) -or
+    $reuseEnvironmentOption.Count -ne 1 -or
+    [string]$queueGuidance.recommendedOptionId -ne 'reuse-visible-environment' -or
+    [string]::IsNullOrWhiteSpace([string]$queueGuidance.recommendationRationale)
+) { throw 'Queue diagnostics did not recommend the visible matching Environment with actionable rationale.' }
 if ($queueAttempts.Count -ne 1 -or $queueAttempts[0] -ne 'queue-attempt:892') { throw 'Queue diagnostics repeated or replaced the single authorized queue attempt.' }
 if ([string]$queueDiagnosticResult.queueFailure.queueError -match 'must-not-leak' -or [string]$queueDiagnosticResult.queueFailure.queueError -notmatch '<redacted>') { throw 'Queue diagnostics did not redact credential-shaped Azure CLI output.' }
 if (@($queueDiagnosticStages) -notcontains 'pipeline_queueing' -or @($queueDiagnosticStages) -notcontains 'pipeline_failure_analysis' -or @($queueDiagnosticStages) -notcontains 'pipeline_terminal') { throw 'Queue diagnostics did not publish queueing, failure-analysis, and terminal progress stages.' }
@@ -601,7 +629,8 @@ finally {
 }
 $previewEnvironmentCheck = @($previewEnvironmentDiagnostic.resourceChecks | Where-Object { [string]$_.kind -eq 'environment' -and [string]$_.name -eq 'promote-to-cloudops' -and [string]$_.status -eq 'not-visible' })
 if ([bool]$previewEnvironmentDiagnostic.preview.succeeded -or $previewEnvironmentCheck.Count -ne 1 -or [string]$previewEnvironmentDiagnostic.category -ne 'infrastructure') { throw 'Exact Azure dry-run Environment validation text was not converted into a structured infrastructure resource check.' }
-Add-Check -Name 'pipeline-queue-validation-diagnostics' -Detail 'One queue attempt; exact-SHA dry-run preview; read-only Environment/service-connection checks; sanitized structured terminal result'
+if ([string]$previewEnvironmentDiagnostic.humanIntervention.recommendedOptionId -ne 'reuse-visible-environment' -or @($previewEnvironmentDiagnostic.humanIntervention.options | Where-Object { [string]$_.action -match 'cloudops-promote' }).Count -ne 1) { throw 'Preview failure diagnostics did not use the read-only Environment inventory to recommend the matching shared Environment.' }
+Add-Check -Name 'pipeline-queue-validation-diagnostics' -Detail 'One queue attempt; exact-SHA dry-run preview; read-only resource checks; sanitized result; actionable options with a reasoned recommendation'
 $latestResultPath = Join-Path $pipelineTestRoot 'latest-terminal-result.json'
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'latest-terminal'
 $env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'

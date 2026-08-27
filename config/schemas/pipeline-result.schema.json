@@ -26,10 +26,54 @@
     "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
     "overallResult": { "enum": ["succeeded", "non-success", "no-run"] },
     "failureClassification": { "$ref": "#/$defs/classification" },
+    "queueFailure": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/queueFailure" }
+      ]
+    },
     "remediation": { "$ref": "#/$defs/remediation" },
     "summary": { "type": "string", "minLength": 1 }
   },
   "$defs": {
+    "resolutionOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "action", "rationale"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "action": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "humanIntervention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "reason", "options", "recommendedOptionId", "recommendationRationale"],
+      "properties": {
+        "required": { "const": true },
+        "reason": { "type": "string", "minLength": 1 },
+        "options": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/resolutionOption" } },
+        "recommendedOptionId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "recommendationRationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "queueFailure": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["diagnosticType", "definitionId", "category", "developerEligible", "matchedSignals", "summary", "queueError", "resourceChecks", "humanIntervention"],
+      "properties": {
+        "diagnosticType": { "const": "queue-validation" },
+        "definitionId": { "type": "integer", "minimum": 1 },
+        "category": { "enum": ["code", "infrastructure"] },
+        "developerEligible": { "type": "boolean" },
+        "matchedSignals": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string", "minLength": 1 },
+        "queueError": { "type": "string", "minLength": 1 },
+        "resourceChecks": { "type": "array" },
+        "humanIntervention": { "$ref": "#/$defs/humanIntervention" }
+      }
+    },
     "classification": {
       "type": "object",
       "additionalProperties": false,

@@ -93,6 +93,79 @@ function Get-ObjectProperty {
     return $property.Value
 }
 
+function Get-VisibleResourceNames {
+    param([ValidateSet('environment','service-connection')][string]$Kind)
+    $arguments = if ($Kind -eq 'environment') {
+        @('devops','invoke','--organization',$Organization,'--area','distributedtask','--resource','environments','--route-parameters',"project=$Project",'--api-version','7.1','--output','json')
+    }
+    else {
+        @('devops','service-endpoint','list','--organization',$Organization,'--project',$Project,'--output','json')
+    }
+    $result = Invoke-AzJsonResult -Arguments $arguments
+    $names = if ($result.succeeded) {
+        @(ConvertTo-ObjectArray -Value $result.value | ForEach-Object {
+            [string](Get-ObjectProperty -Value $_ -Name 'name')
+        } | Where-Object { $_ } | Sort-Object -Unique)
+    }
+    else { @() }
+    [pscustomobject]@{ succeeded=[bool]$result.succeeded; names=@($names); message=if ($result.succeeded) { $null } else { $result.message } }
+}
+
+function Find-SimilarResourceName {
+    param([string]$MissingName, [string[]]$CandidateNames)
+    $ignoredTokens = @('a','an','the','to','for')
+    $missingTokens = @($MissingName.ToLowerInvariant() -split '[^a-z0-9]+' | Where-Object { $_ -and $_ -notin $ignoredTokens } | Sort-Object -Unique)
+    foreach ($candidate in @($CandidateNames)) {
+        $candidateTokens = @($candidate.ToLowerInvariant() -split '[^a-z0-9]+' | Where-Object { $_ -and $_ -notin $ignoredTokens } | Sort-Object -Unique)
+        if ($missingTokens.Count -and (($missingTokens -join '|') -eq ($candidateTokens -join '|'))) { return $candidate }
+    }
+    return $null
+}
+
+function New-ResolutionOption {
+    param([string]$Id, [string]$Action, [string]$Rationale)
+    [pscustomobject][ordered]@{ id=$Id; action=$Action; rationale=$Rationale }
+}
+
+function New-QueueHumanIntervention {
+    param(
+        [string]$Reason,
+        [ValidateSet('environment','service-connection','yaml','generic')][string]$Kind,
+        [string]$MissingName,
+        [string[]]$VisibleNames = @()
+    )
+    $options = [Collections.Generic.List[object]]::new()
+    $similarName = if ($MissingName) { Find-SimilarResourceName -MissingName $MissingName -CandidateNames $VisibleNames } else { $null }
+    if ($Kind -eq 'environment') {
+        if ($similarName) {
+            $options.Add((New-ResolutionOption -Id 'reuse-visible-environment' -Action "Change the pipeline Environment from '$MissingName' to '$similarName' and authorize definition $DefinitionId to use it." -Rationale 'This reuses an existing project Environment and preserves its established approvals and checks.'))
+        }
+        $options.Add((New-ResolutionOption -Id 'create-or-authorize-environment' -Action "Keep '$MissingName': create it if absent, or authorize definition $DefinitionId if it already exists but is protected." -Rationale 'Azure reports missing and unauthorized Environments with the same validation family, so an owner must verify both existence and pipeline permission.'))
+    }
+    elseif ($Kind -eq 'service-connection') {
+        if ($similarName) {
+            $options.Add((New-ResolutionOption -Id 'reuse-visible-service-connection' -Action "Change the pipeline service connection from '$MissingName' to '$similarName' and authorize definition $DefinitionId to use it." -Rationale 'This reuses an existing visible credential boundary instead of creating a duplicate connection.'))
+        }
+        $options.Add((New-ResolutionOption -Id 'create-or-authorize-service-connection' -Action "Keep '$MissingName': create it if absent, or grant definition $DefinitionId pipeline permission if it already exists." -Rationale 'Only an authorized Azure DevOps owner can create or grant access to a protected service connection.'))
+    }
+    elseif ($Kind -eq 'yaml') {
+        $options.Add((New-ResolutionOption -Id 'fix-pipeline-yaml' -Action 'Correct the YAML or template error on the exact branch and commit, then queue a new reviewed commit.' -Rationale 'Azure cannot compile the pipeline definition, so resource permissions cannot be evaluated until the YAML is valid.'))
+        $options.Add((New-ResolutionOption -Id 'verify-definition-path' -Action "Verify that definition $DefinitionId points to the intended YAML path and branch." -Rationale 'A stale definition path or revision can make valid repository YAML appear invalid to Azure.'))
+    }
+    else {
+        $options.Add((New-ResolutionOption -Id 'inspect-azure-validation' -Action "Open definition $DefinitionId in Azure DevOps and inspect its validation and resource-authorization details." -Rationale 'The read-only API evidence is incomplete, while the Azure UI can expose the protected resource or check that needs an owner decision.'))
+        $options.Add((New-ResolutionOption -Id 'grant-diagnostic-visibility' -Action 'Grant the monitor identity read access to the relevant Environment and service-connection inventories, then rerun diagnostics.' -Rationale 'Additional read visibility lets the monitor distinguish absence from authorization without changing protected resources.'))
+    }
+    $recommended = [string]$options[0].id
+    [pscustomobject][ordered]@{
+        required = $true
+        reason = $Reason
+        options = @($options)
+        recommendedOptionId = $recommended
+        recommendationRationale = [string]$options[0].rationale
+    }
+}
+
 $queueMessage = ConvertTo-SafeMessage -Value $QueueError
 $definitionResult = Invoke-AzJsonResult -Arguments @(
     'pipelines','build','definition','show','--id',[string]$DefinitionId,
@@ -146,6 +219,23 @@ if (-not $previewResult.succeeded) {
         $previewConnections.Add($name)
         $previewResourceChecks.Add([pscustomobject][ordered]@{ kind='service-connection'; name=$name; status='not-visible'; detail=$previewResult.message })
     }
+    $interventionKind = if ($isYamlFailure) { 'yaml' } elseif ($previewEnvironments.Count) { 'environment' } elseif ($previewConnections.Count) { 'service-connection' } else { 'generic' }
+    $missingResourceName = if ($previewEnvironments.Count) { [string]$previewEnvironments[0] } elseif ($previewConnections.Count) { [string]$previewConnections[0] } else { '' }
+    $visibleResourceNames = @()
+    if ($interventionKind -in @('environment','service-connection')) {
+        $resourceInventory = Get-VisibleResourceNames -Kind $interventionKind
+        if ($resourceInventory.succeeded) { $visibleResourceNames = @($resourceInventory.names) }
+    }
+    $interventionReason = if ($isYamlFailure) {
+        'Azure cannot compile the exact pipeline YAML, and the monitor is read-only and cannot change product code.'
+    }
+    elseif ($missingResourceName) {
+        "Azure cannot resolve or authorize the referenced $interventionKind '$missingResourceName' before queueing, and the monitor cannot create resources or grant pipeline permissions."
+    }
+    else {
+        'Azure rejected the queue request before creating a run, and the read-only preview did not identify one safely automatable correction.'
+    }
+    $humanIntervention = New-QueueHumanIntervention -Reason $interventionReason -Kind $interventionKind -MissingName $missingResourceName -VisibleNames $visibleResourceNames
     return [pscustomobject][ordered]@{
         diagnosticType = 'queue-validation'
         definitionId = $DefinitionId
@@ -158,11 +248,13 @@ if (-not $previewResult.succeeded) {
         preview = [pscustomobject]@{ succeeded=$false; message=$previewResult.message }
         referencedResources = [pscustomobject]@{ environments=@($previewEnvironments); serviceConnections=@($previewConnections) }
         resourceChecks = @($previewResourceChecks)
+        humanIntervention = $humanIntervention
     }
 }
 
 $finalYaml = [string](Get-ObjectProperty -Value $previewResult.value -Name 'finalYaml')
 if ([string]::IsNullOrWhiteSpace($finalYaml)) {
+    $humanIntervention = New-QueueHumanIntervention -Reason 'Azure accepted the preview request but returned no compiled YAML, so the monitor cannot identify the protected resource safely.' -Kind generic
     return [pscustomobject][ordered]@{
         diagnosticType='queue-validation'; definitionId=$DefinitionId; category='infrastructure'; developerEligible=$false
         matchedSignals=@($queueMessage,'Azure dry-run preview returned no finalYaml document.')
@@ -170,6 +262,7 @@ if ([string]::IsNullOrWhiteSpace($finalYaml)) {
         queueError=$queueMessage; definition=$definitionEvidence
         preview=[pscustomobject]@{ succeeded=$false; message='Azure dry-run preview returned no finalYaml document.' }
         referencedResources=[pscustomobject]@{ environments=@(); serviceConnections=@() }; resourceChecks=@()
+        humanIntervention=$humanIntervention
     }
 }
 $variables = Get-YamlVariableMap -Yaml $finalYaml
@@ -191,6 +284,8 @@ $resourceChecks = [Collections.Generic.List[object]]::new()
 $missingEnvironments = [Collections.Generic.List[string]]::new()
 $missingConnections = [Collections.Generic.List[string]]::new()
 $lookupFailures = [Collections.Generic.List[string]]::new()
+$visibleEnvironments = @()
+$visibleConnections = @()
 
 if ($environmentNames.Count -gt 0) {
     $environmentResult = Invoke-AzJsonResult -Arguments @(
@@ -251,6 +346,21 @@ else {
     $summary = "Definition $DefinitionId dry-run preview succeeded and referenced resources are visible. The remaining queue rejection is likely a pipeline permission, resource authorization, or check configuration. YAML: $yamlPath."
 }
 
+if ($missingEnvironments.Count) {
+    $interventionReason = "Azure cannot queue definition $DefinitionId because Environment '$([string]$missingEnvironments[0])' is absent or not visible to the pipeline."
+    $humanIntervention = New-QueueHumanIntervention -Reason $interventionReason -Kind environment -MissingName ([string]$missingEnvironments[0]) -VisibleNames $visibleEnvironments
+}
+elseif ($missingConnections.Count) {
+    $interventionReason = "Azure cannot queue definition $DefinitionId because service connection '$([string]$missingConnections[0])' is absent or not visible to the pipeline."
+    $humanIntervention = New-QueueHumanIntervention -Reason $interventionReason -Kind service-connection -MissingName ([string]$missingConnections[0]) -VisibleNames $visibleConnections
+}
+elseif ($lookupFailures.Count) {
+    $humanIntervention = New-QueueHumanIntervention -Reason 'The monitor lacks enough read visibility to distinguish a missing resource from a resource-authorization failure.' -Kind generic
+}
+else {
+    $humanIntervention = New-QueueHumanIntervention -Reason 'Azure compiled the exact YAML and the referenced resources are visible, but a protected permission or check still blocks queueing.' -Kind generic
+}
+
 [pscustomobject][ordered]@{
     diagnosticType = 'queue-validation'
     definitionId = $DefinitionId
@@ -263,4 +373,5 @@ else {
     preview = [pscustomobject]@{ succeeded=$true; message='Azure dry-run preview parsed the exact branch and commit.' }
     referencedResources = [pscustomobject]@{ environments=@($environmentNames); serviceConnections=@($connectionNames) }
     resourceChecks = @($resourceChecks)
+    humanIntervention = $humanIntervention
 }

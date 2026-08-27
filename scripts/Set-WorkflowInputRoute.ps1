@@ -118,7 +118,11 @@ if ([string]$source.type -in $workflowCommentSourceTypes) {
     & (Join-Path $PSScriptRoot 'Acknowledge-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $orchestratorId -EventIds @($SourceEventId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 if ($RequiresUserInput) {
-    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId $orchestratorId -Question $Rationale.Trim() -Stage orchestration_waiting_for_input -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $interventionOptions = @(
+        'Provide the missing decision or evidence requested by the Orchestrator.'
+        'Revise the request so it can be routed without the missing authority or fact.'
+    )
+    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId $orchestratorId -Question $Rationale.Trim() -Reason 'The Orchestrator cannot choose a safe owner or execution path without a human decision.' -Options $interventionOptions -RecommendedOption $interventionOptions[0] -RecommendationRationale 'Providing the missing decision preserves the original request and allows deterministic routing to continue.' -Stage orchestration_waiting_for_input -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 else {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
