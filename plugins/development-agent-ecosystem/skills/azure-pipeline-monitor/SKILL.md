@@ -11,7 +11,7 @@ description: Monitor Azure DevOps pipeline runs associated with an exact Git bra
 2. After a successful push, resolve the repository, branch, and full commit SHA with Git.
 3. Read `references/planning-space.md` when working in `ps-excel-agent` or `ps-bicep`.
 4. Run `scripts/watch_pipeline_runs.ps1` with the exact branch and commit. In `ps-excel-agent`, pass `-AutoQueueDefinitionIds 814,892`; the script requires exact-SHA 814 success before it queues and accepts the later 892 run. In the ecosystem, prefer `Invoke-PostPushPipeline.ps1`, which reads this ordered allowlist from canonical JSON.
-5. Stay with every discovered run until it reaches a terminal state.
+5. Stay with every discovered run until it reaches a terminal state. If command execution yields a running cell or session, retain the handle and use the provided wait/resume mechanism until the same watcher command completes. Do not start another watcher or refresh while that handle is live; an `inProgress` result or execution yield is not a failure, and only terminal watcher completion or a real nonzero exit may drive result/failure handling.
 6. Report run IDs, links, source commits, final results, and failed task log excerpts.
 7. When `-ResultPath` is supplied, persist the structured exact-SHA result and deterministic failure classification. With `-PassThru`, return non-success as data so the orchestrator can route bounded code/test remediation without treating the monitor itself as crashed.
 8. In the ecosystem, pass `-ProgressCallback` and the configured heartbeat interval so queue, discovery, waiting, failure-analysis, and terminal stages appear in the dashboard. The callback is native PowerShell reporting and must not invoke an AI model.
