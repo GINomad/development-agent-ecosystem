@@ -39,6 +39,8 @@ Deployment definition `891` is forbidden by semantic validation and must never a
 
 Repeated Azure polling and failure classification are deterministic and do not consume model turns. Agent work begins only for analysis, remediation, routing, or publication that the persisted outcome requires.
 
+A failed Azure run can stop during provider-side validation before jobs start. Pipeline Monitor reads run-level `validationResults` first and does not require timeline or log endpoints in that case; it persists the validation error, infrastructure classification, and a reasoned human-intervention recommendation.
+
 ## Changing pipeline coverage
 
 For an existing managed repository, edit its matching object in `pipeline.repositories[]`:

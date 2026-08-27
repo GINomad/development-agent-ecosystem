@@ -167,6 +167,53 @@ function Get-FailureSignature {
     finally { $algorithm.Dispose() }
 }
 
+function New-PipelineHumanIntervention {
+    param(
+        [string]$Category,
+        [string[]]$Signals,
+        [int]$DefinitionId
+    )
+    $signalText = @($Signals) -join [Environment]::NewLine
+    $options = [Collections.Generic.List[object]]::new()
+    if ($signalText -match '(?i)service connection\s+(?<name>[A-Za-z0-9._ -]+?)\s+(?:which could not be found|could not be found|does not exist|has been disabled|has not been authorized|is not authorized)') {
+        $connectionName = ([string]$Matches['name']).Trim()
+        $options.Add([pscustomobject][ordered]@{
+            id='authorize-service-connection'
+            action="Authorize definition $DefinitionId to use service connection '$connectionName' in Azure DevOps pipeline permissions."
+            rationale='This preserves the connection explicitly referenced by the reviewed YAML and avoids creating a duplicate credential boundary.'
+        })
+        $options.Add([pscustomobject][ordered]@{
+            id='verify-service-connection'
+            action="Verify that service connection '$connectionName' exists, is enabled, and its credential can push to the required registry repository."
+            rationale='Azure uses the same validation family for a missing, disabled, or unauthorized connection, so an owner must verify its actual state.'
+        })
+        return [pscustomobject][ordered]@{
+            required=$true
+            reason="Azure rejected definition $DefinitionId before any job started because service connection '$connectionName' was unavailable to the pipeline. The monitor is read-only and cannot grant credential permissions."
+            options=@($options)
+            recommendedOptionId='authorize-service-connection'
+            recommendationRationale=[string]$options[0].rationale
+        }
+    }
+    $options.Add([pscustomobject][ordered]@{
+        id='inspect-azure-run-validation'
+        action="Inspect validation and protected-resource permissions for definition $DefinitionId in Azure DevOps."
+        rationale='An authorized owner can see and change provider-side permissions that the read-only monitor cannot modify.'
+    })
+    $options.Add([pscustomobject][ordered]@{
+        id='provide-additional-evidence'
+        action='Provide the Azure validation detail or grant the monitor read visibility, then perform a read-only refresh.'
+        rationale='Additional bounded evidence lets the monitor replace an unknown classification with a specific safe action.'
+    })
+    [pscustomobject][ordered]@{
+        required=$true
+        reason="Definition $DefinitionId completed with a $Category failure that is not eligible for an automatic product-code change."
+        options=@($options)
+        recommendedOptionId='inspect-azure-run-validation'
+        recommendationRationale=[string]$options[0].rationale
+    }
+}
+
 function New-PipelineResult {
     param(
         [object[]]$Runs,
@@ -174,7 +221,8 @@ function New-PipelineResult {
         $Classification,
         [int[]]$QueuedIds,
         [string]$Summary,
-        [AllowNull()][object]$QueueFailure
+        [AllowNull()][object]$QueueFailure,
+        [AllowNull()][object]$HumanIntervention
     )
     $signature = $null
     if ($OverallResult -ne 'succeeded') {
@@ -215,6 +263,7 @@ function New-PipelineResult {
         overallResult = $OverallResult
         failureClassification = $Classification
         queueFailure = $QueueFailure
+        humanIntervention = $HumanIntervention
         remediation = [pscustomobject][ordered]@{
             status = $remediationStatus
             cycle = $nextCycle
@@ -480,10 +529,39 @@ foreach ($run in $completed.Values | Sort-Object id) {
     if ($runResult -ne 'succeeded') {
         Write-Host "Non-success run $($run.id): result=$runResult" -ForegroundColor Red
         Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Analyzing failed tasks for run $($run.id)." -Details "Definition $($run.definition.id); result: $runResult." -Force
-        $timelineResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')))
-        if ($timelineResults.Count -ne 1) { throw "Azure CLI did not return exactly one timeline for run $($run.id)." }
-        $timeline = $timelineResults[0]
-        foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
+        $validationResultsProperty = $run.PSObject.Properties['validationResults']
+        $validationMessages = @(
+            if ($validationResultsProperty) {
+                $validationResultsProperty.Value |
+                    Where-Object { [string]$_.result -eq 'error' -and -not [string]::IsNullOrWhiteSpace([string]$_.message) } |
+                    ForEach-Object { [string]$_.message }
+            }
+        )
+        if ($validationMessages.Count) {
+            $excerpt = Get-BoundedLogExcerpt -Lines $validationMessages -MaximumBytes $FailureLogMaxBytes
+            $taskClassification = & $ClassifierScript -TaskNames @('Azure pipeline validation') -LogLines $validationMessages
+            $allCategories.Add([string]$taskClassification.category)
+            foreach ($signal in @($taskClassification.matchedSignals)) { if ($allSignals.Count -lt 8) { $allSignals.Add([string]$signal) } }
+            if ($allSignals.Count -lt 8) { $allSignals.Add($excerpt) }
+            $failedTasks.Add([pscustomobject][ordered]@{ name='Azure pipeline validation'; category=[string]$taskClassification.category; logExcerpt=$excerpt })
+            $failedLogExcerpts.Add($excerpt)
+            Write-Host $excerpt
+        }
+        else {
+            $timelineResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')))
+            if ($timelineResults.Count -eq 1) {
+                $timeline = $timelineResults[0]
+                $timelineTasks = @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })
+            }
+            else {
+                $timelineTasks = @()
+                $excerpt = "Azure returned no timeline or validationResults for failed run $($run.id)."
+                $allCategories.Add('infrastructure')
+                if ($allSignals.Count -lt 8) { $allSignals.Add($excerpt) }
+                $failedTasks.Add([pscustomobject][ordered]@{ name='Azure pipeline metadata'; category='infrastructure'; logExcerpt=$excerpt })
+                $failedLogExcerpts.Add($excerpt)
+            }
+            foreach ($task in $timelineTasks) {
             $excerpt = ''
             if ($null -ne $task.log -and $null -ne $task.log.id) {
                 $logFile = Join-Path ([IO.Path]::GetTempPath()) "azdo-$($run.id)-$($task.log.id)-$([guid]::NewGuid().ToString('N')).log"
@@ -508,6 +586,7 @@ foreach ($run in $completed.Values | Sort-Object id) {
             foreach ($signal in @($taskClassification.matchedSignals)) { if ($allSignals.Count -lt 8) { $allSignals.Add([string]$signal) } }
             $failedTasks.Add([pscustomobject][ordered]@{ name=[string]$task.name; category=[string]$taskClassification.category; logExcerpt=$excerpt })
             if ($excerpt) { $failedLogExcerpts.Add($excerpt) }
+            }
         }
         if ($failedTasks.Count -eq 0) { $allCategories.Add('unknown') }
     }
@@ -530,7 +609,13 @@ else {
     $overallResult = 'non-success'
     $summary = "Exact-SHA pipeline completed with non-success; classified as $category."
 }
-$result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary
+$humanIntervention = $null
+if ($overallResult -eq 'non-success' -and (-not [bool]$classification.developerEligible -or $RemediationCycle -ge $MaxRemediationCycles)) {
+    $failedDefinition = @($structuredRuns | Where-Object { [string]$_.result -ne 'succeeded' } | Select-Object -First 1)
+    $failedDefinitionId = if ($failedDefinition.Count) { [int]$failedDefinition[0].definitionId } else { 1 }
+    $humanIntervention = New-PipelineHumanIntervention -Category ([string]$classification.category) -Signals @($allSignals) -DefinitionId $failedDefinitionId
+}
+$result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary -HumanIntervention $humanIntervention
 Write-PipelineResult -Result $result
 Send-MonitorProgress -Stage pipeline_terminal -Summary $summary -Details "Overall result: $overallResult." -Force
 if ($PassThru) { return $result }
