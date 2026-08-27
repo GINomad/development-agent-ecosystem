@@ -146,12 +146,14 @@ $targetExecutionContract = if ($TargetAgentId) { @"
 Targeted execution contract:
 - Perform the '$TargetAgentId' work directly under the role prompt below. The installed custom-agent name is a policy reference, not a background process that survives this `codex exec` run.
 - Do not call collaboration spawn or wait, do not claim that another agent is active, and do not stop after merely setting '$TargetAgentId' to running.
+- For a targeted Orchestrator run, call `$(Join-Path $PSScriptRoot 'Publish-AgentOutcome.ps1') -TaskId '$TaskId' -AgentId orchestrator -Summary '<concise routing outcome>'` before returning and require it to succeed. Final prose or an activity entry is not terminal publication.
 - Before returning, leave '$TargetAgentId' in exactly one terminal status: completed after validated outcome publication, waiting after an explicit input gate, or failed with structured failure evidence. A running or pending status at host exit is an execution failure.
 - Execute no other role. After a successful terminal outcome, return to the trusted PowerShell host, which alone decides automatic chain continuation.
 "@ } else { @"
 Coordinator execution contract:
 - Execute Orchestrator work directly in this Codex process. Do not claim a delivery agent is running unless its separate targeted host run has actually started.
-- Publish the Orchestrator outcome and return to the trusted PowerShell host; the host starts the selected role in a separate targeted invocation.
+- Before returning, call `$(Join-Path $PSScriptRoot 'Publish-AgentOutcome.ps1') -TaskId '$TaskId' -AgentId orchestrator -Summary '<concise routing outcome>'` and require it to succeed. A final response or activity entry does not make Orchestrator terminal.
+- After the Orchestrator outcome is published, return to the trusted PowerShell host; the host starts the selected role in a separate targeted invocation.
 "@ }
 $prompt = @"
 $executionIdentity
