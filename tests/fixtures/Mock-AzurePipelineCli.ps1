@@ -101,6 +101,29 @@ jobs:
     throw "Unexpected queue-validation mock Azure CLI arguments: $($args -join ' ')"
 }
 
+if ($scenario -eq 'pre-job-validation') {
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
+        @([ordered]@{
+            id=99003; sourceVersion=$commit; queueTime=[DateTime]::UtcNow.ToString('o')
+            definition=[ordered]@{ id=892; name='Docker pre-job validation' }
+        }) | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'show') {
+        [ordered]@{
+            id=99003; status='completed'; result='failed'; sourceVersion=$commit
+            definition=[ordered]@{ id=892; name='Docker pre-job validation' }
+            validationResults=@([ordered]@{
+                result='error'
+                message='The pipeline is not valid. Step input containerRegistry references service connection quorumcr-fdplan-push which could not be found. The service connection does not exist, has been disabled or has not been authorized for use.'
+            })
+        } | ConvertTo-Json -Depth 8 -Compress
+        exit 0
+    }
+    if ($resource -in @('timeline','logs')) { throw 'Pre-job validation must be diagnosed from run metadata without timeline or log calls.' }
+    throw "Unexpected pre-job-validation mock Azure CLI arguments: $($args -join ' ')"
+}
+
 if ($scenario -eq 'ordered-success') {
     $statePath = [string]$env:ECOSYSTEM_MOCK_PIPELINE_STATE
     if ([string]::IsNullOrWhiteSpace($statePath)) { throw 'Ordered mock scenario requires ECOSYSTEM_MOCK_PIPELINE_STATE.' }

@@ -631,6 +631,25 @@ $previewEnvironmentCheck = @($previewEnvironmentDiagnostic.resourceChecks | Wher
 if ([bool]$previewEnvironmentDiagnostic.preview.succeeded -or $previewEnvironmentCheck.Count -ne 1 -or [string]$previewEnvironmentDiagnostic.category -ne 'infrastructure') { throw 'Exact Azure dry-run Environment validation text was not converted into a structured infrastructure resource check.' }
 if ([string]$previewEnvironmentDiagnostic.humanIntervention.recommendedOptionId -ne 'reuse-visible-environment' -or @($previewEnvironmentDiagnostic.humanIntervention.options | Where-Object { [string]$_.action -match 'cloudops-promote' }).Count -ne 1) { throw 'Preview failure diagnostics did not use the read-only Environment inventory to recommend the matching shared Environment.' }
 Add-Check -Name 'pipeline-queue-validation-diagnostics' -Detail 'One queue attempt; exact-SHA dry-run preview; read-only resource checks; sanitized result; actionable options with a reasoned recommendation'
+$preJobResultPath = Join-Path $pipelineTestRoot 'pre-job-validation-result.json'
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'pre-job-validation'
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $preJobResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -DefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $preJobResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -PassThru
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$preJobTask = @($preJobResult.runs[0].failedTasks | Where-Object { [string]$_.name -eq 'Azure pipeline validation' -and [string]$_.logExcerpt -match 'quorumcr-fdplan-push' })
+if (
+    [string]$preJobResult.overallResult -ne 'non-success' -or
+    [string]$preJobResult.failureClassification.category -ne 'infrastructure' -or
+    $preJobTask.Count -ne 1 -or
+    [string]$preJobResult.humanIntervention.recommendedOptionId -ne 'authorize-service-connection' -or
+    @($preJobResult.humanIntervention.options | Where-Object { [string]$_.id -eq 'authorize-service-connection' -and [string]$_.action -match 'definition 892' }).Count -ne 1
+) { throw 'Pre-job Azure validation was not converted into a structured infrastructure result with a reasoned service-connection recommendation.' }
+Add-Check -Name 'pipeline-pre-job-validation-diagnostics' -Detail 'Run validationResults are classified without timeline/logs and recommend scoped service-connection authorization'
 $latestResultPath = Join-Path $pipelineTestRoot 'latest-terminal-result.json'
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'latest-terminal'
 $env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
