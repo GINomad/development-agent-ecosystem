@@ -180,7 +180,11 @@ try {
                 $coordinator | Add-Member -NotePropertyName switchedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
                 Write-Utf8NoBom -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
                 $question = "Git could not restore task '$TaskId' stash $stashCommit in '$($repository.Workspace)' without conflicts. Resolve the working tree manually; the stash was preserved and was not dropped."
-                & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId orchestrator -Question $question -Stage workspace_restore_conflict -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                $restoreOptions = @(
+                    'Resolve the stash conflicts manually while preserving both task and workspace changes, then resume the task.'
+                    'Provide a separate clean workspace or branch where the preserved stash can be restored safely.'
+                )
+                & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId orchestrator -Question $question -Reason 'Automatic conflict resolution could discard or miscombine user-owned changes, so the ecosystem stops before mutating the conflicted files.' -Options $restoreOptions -RecommendedOption $restoreOptions[0] -RecommendationRationale 'Manual conflict resolution in the recorded workspace keeps the existing branch and preserved stash lineage intact.' -Stage workspace_restore_conflict -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 return [pscustomobject]@{ Status='restore-conflict'; TaskId=$TaskId; PreviousTaskId=if ($activeTaskId) { $activeTaskId } else { $null }; RepositoryId=[string]$repositoryId; StashCommit=$stashCommit; SessionPath=$sessionPath }
             }
             $stashList = @((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('stash','list','--format=%H %gd')).Output)

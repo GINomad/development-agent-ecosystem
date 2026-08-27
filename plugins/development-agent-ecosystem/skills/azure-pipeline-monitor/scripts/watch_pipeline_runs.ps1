@@ -294,6 +294,16 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
                     matchedSignals=@('Azure rejected the queue request.','The read-only diagnostic helper failed before producing safe evidence.')
                     summary="Definition $definitionId queue validation failed; the read-only diagnostic helper did not produce a safe result."
                     queueError='Azure rejected the queue request.'; definition=$null; preview=$null; resourceChecks=@()
+                    humanIntervention=[pscustomobject][ordered]@{
+                        required=$true
+                        reason='Azure rejected the queue request, but the safe diagnostic helper could not determine a single cause.'
+                        options=@(
+                            [pscustomobject][ordered]@{ id='inspect-azure-validation'; action="Open definition $definitionId in Azure DevOps and inspect its validation details."; rationale='An authorized owner can see protected resource and check details unavailable to the monitor.' }
+                            [pscustomobject][ordered]@{ id='restore-monitor-read-access'; action='Restore read access for the monitor identity, then rerun diagnostics without requeueing solely for debug.'; rationale='Read access allows the monitor to produce a specific recommendation without changing Azure resources.' }
+                        )
+                        recommendedOptionId='inspect-azure-validation'
+                        recommendationRationale='This is the fastest safe path when the monitor cannot obtain reliable read-only evidence.'
+                    }
                 }
             }
             $classification = [pscustomobject]@{

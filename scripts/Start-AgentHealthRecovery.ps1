@@ -209,7 +209,7 @@ Ecosystem workspace: $workspace
 $diagnosisInstruction
 $dirtyInstruction
 
-If the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or start another workflow yourself. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If another configured role owns the repair, do not perform that role's work: return its agent ID in routeAgentId, set repairOwner consistently, and set requiresUserInput=false. Use Developer for product code, tests, or pipeline YAML; Requirements Analyst for unresolved requirements evidence; Knowledge Keeper for persisted knowledge/context contracts; Reviewer for review-process work; Pipeline Monitor for pipeline observation or provider-side diagnosis. Set routeAgentId=null when repaired here or when human input is required. Credentials, external authority, approval decisions, and genuinely ambiguous evidence require repairOwner=human and requiresUserInput=true. After a validated ecosystem repair, the trusted host coordinator may perform the configured one-shot targeted retry of only the failed agent.
+If the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or start another workflow yourself. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If another configured role owns the repair, do not perform that role's work: return its agent ID in routeAgentId, set repairOwner consistently, and set requiresUserInput=false. Use Developer for product code, tests, or pipeline YAML; Requirements Analyst for unresolved requirements evidence; Knowledge Keeper for persisted knowledge/context contracts; Reviewer for review-process work; Pipeline Monitor for pipeline observation or provider-side diagnosis. Set routeAgentId=null when repaired here or when human input is required. Credentials, external authority, approval decisions, and genuinely ambiguous evidence require repairOwner=human and requiresUserInput=true. Whenever requiresUserInput=true, populate humanIntervention with the exact request, why automation cannot safely proceed, one or more actionable options, one recommended option copied exactly from options, and the rationale for that recommendation. After a validated ecosystem repair, the trusted host coordinator may perform the configured one-shot targeted retry of only the failed agent.
 
 Return only the JSON object required by the configured output schema. Use the exact failure signature $signature.
 "@
@@ -290,8 +290,8 @@ try {
         $recoveryWasValidated = $true
     }
     elseif ([string]$recovery.status -eq 'needs-user-input') {
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status waiting_for_input -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        $guidance = $recovery.humanIntervention
+        & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId health_check -Question ([string]$guidance.request) -Reason ([string]$guidance.reason) -Options @($guidance.options) -RecommendedOption ([string]$guidance.recommendedOption) -RecommendationRationale ([string]$guidance.recommendationRationale) -Evidence @($FailurePath, $resultPath) -Stage health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
     else {
         $routedAgentId = if ($recovery.PSObject.Properties['routeAgentId']) { [string]$recovery.routeAgentId } else { '' }
@@ -306,7 +306,13 @@ try {
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type workflow-status -Summary "Health Check routed a bounded repair to '$routedAgentId'." -Artifact $routingPath -Evidence @($FailurePath, $resultPath) -TargetAgentId $routedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         else {
-            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            if ($requiresUserInput) {
+                $guidance = $recovery.humanIntervention
+                & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId health_check -Question ([string]$guidance.request) -Reason ([string]$guidance.reason) -Options @($guidance.options) -RecommendedOption ([string]$guidance.recommendedOption) -RecommendationRationale ([string]$guidance.recommendationRationale) -Evidence @($FailurePath, $resultPath) -Stage health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
+            else {
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
         }
     }
     $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; preservationCommit=$preservationCommit; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null }; push=if ($recoveryWasValidated -and $recoveryPush) { $recoveryPush } else { $null } }

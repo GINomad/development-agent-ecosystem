@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][string] $Summary,
     [string] $Artifact,
     [string[]] $Evidence = @(),
+    [AllowNull()][object] $HumanIntervention,
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -15,6 +16,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ($Type -eq 'question-opened' -and $null -eq $HumanIntervention) { throw 'A question-opened event requires structured human-intervention guidance.' }
+if ($Type -ne 'question-opened' -and $null -ne $HumanIntervention) { throw 'Human-intervention guidance is valid only for question-opened events.' }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 New-Item -ItemType Directory -Path $taskRoot -Force | Out-Null
@@ -48,6 +51,7 @@ $event = [ordered]@{
     evidence = @($Evidence)
     targetAgentId = if ($TargetAgentId) { $TargetAgentId } else { $null }
 }
+if ($null -ne $HumanIntervention) { $event.humanIntervention = $HumanIntervention }
 $line = ($event | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine
 $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
 $stream = [IO.File]::Open($ledgerPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)

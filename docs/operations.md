@@ -47,6 +47,8 @@ Dashboard workflow and review actions run as tracked in-process PowerShell runsp
 
 Task execution is serialized across all configured product repositories. `workspace-coordinator.json` records the single active task. When that task becomes idle, Orchestrator stashes its tracked and untracked changes with a task/repository-specific message, records the current branch in `workspace-session.json`, switches the next task to its recorded branch (or the configured base branch on first activation), and restores its stash with the index. It never uses `git reset`, `git clean`, force checkout, or `git stash pop`. The stash is dropped only after a successful apply. A restore conflict keeps the stash, opens an Orchestrator question, and stops automatic switching until the workspace is safe.
 
+Every human-input gate is self-explanatory: it records the requested action, why automation cannot continue safely, concrete options, one recommended option, and the rationale for preferring it. The dashboard receives the same structured guidance as the durable task ledger.
+
 ## Post-push pipeline and Developer remediation
 
 The canonical owners and current definition IDs are listed in [pipeline monitoring and ownership](pipeline-monitoring.md). In short, Pipeline Monitor owns all configured exact-SHA observation; Developer and Reviewer own the bounded product remediation loop; Orchestrator owns exceptional and terminal routing; Health Check owns ecosystem defects; Knowledge Keeper owns final publication.

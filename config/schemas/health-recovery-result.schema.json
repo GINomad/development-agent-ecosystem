@@ -18,6 +18,40 @@
     "requiresUserInput": { "type": "boolean" },
     "changes": { "type": "array", "items": { "type": "string" } },
     "validation": { "type": "array", "items": { "type": "string" } },
-    "nextAction": { "type": "string", "minLength": 1 }
-  }
+    "nextAction": { "type": "string", "minLength": 1 },
+    "humanIntervention": { "$ref": "#/$defs/humanIntervention" }
+  },
+  "$defs": {
+    "humanIntervention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "reason", "options", "recommendedOption", "recommendationRationale"],
+      "properties": {
+        "request": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "options": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "recommendedOption": { "type": "string", "minLength": 1 },
+        "recommendationRationale": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "requiresUserInput": { "const": true } },
+        "required": ["requiresUserInput"]
+      },
+      "then": { "required": ["humanIntervention"] }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "needs-user-input" } },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["humanIntervention"],
+        "properties": { "requiresUserInput": { "const": true } }
+      }
+    }
+  ]
 }

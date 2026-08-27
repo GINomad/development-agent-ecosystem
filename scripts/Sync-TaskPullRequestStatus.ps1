@@ -53,7 +53,7 @@ if ($latestDeveloperOutcome.Count) {
 $branch = $null
 if ($delivery) { $branch = [string]$delivery.branch }
 elseif ($pipeline) { $branch = [string]$pipeline.branch }
-if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch is required before PR synchronization.' }
+    if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch is required before PR synchronization.' }
 $sourceRef = 'refs/heads/' + ($branch -replace '^refs/heads/','')
 
 if ($PullRequestsJsonPath) {
@@ -114,7 +114,13 @@ if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
     return [pscustomobject]@{ Status='completion-requested'; Result=[pscustomobject]$result; Closure=$closure; ResultPath=$resultPath }
 }
 if ($status -in @($config.pipeline.pullRequests.abandonedStatuses)) {
-    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Question "Pull request $($result.pullRequestId) for '$branch' was abandoned. Reopen the task, provide a replacement PR, or confirm manual closure." -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $prOptions = @(
+        ('Reopen pull request {0} and continue monitoring it.' -f $result.pullRequestId)
+        ('Provide the ID of a replacement pull request for {0}.' -f $branch)
+        'Confirm that the task should be closed manually without a completed pull request.'
+    )
+    $prQuestion = ('Pull request {0} for {1} was abandoned. Choose how delivery should continue.' -f $result.pullRequestId, $branch)
+    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Question $prQuestion -Reason 'An abandoned pull request cannot prove that the reviewed commit was merged, and only a human can choose the intended delivery path.' -Options $prOptions -RecommendedOption $prOptions[0] -RecommendationRationale 'Reopening the original pull request preserves its review history and exact branch-to-commit traceability.' -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     return [pscustomobject]@{ Status='waiting-for-input'; Result=[pscustomobject]$result; ResultPath=$resultPath }
 }
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage awaiting_pull_request -Message "Build succeeded; waiting for the task PR on '$branch' to complete." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
