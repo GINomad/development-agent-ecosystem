@@ -30,7 +30,12 @@ if ($branch -in @('main','master')) {
         $suffix++
         $branch = '{0}-{1}' -f $branchBase, $suffix
     }
-    & git -C $resolvedWorkspace switch -c $branch
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $null = @(& git -C $resolvedWorkspace switch -c $branch 2>&1)
+    }
+    finally { $ErrorActionPreference = $previousErrorActionPreference }
     if ($LASTEXITCODE -ne 0) { throw "Unable to create recovery branch '$branch'." }
 }
 if ($branch -in @('main','master') -or $branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw 'Ecosystem recovery selected an unsafe branch.' }

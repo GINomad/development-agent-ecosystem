@@ -1042,7 +1042,9 @@ New-Item -ItemType Directory -Path $preservationFixture -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $preservationFixture 'tracked.txt'), 'after', (New-Object Text.UTF8Encoding($false)))
 [IO.File]::WriteAllText((Join-Path $preservationFixture 'untracked.txt'), 'new', (New-Object Text.UTF8Encoding($false)))
 $preservationArtifactPath = Join-Path $OutputRoot ('health-preservation-artifact-' + [guid]::NewGuid().ToString('N') + '.json')
-$preservedBaseline = & (Join-Path $root 'scripts\Save-EcosystemRecoveryBaseline.ps1') -Workspace $preservationFixture -TaskId 'task-preservation' -FailureSignature ('a' * 64) -ArtifactPath $preservationArtifactPath -RepairBranchPrefix 'health-recovery'
+$preservedBaselineResults = @(& (Join-Path $root 'scripts\Save-EcosystemRecoveryBaseline.ps1') -Workspace $preservationFixture -TaskId 'task-preservation' -FailureSignature ('a' * 64) -ArtifactPath $preservationArtifactPath -RepairBranchPrefix 'health-recovery' 2>&1)
+if ($preservedBaselineResults.Count -ne 1 -or $preservedBaselineResults[0] -is [string]) { throw 'Dirty baseline preservation emitted unstructured output before its result object.' }
+$preservedBaseline = $preservedBaselineResults[0]
 $preservedArtifact = Get-Content -LiteralPath $preservationArtifactPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $preservedHead = ([string](& git -C $preservationFixture rev-parse HEAD)).Trim()
 $preservedFiles = @(& git -C $preservationFixture show --pretty= --name-only HEAD)
