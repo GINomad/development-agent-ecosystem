@@ -99,6 +99,31 @@ if ([string]$wrapperResult.PipelineResult.overallResult -ne 'succeeded' -or @($w
     throw 'The production post-push wrapper did not consume exactly one passive PR-validation result without queueing.'
 }
 
+$refreshTaskId = 'pipeline-refresh-' + [guid]::NewGuid().ToString('N')
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $refreshTaskId -TaskSelector 'synthetic successful pipeline refresh' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
+$env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
+try {
+    $refreshResult = & (Join-Path $root 'scripts\Refresh-TaskPipelineResult.ps1') -TaskId $refreshTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$refreshTask = Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$refreshTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$refreshEvents = @(Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$refreshTaskId\task-ledger.jsonl") -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+$refreshAgentResults = @($refreshEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'pipeline_monitor' })
+$refreshTerminal = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $refreshTaskId -AgentId pipeline_monitor -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+if (
+    [string]$refreshResult.PipelineResult.overallResult -ne 'succeeded' -or
+    -not (Test-Path -LiteralPath ([string]$refreshResult.ResultPath) -PathType Leaf) -or
+    [string]$refreshTask.agentStatuses.pipeline_monitor.status -ne 'completed' -or
+    $refreshAgentResults.Count -ne 1 -or
+    -not [bool]$refreshTerminal.Terminal
+) {
+    throw 'A successful exact-SHA refresh did not publish one terminal Pipeline Monitor outcome accepted by the host lifecycle assertion.'
+}
+
 $mismatchTaskId = 'pipeline-wrapper-mismatch-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $mismatchTaskId -TaskSelector 'synthetic post-push mismatch' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
 $originGateRejected = $false
@@ -119,5 +144,6 @@ if (-not $originGateRejected) { throw 'The production post-push wrapper did not 
     passiveDefinitionId = 17
     queuedDefinitionCount = 0
     productionWrapper = 'passed'
+    refreshTerminalOutcome = 'passed'
     originCommitGate = 'passed'
 }
