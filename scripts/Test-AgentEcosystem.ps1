@@ -565,6 +565,43 @@ $selectedRunIds = @($sequenceResult.runs.id)
 if ([string]$sequenceResult.overallResult -ne 'succeeded' -or $queuedSequence -ne '814,892' -or $selectedSequence -ne '814,892' -or $selectedRunIds -contains 9800) { throw 'Ordered pipeline monitoring did not select and queue exact-SHA definitions 814 then 892.' }
 if (($sequenceActions -join ',') -ne 'queued:814,succeeded:814,queued:892,succeeded:892') { throw 'Definition 892 was queued before exact-SHA definition 814 succeeded.' }
 Add-Check -Name 'ordered-pipeline-sequence' -Detail 'Earlier 892 is ignored; 814 exact-SHA success gates queueing and acceptance of a later 892 run'
+$queueDiagnosticStatePath = Join-Path $pipelineTestRoot 'queue-diagnostic-state.txt'
+$queueDiagnosticResultPath = Join-Path $pipelineTestRoot 'queue-diagnostic-result.json'
+$queueDiagnosticStages = [Collections.Generic.List[string]]::new()
+$queueDiagnosticProgress = { param($Stage, $Summary, $Details) $queueDiagnosticStages.Add([string]$Stage) }.GetNewClosure()
+Remove-Item -LiteralPath $queueDiagnosticStatePath -Force -ErrorAction SilentlyContinue
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'queue-validation-missing-environment'
+$env:ECOSYSTEM_MOCK_PIPELINE_STATE = $queueDiagnosticStatePath
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $queueDiagnosticResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -AutoQueueDefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $queueDiagnosticResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -ProgressCallback $queueDiagnosticProgress -PassThru
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_STATE -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$queueAttempts = @(Get-Content -LiteralPath $queueDiagnosticStatePath)
+$missingEnvironmentCheck = @($queueDiagnosticResult.queueFailure.resourceChecks | Where-Object { [string]$_.kind -eq 'environment' -and [string]$_.name -eq 'promote-to-cloudops' -and [string]$_.status -eq 'not-visible' })
+if ([string]$queueDiagnosticResult.overallResult -ne 'non-success' -or [string]$queueDiagnosticResult.failureClassification.category -ne 'infrastructure' -or -not [bool]$queueDiagnosticResult.queueFailure.preview.succeeded -or $missingEnvironmentCheck.Count -ne 1) { throw 'Queue rejection was not converted into actionable missing-Environment diagnostics.' }
+if ($queueAttempts.Count -ne 1 -or $queueAttempts[0] -ne 'queue-attempt:892') { throw 'Queue diagnostics repeated or replaced the single authorized queue attempt.' }
+if ([string]$queueDiagnosticResult.queueFailure.queueError -match 'must-not-leak' -or [string]$queueDiagnosticResult.queueFailure.queueError -notmatch '<redacted>') { throw 'Queue diagnostics did not redact credential-shaped Azure CLI output.' }
+if (@($queueDiagnosticStages) -notcontains 'pipeline_queueing' -or @($queueDiagnosticStages) -notcontains 'pipeline_failure_analysis' -or @($queueDiagnosticStages) -notcontains 'pipeline_terminal') { throw 'Queue diagnostics did not publish queueing, failure-analysis, and terminal progress stages.' }
+if (-not (Test-Path -LiteralPath $queueDiagnosticResultPath -PathType Leaf) -or $null -eq (Get-Content -LiteralPath $queueDiagnosticResultPath -Raw | ConvertFrom-Json).queueFailure) { throw 'Queue diagnostics were not persisted in pipeline-result.json.' }
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'queue-validation-preview-environment'
+$env:ECOSYSTEM_MOCK_PIPELINE_STATE = $queueDiagnosticStatePath
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $previewEnvironmentDiagnostic = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\diagnose_queue_validation.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -DefinitionId 892 -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -QueueError 'Could not queue the build because there were validation errors or warnings.' -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1')
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_STATE -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$previewEnvironmentCheck = @($previewEnvironmentDiagnostic.resourceChecks | Where-Object { [string]$_.kind -eq 'environment' -and [string]$_.name -eq 'promote-to-cloudops' -and [string]$_.status -eq 'not-visible' })
+if ([bool]$previewEnvironmentDiagnostic.preview.succeeded -or $previewEnvironmentCheck.Count -ne 1 -or [string]$previewEnvironmentDiagnostic.category -ne 'infrastructure') { throw 'Exact Azure dry-run Environment validation text was not converted into a structured infrastructure resource check.' }
+Add-Check -Name 'pipeline-queue-validation-diagnostics' -Detail 'One queue attempt; exact-SHA dry-run preview; read-only Environment/service-connection checks; sanitized structured terminal result'
 $latestResultPath = Join-Path $pipelineTestRoot 'latest-terminal-result.json'
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'latest-terminal'
 $env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'

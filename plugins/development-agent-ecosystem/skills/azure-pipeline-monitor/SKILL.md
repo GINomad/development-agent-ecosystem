@@ -15,6 +15,7 @@ description: Monitor Azure DevOps pipeline runs associated with an exact Git bra
 6. Report run IDs, links, source commits, final results, and failed task log excerpts.
 7. When `-ResultPath` is supplied, persist the structured exact-SHA result and deterministic failure classification. With `-PassThru`, return non-success as data so the orchestrator can route bounded code/test remediation without treating the monitor itself as crashed.
 8. In the ecosystem, pass `-ProgressCallback` and the configured heartbeat interval so queue, discovery, waiting, failure-analysis, and terminal stages appear in the dashboard. The callback is native PowerShell reporting and must not invoke an AI model.
+9. When Azure rejects an approved queue request before creating a run, let the watcher perform the built-in queue-validation diagnosis. It must retain the single queue attempt, use an exact-branch/exact-commit dry-run preview plus read-only definition, Environment, and service-connection checks, sanitize CLI output, and persist the result under `pipeline-result.json.queueFailure`. Never retry the queue merely to obtain debug output.
 
 Example:
 

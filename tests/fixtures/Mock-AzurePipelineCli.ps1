@@ -57,6 +57,50 @@ if ($scenario -like 'recovery-*') {
     throw "Unexpected recovery mock Azure CLI arguments: $($args -join ' ')"
 }
 
+if ($scenario -in @('queue-validation-missing-environment','queue-validation-preview-environment')) {
+    $statePath = [string]$env:ECOSYSTEM_MOCK_PIPELINE_STATE
+    if ([string]::IsNullOrWhiteSpace($statePath)) { throw 'Queue-validation scenario requires ECOSYSTEM_MOCK_PIPELINE_STATE.' }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
+        @() | ConvertTo-Json -Compress
+        exit 0
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'run') {
+        Add-Content -LiteralPath $statePath -Value 'queue-attempt:892' -Encoding UTF8
+        throw 'Could not queue the build because there were validation errors or warnings. password=must-not-leak'
+    }
+    if ($args[0] -eq 'pipelines' -and $args[1] -eq 'build' -and $args[2] -eq 'definition') {
+        [ordered]@{ id=892; name='Docker release'; revision=4; process=[ordered]@{ yamlFilename='ps-excel-agent.yml' } } | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+    if ($resource -eq 'preview') {
+        if ($scenario -eq 'queue-validation-preview-environment') {
+            throw 'ERROR: Job Promote: Environment promote-to-cloudops could not be found. The environment does not exist or has not been authorized for use.'
+        }
+        $yaml = @'
+variables:
+  cloudOpsServiceConnection: quorumcr-fdplan-push
+jobs:
+- deployment: Promote
+  environment: promote-to-cloudops
+  steps:
+  - task: Docker@2
+    inputs:
+      containerRegistry: $(cloudOpsServiceConnection)
+'@
+        [ordered]@{ finalYaml=$yaml } | ConvertTo-Json -Depth 4 -Compress
+        exit 0
+    }
+    if ($resource -eq 'environments') {
+        [ordered]@{ count=1; value=@([ordered]@{ id=35; name='cloudops-promote' }) } | ConvertTo-Json -Depth 6 -Compress
+        exit 0
+    }
+    if ($args[0] -eq 'devops' -and $args[1] -eq 'service-endpoint' -and $args[2] -eq 'list') {
+        @([ordered]@{ id='endpoint-1'; name='quorumcr-fdplan-push' }) | ConvertTo-Json -Depth 4 -Compress
+        exit 0
+    }
+    throw "Unexpected queue-validation mock Azure CLI arguments: $($args -join ' ')"
+}
+
 if ($scenario -eq 'ordered-success') {
     $statePath = [string]$env:ECOSYSTEM_MOCK_PIPELINE_STATE
     if ([string]::IsNullOrWhiteSpace($statePath)) { throw 'Ordered mock scenario requires ECOSYSTEM_MOCK_PIPELINE_STATE.' }
