@@ -260,9 +260,19 @@ if (-not $orphanRejected) { throw 'A targeted host run was allowed to exit while
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $terminalStateTaskId -AgentId reviewer -AgentStatus completed -ConfigPath $recoveryStatusConfigPath | Out-Null
 $terminalStateResult = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $terminalStateTaskId -AgentId reviewer -ConfigPath $recoveryStatusConfigPath
 if (-not [bool]$terminalStateResult.Terminal -or [string]$terminalStateResult.AgentStatus -ne 'completed') { throw 'A valid completed targeted role was rejected by the host lifecycle assertion.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $terminalStateTaskId -AgentId pipeline_monitor -AgentStatus running -Stage pipeline_waiting -Message 'Synthetic Pipeline Monitor is running.' -ConfigPath $recoveryStatusConfigPath | Out-Null
+$terminalFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $terminalStateTaskId -AgentId pipeline_monitor -Stage pipeline_watcher_terminal_evidence -Summary 'Synthetic watcher did not produce terminal evidence.' -Diagnostic 'pipeline-result.json was absent.' -Evidence @('run:synthetic') -ConfigPath $recoveryStatusConfigPath
+$failedTerminalState = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $terminalStateTaskId -AgentId pipeline_monitor -ConfigPath $recoveryStatusConfigPath
+$terminalFailureTask = Get-Content -LiteralPath (Join-Path $terminalStateTask.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if (
+    -not (Test-Path -LiteralPath ([string]$terminalFailure.FailurePath) -PathType Leaf) -or
+    -not [bool]$failedTerminalState.Terminal -or [string]$failedTerminalState.AgentStatus -ne 'failed' -or
+    [string]$terminalFailureTask.agentStatuses.pipeline_monitor.status -ne 'failed' -or
+    [string]$terminalFailureTask.currentStage -ne 'pipeline_watcher_terminal_evidence'
+) { throw 'Write-AgentFailure did not make the failed targeted role terminal for the host lifecycle assertion.' }
 $targetWorkflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 if ($targetWorkflowScript -notmatch 'Execute that role''s work yourself in this Codex process' -or $targetWorkflowScript -notmatch 'do not merely announce or simulate a handoff' -or $targetWorkflowScript -notmatch 'Assert-TargetAgentTerminalState.ps1' -or $targetWorkflowScript -notmatch 'executedAgentId' -or $targetWorkflowScript -notmatch 'automaticContinuation.enabled' -or $targetWorkflowScript -match '\$TargetAgentId -and \$ContinueChain') { throw 'Host terminal lifecycle or configuration-driven automatic continuation is incomplete.' }
-Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the host Codex run; a host exit with running/pending state fails closed instead of leaving an orphaned dashboard status'
+Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the host Codex run; structured failures become terminal failed state, while running/pending host exits fail closed'
 
 $workflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $newTaskScript = Get-Content -LiteralPath (Join-Path $root 'scripts\New-AgentTask.ps1') -Raw -Encoding UTF8
