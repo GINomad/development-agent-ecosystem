@@ -156,7 +156,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     if (-not $authorityHandoffPending -and [string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateDeveloperGate -and -not $reevaluateReviewerGate -and -not $reevaluatePipelineGate -and -not $reevaluateOrchestratorGate) {
         return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
     }
-    if (-not $authorityHandoffPending -and ($currentAgentId -eq 'orchestrator' -or [bool]$executionPolicy.ContinueAutomatically)) {
+    # Health Check recovery is a control-plane transition. It must be able to
+    # dispatch the first routed role even for intentionally single-role modes
+    # such as requirements-only, which do not auto-continue after that role.
+    if (-not $authorityHandoffPending -and ($currentAgentId -in @('orchestrator','health_check') -or [bool]$executionPolicy.ContinueAutomatically)) {
     switch ($currentAgentId) {
         'orchestrator' {
             foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {

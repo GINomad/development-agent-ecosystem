@@ -201,8 +201,18 @@ function renderTaskList(tasks) {
         closeAgentOutcome();
         closeReviewDiff();
       }
+      // Task polling can already be in flight. Loading the selected detail
+      // directly keeps a user selection responsive instead of dropping it
+      // behind the polling guard in loadTaskList.
       selectedTaskId = item.taskId;
-      await loadTaskList({ silent: true });
+      const selectedRevision = ++taskStateRevision;
+      try {
+        await loadTaskDetail(item.taskId, selectedRevision);
+      } catch (error) {
+        log(`Error: ${error.message}`);
+      } finally {
+        void loadTaskList({ silent: true });
+      }
     });
     list.append(button);
   });
