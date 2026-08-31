@@ -3,7 +3,7 @@
   "title": "Automatic agent health recovery result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "failureSignature", "rootCause", "repairOwner", "routeAgentId", "requiresUserInput", "changes", "validation", "nextAction"],
+  "required": ["status", "failureSignature", "rootCause", "repairOwner", "routeAgentId", "requiresUserInput", "changes", "validation", "nextAction", "humanIntervention"],
   "properties": {
     "status": { "enum": ["repaired", "not-repairable", "needs-user-input", "blocked"] },
     "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -19,11 +19,8 @@
     "changes": { "type": "array", "items": { "type": "string" } },
     "validation": { "type": "array", "items": { "type": "string" } },
     "nextAction": { "type": "string", "minLength": 1 },
-    "humanIntervention": { "$ref": "#/$defs/humanIntervention" }
-  },
-  "$defs": {
     "humanIntervention": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "required": ["request", "reason", "options", "recommendedOption", "recommendationRationale"],
       "properties": {
@@ -34,24 +31,5 @@
         "recommendationRationale": { "type": "string", "minLength": 1 }
       }
     }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": { "requiresUserInput": { "const": true } },
-        "required": ["requiresUserInput"]
-      },
-      "then": { "required": ["humanIntervention"] }
-    },
-    {
-      "if": {
-        "properties": { "status": { "const": "needs-user-input" } },
-        "required": ["status"]
-      },
-      "then": {
-        "required": ["humanIntervention"],
-        "properties": { "requiresUserInput": { "const": true } }
-      }
-    }
-  ]
+  }
 }

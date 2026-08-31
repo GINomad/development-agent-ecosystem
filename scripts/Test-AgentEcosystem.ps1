@@ -1163,6 +1163,10 @@ $guardTest = & (Join-Path $root 'scripts\Invoke-GuardedCodex.ps1') -FilePath 'po
 $guardTemporaryFiles = @(Get-ChildItem -LiteralPath $guardTestRoot -File | Where-Object Name -Match '\.(stdin\.txt|stdout\.tmp)$')
 if (-not [bool]$guardTest.guardTriggered -or [int]$guardTest.identicalFailureCount -ne 3 -or [int]$guardTest.exitCode -ne 1 -or [string]$guardTest.reason -notmatch 'retry limit' -or -not (Test-Path -LiteralPath (Join-Path $guardTestRoot 'guard.json') -PathType Leaf) -or $guardTemporaryFiles.Count -ne 0) { throw 'Execution guard did not stop the deterministic repeated-failure fixture after exactly three attempts and clean up redirected temporary files.' }
 Add-Check -Name 'execution-retry-guard' -Detail 'Three identical failures stop execution, produce a guard artifact, and release redirected temporary files'
+$capacityRunner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CapacityAwareCodex.ps1') -Raw -Encoding UTF8
+if ($workflowRunner -notmatch 'Invoke-CapacityAwareCodex.ps1' -or $capacityRunner -notmatch 'model-capacity' -or $capacityRunner -notmatch 'MaxCapacityFallbackAttempts' -or -not [bool]$config.modelRouting.capacityFallback.enabled -or [int]$config.modelRouting.capacityFallback.maxAttempts -ne 1) { throw 'Capacity fallback is not restricted to one exact model-capacity retry.' }
+if ($healthRecoverySchema -match '"allOf"' -or $healthRecoverySchema -match '"if"' -or $healthRecoverySchema -notmatch '"humanIntervention"') { throw 'Health recovery schema is not Structured Outputs compatible.' }
+Add-Check -Name 'capacity-fallback-and-health-schema' -Detail 'One capacity-only retry uses the configured fallback tier; Health Recovery schema contains no unsupported conditionals'
 
 $skillFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills') -Recurse -Filter 'SKILL.md' -File)
 foreach ($file in $skillFiles) {

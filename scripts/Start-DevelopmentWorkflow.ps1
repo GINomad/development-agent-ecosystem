@@ -132,6 +132,9 @@ $modelRouteParameters = @{
     CodexHome = $CodexHome
 }
 $modelRoute = & (Join-Path $PSScriptRoot 'Resolve-AgentModelRoute.ps1') @modelRouteParameters
+$capacityFallback = $config.modelRouting.capacityFallback
+$capacityFallbackTier = @($config.modelRouting.tiers | Where-Object { [string]$_.id -eq [string]$capacityFallback.tier }) | Select-Object -First 1
+if (-not $capacityFallbackTier) { throw 'Configured capacity fallback tier does not exist.' }
 $activeRolePrompt = [Collections.Generic.List[string]]::new()
 foreach ($pathValue in @($activeAgent.promptPaths)) {
     $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $config -CodexHome $CodexHome
@@ -264,7 +267,7 @@ try {
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }

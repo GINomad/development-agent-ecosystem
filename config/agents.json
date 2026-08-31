@@ -136,6 +136,7 @@
     "maxDecisionsPerTask": 50,
     "maxEvidenceCharacters": 24000,
     "largeEvidenceCharacters": 8000,
+    "capacityFallback": { "enabled": true, "tier": "standard", "maxAttempts": 1 },
     "tiers": [
       { "id": "routine", "rank": 0, "model": "gpt-5.6-luna", "reasoningEffort": "low" },
       { "id": "standard", "rank": 1, "model": "gpt-5.6-terra", "reasoningEffort": "medium" },
