@@ -59,65 +59,94 @@
       "executionModes": {
         "full-delivery": {
           "description": "Run the complete evidence, implementation, review, pipeline, and final knowledge sequence.",
-          "agentSequence": ["requirements_analyst", "developer", "reviewer", "pipeline_monitor", "knowledge_keeper"],
+          "agentSequence": [
+            "requirements_analyst",
+            "developer",
+            "reviewer",
+            "pipeline_monitor",
+            "knowledge_keeper"
+          ],
           "codeChangesAllowed": true,
           "continueAutomatically": true
         },
         "research-only": {
           "description": "Produce evidence-backed research and requirements analysis without product changes, review, or pipeline execution.",
-          "agentSequence": ["requirements_analyst"],
+          "agentSequence": [
+            "requirements_analyst"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         },
         "requirements-only": {
           "description": "Update requirements, acceptance criteria, questions, workflow, and implementation planning only.",
-          "agentSequence": ["requirements_analyst"],
+          "agentSequence": [
+            "requirements_analyst"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         },
         "implementation-only": {
           "description": "Implement already-ready scope or an explicitly requested bounded code/test remediation after pipeline evidence, then review it and monitor its exact delivery pipelines.",
-          "agentSequence": ["developer", "reviewer", "pipeline_monitor"],
+          "agentSequence": [
+            "developer",
+            "reviewer",
+            "pipeline_monitor"
+          ],
           "codeChangesAllowed": true,
           "continueAutomatically": true
         },
         "review-only": {
           "description": "Run Reviewer only and stop at its outcome or decision gate.",
-          "agentSequence": ["reviewer"],
+          "agentSequence": [
+            "reviewer"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         },
         "pipeline-only": {
           "description": "Run Pipeline Monitor only for read-only observation of an explicitly authorized branch, commit, build, or PR; do not use when the requested outcome includes a source correction.",
-          "agentSequence": ["pipeline_monitor"],
+          "agentSequence": [
+            "pipeline_monitor"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         },
         "knowledge-only": {
           "description": "Run Knowledge Keeper only for an explicit context, skill, or final publication request.",
-          "agentSequence": ["knowledge_keeper"],
+          "agentSequence": [
+            "knowledge_keeper"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         },
         "ecosystem-repair": {
           "description": "Run Health Check only for bounded ecosystem diagnosis, repair, or repair routing.",
-          "agentSequence": ["health_check"],
+          "agentSequence": [
+            "health_check"
+          ],
           "codeChangesAllowed": false,
           "continueAutomatically": false
         }
       },
-      "dispatchPriority": ["health_check", "requirements_analyst", "knowledge_keeper", "developer", "reviewer", "pipeline_monitor"]
+      "dispatchPriority": [
+        "health_check",
+        "requirements_analyst",
+        "knowledge_keeper",
+        "developer",
+        "reviewer",
+        "pipeline_monitor"
+      ]
     },
     "workspaceScheduling": {
       "enabled": true,
-      "maxActiveTasks": 1,
+      "maxActiveTasks": 2,
       "queueWhenBusy": true,
-      "switchWhenCurrentTaskIsIdle": true,
-      "stashUncommittedChanges": true,
-      "includeUntracked": true,
-      "restoreStashOnActivation": true,
       "lockTimeoutSeconds": 30,
-      "coordinatorStatePath": "${STATE_ROOT}/workspace-coordinator.json"
+      "leaseHeartbeatSeconds": 30,
+      "staleLeaseGraceSeconds": 300,
+      "coordinatorStatePath": "${STATE_ROOT}/workspace-coordinator.json",
+      "workspaceRoot": "${STATE_ROOT}/workspaces",
+      "maxActiveAgentsPerTask": 1
     },
     "automaticContinuation": {
       "enabled": true,
@@ -126,8 +155,19 @@
       "useElevatedExecution": true,
       "recoveryGraceSeconds": 60,
       "recoveryPollIntervalMinutes": 1,
-      "orderedAgentIds": ["requirements_analyst", "developer", "reviewer", "pipeline_monitor", "knowledge_keeper"],
-      "stopStatuses": ["waiting_for_input", "held", "review_pending", "failed"]
+      "orderedAgentIds": [
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "pipeline_monitor",
+        "knowledge_keeper"
+      ],
+      "stopStatuses": [
+        "waiting_for_input",
+        "held",
+        "review_pending",
+        "failed"
+      ]
     }
   },
   "modelRouting": {
@@ -136,24 +176,108 @@
     "maxDecisionsPerTask": 50,
     "maxEvidenceCharacters": 24000,
     "largeEvidenceCharacters": 8000,
-    "capacityFallback": { "enabled": true, "tier": "standard", "maxAttempts": 1 },
+    "capacityFallback": {
+      "enabled": true,
+      "tier": "standard",
+      "maxAttempts": 1
+    },
     "tiers": [
-      { "id": "routine", "rank": 0, "model": "gpt-5.6-luna", "reasoningEffort": "low" },
-      { "id": "standard", "rank": 1, "model": "gpt-5.6-terra", "reasoningEffort": "medium" },
-      { "id": "complex", "rank": 2, "model": "gpt-5.6-sol", "reasoningEffort": "high" },
-      { "id": "critical", "rank": 3, "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" }
+      {
+        "id": "routine",
+        "rank": 0,
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "low"
+      },
+      {
+        "id": "standard",
+        "rank": 1,
+        "model": "gpt-5.6-terra",
+        "reasoningEffort": "medium"
+      },
+      {
+        "id": "complex",
+        "rank": 2,
+        "model": "gpt-5.6-sol",
+        "reasoningEffort": "high"
+      },
+      {
+        "id": "critical",
+        "rank": 3,
+        "model": "gpt-5.6-sol",
+        "reasoningEffort": "xhigh"
+      }
     ],
     "rolePolicies": [
-      { "agentId": "orchestrator", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
-      { "agentId": "knowledge_keeper", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
-      { "agentId": "requirements_analyst", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
-      { "agentId": "developer", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
-      { "agentId": "reviewer", "defaultTier": "standard", "minimumTier": "standard", "maximumTier": "critical" },
-      { "agentId": "pipeline_monitor", "defaultTier": "routine", "minimumTier": "routine", "maximumTier": "standard" },
-      { "agentId": "health_check", "defaultTier": "standard", "minimumTier": "routine", "maximumTier": "complex" }
+      {
+        "agentId": "orchestrator",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "knowledge_keeper",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "requirements_analyst",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "developer",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "reviewer",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "pipeline_monitor",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "health_check",
+        "defaultTier": "standard",
+        "minimumTier": "routine",
+        "maximumTier": "complex"
+      }
     ],
-    "complexSignals": ["architecture", "breaking change", "concurrency", "cross-repository", "deadlock", "intermittent", "migration", "multi-repository", "race condition", "rollback", "unknown error"],
-    "criticalSignals": ["authentication", "authorization", "certificate", "code signing", "credential", "digital signature", "key vault", "production deployment", "secret", "security", "token exfiltration", "vulnerability"]
+    "complexSignals": [
+      "architecture",
+      "breaking change",
+      "concurrency",
+      "cross-repository",
+      "deadlock",
+      "intermittent",
+      "migration",
+      "multi-repository",
+      "race condition",
+      "rollback",
+      "unknown error"
+    ],
+    "criticalSignals": [
+      "authentication",
+      "authorization",
+      "certificate",
+      "code signing",
+      "credential",
+      "digital signature",
+      "key vault",
+      "production deployment",
+      "secret",
+      "security",
+      "token exfiltration",
+      "vulnerability"
+    ]
   },
   "ui": {
     "listenAddress": "127.0.0.1",
@@ -234,7 +358,10 @@
     "delivery": {
       "autoPushAfterCleanReview": true,
       "remote": "origin",
-      "forbiddenBranches": ["main", "master"],
+      "forbiddenBranches": [
+        "main",
+        "master"
+      ],
       "allowForce": false,
       "allowTags": false,
       "requireCleanWorktree": true
@@ -242,8 +369,12 @@
     "pullRequests": {
       "enabled": true,
       "pollIntervalMinutes": 120,
-      "completedStatuses": ["completed"],
-      "abandonedStatuses": ["abandoned"]
+      "completedStatuses": [
+        "completed"
+      ],
+      "abandonedStatuses": [
+        "abandoned"
+      ]
     },
     "postPush": {
       "enabled": true,
@@ -257,8 +388,13 @@
       {
         "repositoryId": "azure-planningspace-ps-excel-agent",
         "definitionIds": [],
-        "autoQueueDefinitionIds": [814, 892],
-        "skipOnMissingYamlDefinitionIds": [892]
+        "autoQueueDefinitionIds": [
+          814,
+          892
+        ],
+        "skipOnMissingYamlDefinitionIds": [
+          892
+        ]
       },
       {
         "repositoryId": "azure-planningspace-ps-bicep",
@@ -267,7 +403,9 @@
       },
       {
         "repositoryId": "azure-palantirplugins-ps-app-delfi",
-        "definitionIds": [17],
+        "definitionIds": [
+          17
+        ],
         "autoQueueDefinitionIds": []
       }
     ]

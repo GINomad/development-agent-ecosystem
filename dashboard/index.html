@@ -70,6 +70,7 @@
           <p class="step">02 - LIVE WORKFLOWS</p>
           <h2>Task status and intervention</h2>
           <p class="muted">Task history survives page reloads. Status is refreshed automatically at the configured interval.</p>
+          <div class="capacity-status" id="capacityStatus">Scheduler capacity is loading...</div>
         </div>
         <div class="monitor-controls">
           <div class="segmented" role="tablist" aria-label="Review workspace">
@@ -99,6 +100,16 @@
             </div>
             <p class="task-meta" id="selectedTaskMeta"></p>
             <p class="task-message" id="selectedTaskMessage"></p>
+            <section class="task-workspace-summary" aria-labelledby="taskWorkspaceTitle">
+              <div class="task-workspace-heading">
+                <div>
+                  <p class="detail-kicker">EXECUTION ISOLATION</p>
+                  <h4 id="taskWorkspaceTitle">Task clones and lease</h4>
+                </div>
+                <span id="taskLeaseSummary"></span>
+              </div>
+              <div class="task-workspace-list" id="taskWorkspaceInfo"></div>
+            </section>
 
             <section class="input-required hidden" id="inputRequiredPanel" aria-live="polite">
               <h4>Input required</h4>

@@ -20,17 +20,33 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         $queued.Add($task)
     }
 }
-$next = @($queued | Sort-Object @{ Expression={ [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } }, @{ Expression={ [string]$_.taskId } }) | Select-Object -First 1
-if (-not $next) { return [pscustomobject]@{ Status='empty'; TaskId=$null } }
-$repositoryIds = if ($next.PSObject.Properties['repositoryIds']) { @($next.repositoryIds) } elseif ($next.PSObject.Properties['repositoryId'] -and $next.repositoryId) { @([string]$next.repositoryId) } else { @() }
-$parameters = @{
-    Mode = [string]$next.mode
-    TaskSelector = [string]$next.selector
-    TaskId = [string]$next.taskId
-    RepositoryIds = @($repositoryIds)
-    Resume = $true
-    ConfigPath = $ConfigPath
-    CodexHome = $CodexHome
+$coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+$leasedTaskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
+    try {
+        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($lease in @($coordinator.leases)) { $null = $leasedTaskIds.Add([string]$lease.taskId) }
+    }
+    catch { }
 }
-if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) { $parameters.ElevatedApproved = $true }
-& (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @parameters
+$candidates = @($queued | Where-Object { -not $leasedTaskIds.Contains([string]$_.taskId) } | Sort-Object @{ Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } } }, @{ Expression={ [string]$_.taskId } })
+if (-not $candidates.Count) { return [pscustomobject]@{ Status='empty'; TaskId=$null } }
+foreach ($next in $candidates) {
+    $repositoryIds = if ($next.PSObject.Properties['repositoryIds']) { @($next.repositoryIds) } elseif ($next.PSObject.Properties['repositoryId'] -and $next.repositoryId) { @([string]$next.repositoryId) } else { @() }
+    $parameters = @{
+        Mode = [string]$next.mode
+        TaskSelector = [string]$next.selector
+        TaskId = [string]$next.taskId
+        RepositoryIds = @($repositoryIds)
+        Resume = $true
+        ConfigPath = $ConfigPath
+        CodexHome = $CodexHome
+    }
+    if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) { $parameters.ElevatedApproved = $true }
+    try { return & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @parameters }
+    catch {
+        if ($_.Exception.Message -match 'already has an active controller|active lease does not match') { continue }
+        throw
+    }
+}
+[pscustomobject]@{ Status='busy'; TaskId=$null; Message='Every queued candidate was admitted by another scheduler host.' }

@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $CompletedAgentId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
     [switch] $OrchestratorAuthorized,
@@ -301,6 +303,8 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         RepositoryIds=@($repositoryIds); UserInstruction="Automatic continuation after '$currentAgentId'. Run only '$nextAgentId' and stop at every human-input or approval gate."
         Resume=$true; TargetAgentId=$nextAgentId; SkipChainContinuation=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
     }
+    if ($ExecutionRunId) { $workflowParameters.ExecutionRunId = $ExecutionRunId }
+    if ($WorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
     if ($ElevatedApproved -or [bool]$chainConfig.useElevatedExecution) { $workflowParameters.ElevatedApproved = $true }
     $started.Add($nextAgentId)
     & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null

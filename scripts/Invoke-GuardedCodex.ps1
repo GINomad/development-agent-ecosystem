@@ -8,7 +8,9 @@ param(
     [Parameter(Mandatory)][string] $GuardArtifactPath,
     [ValidateRange(1,10)][int] $MaxIdenticalFailures = 3,
     [ValidateRange(1,1440)][int] $MaxRunMinutes = 120,
-    [ValidateRange(100,5000)][int] $PollMilliseconds = 500
+    [ValidateRange(100,5000)][int] $PollMilliseconds = 500,
+    [scriptblock] $HeartbeatAction,
+    [ValidateRange(5,300)][int] $HeartbeatIntervalSeconds = 30
 )
 
 Set-StrictMode -Version Latest
@@ -84,6 +86,7 @@ $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -Workin
 $process = Get-Process -Id $process.Id -ErrorAction Stop
 $processId = $process.Id
 $startedAtUtc = [DateTime]::UtcNow
+$lastHeartbeatAtUtc = $startedAtUtc
 $lineIndex = 0
 $lastFailureSignature = $null
 $identicalFailureCount = 0
@@ -96,6 +99,10 @@ $nativeExitCode = $null
 try {
     while (-not $process.HasExited) {
         Start-Sleep -Milliseconds $PollMilliseconds
+        if ($HeartbeatAction -and ([DateTime]::UtcNow - $lastHeartbeatAtUtc).TotalSeconds -ge $HeartbeatIntervalSeconds) {
+            & $HeartbeatAction | Out-Null
+            $lastHeartbeatAtUtc = [DateTime]::UtcNow
+        }
         [array]$lines = @()
         if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { [array]$lines = @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) }
         while ($lineIndex -lt $lines.Count) {

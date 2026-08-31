@@ -15,7 +15,7 @@ For a guided developer-specific installation, give the repository directory to a
 
 Open `config/agents.json` and verify:
 
-- `repositories[].localWorkspace` and the Azure organization, project, repository, and reviewer;
+- each canonical repository URL, its operator/reference `repositories[].localWorkspace`, and the Azure organization, project, repository, and reviewer; task execution uses only isolated clones under `workflow.workspaceScheduling.workspaceRoot`;
 - `taskSources[]` for assigned work items;
 - `credentialProfiles[]`, which must contain only CLI or environment authentication strategy, never tokens or passwords;
 - `operation.mode`, set to `manual` or `automate`;

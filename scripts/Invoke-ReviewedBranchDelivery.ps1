@@ -50,7 +50,8 @@ if ($blockingFindingIds.Count) { throw "Product review findings block delivery: 
 if (@($review.heldScopeViolations).Count -gt 0) { throw 'Held-scope violations block delivery.' }
 if ([string]$task.agentStatuses.reviewer.status -ne 'completed') { throw 'Reviewer has not published a successful outcome.' }
 
-$workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
+$resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId $RepositoryId -ConfigPath $ConfigPath -CodexHome $CodexHome
+$workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
 if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Git workspace was not found: $workspace" }
 function Invoke-Git {
     param([string[]] $Arguments, [int[]] $AllowedExitCodes = @(0))

@@ -92,9 +92,14 @@ function Assert-EcosystemConfig {
     if (-not [bool]$Config.workflow.orchestration.routeUntargetedComments -or -not [bool]$Config.workflow.orchestration.preserveExplicitTargets) { throw 'Workflow intake must route untargeted comments and preserve explicit targets.' }
     if (-not [bool]$Config.workflow.orchestration.forwardOutOfScopeComments -or -not [bool]$Config.workflow.orchestration.autoDispatchForwardedComments) { throw 'Out-of-scope agent comments must be forwarded to and automatically dispatched through Orchestrator.' }
     if ([IO.Path]::GetFileName([string]$Config.workflow.orchestration.routingArtifact) -ne [string]$Config.workflow.orchestration.routingArtifact) { throw 'workflow.orchestration.routingArtifact must be a direct task artifact.' }
-    if (-not [bool]$Config.workflow.workspaceScheduling.enabled -or [int]$Config.workflow.workspaceScheduling.maxActiveTasks -ne 1 -or -not [bool]$Config.workflow.workspaceScheduling.queueWhenBusy) { throw 'Workspace scheduling must serialize tasks through one active lease.' }
-    if (-not [bool]$Config.workflow.workspaceScheduling.stashUncommittedChanges -or -not [bool]$Config.workflow.workspaceScheduling.restoreStashOnActivation) { throw 'Workspace scheduling must preserve and restore uncommitted task changes.' }
+    if (-not [bool]$Config.workflow.workspaceScheduling.enabled -or [int]$Config.workflow.workspaceScheduling.maxActiveTasks -lt 2 -or -not [bool]$Config.workflow.workspaceScheduling.queueWhenBusy) { throw 'Workspace scheduling must allow at least two independently leased tasks.' }
+    if ([string]::IsNullOrWhiteSpace([string]$Config.workflow.workspaceScheduling.workspaceRoot)) { throw 'Workspace scheduling requires a clone workspace root.' }
+    if ([int]$Config.workflow.workspaceScheduling.maxActiveAgentsPerTask -ne 1) { throw 'Workspace scheduling currently supports exactly one active agent per task.' }
     if ([int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -lt 5 -or [int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -gt 120) { throw 'Workspace scheduling lock timeout is outside the supported range.' }
+    $leaseHeartbeatSeconds = [int]$Config.workflow.workspaceScheduling.leaseHeartbeatSeconds
+    $staleLeaseGraceSeconds = [int]$Config.workflow.workspaceScheduling.staleLeaseGraceSeconds
+    if ($leaseHeartbeatSeconds -lt 5 -or $leaseHeartbeatSeconds -gt 300) { throw 'Workspace lease heartbeat interval is outside the supported range.' }
+    if ($staleLeaseGraceSeconds -lt ($leaseHeartbeatSeconds * 3) -or $staleLeaseGraceSeconds -gt 3600) { throw 'Workspace stale lease grace must be at least three heartbeat intervals and no more than one hour.' }
     if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 32) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
     if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 3) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 3.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -lt 30 -or [int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -gt 600) { throw 'workflow.automaticContinuation.recoveryGraceSeconds is outside the supported range.' }
@@ -286,4 +291,64 @@ function Write-Utf8NoBom {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom
+function Write-Utf8NoBomAtomic {
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
+    $parent = Split-Path -Parent $Path
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $temporaryPath = Join-Path $parent ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    $backupPath = $temporaryPath + '.bak'
+    try {
+        [IO.File]::WriteAllText($temporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
+        else { [IO.File]::Move($temporaryPath, $Path) }
+    }
+    finally {
+        foreach ($transientPath in @($temporaryPath, $backupPath)) {
+            if (Test-Path -LiteralPath $transientPath -PathType Leaf) { Remove-Item -LiteralPath $transientPath -Force -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
+function Invoke-EcosystemFileLock {
+    param(
+        [Parameter(Mandatory)][string] $LockPath,
+        [Parameter(Mandatory)][scriptblock] $Action,
+        [int] $TimeoutSeconds = 30
+    )
+    $parent = Split-Path -Parent $LockPath
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $stream = $null
+    while (-not $stream -and [DateTime]::UtcNow -lt $deadline) {
+        try { $stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+        catch [IO.IOException] { Start-Sleep -Milliseconds 75 }
+    }
+    if (-not $stream) { throw "Timed out waiting for exclusive lock '$LockPath'." }
+    try { return & $Action }
+    finally { $stream.Dispose() }
+}
+function Get-TaskWorkspaceLayout {
+    param(
+        [Parameter(Mandatory)][string] $WorkspaceRoot,
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $RepositoryId,
+        [Parameter(Mandatory)][string] $RunId
+    )
+    if ($RunId.Length -lt 12) { throw 'Workspace run ID must contain at least 12 characters.' }
+    function Get-StableSegment {
+        param([Parameter(Mandatory)][string] $Value)
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try { $hash = $algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value)) }
+        finally { $algorithm.Dispose() }
+        return (([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant().Substring(0, 16))
+    }
+    $taskKey = Get-StableSegment -Value $TaskId
+    $repositoryKey = Get-StableSegment -Value $RepositoryId
+    [pscustomobject][ordered]@{
+        ClonePath = [IO.Path]::GetFullPath((Join-Path (Join-Path $WorkspaceRoot "task-$taskKey") "repo-$repositoryKey"))
+        Branch = "agent/$taskKey/$repositoryKey/$($RunId.Substring(0, 12))"
+        TaskKey = $taskKey
+        RepositoryKey = $repositoryKey
+    }
+}
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, Get-TaskWorkspaceLayout

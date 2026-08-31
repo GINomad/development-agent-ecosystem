@@ -357,3 +357,13 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
   .requirement-traceability-heading { display: block; }
   .requirement-traceability-heading p { margin-top: 5px; }
 }
+
+.capacity-status { display: inline-flex; margin-top: 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); font-size: .75rem; font-weight: 700; }
+.task-workspace-summary { margin: 14px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--panel) 86%, transparent); }
+.task-workspace-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 10px; }
+.task-workspace-heading h4 { margin: 2px 0 0; }
+.task-workspace-heading > span { color: var(--muted); font-size: .72rem; overflow-wrap: anywhere; text-align: right; }
+.task-workspace-list { display: grid; gap: 8px; }
+.task-workspace-card { display: grid; grid-template-columns: minmax(120px, auto) auto 1fr; align-items: center; gap: 8px 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.task-workspace-card code { grid-column: 1 / -1; color: var(--text); overflow-wrap: anywhere; white-space: normal; }
+.task-workspace-card small { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }

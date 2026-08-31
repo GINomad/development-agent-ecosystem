@@ -29,7 +29,8 @@ if ([string]$repository.provider -ne 'azure-devops') { throw 'Pipeline refresh c
 $pipelineRepository = @($config.pipeline.repositories | Where-Object { [string]$_.repositoryId -eq $RepositoryId }) | Select-Object -First 1
 if (-not $pipelineRepository) { throw "Repository '$RepositoryId' has no pipeline configuration." }
 
-$workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
+$resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId $RepositoryId -ConfigPath $ConfigPath -CodexHome $CodexHome
+$workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
 if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Git workspace was not found: $workspace" }
 Push-Location $workspace
 try {

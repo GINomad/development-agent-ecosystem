@@ -67,8 +67,9 @@ function Get-GitObjectId {
 
 function Get-RepositoryDiffState {
     param([Parameter(Mandatory)] $Repository)
-    $workspace = [IO.Path]::GetFullPath([string]$Repository.localWorkspace)
-    if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Configured workspace is not a Git repository: $workspace" }
+    $resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId ([string]$Repository.id) -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
+    if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Task workspace is not a Git repository: $workspace" }
     $head = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD'))
     if (-not $head) { throw "Git HEAD in '$workspace' did not resolve to an object ID." }
     $branch = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()

@@ -6,6 +6,8 @@ param(
     [string] $RepositoryId,
     [string[]] $RepositoryIds = @(),
     [string] $Workspace,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [string] $UserInstruction,
     [switch] $Resume,
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
@@ -67,31 +69,99 @@ foreach ($id in $requestedRepositoryIds) {
 if (-not $repositories.Count) { throw 'At least one enabled repository is required.' }
 $RepositoryIds = @($repositories | ForEach-Object { [string]$_.id })
 $RepositoryId = $RepositoryIds[0]
-if (-not $Workspace) { $Workspace = [string]$repositories[0].localWorkspace }
-$workspacePaths = [Collections.Generic.List[string]]::new()
-$workspacePaths.Add([IO.Path]::GetFullPath($Workspace))
-for ($index = 1; $index -lt $repositories.Count; $index++) {
-    $candidate = [IO.Path]::GetFullPath([string]$repositories[$index].localWorkspace)
-    if (-not $workspacePaths.Contains($candidate)) { $workspacePaths.Add($candidate) }
-}
-foreach ($workspacePath in $workspacePaths) {
-    if (-not (Test-Path -LiteralPath $workspacePath -PathType Container)) { throw "Workspace was not found: $workspacePath" }
-    if (-not (Test-Path -LiteralPath (Join-Path $workspacePath '.git'))) { throw "Workspace is not a Git repository: $workspacePath" }
-}
-
-$knowledgeImport = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
-$globalStandardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
-if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $globalStandardsPath" }
-$syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
-if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
-$sync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
 $task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not $Resume -and -not [string]::IsNullOrWhiteSpace($UserInstruction)) {
     & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') -TaskId $TaskId -Text $UserInstruction -Author user -TargetAgentId ([string]$config.workflow.orchestration.agentId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
-$workspaceLease = & (Join-Path $PSScriptRoot 'Switch-TaskWorkspace.ps1') -TaskId $TaskId -PrepareOnly:$PrepareOnly -ConfigPath $ConfigPath -CodexHome $CodexHome
-if ([string]$workspaceLease.Status -in @('queued','restore-conflict')) {
+if (-not $ExecutionRunId) { $ExecutionRunId = [guid]::NewGuid().ToString('N') }
+$leaseParameters = @{ TaskId=$TaskId; RunId=$ExecutionRunId; PrepareOnly=[bool]$PrepareOnly; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+if ($WorkspaceLeaseId) { $leaseParameters.ExpectedLeaseId = $WorkspaceLeaseId }
+$workspaceLease = & (Join-Path $PSScriptRoot 'Switch-TaskWorkspace.ps1') @leaseParameters
+if ([string]$workspaceLease.Status -in @('queued','would-queue')) {
     return [pscustomobject]@{ Mode=$Mode; TaskId=$TaskId; TaskRoot=$task.TaskRoot; RepositoryIds=@($RepositoryIds); WorkspaceLease=$workspaceLease; Status=[string]$workspaceLease.Status }
+}
+$ownsWorkspaceLease = -not $PrepareOnly -and -not [bool]$WorkspaceLeaseId -and [string]$workspaceLease.Status -eq 'active'
+$heartbeatScriptPath = Join-Path $PSScriptRoot 'Update-TaskWorkspaceLeaseHeartbeat.ps1'
+$heartbeatTaskId = $TaskId
+$heartbeatRunId = [string]$workspaceLease.RunId
+$heartbeatLeaseId = [string]$workspaceLease.LeaseId
+function Update-CurrentWorkspaceLeaseHeartbeat {
+    param([Parameter(Mandatory)][string] $HeartbeatConfigPath)
+    if ($PrepareOnly) { return }
+    & $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $HeartbeatConfigPath -CodexHome $CodexHome | Out-Null
+}
+try {
+Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
+$workspaceRecords = @($workspaceLease.Workspaces)
+if (-not $workspaceRecords.Count) { throw "Workspace lease for task '$TaskId' returned no repositories." }
+$primaryWorkspace = @($workspaceRecords | Where-Object { [string]$_.RepositoryId -eq $RepositoryId } | Select-Object -First 1)
+if (-not $primaryWorkspace.Count) { throw "Primary task workspace for repository '$RepositoryId' was not resolved." }
+$resolvedPrimaryWorkspace = [IO.Path]::GetFullPath([string]$primaryWorkspace[0].Path)
+if ($Workspace -and [IO.Path]::GetFullPath($Workspace) -ne $resolvedPrimaryWorkspace) { Write-Warning 'The -Workspace override is ignored; task execution always uses its isolated clone.' }
+$Workspace = $resolvedPrimaryWorkspace
+$workspacePaths = [Collections.Generic.List[string]]::new()
+foreach ($record in $workspaceRecords) {
+    $workspacePath = [IO.Path]::GetFullPath([string]$record.Path)
+    if (-not $workspacePaths.Contains($workspacePath)) { $workspacePaths.Add($workspacePath) }
+    if (-not $PrepareOnly) {
+        if (-not (Test-Path -LiteralPath $workspacePath -PathType Container)) { throw "Task workspace was not found: $workspacePath" }
+        if (-not (Test-Path -LiteralPath (Join-Path $workspacePath '.git'))) { throw "Task workspace is not a Git repository: $workspacePath" }
+    }
+}
+$executionConfigPath = $null
+$executionContextPath = $null
+if (-not $PrepareOnly) {
+    $sourceConfigPath = [IO.Path]::GetFullPath($ConfigPath)
+    $executionConfigPath = Join-Path $task.TaskRoot "execution-config-$ExecutionRunId.json"
+    if (-not (Test-Path -LiteralPath $executionConfigPath -PathType Leaf)) {
+        Write-Utf8NoBomAtomic -Path $executionConfigPath -Content (($config | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
+    }
+    $ConfigPath = $executionConfigPath
+    $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+}
+$bootstrapLockPath = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) 'runtime-bootstrap.lock'
+Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
+$bootstrap = Invoke-EcosystemFileLock -LockPath $bootstrapLockPath -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+    $importResult = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+    Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
+    $standardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $standardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $standardsPath" }
+    $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
+    if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
+    $syncResult = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
+    Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
+    return [pscustomobject]@{ KnowledgeImport=$importResult; GlobalStandardsPath=$standardsPath; Sync=$syncResult }
+}
+Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
+$knowledgeImport = $bootstrap.KnowledgeImport
+$globalStandardsPath = [string]$bootstrap.GlobalStandardsPath
+$sync = $bootstrap.Sync
+if (-not $PrepareOnly) {
+    $ecosystemRevision = 'unavailable'
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $revisionOutput = @(& git -C (Get-EcosystemRoot) rev-parse HEAD 2>&1)
+        if ($LASTEXITCODE -eq 0 -and $revisionOutput.Count) { $ecosystemRevision = ([string]$revisionOutput[0]).Trim() }
+    }
+    finally { $ErrorActionPreference = $previousPreference }
+    $executionContextPath = Join-Path $task.TaskRoot "execution-context-$ExecutionRunId.json"
+    if (-not (Test-Path -LiteralPath $executionContextPath -PathType Leaf)) {
+        $executionContext = [ordered]@{
+            schemaVersion = '2.0.0'
+            taskId = $TaskId
+            runId = [string]$workspaceLease.RunId
+            leaseId = [string]$workspaceLease.LeaseId
+            createdAtUtc = [DateTime]::UtcNow.ToString('o')
+            ecosystemRevision = $ecosystemRevision
+            configSnapshotPath = $executionConfigPath
+            globalStandardsPath = $globalStandardsPath
+            managedKnowledgeRoot = [string]$knowledgeImport.ManagedRoot
+            agentFiles = @($sync.AgentFiles)
+            repositories = @($workspaceRecords | ForEach-Object { [ordered]@{ repositoryId=[string]$_.RepositoryId; path=[string]$_.Path; canonicalOrigin=[string]$_.CanonicalOrigin; baseSha=[string]$_.BaseSha; branch=[string]$_.Branch; manifestPath=[string]$_.ManifestPath } })
+        }
+        Write-Utf8NoBomAtomic -Path $executionContextPath -Content (($executionContext | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+    }
 }
 $agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
 $orchestratorAgentName = 'development_workflow_orchestrator' + $agentProfileSuffix
@@ -183,9 +253,9 @@ Changed artifacts since the previous checkpoint: $(if ($resumePlan -and @($resum
 Unchanged artifacts available through existing summaries: $(if ($resumePlan -and @($resumePlan.UnchangedArtifactNames).Count) { @($resumePlan.UnchangedArtifactNames) -join ', ' } else { 'none' })
 
 Resume rules:
-- The trusted workspace coordinator permits only one active task. Never switch branches or use Git stash directly for task scheduling. Before this invocation it selected this task's saved branch and restored its task-specific stash. If another task was active, this task would have remained queued.
-- When a Developer creates or changes the task branch, the current branch becomes this task's branch at the next workspace suspension. Uncommitted tracked and untracked changes are stashed with a task/repository identity before switching away and restored with stash apply before the task resumes. The stash is dropped only after successful restoration.
-- A workspace restore conflict is a human-input gate. Never reset, clean, discard, or silently resolve it.
+- The coordinator admits up to $([int]$config.workflow.workspaceScheduling.maxActiveTasks) tasks concurrently. This run owns lease $([string]$workspaceLease.LeaseId) and may use only the task clones listed above.
+- Every (task, repository) pair has a full Git clone and a unique task branch recorded in its workspace manifest. Never use repository.localWorkspace, another task's clone, Git worktree, or Git stash for task scheduling.
+- The clone persists across role runs for this task while leases are task-local and released when a workflow host exits. A failure, stop, or dirty worktree in another task must not alter this task's status, branch, queue position, or files.
 - On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must classify the requested outcome, select the narrowest workflow.orchestration.executionModes entry, and route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 with explicit -ExecutionMode before any newly selected role starts.
 - On an explicit targeted-agent resume, execute that exact role directly in this process. Do not replace it, delegate it, or start another role in that targeted invocation.
 - Orchestrator must use the freshly loaded role directory below, select the smallest sufficient target set, and use Requirements Analyst as the configured fallback when the evidence is actionable but ownership remains unclear.
@@ -225,6 +295,10 @@ $result = [pscustomobject]@{
     Mode = $Mode
     TaskId = $TaskId
     TaskRoot = $task.TaskRoot
+    RunId = [string]$workspaceLease.RunId
+    LeaseId = [string]$workspaceLease.LeaseId
+    ExecutionConfigPath = $executionConfigPath
+    ExecutionContextPath = $executionContextPath
     Workspace = [IO.Path]::GetFullPath($Workspace)
     Workspaces = @($workspacePaths)
     RepositoryIds = @($RepositoryIds)
@@ -244,7 +318,7 @@ $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
 $startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started through Orchestrator for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Orchestrator is classifying task intake.' }
 $startMessage += " Model route: $($modelRoute.complexity), $($modelRoute.model), reasoning $($modelRoute.reasoningEffort)."
 $startStage = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
-& $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
 & $statusScript -TaskId $TaskId -AgentId $executedAgentId -AgentStatus running -Stage $executedAgentId -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
@@ -267,7 +341,13 @@ try {
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    $heartbeatConfigPath = $ConfigPath
+    $heartbeatCodexHome = $CodexHome
+    $leaseHeartbeatAction = {
+        & $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $heartbeatConfigPath -CodexHome $heartbeatCodexHome
+    }.GetNewClosure()
+    & $leaseHeartbeatAction | Out-Null
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
@@ -317,6 +397,8 @@ try {
         if ($healthRecoveryEligible -and $failurePath -and $diagnosis) {
             & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_handoff -Summary 'Health Check completed diagnosis and handed the bounded correction to automatic recovery.' -Details "Failure: $failurePath; diagnosis: $diagnosisPath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $recoveryParameters = @{ TaskId=$TaskId; FailurePath=$failurePath; DiagnosisPath=$diagnosisPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+            $recoveryParameters.ExecutionRunId = [string]$workspaceLease.RunId
+            $recoveryParameters.WorkspaceLeaseId = [string]$workspaceLease.LeaseId
             if ($ElevatedApproved) { $recoveryParameters.ElevatedApproved = $true }
             $postDiagnosisRecovery = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @recoveryParameters
             if ($postDiagnosisRecovery.PSObject.Properties['TargetedResume'] -and $postDiagnosisRecovery.TargetedResume) { return $postDiagnosisRecovery.TargetedResume }
@@ -344,9 +426,15 @@ try {
         $preserveAwaitingPullRequest = $currentStatus -eq 'interrupted' -and $currentTask.PSObject.Properties['currentStage'] -and [string]$currentTask.currentStage -eq 'awaiting_pull_request'
         if ($closureComplete) {
             $completedAtUtc = [DateTime]::UtcNow.ToString('o')
-            $currentTask.closure.status = 'completed'
-            $currentTask.closure.completedAtUtc = $completedAtUtc
-            Write-Utf8NoBom -Path (Join-Path $task.TaskRoot 'task.json') -Content (($currentTask | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+            $taskStatePath = Join-Path $task.TaskRoot 'task.json'
+            $currentTask = Invoke-EcosystemFileLock -LockPath (Join-Path $task.TaskRoot 'task-state.lock') -TimeoutSeconds 30 -Action {
+                $document = Get-Content -LiteralPath $taskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if (-not $document.PSObject.Properties['closure']) { throw 'Task closure disappeared before completion could be persisted.' }
+                $document.closure.status = 'completed'
+                $document.closure.completedAtUtc = $completedAtUtc
+                Write-Utf8NoBomAtomic -Path $taskStatePath -Content (($document | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+                $document
+            }
             $closureKind = [string]$currentTask.closure.kind
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type task-closed -Summary "Task closure '$closureKind' completed after the required knowledge update. Reason: $([string]$currentTask.closure.reason)" -Artifact (Join-Path $task.TaskRoot 'task-summary.json') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             & $statusScript -TaskId $TaskId -Status completed -Stage $(if ($closureKind -eq 'manual') { 'manually_closed' } else { 'pr_completed' }) -Message 'Task closure completed. Knowledge and the final task summary were updated.' -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -406,12 +494,8 @@ try {
         $chainTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $manualClosure = $chainTask.PSObject.Properties['closure'] -and [string]$chainTask.closure.kind -eq 'manual'
         if (-not $manualClosure -and [string]$chainTask.agentStatuses.$executedAgentId.status -eq 'completed') {
-            & (Join-Path $PSScriptRoot 'Invoke-OrchestratorContinuation.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Invoke-OrchestratorContinuation.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
-    }
-    if (-not $SkipChainContinuation) {
-        try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
-        catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
     }
 }
 catch {
@@ -440,6 +524,8 @@ catch {
                         ConfigPath = $ConfigPath
                         CodexHome = $CodexHome
                     }
+                    $targetedParameters.ExecutionRunId = [string]$workspaceLease.RunId
+                    $targetedParameters.WorkspaceLeaseId = [string]$workspaceLease.LeaseId
                     if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
                     $automaticTargetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
                 }
@@ -449,21 +535,28 @@ catch {
     }
     if (-not $HealthRecoveryRetry -and [bool]$config.health.automaticRecovery.enabled -and -not $hostCompatibilityReady) {
         try {
-            $healthRecoveryResult = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ConfigPath $ConfigPath -CodexHome $CodexHome
+            $healthRecoveryResult = & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $TaskId -FailurePath $failureHandoff.FailurePath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome
             if ($healthRecoveryResult.PSObject.Properties['TargetedResume']) { $automaticTargetedResume = $healthRecoveryResult.TargetedResume }
         }
         catch { Write-Warning "Automatic health recovery failed: $($_.Exception.Message)" }
     }
     if ($automaticTargetedResume -and [string]$automaticTargetedResume.Status -in @('completed','waiting','interrupted')) {
-        if (-not $SkipChainContinuation) {
-            try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
-            catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
-        }
         return $automaticTargetedResume
     }
-    if (-not $SkipChainContinuation) {
-        try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
-        catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
-    }
     throw
+}
+}
+finally {
+    if ($ownsWorkspaceLease) {
+        $leaseReleased = $false
+        try {
+            & (Join-Path $PSScriptRoot 'Release-TaskWorkspaceLease.ps1') -TaskId $TaskId -LeaseId ([string]$workspaceLease.LeaseId) -Reason 'workflow-exit' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $leaseReleased = $true
+        }
+        catch { Write-Warning "Workspace lease release failed: $($_.Exception.Message)" }
+        if ($leaseReleased -and -not $SkipChainContinuation) {
+            try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $sourceConfigPath -CodexHome $CodexHome | Out-Null }
+            catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }
+        }
+    }
 }

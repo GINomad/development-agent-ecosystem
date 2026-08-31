@@ -14,40 +14,43 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
-$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$task.status -eq 'running') { throw 'Stop the workflow before closing the task manually.' }
-if ([string]$task.status -eq 'completed') { throw 'The task is already completed. Reopen it before creating another closure.' }
-
-$now = [DateTime]::UtcNow.ToString('o')
-$closure = [pscustomobject][ordered]@{
-    kind = $Kind
-    status = 'knowledge-update-pending'
-    reason = $Reason.Trim()
-    requestedBy = if ($Kind -eq 'manual') { 'user' } else { 'pipeline_monitor' }
-    requestedAtUtc = $now
-    completedAtUtc = $null
-}
-$task | Add-Member -NotePropertyName closure -NotePropertyValue $closure -Force
-$task | Add-Member -NotePropertyName status -NotePropertyValue 'queued' -Force
 $closureStage = if ($Kind -eq 'manual') { 'manual_close_knowledge_update' } else { 'pr_completed_orchestration' }
 $closureLabel = if ($Kind -eq 'manual') { 'Manual closure' } else { 'Completed PR closure' }
 $targetAgentId = if ($Kind -eq 'manual') { 'knowledge_keeper' } else { 'orchestrator' }
-$task | Add-Member -NotePropertyName currentStage -NotePropertyValue $closureStage -Force
 $closureMessage = if ($Kind -eq 'manual') {
     'Manual closure requested. Knowledge Keeper must update verified knowledge and publish the final task summary.'
 }
 else {
     'Completed PR closure requested. Orchestrator must validate the terminal evidence and route final publication to Knowledge Keeper.'
 }
-$task | Add-Member -NotePropertyName lastMessage -NotePropertyValue $closureMessage -Force
-$task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
-$targetState = [pscustomobject][ordered]@{
-    status = 'pending'
-    updatedAtUtc = $now
-    message = if ($Kind -eq 'manual') { 'Manual closure is waiting for the final knowledge update.' } else { 'Completed PR evidence is waiting for Orchestrator routing.' }
+$mutation = Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds 30 -Action {
+    $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$task.status -eq 'running') { throw 'Stop the workflow before closing the task manually.' }
+    if ([string]$task.status -eq 'completed') { throw 'The task is already completed. Reopen it before creating another closure.' }
+    $now = [DateTime]::UtcNow.ToString('o')
+    $closure = [pscustomobject][ordered]@{
+        kind = $Kind
+        status = 'knowledge-update-pending'
+        reason = $Reason.Trim()
+        requestedBy = if ($Kind -eq 'manual') { 'user' } else { 'pipeline_monitor' }
+        requestedAtUtc = $now
+        completedAtUtc = $null
+    }
+    $task | Add-Member -NotePropertyName closure -NotePropertyValue $closure -Force
+    $task | Add-Member -NotePropertyName status -NotePropertyValue 'queued' -Force
+    $task | Add-Member -NotePropertyName currentStage -NotePropertyValue $closureStage -Force
+    $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue $closureMessage -Force
+    $task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
+    $targetState = [pscustomobject][ordered]@{
+        status = 'pending'
+        updatedAtUtc = $now
+        message = if ($Kind -eq 'manual') { 'Manual closure is waiting for the final knowledge update.' } else { 'Completed PR evidence is waiting for Orchestrator routing.' }
+    }
+    $task.agentStatuses | Add-Member -NotePropertyName $targetAgentId -NotePropertyValue $targetState -Force
+    Write-Utf8NoBomAtomic -Path $taskPath -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+    [pscustomobject]@{ Closure=$closure; TimestampUtc=$now }
 }
-$task.agentStatuses | Add-Member -NotePropertyName $targetAgentId -NotePropertyValue $targetState -Force
-Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+$closure = $mutation.Closure
 
 $closurePath = Join-Path $taskRoot 'task-closure.json'
 Write-Utf8NoBom -Path $closurePath -Content (($closure | ConvertTo-Json -Depth 8) + [Environment]::NewLine)

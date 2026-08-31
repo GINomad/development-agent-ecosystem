@@ -73,7 +73,15 @@ $manifest = [pscustomobject][ordered]@{
 }
 $manifestUpdated = $true
 if ($previous) {
-    $previousImportTime = [string]$previous.importedAtUtc
+    foreach ($previousEntry in @($previous.entries)) {
+        if ($previousEntry.sourceLastWriteUtc -is [DateTime]) {
+            $previousEntry.sourceLastWriteUtc = ([DateTime]$previousEntry.sourceLastWriteUtc).ToUniversalTime().ToString('o')
+        }
+        elseif ($previousEntry.sourceLastWriteUtc -is [DateTimeOffset]) {
+            $previousEntry.sourceLastWriteUtc = ([DateTimeOffset]$previousEntry.sourceLastWriteUtc).UtcDateTime.ToString('o')
+        }
+    }
+    $previousImportTime = if ($previous.importedAtUtc -is [DateTime]) { ([DateTime]$previous.importedAtUtc).ToUniversalTime().ToString('o') } else { [string]$previous.importedAtUtc }
     $previous.importedAtUtc = [string]$manifest.importedAtUtc
     $previousComparable = $previous | ConvertTo-Json -Depth 8 -Compress
     $currentComparable = $manifest | ConvertTo-Json -Depth 8 -Compress

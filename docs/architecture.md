@@ -20,8 +20,10 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, multi-repository workspace selection, task creation/resume, knowledge import, and Orchestrator launch |
 | `scripts/Set-WorkflowInputRoute.ps1` | Idempotent task/comment routing plus a durable intent-scoped execution policy backed by `workflow-routing.jsonl` |
 | `scripts/Request-OrchestratorCommentRouting.ps1` | Durable, idempotent return of out-of-scope targeted comments to Orchestrator with original-event traceability |
-| `scripts/Switch-TaskWorkspace.ps1` | Single-task workspace lease, task-specific branch capture, tracked/untracked stash, and safe restore |
-| `scripts/Start-NextQueuedTask.ps1` | Oldest-first continuation after the active task becomes idle; never launches concurrent task work |
+| `scripts/Switch-TaskWorkspace.ps1` | Capacity/FIFO admission, exact run/lease ownership, stale-lease reconciliation, and isolated full-clone provisioning for each task/repository pair |
+| `scripts/Update-TaskWorkspaceLeaseHeartbeat.ps1` | Exact task/run/lease heartbeat renewal; lost ownership fails the active runner closed |
+| `scripts/Repair-StaleTaskWorkspaceLeases.ps1` | Releases terminal or heartbeat-expired controller leases while preserving clones, manifests, and task-local evidence for resume |
+| `scripts/Start-NextQueuedTask.ps1` | Oldest-first continuation whenever a capacity slot is released, without bypassing an older queued task |
 | `scripts/Continue-AgentChain.ps1` | Event-driven next-link selection after successful targeted execution; uses a per-task exclusive lock, prioritizes authority handoffs to Orchestrator, normalizes repository scope, and preserves human, review, delivery, and failure gates |
 | `scripts/Repair-AgentContinuations.ps1` | Deterministic reconciliation of durable successful outcomes whose trusted host exited before dispatch; never bypasses human gates and never duplicates a live continuation |
 | `scripts/Invoke-ReviewedBranchDelivery.ps1` | Clean-review, clean-worktree, non-base, non-force branch push followed by exact-SHA monitoring |
@@ -62,7 +64,7 @@ Dashed green `+` badges identify supported extension points:
 
 ## Component interaction
 
-Agent progression is host-driven and event-based: Orchestrator classifies task intake and general comments from the current JSON responsibility directory, then every successful initial, resume, or targeted run returns to the trusted host, which starts the next eligible role directly. Successful publication first appends a durable `continuation-requested` event. If the host exits before the next dispatch, a local non-AI reconciler resumes only the missing transition after the configured grace period; a global recovery lock and per-task chain lock make this idempotent. Roles never poll one another or remain alive to wait for the next role. Developer completion may cross `review_pending` only to start Reviewer; a machine-readable Pipeline remediation may cross its waiting gate only to start Developer. All other human-input and approval gates stop the chain. A per-run bound allows at most sixteen handoffs and at most three repetitions of one role-to-role transition; exceeding either bound persists a failure and hands it to Health Check. A global workspace coordinator grants one task at a time ownership of all selected repositories; other tasks are durable queued work, not concurrent processes. Failed execution and explicit source-controlled ecosystem maintenance are handed to Health Check; its bounded `ecosystem_recovery` coordinator may change only the ecosystem repository, validates the result, and gets one affected-agent-only retry. Product code remains Developer-owned. Review Monitor owns authored/assigned PR discovery and the shared status index, while Pipeline Monitor owns exact task-branch correlation, build/remediation, and the completion gate.
+Agent progression is host-driven and event-based: Orchestrator classifies task intake and general comments from the current JSON responsibility directory, then every successful initial, resume, or targeted run returns to the trusted host, which starts the next eligible role directly. Successful publication first appends a durable `continuation-requested` event. If the host exits before the next dispatch, a local non-AI reconciler resumes only the missing transition after the configured grace period; a global recovery lock and per-task chain lock make this idempotent. Roles never poll one another or remain alive to wait for the next role. Developer completion may cross `review_pending` only to start Reviewer; a machine-readable Pipeline remediation may cross its waiting gate only to start Developer. All other human-input and approval gates stop the chain. A per-run bound allows at most sixteen handoffs and at most three repetitions of one role-to-role transition; exceeding either bound persists a failure and hands it to Health Check. A global workspace coordinator admits up to the configured task capacity and grants exactly one controller lease per task. Every selected repository is a separate full clone scoped to that task; overflow work is a durable FIFO queue. Per-task state locks, exact run/lease identifiers, and immutable execution snapshots prevent status, context, and stop/resume actions from crossing task boundaries. Failed execution and explicit source-controlled ecosystem maintenance are handed to Health Check; its bounded `ecosystem_recovery` coordinator may change only the ecosystem repository, validates the result, and gets one affected-agent-only retry. Product code remains Developer-owned. Review Monitor owns authored/assigned PR discovery and the shared status index, while Pipeline Monitor owns exact task-branch correlation, build/remediation, and the completion gate.
 
 Routing and knowledge are separate. Orchestrator owns task/comment classification and dispatch but performs no delivery work. Persisting a route appends an addressable input and never rewrites the selected agent's existing status. When new input changes work owned by a completed, waiting, interrupted, or failed role, Orchestrator may request its targeted restart; only trusted host continuation starts it after Orchestrator succeeds. `pipeline.ownership` makes the pipeline chain explicit: monitoring belongs to Pipeline Monitor, supported product remediation to Developer, remediation review to Reviewer, exceptions to Orchestrator, ecosystem recovery to Health Check, and final publication to Knowledge Keeper. A completed-PR signal follows `Pipeline Monitor -> Orchestrator -> Knowledge Keeper`: Orchestrator verifies the persisted terminal gate and routes one final-publication command. Knowledge Keeper issues a minimal context on request and answers explicit knowledge or skill requests throughout delivery; it never loops over `wait` or polls role logs. Each role autonomously sizes coherent work blocks and reads only direct or Orchestrator-routed comments once per checkpoint. Working details remain private until the role succeeds. Only a validated terminal outcome enters shared context, where Knowledge Keeper decides whether it changes task decisions, coding rules, or managed knowledge. After all applicable roles complete, it writes `task-summary.json`. The repository/definition policy is summarized in [pipeline monitoring and ownership](pipeline-monitoring.md).
 
@@ -75,11 +77,10 @@ flowchart LR
     U[Developer / Dashboard] -->|new task + general comments| O[Workflow Orchestrator]
     U -->|explicit target or linked answer| T[Selected agent]
     O -->|routing question + waiting status| U
-    O --> W{Single workspace lease}
-    W -->|active task| GW[(Task branches + working trees)]
-    W -->|busy| Q[(Oldest-first task queue)]
-    GW -->|switch: stash tracked + untracked| Q
-    Q -->|idle lease: branch + stash restore| W
+    O --> W{Capacity + FIFO coordinator}
+    W -->|slot admitted| GW[(Per-task full clones + manifests)]
+    W -->|capacity full| Q[(Oldest-first task queue)]
+    Q -->|slot released| W
     A[Azure Boards + comments] --> O
     O --> RA[Requirements Analyst]
     O --> K[Knowledge Keeper]
@@ -138,12 +139,12 @@ sequenceDiagram
     participant G as Execution Guard
 
     U->>O: task ID / URL / selected repositories / instruction
-    O->>W: request exclusive task workspace lease
-    alt another task is running
-        W-->>O: queued; do not start agents
-    else workspace is available
-        W->>W: stash previous task, switch branches, restore this task
-        W-->>O: active lease
+    O->>W: request capacity lease for exact task/run
+    alt capacity full or an older task is queued
+        W-->>O: queued with FIFO position; do not start agents
+    else slot is admitted
+        W->>W: provision or reuse one full clone per repository
+        W-->>O: exact run/lease plus clone manifests
     end
     O->>O: classify task against current responsibilities
     O->>A: routed task intake
@@ -201,7 +202,8 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `task.json`: task identity, ordered `repositoryIds[]`, backward-compatible primary `repositoryId`, and current state;
 - `task-ledger.jsonl`: append-only communication, workflow and agent status, `question-opened` / `question-resolved`, and user intervention comments;
 - `workflow-routing.jsonl`: idempotent Orchestrator decisions linking each task/comment input to one or more agent owners;
-- `workspace-session.json`: this task's branch and task-specific stash metadata for every selected repository;
+- `workspaces/<repository-id>.json`: clone manifest with task/repository identity, absolute path, canonical origin, base SHA, unique branch, lifecycle, run ID, and lease ID;
+- `execution-config-<run-id>.json` and `execution-context-<run-id>.json`: immutable configuration and context snapshots used by that run;
 - `agent-activity.jsonl`: append-only factual per-agent progress used by the configurable live dashboard view;
 - `resume-plan.json`: the checkpoint snapshot listing only agents permitted to run and completed agents that must be preserved;
 - `resume-artifact-index.json`: per-agent SHA-256 fingerprint baselines used to identify changed artifacts without model rereads or cross-role consumption;
@@ -215,7 +217,7 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `agent-failure-*.json`, `health-check-result.json`, `health-recovery-result.json`, and health recovery logs.
 - `health-repair-routing.json` records a bounded, single-owner correction handoff when Health Check cannot perform the repair inside the ecosystem recovery workspace.
 
-The global `%LOCALAPPDATA%/Codex/development-agent-ecosystem/workspace-coordinator.json` records the one task that currently owns shared product workspaces. Its lock file serializes native scheduler decisions. Task stashes remain ordinary Git stash commits until successfully applied; no scheduler path uses reset, clean, force checkout, or pop.
+The global `%LOCALAPPDATA%/Codex/development-agent-ecosystem/workspace-coordinator.json` records active task leases up to `maxActiveTasks`; its lock file serializes admission, heartbeat, recovery, and release. Each lease records the controller PID and process-start identity. Before admission, terminal leases and leases whose exact heartbeat is older than `staleLeaseGraceSeconds` are released without deleting their clone; PID/start identity distinguishes an exited host from an expired in-process runspace while active runners refresh exact task/run/lease ownership every `leaseHeartbeatSeconds`. Full clones live below `workflow.workspaceScheduling.workspaceRoot/task-<task-key>/repo-<repository-key>`, while manifests live in the task directory. A released clone is retained for explicit resume and is never reused by another task. No scheduler path executes in `repositories[].localWorkspace` or uses worktrees, reset, clean, or Git stash for task switching.
 
 `task.json` is a current-state projection used for fast dashboard rendering. `task-ledger.jsonl` remains the durable public history. Open questions are reconstructed by subtracting every `question-resolved` evidence reference from `question-opened` events; a targeted dashboard answer closes only its selected question. Applicable comments are coalesced at end-of-block checkpoints, so saving comments does not restart a running role. Agents do not poll while a block is running and perform a final comment check before outcome publication. General resume computes a checkpoint and dispatches only unfinished roles; explicit targeted restart dispatches exactly one stopped or completed role. Per-agent baselines in `resume-artifact-index.json` let each role reuse summaries for artifacts it previously consumed without allowing another role to advance its baseline. Only the resume plan supplied to an agent advances that agent's baseline; post-outcome bookkeeping preserves every baseline so the next chained role receives every hash-divergent artifact as changed. The dashboard polling itself is deterministic and does not invoke a model. Health recovery receives configured tails rather than complete historical logs. PR comment fingerprints are stored per PR; only that PR is forced, while `pending-review-changes.json` records `pending-ai-review` or `requires-human-intervention` until AI processing succeeds. Pipeline Monitor uses low reasoning effort and lets its native monitor perform repeated status polling without repeated model turns. Post-push classification is also deterministic: only code/test failures create a deduplicated Developer request, while infrastructure/no-run/unknown states remain at their proper gate and the cycle stops after three attempts.
 

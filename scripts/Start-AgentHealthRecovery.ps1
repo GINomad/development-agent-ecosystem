@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $FailurePath,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [string] $DiagnosisPath,
     [switch] $ElevatedApproved,
     [ValidateRange(0,2)][int] $RecoveryDepth = 0,
@@ -124,6 +126,8 @@ if ($successfulAttempt.Count) {
     $successfulResultPath = [string]$successfulAttempt[0].resultPath
     if ([bool]$config.health.automaticRecovery.targetedResume.enabled -and (Test-Path -LiteralPath $successfulResultPath -PathType Leaf)) {
         $targetedParameters = @{ TaskId=$TaskId; FailurePath=$FailurePath; RecoveryEvidencePath=$successfulResultPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $targetedParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $targetedParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
@@ -326,6 +330,8 @@ try {
             ConfigPath = $ConfigPath
             CodexHome = $CodexHome
         }
+        if ($ExecutionRunId) { $targetedParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $targetedParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
@@ -334,6 +340,8 @@ try {
         $taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $repositoryIds = if ($taskSnapshot.PSObject.Properties['repositoryIds']) { @($taskSnapshot.repositoryIds) } elseif ($taskSnapshot.PSObject.Properties['repositoryId']) { @([string]$taskSnapshot.repositoryId) } else { @() }
         $routeParameters = @{ Mode=[string]$taskSnapshot.mode; TaskSelector=[string]$taskSnapshot.selector; TaskId=$TaskId; RepositoryIds=@($repositoryIds); UserInstruction="Health Check routed this repair to '$routedAgentId'. Read $routingPath and the bounded evidence it references. Fix only the assigned scope, preserve completed agents and artifacts, and stop for user input when authority or facts are missing."; Resume=$true; TargetAgentId=$routedAgentId; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $routeParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $routeParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $routeParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @routeParameters
     }
@@ -349,7 +357,11 @@ try {
         if ($followupFailurePath) {
             & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary "The targeted '$([string]$failure.agentId)' retry returned failed; Health Check accepted its new bounded failure envelope." -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $followupFailurePath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $followupParameters = @{ TaskId=$TaskId; FailurePath=$followupFailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-            if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
+            if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+            if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
+            if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
+        if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
             return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
         }
     }
@@ -364,6 +376,8 @@ catch {
         $followup = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId ([string]$failure.agentId) -Stage health_targeted_resume -Summary $followupSummary -Diagnostic $_.Exception.ToString() -Evidence $followupEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary 'A validated repair exposed a different ecosystem failure during targeted resume; Health Check accepted the new bounded failure envelope.' -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $([string]$followup.FailurePath)" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         $followupParameters = @{ TaskId=$TaskId; FailurePath=[string]$followup.FailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
         return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
     }

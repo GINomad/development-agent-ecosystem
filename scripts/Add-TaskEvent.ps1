@@ -54,6 +54,8 @@ $event = [ordered]@{
 if ($null -ne $HumanIntervention) { $event.humanIntervention = $HumanIntervention }
 $line = ($event | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine
 $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
-$stream = [IO.File]::Open($ledgerPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
-try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+$null = Invoke-EcosystemFileLock -LockPath ($ledgerPath + '.lock') -TimeoutSeconds 30 -Action {
+    $stream = [IO.File]::Open($ledgerPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+}
 [pscustomobject]$event

@@ -91,6 +91,10 @@ function Get-EnabledRepositories {
 
 function Start-ScriptRunspace {
     param([Parameter(Mandatory)][string] $ScriptPath, [Parameter(Mandatory)][hashtable] $Parameters, [string] $TaskId)
+    $runId = [guid]::NewGuid().ToString('N')
+    if ([IO.Path]::GetFileName($ScriptPath) -in @('Start-DevelopmentWorkflow.ps1','Start-HealthTargetedResume.ps1','Start-AgentHealthRecovery.ps1') -and -not $Parameters.ContainsKey('ExecutionRunId')) {
+        $Parameters.ExecutionRunId = $runId
+    }
     $runner = [PowerShell]::Create()
     $null = $runner.AddCommand($ScriptPath)
     foreach ($key in $Parameters.Keys) {
@@ -103,7 +107,7 @@ function Start-ScriptRunspace {
     }
     try { $async = $runner.BeginInvoke() }
     catch { $runner.Dispose(); throw }
-    $run = [pscustomobject][ordered]@{ runId=[guid]::NewGuid().ToString('N'); taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); PowerShell=$runner; Async=$async }
+    $run = [pscustomobject][ordered]@{ runId=$runId; taskId=$TaskId; startedAtUtc=[DateTime]::UtcNow.ToString('o'); PowerShell=$runner; Async=$async }
     $scriptRuns.Add($run)
     return $run
 }
@@ -141,6 +145,29 @@ function Test-TaskWorkflowActive {
     return $false
 }
 
+function Assert-TaskViewIsCurrent {
+    param([Parameter(Mandatory)] $Task, [Parameter(Mandatory)] $Body)
+    $expectedRevision = Get-ObjectPropertyValue -Source $Body -Name 'expectedRevision'
+    if ($null -eq $expectedRevision) { throw 'This action requires the task revision from the current dashboard view. Refresh and retry.' }
+    $currentRevision = if ($Task.PSObject.Properties['revision']) { [int]$Task.revision } else { 1 }
+    if ([int]$expectedRevision -ne $currentRevision) { throw 'The task revision changed after this dashboard view was loaded. Refresh and retry.' }
+    $expectedRunId = [string](Get-ObjectPropertyValue -Source $Body -Name 'runId')
+    $expectedLeaseId = [string](Get-ObjectPropertyValue -Source $Body -Name 'leaseId')
+    $currentRunId = if ($Task.PSObject.Properties['executionRunId']) { [string]$Task.executionRunId } else { '' }
+    $currentLeaseId = if ($Task.PSObject.Properties['workspaceLeaseId']) { [string]$Task.workspaceLeaseId } else { '' }
+    if ($expectedRunId -ne $currentRunId) { throw 'The task run changed after this dashboard view was loaded. Refresh and retry.' }
+    if ($expectedLeaseId -ne $currentLeaseId) { throw 'The task workspace lease changed after this dashboard view was loaded. Refresh and retry.' }
+}
+
+function Assert-TaskControllerIsIdle {
+    param([Parameter(Mandatory)] $Task)
+    if (Test-TaskWorkflowActive -Task $Task) { throw "Task '$([string]$Task.taskId)' already has an active workflow." }
+    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $coordinatorPath -PathType Leaf)) { return }
+    $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $activeLease = @($coordinator.leases | Where-Object { [string]$_.taskId -eq [string]$Task.taskId } | Select-Object -First 1)
+    if ($activeLease.Count) { throw "Task '$([string]$Task.taskId)' still has an active workspace lease. Stop or finish it before starting a different controller." }
+}
 function Stop-TaskScriptRunspaces {
     param([Parameter(Mandatory)][string] $TaskId)
     $stoppedRunIds = [Collections.Generic.List[string]]::new()
@@ -249,7 +276,7 @@ try {
                     $taskParameters = @{ ConfigPath=$ConfigPath; IncludeCompleted=($request.QueryString['includeCompleted'] -eq 'true') }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
                     $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
-                    Send-Json -Response $response -Value @{ tasks=@($result.Tasks); generatedAtUtc=[string]$result.GeneratedAtUtc }
+                    Send-Json -Response $response -Value @{ tasks=@($result.Tasks); scheduler=$result.Scheduler; generatedAtUtc=[string]$result.GeneratedAtUtc }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/external-reviews') {
@@ -424,6 +451,7 @@ try {
                     $resume = Test-Path -LiteralPath $existingTaskPath -PathType Leaf
                     if ($resume) {
                         $existingTask = Get-Content -LiteralPath $existingTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                        Assert-TaskViewIsCurrent -Task $existingTask -Body $body
                         if ([string]$existingTask.status -eq 'running' -and $existingTask.PSObject.Properties['workflowProcessId']) {
                             $runningProcess = Get-Process -Id ([int]$existingTask.workflowProcessId) -ErrorAction SilentlyContinue
                             if ($runningProcess) { throw "Task '$resolvedTaskId' already has a running workflow." }
@@ -501,7 +529,9 @@ try {
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before restarting one agent." }
+                    Assert-TaskControllerIsIdle -Task $persistedTask
                     $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
                     $parameters = @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
@@ -550,8 +580,18 @@ try {
                     $resumeFrom = [string](Get-ObjectPropertyValue -Source $body -Name 'resumeFrom')
                     if ($resumeFrom -notin @('requirements_analyst','developer')) { throw 'Reopen target must be Requirements Analyst or Developer.' }
                     if ([string]::IsNullOrWhiteSpace($reason) -or $reason.Trim().Length -lt 5) { throw 'A reopen reason of at least 5 characters is required.' }
-                    $reopen = & (Join-Path $PSScriptRoot 'Reopen-AgentTask.ps1') -TaskId $requestedTaskId -Reason $reason -ResumeFrom $resumeFrom -ConfigPath $ConfigPath -CodexHome $CodexHome
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
+                    if ([string]$persistedTask.status -ne 'completed') { throw 'Only a completed task can be reopened.' }
+                    Assert-TaskControllerIsIdle -Task $persistedTask
+                    $reopenParameters = @{ TaskId=$requestedTaskId; Reason=$reason; ResumeFrom=$resumeFrom; ExpectedRevision=[int](Get-ObjectPropertyValue -Source $body -Name 'expectedRevision'); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    $expectedRunId = [string](Get-ObjectPropertyValue -Source $body -Name 'runId')
+                    $expectedLeaseId = [string](Get-ObjectPropertyValue -Source $body -Name 'leaseId')
+                    if ($expectedRunId) { $reopenParameters.ExpectedRunId = $expectedRunId }
+                    if ($expectedLeaseId) { $reopenParameters.ExpectedLeaseId = $expectedLeaseId }
+                    $reopen = & (Join-Path $PSScriptRoot 'Reopen-AgentTask.ps1') @reopenParameters
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId; RepositoryIds=@($persistedTask.repositoryIds)
@@ -567,6 +607,12 @@ try {
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $requestedRunId = [string](Get-ObjectPropertyValue -Source $body -Name 'runId')
+                    $requestedLeaseId = [string](Get-ObjectPropertyValue -Source $body -Name 'leaseId')
+                    $requestedRevision = Get-ObjectPropertyValue -Source $body -Name 'revision'
+                    if ($persistedTask.PSObject.Properties['executionRunId'] -and $requestedRunId -ne [string]$persistedTask.executionRunId) { throw 'The task run changed after this dashboard view was loaded. Refresh before stopping it.' }
+                    if ($persistedTask.PSObject.Properties['workspaceLeaseId'] -and $requestedLeaseId -ne [string]$persistedTask.workspaceLeaseId) { throw 'The task workspace lease changed after this dashboard view was loaded. Refresh before stopping it.' }
+                    if ($null -ne $requestedRevision -and $persistedTask.PSObject.Properties['revision'] -and [int]$requestedRevision -ne [int]$persistedTask.revision) { throw 'The task revision changed after this dashboard view was loaded. Refresh before stopping it.' }
                     $stoppedRunIds = @(Stop-TaskScriptRunspaces -TaskId $requestedTaskId)
                     $stoppedProcessIds = @()
                     if ($persistedTask.PSObject.Properties['workflowProcessId']) {
@@ -579,6 +625,9 @@ try {
                         }
                     }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -Status interrupted -Stage stopped_by_user -Message 'Workflow stopped by the user. Resume continues from the persisted checkpoint.' -Actor user -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    if ($persistedTask.PSObject.Properties['workspaceLeaseId']) {
+                        try { & (Join-Path $PSScriptRoot 'Release-TaskWorkspaceLease.ps1') -TaskId $requestedTaskId -LeaseId ([string]$persistedTask.workspaceLeaseId) -Reason 'stopped-by-user' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null } catch { Write-Warning "Task lease was already released or could not be released after stop: $($_.Exception.Message)" }
+                    }
                     Send-Json -Response $response -Value @{ status='stopped'; taskId=$requestedTaskId; stoppedProcessIds=@($stoppedProcessIds); stoppedRunIds=@($stoppedRunIds); message='Workflow execution stopped; task history and completed results were preserved.' }
                     continue
                 }
@@ -589,6 +638,7 @@ try {
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running' -and $persistedTask.PSObject.Properties['workflowProcessId']) {
                         $runningProcess = Get-Process -Id ([int]$persistedTask.workflowProcessId) -ErrorAction SilentlyContinue
                         if ($runningProcess) { throw "Task '$requestedTaskId' already has a running workflow." }
