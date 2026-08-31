@@ -59,6 +59,7 @@ try {
         Commit = $Commit
         DefinitionIds = @($pipelineRepository.definitionIds)
         AutoQueueDefinitionIds = if ([bool]$config.pipeline.postPush.autoQueueApprovedBuilds) { @($pipelineRepository.autoQueueDefinitionIds) } else { @() }
+        SkipOnMissingYamlDefinitionIds = if ($pipelineRepository.PSObject.Properties['skipOnMissingYamlDefinitionIds']) { @($pipelineRepository.skipOnMissingYamlDefinitionIds) } else { @() }
         QueuedAfter = $QueuedAfter
         TaskId = $TaskId
         RepositoryId = $RepositoryId
@@ -81,6 +82,9 @@ try {
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor pipeline_monitor -Type pipeline-analysis -Summary $summary -Artifact $resultPath -Evidence @("branch:$shortBranch", "commit:$Commit") -TargetAgentId knowledge_keeper -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & (Join-Path $PSScriptRoot 'Publish-AgentOutcome.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Summary $summary -ArtifactNames @('pipeline-result.json') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $remediationRequest = & (Join-Path $PSScriptRoot 'Request-PipelineRemediation.ps1') -TaskId $TaskId -PipelineResultPath $resultPath -ConfigPath $ConfigPath -CodexHome $CodexHome
+    if ([bool]$remediationRequest.Requested) {
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -AgentId pipeline_monitor -AgentStatus completed -Stage pipeline_remediation_routed -Message $summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
     [pscustomobject]@{ PipelineResult=$result; Remediation=$remediationRequest; ResultPath=$resultPath }
 }
 catch {
