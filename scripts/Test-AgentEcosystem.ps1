@@ -743,6 +743,7 @@ $knowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -
 $publishedLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$knowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLifecycleTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'Completed-PR knowledge-only routing did not permit final Knowledge Keeper publication after excluded delivery roles became validated no-op states.' }
 $publishedLifecycleTask.closure.status = 'completed'
+$publishedLifecycleTask.agentStatuses.requirements_analyst.status = 'completed'
 $publishedLifecycleTask.agentStatuses.developer.status = 'skipped'
 $publishedLifecycleTask.agentStatuses.reviewer.status = 'skipped'
 $publishedLifecycleTask.agentStatuses.knowledge_keeper.status = 'failed'
@@ -750,6 +751,8 @@ Write-Utf8NoBom -Path $lifecycleTask.TaskPath -Content (($publishedLifecycleTask
 $recoveredKnowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $lifecycleTaskId -AgentId knowledge_keeper -Summary 'Synthetic completed-PR Knowledge Keeper recovery republished.' -ConfigPath $pipelineTestConfigPath
 $recoveredLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$recoveredKnowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$recoveredLifecycleTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'A completed-PR recovery could not republish the validated Knowledge Keeper outcome after closure completed with excluded delivery roles.' }
+$recoveredResumePlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $lifecycleTaskId -PreserveArtifactIndex -ConfigPath $pipelineTestConfigPath
+if ([bool]$recoveredResumePlan.HasWork -or @($recoveredResumePlan.UnfinishedAgentIds).Count -ne 0 -or 'developer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'reviewer' -notin @($recoveredResumePlan.PreservedAgentIds)) { throw 'Completed-PR knowledge-only recovery treated intentionally skipped Developer or Reviewer roles as unfinished.' }
 Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized safely; completed PR routes Pipeline Monitor to Orchestrator, then a persisted decision dispatches and permits initial or recovered final Knowledge Keeper publication'
 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
