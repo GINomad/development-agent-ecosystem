@@ -186,13 +186,14 @@
     "modelRouting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "artifactName", "maxDecisionsPerTask", "maxEvidenceCharacters", "largeEvidenceCharacters", "tiers", "rolePolicies", "complexSignals", "criticalSignals"],
+      "required": ["enabled", "artifactName", "maxDecisionsPerTask", "maxEvidenceCharacters", "largeEvidenceCharacters", "capacityFallback", "tiers", "rolePolicies", "complexSignals", "criticalSignals"],
       "properties": {
         "enabled": { "const": true },
         "artifactName": { "const": "model-routing.json" },
         "maxDecisionsPerTask": { "type": "integer", "minimum": 5, "maximum": 200 },
         "maxEvidenceCharacters": { "type": "integer", "minimum": 2000, "maximum": 100000 },
         "largeEvidenceCharacters": { "type": "integer", "minimum": 1000, "maximum": 50000 },
+        "capacityFallback": { "type": "object", "additionalProperties": false, "required": ["enabled", "tier", "maxAttempts"], "properties": { "enabled": { "type": "boolean" }, "tier": { "enum": ["routine", "standard", "complex", "critical"] }, "maxAttempts": { "const": 1 } } },
         "tiers": {
           "type": "array",
           "minItems": 4,

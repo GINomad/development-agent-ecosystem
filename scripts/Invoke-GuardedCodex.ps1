@@ -24,6 +24,16 @@ function ConvertTo-WindowsArgument {
 function Get-FailureFingerprint {
     param([string] $Line)
     try { $event = $Line | ConvertFrom-Json } catch { return $null }
+    if ([string]$event.type -eq 'error' -and $event.PSObject.Properties['message']) {
+        $detail = [string]$event.message
+        if ($detail -match '(?i)selected model is at capacity') {
+            $canonical = 'model-capacity'
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+            return [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail; Kind='model-capacity' }
+        }
+        return $null
+    }
     if ([string]$event.type -ne 'item.completed' -or -not $event.PSObject.Properties['item']) { return $null }
     $item = $event.item
     if (-not $item.PSObject.Properties['status']) { return $null }
@@ -33,7 +43,7 @@ function Get-FailureFingerprint {
     $canonical = if ($detail -match 'CreateProcessWithLogonW failed:\s*1260') { 'windows-sandbox-create-process-1260' } elseif ($detail -match 'Cannot overwrite variable PID') { 'powershell-readonly-pid' } else { (($detail -replace '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', '<timestamp>') -replace '\s+', ' ').Trim() }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
-    [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail }
+    [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail; Kind='execution-failure' }
 }
 
 function Remove-TemporaryFileWithRetry {
@@ -162,6 +172,7 @@ $result = [ordered]@{
     identicalFailureCount = $identicalFailureCount
     failureSignature = if ($lastFailure) { $lastFailure.Signature } else { $null }
     failureDetail = if ($lastFailure) { $lastFailure.Detail } else { $null }
+    failureKind = if ($lastFailure) { $lastFailure.Kind } else { $null }
     maxRunMinutes = $MaxRunMinutes
     startedAtUtc = $startedAtUtc.ToString('o')
     completedAtUtc = [DateTime]::UtcNow.ToString('o')
