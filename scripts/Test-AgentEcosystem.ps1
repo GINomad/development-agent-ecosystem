@@ -736,7 +736,13 @@ $closureInput = @($orchestratorClosureBatch.comments) | Select-Object -First 1
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $lifecycleTaskId -AgentId orchestrator -AgentStatus completed -Stage orchestration_complete -Message 'Synthetic closure route completed.' -ConfigPath $pipelineTestConfigPath | Out-Null
 $orchestratorContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $lifecycleTaskId -CompletedAgentId orchestrator -PrepareOnly -ConfigPath $pipelineTestConfigPath
 if ([string]$orchestratorContinuation.Status -ne 'prepared' -or [string]$orchestratorContinuation.NextAgentId -ne 'knowledge_keeper') { throw 'Knowledge Keeper must start only after Orchestrator persists the final-publication route.' }
-Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized safely; completed PR routes Pipeline Monitor to Orchestrator, then a persisted decision dispatches final Knowledge Keeper publication'
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'knowledge-update.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; entries=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'context-pack.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; artifacts=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'task-summary.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; status='completed'; completedAtUtc=[DateTime]::UtcNow.ToString('o'); repositories=@('azure-planningspace-ps-excel-agent'); outcomes=@('Synthetic completed-PR closure published.'); decisions=@(); verification=@('Pipeline succeeded and PR completed.'); knowledgeUpdates=@(); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$knowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $lifecycleTaskId -AgentId knowledge_keeper -Summary 'Synthetic completed-PR closure published.' -ConfigPath $pipelineTestConfigPath
+$publishedLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$knowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLifecycleTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'Completed-PR knowledge-only routing did not permit final Knowledge Keeper publication after excluded delivery roles became validated no-op states.' }
+Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized safely; completed PR routes Pipeline Monitor to Orchestrator, then a persisted decision dispatches and permits final Knowledge Keeper publication'
 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
 $deliveryTestRoot = Join-Path $OutputRoot "reviewed-branch-delivery-$deliveryFixtureId"
