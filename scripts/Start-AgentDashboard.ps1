@@ -134,7 +134,9 @@ function Test-TaskWorkflowActive {
     }
     if ($Task.PSObject.Properties['workflowProcessId']) {
         $workflowProcessId = [int]$Task.workflowProcessId
-        if ($workflowProcessId -gt 0 -and $workflowProcessId -ne $PID -and (Get-Process -Id $workflowProcessId -ErrorAction SilentlyContinue)) { return $true }
+        $workflowProcess = if ($workflowProcessId -gt 0 -and $workflowProcessId -ne $PID) { Get-CimInstance Win32_Process -Filter ("ProcessId=$workflowProcessId") -ErrorAction SilentlyContinue } else { $null }
+        $workflowCommandLine = if ($workflowProcess) { [string]$workflowProcess.CommandLine } else { '' }
+        if ($workflowCommandLine -match 'Start-DevelopmentWorkflow\.ps1' -and $workflowCommandLine -match [regex]::Escape([string]$Task.taskId)) { return $true }
     }
     return $false
 }
