@@ -31,7 +31,7 @@ if ($TargetAgentId) {
 else {
     foreach ($agentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
         $status = [string]$statusMap[$agentId]
-        if ($status -eq 'completed') { continue }
+        if ($status -in @('completed','skipped')) { continue }
         $unfinished.Add($agentId)
     }
     $healthStatus = [string]$statusMap['health_check']
