@@ -6,6 +6,7 @@ param(
     [string]$Commit,
     [int[]]$DefinitionIds = @(),
     [int[]]$AutoQueueDefinitionIds = @(),
+    [int[]]$SkipOnMissingYamlDefinitionIds = @(),
     [datetime]$QueuedAfter = [datetime]::MinValue,
     [int]$DiscoveryTimeoutMinutes = 3,
     [int]$RunTimeoutMinutes = 60,
@@ -285,6 +286,13 @@ function Write-PipelineResult {
     }
 }
 
+function Test-MissingYamlSkip {
+    param([int]$DefinitionId, [string[]]$QueueOutput)
+    if ($DefinitionId -notin $SkipOnMissingYamlDefinitionIds) { return $false }
+    $queueText = @($QueueOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+    return [regex]::IsMatch($queueText, '(?im)File\s+/[^\s''"]+\.ya?ml\s+not\s+found\s+in\s+repository')
+}
+
 if ([string]::IsNullOrWhiteSpace($Branch)) {
     $Branch = (& git branch --show-current).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Branch)) { throw 'Could not resolve the current Git branch.' }
@@ -299,6 +307,7 @@ $branchRef = if ($Branch.StartsWith('refs/heads/')) { $Branch } else { "refs/hea
 $Branch = $branchRef -replace '^refs/heads/', ''
 $DefinitionIds = @(ConvertTo-ObjectArray -Value $DefinitionIds | ForEach-Object { [int]$_ })
 $AutoQueueDefinitionIds = @(ConvertTo-ObjectArray -Value $AutoQueueDefinitionIds | ForEach-Object { [int]$_ })
+$SkipOnMissingYamlDefinitionIds = @(ConvertTo-ObjectArray -Value $SkipOnMissingYamlDefinitionIds | ForEach-Object { [int]$_ })
 $queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) { [DateTime]::UtcNow.AddMinutes(-5) } else { $QueuedAfter.ToUniversalTime() }
 Write-Host "Monitoring Azure pipelines for $branchRef at $Commit"
 Write-Host "Queued after: $($queuedAfterUtc.ToString('o'))"
@@ -307,6 +316,7 @@ Send-MonitorProgress -Stage pipeline_discovery -Summary "Discovering exact-SHA p
 $expectedDefinitionIds = @($DefinitionIds + $AutoQueueDefinitionIds | Sort-Object -Unique)
 $passiveDefinitionIds = @($DefinitionIds | Where-Object { $_ -notin $AutoQueueDefinitionIds } | Sort-Object -Unique)
 $queuedDefinitions = [Collections.Generic.List[int]]::new()
+$skippedDefinitionIds = [Collections.Generic.List[int]]::new()
 $tracked = @{}
 $completed = @{}
 $lastState = @{}
@@ -331,6 +341,13 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
         Send-MonitorProgress -Stage pipeline_queueing -Summary "Queueing approved definition $definitionId." -Details "Ordered position $($sequenceIndex + 1) of $($AutoQueueDefinitionIds.Count)." -Force
         $queueAttempt = Invoke-AzJsonResult -Arguments @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
         if (-not $queueAttempt.succeeded) {
+            if (Test-MissingYamlSkip -DefinitionId $definitionId -QueueOutput @($queueAttempt.output)) {
+                $skippedDefinitionIds.Add($definitionId)
+                $message = "Definition $definitionId was skipped because its YAML is not present at the exact commit."
+                Write-Warning $message
+                Send-MonitorProgress -Stage pipeline_queueing -Summary $message -Details 'This fallback applies only to explicitly configured definitions and the exact Azure missing-YAML response.' -Force
+                continue
+            }
             Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Diagnosing queue rejection for definition $definitionId." -Details 'Running Azure dry-run preview and read-only resource checks; no second run will be queued.' -Force
             try {
                 $queueFailures = @(& $QueueDiagnosticsScript -Organization $Organization -Project $Project -DefinitionId $definitionId -Branch $Branch -Commit $Commit -QueueError (@($queueAttempt.output) -join [Environment]::NewLine) -AzCli $AzCli)
@@ -602,6 +619,7 @@ if (-not $hasNonSuccess) {
     $classification = [pscustomobject]@{ category='none'; developerEligible=$false; matchedSignals=@() }
     $overallResult = 'succeeded'
     $summary = "All exact-SHA pipeline runs succeeded for $Branch@$Commit."
+    if ($skippedDefinitionIds.Count -gt 0) { $summary += " Skipped optional missing-YAML definition(s): $($skippedDefinitionIds -join ', ')." }
 }
 else {
     $category = if (@($allCategories) -contains 'test') { 'test' } elseif (@($allCategories) -contains 'code') { 'code' } elseif (@($allCategories) -contains 'infrastructure') { 'infrastructure' } else { 'unknown' }

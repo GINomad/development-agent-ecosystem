@@ -257,7 +257,8 @@
       {
         "repositoryId": "azure-planningspace-ps-excel-agent",
         "definitionIds": [],
-        "autoQueueDefinitionIds": [814, 892]
+        "autoQueueDefinitionIds": [814, 892],
+        "skipOnMissingYamlDefinitionIds": [892]
       },
       {
         "repositoryId": "azure-planningspace-ps-bicep",

@@ -124,7 +124,7 @@ if ($scenario -eq 'pre-job-validation') {
     throw "Unexpected pre-job-validation mock Azure CLI arguments: $($args -join ' ')"
 }
 
-if ($scenario -eq 'ordered-success') {
+if ($scenario -in @('ordered-success','ordered-optional-missing-yaml')) {
     $statePath = [string]$env:ECOSYSTEM_MOCK_PIPELINE_STATE
     if ([string]::IsNullOrWhiteSpace($statePath)) { throw 'Ordered mock scenario requires ECOSYSTEM_MOCK_PIPELINE_STATE.' }
     if ($args[0] -eq 'pipelines' -and $args[1] -eq 'runs' -and $args[2] -eq 'list') {
@@ -141,6 +141,10 @@ if ($scenario -eq 'ordered-success') {
         $definitionId = [int]$args[$definitionIndex + 1]
         $actions = if (Test-Path -LiteralPath $statePath) { @(Get-Content -LiteralPath $statePath) } else { @() }
         if ($definitionId -eq 892 -and ($actions -join ',') -ne 'queued:814,succeeded:814') { throw 'Definition 892 was queued before definition 814 succeeded.' }
+        if ($scenario -eq 'ordered-optional-missing-yaml' -and $definitionId -eq 892) {
+            Add-Content -LiteralPath $statePath -Value 'missing-yaml:892' -Encoding UTF8
+            throw 'ERROR: File /ps-excel-agent.yml not found in repository azure-planningspace-ps-excel-agent branch refs/heads/feature/synthetic version 0123456789abcdef0123456789abcdef01234567.'
+        }
         Add-Content -LiteralPath $statePath -Value "queued:$definitionId" -Encoding UTF8
         [ordered]@{ id=if ($definitionId -eq 814) { 9814 } else { 9892 }; definition=[ordered]@{ id=$definitionId; name="Synthetic build $definitionId" } } | ConvertTo-Json -Depth 6 -Compress
         exit 0

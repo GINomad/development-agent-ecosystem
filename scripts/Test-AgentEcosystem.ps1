@@ -542,7 +542,7 @@ $pipelineOwnershipContract = @(
 ) -join ','
 if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,orchestrator,health_check,knowledge_keeper') { throw 'Pipeline ownership must explicitly preserve monitoring, remediation, review, exception, ecosystem recovery, and completion responsibilities.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
-if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; deployment 891 is forbidden.' }
+if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or (@($excelPipeline.skipOnMissingYamlDefinitionIds) -join ',') -ne '892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; only 892 may be skipped for a missing YAML; deployment 891 is forbidden.' }
 $delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
 if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or @($delfiPipeline.autoQueueDefinitionIds).Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count); pipelineOwners=$pipelineOwnershipContract"
@@ -551,8 +551,8 @@ $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
 New-Item -ItemType Directory -Path $pipelineTestRoot -Force | Out-Null
 $pipelineRecoveryRoot = Join-Path $pipelineTestRoot ('recovery-' + [guid]::NewGuid().ToString('N'))
 $pipelineRecovery = & (Join-Path $root 'tests\Test-PipelineWatcherRecovery.ps1') -ConfigPath $ConfigPath -OutputRoot $pipelineRecoveryRoot -CodexHome $CodexHome
-if ([string]$pipelineRecovery.collectionShapes -ne 'passed' -or [string]$pipelineRecovery.pullRequestStringCorrelation -ne 'passed' -or [string]$pipelineRecovery.pullRequestObjectCorrelation -ne 'passed' -or [int]$pipelineRecovery.passiveDefinitionId -ne 17 -or [int]$pipelineRecovery.queuedDefinitionCount -ne 0 -or [string]$pipelineRecovery.productionWrapper -ne 'passed' -or [string]$pipelineRecovery.originCommitGate -ne 'passed') { throw 'Bounded pipeline watcher recovery regression did not validate all required contracts.' }
-Add-Check -Name 'pipeline-watcher-recovery' -Detail 'Zero, singleton, and multiple Azure shapes; exact direct/PR source commit correlation; passive definition 17; no queue; production wrapper and origin gate'
+if ([string]$pipelineRecovery.collectionShapes -ne 'passed' -or [string]$pipelineRecovery.pullRequestStringCorrelation -ne 'passed' -or [string]$pipelineRecovery.pullRequestObjectCorrelation -ne 'passed' -or [int]$pipelineRecovery.passiveDefinitionId -ne 17 -or [int]$pipelineRecovery.queuedDefinitionCount -ne 0 -or [string]$pipelineRecovery.productionWrapper -ne 'passed' -or [string]$pipelineRecovery.postPushRemediationTerminal -ne 'passed' -or [string]$pipelineRecovery.originCommitGate -ne 'passed') { throw 'Bounded pipeline watcher recovery regression did not validate all required contracts.' }
+Add-Check -Name 'pipeline-watcher-recovery' -Detail 'Zero, singleton, and multiple Azure shapes; exact direct/PR source commit correlation; passive definition 17; no queue; production wrapper, terminal remediation handoff, and origin gate'
 $pipelineResultPath = Join-Path $pipelineTestRoot 'pipeline-result.json'
 $pipelineTestTaskId = 'pipeline-test-' + [guid]::NewGuid().ToString('N')
 $pipelineProgressStages = [Collections.Generic.List[string]]::new()
@@ -586,6 +586,22 @@ $selectedRunIds = @($sequenceResult.runs.id)
 if ([string]$sequenceResult.overallResult -ne 'succeeded' -or $queuedSequence -ne '814,892' -or $selectedSequence -ne '814,892' -or $selectedRunIds -contains 9800) { throw 'Ordered pipeline monitoring did not select and queue exact-SHA definitions 814 then 892.' }
 if (($sequenceActions -join ',') -ne 'queued:814,succeeded:814,queued:892,succeeded:892') { throw 'Definition 892 was queued before exact-SHA definition 814 succeeded.' }
 Add-Check -Name 'ordered-pipeline-sequence' -Detail 'Earlier 892 is ignored; 814 exact-SHA success gates queueing and acceptance of a later 892 run'
+$optionalYamlStatePath = Join-Path $pipelineTestRoot 'optional-missing-yaml-state.txt'
+$optionalYamlResultPath = Join-Path $pipelineTestRoot 'optional-missing-yaml-result.json'
+Remove-Item -LiteralPath $optionalYamlStatePath -Force -ErrorAction SilentlyContinue
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'ordered-optional-missing-yaml'
+$env:ECOSYSTEM_MOCK_PIPELINE_STATE = $optionalYamlStatePath
+$env:ECOSYSTEM_MOCK_COMMIT = '0123456789abcdef0123456789abcdef01234567'
+try {
+    $optionalYamlResult = & (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pipeline-monitor\scripts\watch_pipeline_runs.ps1') -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $env:ECOSYSTEM_MOCK_COMMIT -AutoQueueDefinitionIds 814,892 -SkipOnMissingYamlDefinitionIds 892 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 1 -RunTimeoutMinutes 1 -AzCli (Join-Path $root 'tests\fixtures\Mock-AzurePipelineCli.ps1') -TaskId $pipelineTestTaskId -RepositoryId 'azure-planningspace-ps-excel-agent' -ResultPath $optionalYamlResultPath -ClassifierScript (Join-Path $root 'scripts\Classify-PipelineFailure.ps1') -PassThru
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_STATE -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+if ([string]$optionalYamlResult.overallResult -ne 'succeeded' -or (@($optionalYamlResult.queuedDefinitionIds) -join ',') -ne '814' -or (@($optionalYamlResult.runs.definitionId) -join ',') -ne '814' -or [string]$optionalYamlResult.summary -notmatch 'Skipped optional missing-YAML definition\(s\): 892' -or (@(Get-Content -LiteralPath $optionalYamlStatePath) -join ',') -ne 'queued:814,succeeded:814,missing-yaml:892') { throw 'The optional missing-YAML fallback did not preserve the required 814 success or report the skipped 892 definition.' }
+Add-Check -Name 'optional-missing-yaml-pipeline-fallback' -Detail 'Definition 892 is skipped only for Azure missing-YAML validation; required 814 still succeeds'
 $queueDiagnosticStatePath = Join-Path $pipelineTestRoot 'queue-diagnostic-state.txt'
 $queueDiagnosticResultPath = Join-Path $pipelineTestRoot 'queue-diagnostic-result.json'
 $queueDiagnosticStages = [Collections.Generic.List[string]]::new()

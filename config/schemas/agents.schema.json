@@ -400,6 +400,11 @@
                 "uniqueItems": true,
                 "description": "Approved build definitions in mandatory fail-closed execution order; each later definition is queued only after the preceding exact-SHA run succeeds.",
                 "items": { "type": "integer", "minimum": 1 }
+              },
+              "skipOnMissingYamlDefinitionIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "integer", "minimum": 1 }
               }
             }
           }

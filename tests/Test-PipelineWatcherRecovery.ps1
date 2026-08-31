@@ -99,6 +99,31 @@ if ([string]$wrapperResult.PipelineResult.overallResult -ne 'succeeded' -or @($w
     throw 'The production post-push wrapper did not consume exactly one passive PR-validation result without queueing.'
 }
 
+$wrapperPipeline.definitionIds = @(892)
+Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$remediationTaskId = 'pipeline-wrapper-remediation-' + [guid]::NewGuid().ToString('N')
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $remediationTaskId -TaskSelector 'synthetic post-push remediation' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+$env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
+try {
+    $remediationResult = & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $remediationTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -PushWasSuccessful -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$remediationTask = Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$remediationTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$remediationTerminal = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $remediationTaskId -AgentId pipeline_monitor -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+if (
+    [string]$remediationResult.PipelineResult.overallResult -ne 'non-success' -or
+    -not [bool]$remediationResult.Remediation.Requested -or
+    [string]$remediationTask.agentStatuses.pipeline_monitor.status -ne 'completed' -or
+    [string]$remediationTask.currentStage -ne 'pipeline_remediation_routed' -or
+    -not [bool]$remediationTerminal.Terminal
+) {
+    throw 'A post-push Developer remediation request left Pipeline Monitor non-terminal before host continuation.'
+}
+$wrapperPipeline.definitionIds = @(17)
+Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+
 $refreshTaskId = 'pipeline-refresh-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $refreshTaskId -TaskSelector 'synthetic successful pipeline refresh' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
@@ -144,6 +169,7 @@ if (-not $originGateRejected) { throw 'The production post-push wrapper did not 
     passiveDefinitionId = 17
     queuedDefinitionCount = 0
     productionWrapper = 'passed'
+    postPushRemediationTerminal = 'passed'
     refreshTerminalOutcome = 'passed'
     originCommitGate = 'passed'
 }
