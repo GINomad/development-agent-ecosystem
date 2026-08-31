@@ -22,7 +22,14 @@ $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Jso
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
-    if (-not $manualClosure) {
+    $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -eq 'knowledge-update-pending'
+    if ($completedPrClosure) {
+        $pullRequestStatusPath = Join-Path $taskRoot 'pull-request-status.json'
+        if (-not (Test-Path -LiteralPath $pullRequestStatusPath -PathType Leaf)) { throw 'Knowledge Keeper cannot publish a completed-PR closure without persisted pull-request-status.json evidence.' }
+        $pullRequestStatus = Get-Content -LiteralPath $pullRequestStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$pullRequestStatus.status -ne 'completed') { throw "Knowledge Keeper cannot publish a completed-PR closure while the persisted pull request status is '$([string]$pullRequestStatus.status)'." }
+    }
+    if (-not $manualClosure -and -not $completedPrClosure) {
         foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
             $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
             if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
