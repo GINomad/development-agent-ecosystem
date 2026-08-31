@@ -22,7 +22,7 @@ $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Jso
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
-    $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -eq 'knowledge-update-pending'
+    $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -in @('knowledge-update-pending','completed')
     if ($completedPrClosure) {
         $pullRequestStatusPath = Join-Path $taskRoot 'pull-request-status.json'
         if (-not (Test-Path -LiteralPath $pullRequestStatusPath -PathType Leaf)) { throw 'Knowledge Keeper cannot publish a completed-PR closure without persisted pull-request-status.json evidence.' }
