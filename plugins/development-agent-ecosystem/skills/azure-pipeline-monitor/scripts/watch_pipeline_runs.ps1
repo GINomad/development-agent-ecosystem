@@ -97,11 +97,21 @@ function Invoke-AzJson {
 function ConvertTo-ObjectArray {
     param([AllowNull()][object]$Value)
     if ($null -eq $Value) { return }
-    if ($Value -is [array]) {
-        foreach ($item in $Value) { Write-Output -NoEnumerate $item }
+    if ($Value -is [Collections.IList]) {
+        foreach ($item in $Value) { Write-Output $item }
         return
     }
-    Write-Output -NoEnumerate $Value
+    Write-Output $Value
+}
+
+function ConvertTo-UtcTimestamp {
+    param([Parameter(Mandatory)][object]$Value)
+    if ($Value -is [datetime]) { return ([datetime]$Value).ToUniversalTime() }
+    return [datetime]::Parse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    ).ToUniversalTime()
 }
 
 function Get-PullRequestSourceCommit {
@@ -332,8 +342,8 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
         $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')))
         $selectedRun = @($runs | Where-Object {
             $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and [int]$_.definition.id -eq $definitionId -and
-            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc
-        } | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+            (ConvertTo-UtcTimestamp -Value $_.queueTime) -ge $queuedAfterUtc
+        } | Sort-Object { ConvertTo-UtcTimestamp -Value $_.queueTime } -Descending | Select-Object -First 1)
         if ($selectedRun.Count -gt 0) { $selectedRun = $selectedRun[0] } else { $selectedRun = $null }
     }
     if ($null -eq $selectedRun) {
@@ -451,12 +461,12 @@ if ($discoverPassiveRuns) {
         $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson $listArguments))
         $matchingRuns = @($runs | Where-Object {
             (Test-RunMatchesCommit -Run $_ -ExpectedCommit $Commit) -and
-            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc -and
+            (ConvertTo-UtcTimestamp -Value $_.queueTime) -ge $queuedAfterUtc -and
             ($passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds)
         })
         if ($LatestRunPerDefinition) {
             $matchingRuns = @($matchingRuns | Group-Object { [int]$_.definition.id } | ForEach-Object {
-                @($_.Group | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+                @($_.Group | Sort-Object { ConvertTo-UtcTimestamp -Value $_.queueTime } -Descending | Select-Object -First 1)
             })
         }
         foreach ($run in $matchingRuns) {
