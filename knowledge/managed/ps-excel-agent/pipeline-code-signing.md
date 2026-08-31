@@ -64,3 +64,22 @@ The source-tree placeholder supports local development only. It must never remai
 - Microsoft: https://learn.microsoft.com/en-us/microsoft-365-apps/security/trusted-publisher
 
 This verification applies only to the cited exact commit and build. Future releases must repeat the hash binding, signing, installer tests, hosted pipeline gates, and downloaded-artifact validation before they inherit verified status.
+
+## Signed Main.xlsm delivery contract
+
+Status: verified
+
+Observed by: `knowledge_keeper`
+
+Observed at: `2026-08-31T16:08:00Z`
+
+Source revision: `ps-excel-agent` commit `096f88ef15fe19b05fca02ef8d53c776ea73e6fb`, completed PR `23698`, successful Azure definition `814` build `207015`
+
+The active delivery contract uses the single canonical `Test Files/Main.xlsm` workbook instead of an XLAM package. The pipeline verifies the attached workbook's SHA-256 before staging, signs only its staged XLSM copy, verifies VBA-signature and signer evidence, then publishes the signed workbook as the sole deliverable. The prior Internet-delivered XLAM installation rule above remains historical evidence for commit `a2055ff722ceb9876c1fb2a44f3e621b554af9c6`; it is superseded for current delivery by this contract.
+
+### Evidence
+
+- `C:/Repos/ps-excel-agent/azure-pipelines.yml` at `096f88ef15fe19b05fca02ef8d53c776ea73e6fb`, workbook staging, signing, verification, and publication sections.
+- Task `task-1867098` `pipeline-result.json`: Azure definition `814` build `207015` succeeded for exact source version `096f88ef15fe19b05fca02ef8d53c776ea73e6fb`.
+- Task `task-1867098` `pull-request-status.json`: PR `23698` completed for `feature/ok/marcos-se4paration-rollback`.
+- Task `task-1867098` `review-result.json`: clean review found no active findings; R3 and R5 delivery evidence is verified by the exact-SHA pipeline result.
