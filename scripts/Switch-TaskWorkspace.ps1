@@ -1,209 +1,137 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $RunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedLeaseId,
     [switch] $PrepareOnly,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
-$policy = $config.workflow.workspaceScheduling
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $taskRoot = Join-Path $stateRoot "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$targetRepositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() }
-if (-not @($targetRepositoryIds).Count) { throw "Task '$TaskId' has no repository workspace." }
-
-$coordinatorPath = Resolve-EcosystemPath -Value ([string]$policy.coordinatorStatePath) -Config $config -CodexHome $CodexHome
-$lockPath = "$coordinatorPath.lock"
-$lockStream = $null
-$deadline = [DateTime]::UtcNow.AddSeconds([int]$policy.lockTimeoutSeconds)
-while (-not $lockStream -and [DateTime]::UtcNow -lt $deadline) {
-    try {
-        New-Item -ItemType Directory -Path (Split-Path -Parent $lockPath) -Force | Out-Null
-        $lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+$repositoryIds = @(if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds | ForEach-Object { [string]$_ }) } elseif ($task.repositoryId) { @([string]$task.repositoryId) } else { @() })
+if (-not $repositoryIds.Count) { throw "Task '$TaskId' has no repository workspace." }
+if (-not $RunId) { $RunId = [guid]::NewGuid().ToString('N') }
+$workspaceRoot = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.workspaceRoot) -Config $config -CodexHome $CodexHome
+$plannedWorkspaces = @($repositoryIds | ForEach-Object {
+    $requestedRepositoryId = [string]$_
+    $repository = @($config.repositories | Where-Object { [string]$_.id -eq $requestedRepositoryId -and [bool]$_.enabled }) | Select-Object -First 1
+    if (-not $repository) { throw "Enabled repository '$requestedRepositoryId' was not found." }
+    $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $requestedRepositoryId -RunId $RunId
+    [pscustomobject][ordered]@{ RepositoryId=$requestedRepositoryId; Path=[string]$layout.ClonePath; Branch=[string]$layout.Branch; BaseSha=$null; Lifecycle='planned'; CanonicalOrigin=[string]$repository.url; RunId=$RunId; LeaseId=$null; ManifestPath=(Join-Path $taskRoot "workspaces\$requestedRepositoryId.json") }
+})
+$coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+$controllerProcess = Get-Process -Id $PID -ErrorAction Stop
+$controllerStartedAtUtc = $controllerProcess.StartTime.ToUniversalTime().ToString('o')
+if (-not $PrepareOnly) {
+    & (Join-Path $PSScriptRoot 'Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+function Get-QueuePosition {
+    $items = [Collections.Generic.List[object]]::new()
+    $leasedTaskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
+        try {
+            $queueCoordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($lease in @($queueCoordinator.leases)) { $null = $leasedTaskIds.Add([string]$lease.taskId) }
+        }
+        catch { }
     }
-    catch [IO.IOException] { Start-Sleep -Milliseconds 100 }
-}
-if (-not $lockStream) { throw 'Timed out waiting for the workspace coordinator lock.' }
-
-function Invoke-WorkspaceGit {
-    param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments, [switch] $AllowFailure)
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $output = @(& git -C $Workspace @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
+    foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter task.json -File -Recurse -ErrorAction SilentlyContinue)) {
+        try { $candidate = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+        if (([string]$candidate.taskId -eq $TaskId -or [string]$candidate.status -eq 'queued') -and -not $leasedTaskIds.Contains([string]$candidate.taskId)) { $items.Add($candidate) }
     }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
+    $ordered = @($items | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}})
+    for ($index = 0; $index -lt $ordered.Count; $index++) {
+        if ([string]$ordered[$index].taskId -eq $TaskId) { return ($index + 1) }
     }
-    if ($exitCode -ne 0 -and -not $AllowFailure) { throw "git $($Arguments -join ' ') failed in '$Workspace': $($output -join [Environment]::NewLine)" }
-    [pscustomobject]@{ ExitCode=$exitCode; Output=@($output | ForEach-Object { [string]$_ }) }
+    return $null
 }
-
-function Get-RepositoryConfig {
-    param([string] $RepositoryId)
-    $repository = @($config.repositories | Where-Object { [string]$_.id -eq $RepositoryId -and [bool]$_.enabled }) | Select-Object -First 1
-    if (-not $repository) { throw "Enabled repository '$RepositoryId' was not found." }
-    $workspace = [IO.Path]::GetFullPath([string]$repository.localWorkspace)
-    if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Workspace is not a Git repository: $workspace" }
-    [pscustomobject]@{ Id=$RepositoryId; Workspace=$workspace }
+function Set-TaskQueued {
+    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        $current = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $current.status = 'queued'; $current.currentStage = 'workspace_queued'; $current.lastMessage = 'Task queued awaiting an independent workspace lease.'; $current.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+        Write-Utf8NoBomAtomic -Path $taskPath -Content (($current | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+    } | Out-Null
 }
-
-function Read-Session {
-    param([string] $SessionTaskId)
-    $path = Join-Path $stateRoot "tasks\$SessionTaskId\workspace-session.json"
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return [pscustomobject][ordered]@{ taskId=$SessionTaskId; repositories=@(); updatedAtUtc=$null } }
-    Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+function Set-TaskWorkspaceActive {
+    param([Parameter(Mandatory)][string] $LeaseId)
+    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        $current = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $now = [DateTime]::UtcNow.ToString('o')
+        $current | Add-Member -NotePropertyName status -NotePropertyValue 'running' -Force
+        $current | Add-Member -NotePropertyName currentStage -NotePropertyValue 'workspace_active' -Force
+        $current | Add-Member -NotePropertyName lastMessage -NotePropertyValue 'Independent task workspace lease is active.' -Force
+        $current | Add-Member -NotePropertyName executionRunId -NotePropertyValue $RunId -Force
+        $current | Add-Member -NotePropertyName workspaceLeaseId -NotePropertyValue $LeaseId -Force
+        $current | Add-Member -NotePropertyName workflowHeartbeatAtUtc -NotePropertyValue $now -Force
+        $current | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
+        Write-Utf8NoBomAtomic -Path $taskPath -Content (($current | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+    } | Out-Null
 }
-
-function Write-Session {
-    param($Session)
-    $path = Join-Path $stateRoot "tasks\$([string]$Session.taskId)\workspace-session.json"
-    $Session | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
-    Write-Utf8NoBom -Path $path -Content (($Session | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
-    $path
+$admission = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+    $coordinator = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) { Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject][ordered]@{ schemaVersion='2.0.0'; leases=@(); updatedAtUtc=$null } }
+    if (-not $coordinator.PSObject.Properties['leases']) { $coordinator | Add-Member -NotePropertyName leases -NotePropertyValue @() -Force }
+    $existing = $coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId } | Select-Object -First 1
+    $capacity = [int]$config.workflow.workspaceScheduling.maxActiveTasks
+    if ($null -ne $existing) {
+        if (-not $ExpectedLeaseId) { throw "Task '$TaskId' already has an active controller." }
+        if ([string]$existing.leaseId -ne $ExpectedLeaseId -or [string]$existing.runId -ne $RunId) { throw "Task '$TaskId' active lease does not match the requested run." }
+        return [pscustomobject]@{ Status='already-active'; Lease=$existing; Capacity=$capacity; ActiveTaskCount=@($coordinator.leases).Count }
+    }
+    if ($ExpectedLeaseId) { throw "Expected lease '$ExpectedLeaseId' for task '$TaskId' is no longer active." }
+    $activeCount = @($coordinator.leases).Count
+    $leasedTaskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($lease in @($coordinator.leases)) { $null = $leasedTaskIds.Add([string]$lease.taskId) }
+    $waitingTasks = [Collections.Generic.List[object]]::new()
+    foreach ($taskFile in @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter task.json -File -Recurse -ErrorAction SilentlyContinue)) {
+        try { $waitingTask = Get-Content -LiteralPath $taskFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+        if ([string]$waitingTask.status -eq 'queued' -and -not $leasedTaskIds.Contains([string]$waitingTask.taskId)) { $waitingTasks.Add($waitingTask) }
+    }
+    $firstWaitingTask = @($waitingTasks | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}} | Select-Object -First 1)
+    if ($firstWaitingTask.Count -and [string]$firstWaitingTask[0].taskId -ne $TaskId) { return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
+    if ($activeCount -ge $capacity) { return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
+    $leaseId = [guid]::NewGuid().ToString('N')
+    $lease = [pscustomobject][ordered]@{ taskId=$TaskId; runId=$RunId; leaseId=$leaseId; lifecycle='provisioning'; acquiredAtUtc=[DateTime]::UtcNow.ToString('o'); heartbeatAtUtc=[DateTime]::UtcNow.ToString('o'); controllerProcessId=$PID; controllerStartedAtUtc=$controllerStartedAtUtc; repositories=@($repositoryIds) }
+    $coordinator.leases = @($coordinator.leases) + @($lease); $coordinator.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    if (-not $PrepareOnly) { Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine) }
+    return [pscustomobject]@{ Status=if($PrepareOnly){'would-admit'}else{'admitted'}; Lease=$lease; Capacity=$capacity; ActiveTaskCount=($activeCount+1) }
 }
-
+if ($admission.Status -eq 'queue') {
+    $queuePosition = Get-QueuePosition
+    if (-not $PrepareOnly) { Set-TaskQueued }
+    return [pscustomobject]@{ Status=if($PrepareOnly){'would-queue'}else{'queued'}; TaskId=$TaskId; RunId=$RunId; LeaseId=$null; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$queuePosition; Workspaces=$plannedWorkspaces }
+}
+if ($admission.Status -eq 'already-active') {
+    $workspaces = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    return [pscustomobject]@{ Status='already-active'; TaskId=$TaskId; RunId=[string]$admission.Lease.runId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=@($workspaces) }
+}
+if ($PrepareOnly) { return [pscustomobject]@{ Status='would-admit'; TaskId=$TaskId; RunId=$RunId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=$plannedWorkspaces } }
 try {
-    $coordinator = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
-        Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    } else {
-        [pscustomobject][ordered]@{ schemaVersion='1.0.0'; activeTaskId=$null; switchedAtUtc=$null }
+    $workspaces = @(& (Join-Path $PSScriptRoot 'Provision-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryIds $repositoryIds -RunId $RunId -LeaseId ([string]$admission.Lease.leaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome)
+    Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $lease = $coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.leaseId -eq [string]$admission.Lease.leaseId } | Select-Object -First 1
+        if ($null -eq $lease) { throw "Workspace lease for '$TaskId' was released during provisioning." }
+        $lease.lifecycle = 'active'; $lease.heartbeatAtUtc = [DateTime]::UtcNow.ToString('o'); $coordinator.updatedAtUtc = $lease.heartbeatAtUtc
+        Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+    } | Out-Null
+    foreach ($workspace in $workspaces) {
+        $manifest = Get-Content -LiteralPath $workspace.ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $manifest.lifecycle = 'active'; $manifest.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+        Write-Utf8NoBomAtomic -Path $workspace.ManifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+        $workspace.Lifecycle = 'active'
     }
-    $activeTaskId = if ($coordinator.PSObject.Properties['activeTaskId']) { [string]$coordinator.activeTaskId } else { '' }
-    if ($activeTaskId -eq $TaskId) {
-        $sameTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $sameStage = if ($sameTask.PSObject.Properties['currentStage']) { [string]$sameTask.currentStage } else { '' }
-        if ($sameStage -eq 'workspace_restore_conflict') {
-            $sameSession = Read-Session -SessionTaskId $TaskId
-            $unmerged = [Collections.Generic.List[string]]::new()
-            $workingChanges = [Collections.Generic.List[string]]::new()
-            foreach ($repositoryId in $targetRepositoryIds) {
-                $repository = Get-RepositoryConfig -RepositoryId ([string]$repositoryId)
-                foreach ($path in @((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('diff','--name-only','--diff-filter=U')).Output | Where-Object { $_ })) { $unmerged.Add("$($repositoryId):$path") }
-                foreach ($entry in @((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('status','--porcelain=v1')).Output | Where-Object { $_ })) { $workingChanges.Add("$($repositoryId):$entry") }
-            }
-            if ($unmerged.Count -or -not $workingChanges.Count) {
-                return [pscustomobject]@{ Status='restore-conflict'; TaskId=$TaskId; PreviousTaskId=$TaskId; CoordinatorPath=$coordinatorPath; UnmergedPaths=@($unmerged); Message='Resolve and stage the restored working-tree changes before resuming. The task-specific stash remains preserved.' }
-            }
-            foreach ($saved in @($sameSession.repositories)) {
-                $stashCommit = if ($saved.PSObject.Properties['stashCommit']) { [string]$saved.stashCommit } else { '' }
-                if (-not $stashCommit) { continue }
-                $stashList = @((Invoke-WorkspaceGit -Workspace ([string]$saved.workspace) -Arguments @('stash','list','--format=%H %gd')).Output)
-                $stashRef = @($stashList | ForEach-Object { if ($_ -match ('^' + [regex]::Escape($stashCommit) + '\s+(stash@\{\d+\})$')) { $Matches[1] } } | Where-Object { $_ }) | Select-Object -First 1
-                if ($stashRef) { $null = Invoke-WorkspaceGit -Workspace ([string]$saved.workspace) -Arguments @('stash','drop',[string]$stashRef) }
-                $saved.stashCommit = $null
-                $saved.stashMessage = $null
-                $saved.stashRestored = $true
-            }
-            $sameSessionPath = Write-Session -Session $sameSession
-            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage workspace_restore_resolved -Message 'Manual stash conflict resolution was detected; workspace lease is ready to resume.' -Actor orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-            & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type workflow-status -Summary 'Task-specific stash was dropped after verified manual conflict resolution.' -Artifact $sameSessionPath -Evidence @($workingChanges) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-        }
-        return [pscustomobject]@{ Status='already-active'; TaskId=$TaskId; PreviousTaskId=$TaskId; CoordinatorPath=$coordinatorPath }
-    }
-
-    if ($activeTaskId) {
-        $activeTaskPath = Join-Path $stateRoot "tasks\$activeTaskId\task.json"
-        if (Test-Path -LiteralPath $activeTaskPath -PathType Leaf) {
-            $activeTask = Get-Content -LiteralPath $activeTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $activeStage = if ($activeTask.PSObject.Properties['currentStage']) { [string]$activeTask.currentStage } else { '' }
-            if ([string]$activeTask.status -eq 'running' -or $activeStage -eq 'workspace_restore_conflict') {
-                if ($PrepareOnly) { return [pscustomobject]@{ Status='would-queue'; TaskId=$TaskId; PreviousTaskId=$activeTaskId; CoordinatorPath=$coordinatorPath } }
-                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status queued -Stage workspace_queued -Message "Task queued while '$activeTaskId' owns the workspace lease." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type workflow-status -Summary "Workspace queue: waiting for active task '$activeTaskId'." -Artifact $coordinatorPath -Evidence @($activeTaskPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                return [pscustomobject]@{ Status='queued'; TaskId=$TaskId; PreviousTaskId=$activeTaskId; CoordinatorPath=$coordinatorPath }
-            }
-        }
-    }
-
-    if ($PrepareOnly) {
-        return [pscustomobject]@{ Status=if ($activeTaskId) { 'would-switch' } else { 'would-activate' }; TaskId=$TaskId; PreviousTaskId=if ($activeTaskId) { $activeTaskId } else { $null }; CoordinatorPath=$coordinatorPath }
-    }
-
-    if ($activeTaskId) {
-        $activeSession = Read-Session -SessionTaskId $activeTaskId
-        $activeTaskPath = Join-Path $stateRoot "tasks\$activeTaskId\task.json"
-        $activeTask = if (Test-Path -LiteralPath $activeTaskPath -PathType Leaf) { Get-Content -LiteralPath $activeTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
-        $activeRepositoryIds = if ($activeTask -and $activeTask.PSObject.Properties['repositoryIds']) { @($activeTask.repositoryIds) } elseif ($activeTask -and $activeTask.PSObject.Properties['repositoryId'] -and $activeTask.repositoryId) { @([string]$activeTask.repositoryId) } else { @() }
-        $savedRepositories = [Collections.Generic.List[object]]::new()
-        foreach ($repositoryId in $activeRepositoryIds) {
-            $repository = Get-RepositoryConfig -RepositoryId ([string]$repositoryId)
-            $branch = ((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('branch','--show-current')).Output -join '').Trim()
-            if (-not $branch) { throw "Task '$activeTaskId' workspace '$($repository.Workspace)' is detached; automatic switching is unsafe." }
-            $existing = @($activeSession.repositories | Where-Object { [string]$_.repositoryId -eq [string]$repositoryId }) | Select-Object -First 1
-            if ($existing -and $existing.PSObject.Properties['stashCommit'] -and -not [string]::IsNullOrWhiteSpace([string]$existing.stashCommit)) { throw "Task '$activeTaskId' already has an unrestored stash for '$repositoryId'." }
-            $dirty = @((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('status','--porcelain=v1')).Output)
-            $stashCommit = $null
-            $stashMessage = $null
-            if ($dirty.Count -and [bool]$policy.stashUncommittedChanges) {
-                $before = ((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('rev-parse','-q','--verify','refs/stash') -AllowFailure).Output -join '').Trim()
-                $stashMessage = "development-agent-ecosystem:${activeTaskId}:${repositoryId}:$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
-                $stashArguments = @('stash','push')
-                if ([bool]$policy.includeUntracked) { $stashArguments += '--include-untracked' }
-                $stashArguments += @('-m',$stashMessage)
-                $null = Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments $stashArguments
-                $stashCommit = ((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('rev-parse','--verify','refs/stash')).Output -join '').Trim()
-                if (-not $stashCommit -or $stashCommit -eq $before) { throw "Git did not create a new stash for task '$activeTaskId' repository '$repositoryId'." }
-            }
-            $savedRepositories.Add([pscustomobject][ordered]@{ repositoryId=[string]$repositoryId; workspace=$repository.Workspace; branch=$branch; stashCommit=if ($stashCommit) { $stashCommit } else { $null }; stashMessage=if ($stashMessage) { $stashMessage } else { $null }; stashRestored=if ($stashCommit) { $false } else { $true } })
-        }
-        $activeSession.repositories = @($savedRepositories)
-        $activeSessionPath = Write-Session -Session $activeSession
-        & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $activeTaskId -Actor orchestrator -Type workflow-status -Summary "Workspace suspended for task switch to '$TaskId'; uncommitted changes were preserved in task-specific stashes." -Artifact $activeSessionPath -Evidence @($savedRepositories | Where-Object stashCommit | ForEach-Object { [string]$_.stashCommit }) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    }
-
-    $targetSession = Read-Session -SessionTaskId $TaskId
-    $targetSaved = [Collections.Generic.List[object]]::new()
-    foreach ($repositoryId in $targetRepositoryIds) {
-        $repository = Get-RepositoryConfig -RepositoryId ([string]$repositoryId)
-        $saved = @($targetSession.repositories | Where-Object { [string]$_.repositoryId -eq [string]$repositoryId }) | Select-Object -First 1
-        $currentBranch = ((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('branch','--show-current')).Output -join '').Trim()
-        $desiredBranch = if ($saved -and $saved.branch) { [string]$saved.branch } elseif (-not $activeTaskId) { $currentBranch } else { [string]$config.runtime.defaultBaseBranch }
-        if (-not $desiredBranch) { throw "No safe branch is known for task '$TaskId' repository '$repositoryId'." }
-        if ($currentBranch -ne $desiredBranch) { $null = Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('switch',$desiredBranch) }
-        $stashCommit = if ($saved -and $saved.PSObject.Properties['stashCommit']) { [string]$saved.stashCommit } else { '' }
-        $stashMessage = if ($saved -and $saved.PSObject.Properties['stashMessage']) { [string]$saved.stashMessage } else { '' }
-        if ($stashCommit -and [bool]$policy.restoreStashOnActivation) {
-            $apply = Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('stash','apply','--index',$stashCommit) -AllowFailure
-            if ($apply.ExitCode -ne 0) {
-                $targetSession.repositories = @($targetSaved) + @([pscustomobject][ordered]@{ repositoryId=[string]$repositoryId; workspace=$repository.Workspace; branch=$desiredBranch; stashCommit=$stashCommit; stashMessage=$stashMessage; stashRestored=$false })
-                $sessionPath = Write-Session -Session $targetSession
-                $coordinator | Add-Member -NotePropertyName activeTaskId -NotePropertyValue $TaskId -Force
-                $coordinator | Add-Member -NotePropertyName switchedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
-                Write-Utf8NoBom -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
-                $question = "Git could not restore task '$TaskId' stash $stashCommit in '$($repository.Workspace)' without conflicts. Resolve the working tree manually; the stash was preserved and was not dropped."
-                $restoreOptions = @(
-                    'Resolve the stash conflicts manually while preserving both task and workspace changes, then resume the task.'
-                    'Provide a separate clean workspace or branch where the preserved stash can be restored safely.'
-                )
-                & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId orchestrator -Question $question -Reason 'Automatic conflict resolution could discard or miscombine user-owned changes, so the ecosystem stops before mutating the conflicted files.' -Options $restoreOptions -RecommendedOption $restoreOptions[0] -RecommendationRationale 'Manual conflict resolution in the recorded workspace keeps the existing branch and preserved stash lineage intact.' -Stage workspace_restore_conflict -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                return [pscustomobject]@{ Status='restore-conflict'; TaskId=$TaskId; PreviousTaskId=if ($activeTaskId) { $activeTaskId } else { $null }; RepositoryId=[string]$repositoryId; StashCommit=$stashCommit; SessionPath=$sessionPath }
-            }
-            $stashList = @((Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('stash','list','--format=%H %gd')).Output)
-            $stashRef = @($stashList | ForEach-Object { if ($_ -match ('^' + [regex]::Escape($stashCommit) + '\s+(stash@\{\d+\})$')) { $Matches[1] } } | Where-Object { $_ }) | Select-Object -First 1
-            if ($stashRef) { $null = Invoke-WorkspaceGit -Workspace $repository.Workspace -Arguments @('stash','drop',[string]$stashRef) }
-            $stashCommit = ''
-            $stashMessage = ''
-        }
-        $targetSaved.Add([pscustomobject][ordered]@{ repositoryId=[string]$repositoryId; workspace=$repository.Workspace; branch=$desiredBranch; stashCommit=if ($stashCommit) { $stashCommit } else { $null }; stashMessage=if ($stashMessage) { $stashMessage } else { $null }; stashRestored=$true })
-    }
-    $targetSession.repositories = @($targetSaved)
-    $targetSessionPath = Write-Session -Session $targetSession
-    $now = [DateTime]::UtcNow.ToString('o')
-    $coordinator | Add-Member -NotePropertyName activeTaskId -NotePropertyValue $TaskId -Force
-    $coordinator | Add-Member -NotePropertyName switchedAtUtc -NotePropertyValue $now -Force
-    Write-Utf8NoBom -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type workflow-status -Summary "Workspace lease activated for '$TaskId'; task branches and preserved changes are restored." -Artifact $targetSessionPath -Evidence @($targetSaved | ForEach-Object { "$([string]$_.repositoryId):$([string]$_.branch)" }) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    [pscustomobject]@{ Status='active'; TaskId=$TaskId; PreviousTaskId=if ($activeTaskId) { $activeTaskId } else { $null }; CoordinatorPath=$coordinatorPath; SessionPath=$targetSessionPath; Repositories=@($targetSaved) }
+    Set-TaskWorkspaceActive -LeaseId ([string]$admission.Lease.leaseId)
+    return [pscustomobject]@{ Status='active'; TaskId=$TaskId; RunId=$RunId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=@($workspaces) }
 }
-finally {
-    if ($lockStream) { $lockStream.Dispose() }
+catch {
+    try { & (Join-Path $PSScriptRoot 'Release-TaskWorkspaceLease.ps1') -TaskId $TaskId -LeaseId ([string]$admission.Lease.leaseId) -Reason 'provisioning-failed' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null } catch { }
+    throw
 }

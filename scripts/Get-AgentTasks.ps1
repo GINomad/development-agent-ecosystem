@@ -15,6 +15,10 @@ $tasksRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $Codex
 $activeStatuses = @('created','queued','running','waiting_for_input','held','review_pending','failed','interrupted')
 $agentIds = @($config.agents | ForEach-Object { [string]$_.id })
 $items = [Collections.Generic.List[object]]::new()
+$capacity = [int]$config.workflow.workspaceScheduling.maxActiveTasks
+$coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+$coordinator = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) { try { Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } else { $null }
+$coordinatorLeases = @(if ($coordinator -and $coordinator.PSObject.Properties['leases']) { $coordinator.leases })
 
 if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
     $directories = if ($TaskId) { @(Get-Item -LiteralPath (Join-Path $tasksRoot $TaskId) -ErrorAction SilentlyContinue) } else { @(Get-ChildItem -LiteralPath $tasksRoot -Directory) }
@@ -75,7 +79,18 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
                 modelRoute = if ($modelRoute.Count) { [pscustomobject][ordered]@{ complexity=[string]$modelRoute[0].complexity; model=[string]$modelRoute[0].model; reasoningEffort=[string]$modelRoute[0].reasoningEffort; confidence=[double]$modelRoute[0].confidence; decisionId=[string]$modelRoute[0].decisionId } } else { $null }
             }
         }
-        $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })
+        $workspaceManifests = [Collections.Generic.List[object]]::new()
+        $workspaceManifestRoot = Join-Path $directory.FullName 'workspaces'
+        foreach ($workspaceManifestFile in @(Get-ChildItem -LiteralPath $workspaceManifestRoot -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            try {
+                $workspaceManifest = Get-Content -LiteralPath $workspaceManifestFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+                $workspaceManifests.Add([pscustomobject][ordered]@{ repositoryId=[string]$workspaceManifest.repositoryId; path=[string]$workspaceManifest.clonePath; branch=[string]$workspaceManifest.branch; baseSha=[string]$workspaceManifest.baseSha; canonicalOrigin=[string]$workspaceManifest.canonicalOrigin; lifecycle=[string]$workspaceManifest.lifecycle; runId=[string]$workspaceManifest.runId; leaseId=[string]$workspaceManifest.leaseId; updatedAtUtc=[string]$workspaceManifest.updatedAtUtc })
+            }
+            catch { }
+        }
+        $activeLease = @($coordinatorLeases | Where-Object { [string]$_.taskId -eq [string]$task.taskId } | Select-Object -First 1)
+        $scheduler = [pscustomobject][ordered]@{ capacity=$capacity; activeTaskCount=$coordinatorLeases.Count; queuePosition=$null; lease=if ($activeLease.Count) { [pscustomobject][ordered]@{ runId=[string]$activeLease[0].runId; leaseId=[string]$activeLease[0].leaseId; lifecycle=[string]$activeLease[0].lifecycle; acquiredAtUtc=[string]$activeLease[0].acquiredAtUtc; heartbeatAtUtc=[string]$activeLease[0].heartbeatAtUtc; controllerProcessId=if ($activeLease[0].PSObject.Properties['controllerProcessId']) { [int]$activeLease[0].controllerProcessId } else { $null }; controllerStartedAtUtc=if ($activeLease[0].PSObject.Properties['controllerStartedAtUtc']) { [string]$activeLease[0].controllerStartedAtUtc } else { $null } } } else { $null } }
+        $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') -and $_.Name -notlike '*.lock' } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })
         $eventSlice = if ($EventLimit -gt 0) { @($events | Sort-Object timestampUtc -Descending | Select-Object -First $EventLimit) } else { @($events | Sort-Object timestampUtc -Descending) }
         if ($EventLimit -gt 0) {
             $pinnedReviewEvents = @($events | Where-Object { [string]$_.type -in @('review-question-opened','review-question-answered') })
@@ -102,6 +117,12 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             createdAtUtc = [string]$task.createdAtUtc
             updatedAtUtc = $lastUpdated
             workflowProcessId = if ($task.PSObject.Properties['workflowProcessId']) { [int]$task.workflowProcessId } else { $null }
+            executionRunId = if ($task.PSObject.Properties['executionRunId']) { [string]$task.executionRunId } else { $null }
+            workspaceLeaseId = if ($task.PSObject.Properties['workspaceLeaseId']) { [string]$task.workspaceLeaseId } else { $null }
+            workflowHeartbeatAtUtc = if ($task.PSObject.Properties['workflowHeartbeatAtUtc']) { [string]$task.workflowHeartbeatAtUtc } else { $null }
+            revision = if ($task.PSObject.Properties['revision']) { [int]$task.revision } else { 1 }
+            scheduler = $scheduler
+            workspaces = @($workspaceManifests)
             hasUnreadUserComments = @($unacknowledgedComments).Count -gt 0
             commentCount = @($events | Where-Object { $_.type -eq 'user-comment' }).Count
             openQuestions = @($openQuestions)
@@ -112,4 +133,7 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
     }
 }
 
-[pscustomobject]@{ Tasks=@($items | Sort-Object updatedAtUtc -Descending); GeneratedAtUtc=[DateTime]::UtcNow.ToString('o') }
+$sortedItems = @($items | Sort-Object updatedAtUtc -Descending)
+$queuedItems = @($sortedItems | Where-Object { [string]$_.status -eq 'queued' } | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}})
+for ($queueIndex = 0; $queueIndex -lt $queuedItems.Count; $queueIndex++) { $queuedItems[$queueIndex].scheduler.queuePosition = $queueIndex + 1 }
+[pscustomobject]@{ Tasks=$sortedItems; Scheduler=[pscustomobject][ordered]@{ capacity=$capacity; activeTaskCount=$coordinatorLeases.Count; queuedTaskCount=$queuedItems.Count }; GeneratedAtUtc=[DateTime]::UtcNow.ToString('o') }

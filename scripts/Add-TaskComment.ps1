@@ -77,19 +77,22 @@ $resolvedEvent = $null
 if ($QuestionId) {
     $resolvedEvent = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $Author -Type 'question-resolved' -Summary "User answered question from $([string]$question.actor): $([string]$question.summary)" -Artifact $taskPath -Evidence @($QuestionId, [string]$event.eventId) -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
-$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([string]$event.timestampUtc) -Force
-$task | Add-Member -NotePropertyName lastCommentAtUtc -NotePropertyValue ([string]$event.timestampUtc) -Force
-$task | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $true -Force
-if ($QuestionId) {
-    $task | Add-Member -NotePropertyName status -NotePropertyValue 'interrupted' -Force
-    $task | Add-Member -NotePropertyName currentStage -NotePropertyValue 'input_received' -Force
-    $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue 'A user answer is ready. Resume the workflow to continue from the input gate.' -Force
+$taskLockPath = Join-Path $taskRoot 'task-state.lock'
+$null = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action {
+    $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([string]$event.timestampUtc) -Force
+    $document | Add-Member -NotePropertyName lastCommentAtUtc -NotePropertyValue ([string]$event.timestampUtc) -Force
+    $document | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $true -Force
+    if ($QuestionId) {
+        $document | Add-Member -NotePropertyName status -NotePropertyValue 'interrupted' -Force
+        $document | Add-Member -NotePropertyName currentStage -NotePropertyValue 'input_received' -Force
+        $document | Add-Member -NotePropertyName lastMessage -NotePropertyValue 'A user answer is ready. Resume the workflow to continue from the input gate.' -Force
+    }
+    else {
+        $commentDestination = if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId) { 'Orchestrator classification' } elseif ($TargetAgentId) { "agent '$TargetAgentId'" } else { 'the workflow' }
+        $document | Add-Member -NotePropertyName lastMessage -NotePropertyValue "A user comment for $commentDestination is queued for the next end-of-block checkpoint; no restart is required while the workflow is running." -Force
+    }
+    Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 }
-else {
-    $commentDestination = if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId) { 'Orchestrator classification' } elseif ($TargetAgentId) { "agent '$TargetAgentId'" } else { 'the workflow' }
-    $task | Add-Member -NotePropertyName lastMessage -NotePropertyValue "A user comment for $commentDestination is queued for the next end-of-block checkpoint; no restart is required while the workflow is running." -Force
-}
-Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
 [pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; CommentKind=$CommentKind; ReviewQuestionId=if ($reviewQuestionEvent) { [string]$reviewQuestionEvent.eventId } else { $null }; ParentReviewQuestionId=if ($ParentReviewQuestionId) { $ParentReviewQuestionId } else { $null }; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }

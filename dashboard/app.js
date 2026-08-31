@@ -24,6 +24,7 @@ let agentLogRequestInFlight = false;
 let agentLogRefreshSeconds = 30;
 let taskRefreshInFlight = false;
 let taskStateRevision = 0;
+let schedulerState = { capacity: 0, activeTaskCount: 0, queuedTaskCount: 0 };
 let reviewDiffIndex = null;
 let selectedDiffRepositoryId = null;
 let selectedDiffFilePath = null;
@@ -76,6 +77,15 @@ function payloadBase() {
     taskSelector: document.querySelector('#taskSelector').value.trim(),
     taskId: document.querySelector('#taskId').value.trim(),
     instruction: document.querySelector('#instruction').value.trim()
+  };
+}
+
+function taskViewGuard(task = selectedTask) {
+  if (!task) throw new Error('Select a current task view first.');
+  return {
+    expectedRevision: task.revision ?? null,
+    runId: task.executionRunId || '',
+    leaseId: task.workspaceLeaseId || ''
   };
 }
 
@@ -193,7 +203,9 @@ function renderTaskList(tasks) {
     selector.textContent = item.selector;
     const meta = document.createElement('span');
     meta.className = 'tracked-task-meta';
-    meta.textContent = `${item.currentStage || 'no stage'} - ${formatDate(item.updatedAtUtc)}`;
+    const scheduling = item.scheduler || {};
+    const slotText = item.status === 'queued' && scheduling.queuePosition ? `queue #${scheduling.queuePosition}` : scheduling.lease ? `lease ${scheduling.lease.lifecycle || 'active'}` : 'no active lease';
+    meta.textContent = `${item.currentStage || 'no stage'} · ${slotText} · ${formatDate(item.updatedAtUtc)}`;
     button.append(heading, selector, meta);
     button.addEventListener('click', async () => {
       if (selectedTaskId !== item.taskId) {
@@ -238,8 +250,39 @@ function renderTaskDetail(task) {
   status.className = `task-status ${statusClass(task.status)}`;
   status.textContent = task.status;
   const taskRepositoryIds = Array.isArray(task.repositoryIds) && task.repositoryIds.length ? task.repositoryIds : [task.repositoryId].filter(Boolean);
-  document.querySelector('#selectedTaskMeta').textContent = `${taskRepositoryIds.join(', ') || 'repositories not recorded'} - stage: ${task.currentStage || 'not reported'} - updated ${formatDate(task.updatedAtUtc)}`;
+  const scheduling = task.scheduler || {};
+  const queueText = task.status === 'queued' && scheduling.queuePosition ? ` · queue #${scheduling.queuePosition}` : '';
+  document.querySelector('#selectedTaskMeta').textContent = `${taskRepositoryIds.join(', ') || 'repositories not recorded'} · stage: ${task.currentStage || 'not reported'}${queueText} · updated ${formatDate(task.updatedAtUtc)}`;
   document.querySelector('#selectedTaskMessage').textContent = task.lastMessage || 'No status message has been recorded.';
+  const lease = scheduling.lease;
+  const controllerText = lease?.controllerProcessId ? ` · controller PID ${lease.controllerProcessId}` : '';
+  const heartbeatText = lease?.heartbeatAtUtc ? ` · heartbeat ${formatDate(lease.heartbeatAtUtc)}` : '';
+  document.querySelector('#taskLeaseSummary').textContent = lease ? `run ${lease.runId || task.executionRunId || 'unknown'} · lease ${lease.leaseId || task.workspaceLeaseId || 'unknown'} · ${lease.lifecycle || 'active'}${controllerText}${heartbeatText}` : (task.status === 'queued' ? `waiting for slot ${scheduling.queuePosition || '?'}` : 'no active lease');
+  const workspaceList = document.querySelector('#taskWorkspaceInfo');
+  workspaceList.replaceChildren();
+  const taskWorkspaces = Array.isArray(task.workspaces) ? task.workspaces : [];
+  if (!taskWorkspaces.length) {
+    const emptyWorkspace = document.createElement('p');
+    emptyWorkspace.className = 'hint';
+    emptyWorkspace.textContent = task.status === 'queued' ? 'Clones will be provisioned after scheduler admission.' : 'No task clone manifest has been recorded yet.';
+    workspaceList.append(emptyWorkspace);
+  } else {
+    taskWorkspaces.forEach(workspace => {
+      const card = document.createElement('article');
+      card.className = 'task-workspace-card';
+      const title = document.createElement('strong');
+      title.textContent = workspace.repositoryId || 'repository';
+      const lifecycle = document.createElement('span');
+      lifecycle.className = `mini-status ${statusClass(workspace.lifecycle)}`;
+      lifecycle.textContent = workspace.lifecycle || 'unknown';
+      const path = document.createElement('code');
+      path.textContent = workspace.path || 'path not recorded';
+      const branch = document.createElement('small');
+      branch.textContent = `${workspace.branch || 'branch not recorded'} · base ${(workspace.baseSha || '').slice(0, 12) || 'unknown'}`;
+      card.append(title, lifecycle, path, branch);
+      workspaceList.append(card);
+    });
+  }
 
   const openQuestions = Array.isArray(task.openQuestions) ? task.openQuestions : [];
   const inputPanel = document.querySelector('#inputRequiredPanel');
@@ -906,7 +949,7 @@ async function sendReviewQuestionFollowUp(thread, textarea, buttons, restart) {
     if (restart) {
       restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/reviewer/resume', {
         method: 'POST',
-        body: JSON.stringify({ elevated: true })
+        body: JSON.stringify({ elevated: true, ...taskViewGuard() })
       });
     }
     textarea.value = '';
@@ -1597,7 +1640,7 @@ async function sendReviewDiffComment({ restart = false } = {}) {
   if (restart) {
     restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/' + encodeURIComponent(targetAgentId) + '/resume', {
       method: 'POST',
-      body: JSON.stringify({ elevated: true })
+      body: JSON.stringify({ elevated: true, ...taskViewGuard() })
     });
   }
   setReviewDiffCommentStatus(
@@ -1745,7 +1788,7 @@ async function confirmIdleAgentDispatch(taskId, result) {
   }
   const restart = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
     method: 'POST',
-    body: JSON.stringify({ elevated: true })
+    body: JSON.stringify({ elevated: true, ...taskViewGuard() })
   });
   result.dispatch.status = 'started';
   result.dispatch.reason = `${label} was idle and started immediately for the pending comment batch.`;
@@ -1801,6 +1844,11 @@ async function loadTaskList({ silent = false } = {}) {
     const suffix = taskFilter === 'all' ? '?includeCompleted=true' : '';
     const result = await api(`/api/tasks${suffix}`);
     if (expectedRevision !== taskStateRevision) return;
+    schedulerState = result.scheduler || schedulerState;
+    const capacity = Number(schedulerState.capacity || 0);
+    const active = Number(schedulerState.activeTaskCount || 0);
+    const queued = Number(schedulerState.queuedTaskCount || 0);
+    document.querySelector('#capacityStatus').textContent = capacity ? `${active} of ${capacity} task slots active · ${queued} queued` : 'Scheduler capacity is unavailable.';
     renderTaskList(Array.isArray(result.tasks) ? result.tasks : []);
     if (selectedTaskId) await loadTaskDetail(selectedTaskId, expectedRevision);
   } catch (error) {
@@ -1923,7 +1971,7 @@ document.querySelector('#restartAgentWithComment').addEventListener('click', asy
     const comment = await sendSelectedAgentComment({ required: false, refresh: false, autoStartIdle: false });
     const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
       method: 'POST',
-      body: JSON.stringify({ elevated: true })
+      body: JSON.stringify({ elevated: true, ...taskViewGuard() })
     });
     restartStarted = true;
     taskStateRevision += 1;
@@ -1949,6 +1997,9 @@ document.querySelector('#resumeTask').addEventListener('click', async () => {
       repositoryId: selectedTask.repositoryId,
       taskSelector: selectedTask.selector,
       taskId: selectedTask.taskId,
+      expectedRevision: selectedTask.revision ?? null,
+      runId: selectedTask.executionRunId || '',
+      leaseId: selectedTask.workspaceLeaseId || '',
       instruction: 'Resume from the persisted checkpoint. Run only unfinished agents and preserve every completed agent and artifact.'
     };
     const result = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify(payload) });
@@ -1964,7 +2015,11 @@ document.querySelector('#stopWorkflow').addEventListener('click', async () => {
     if (!window.confirm('Stop this workflow now? Completed results and task history will be preserved for checkpoint resume.')) return;
     button.disabled = true;
     button.textContent = 'Stopping...';
-    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/workflow/stop`, { method: 'POST', body: '{}' });
+    const stopTarget = selectedTask;
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/workflow/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ runId: stopTarget?.executionRunId || '', leaseId: stopTarget?.workspaceLeaseId || '', revision: stopTarget?.revision ?? null })
+    });
     taskStateRevision += 1;
     log(result);
     await loadTaskDetail(selectedTaskId, taskStateRevision);
@@ -2023,7 +2078,7 @@ document.querySelector('#reopenTask').addEventListener('click', async () => {
     button.textContent = 'Reopening...';
     status.dataset.state = 'working';
     status.textContent = 'Archiving the current revision and starting the selected agent...';
-    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/reopen', { method: 'POST', body: JSON.stringify({ reason, resumeFrom }) });
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/reopen', { method: 'POST', body: JSON.stringify({ reason, resumeFrom, ...taskViewGuard() }) });
     reasonField.value = '';
     document.querySelector('#reopenTaskPanel').open = false;
     status.dataset.state = 'success';
@@ -2048,7 +2103,7 @@ document.querySelector('#resumeElevatedWorkflow').addEventListener('click', asyn
     if (!selectedTask) throw new Error('Select a task first.');
     const approved = window.confirm('Resume only unfinished agents without the OS sandbox? Completed agents and artifacts remain unchanged. Requirement, review, credential, and external-write gates still apply.');
     if (!approved) return;
-    const result = await api(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/workflow/elevated`, { method: 'POST', body: '{}' });
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/workflow/elevated`, { method: 'POST', body: JSON.stringify(taskViewGuard()) });
     log(result);
     window.setTimeout(() => loadTaskList({ silent: true }), 700);
   } catch (error) { log(`Error: ${error.message}`); }

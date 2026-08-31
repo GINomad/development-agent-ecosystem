@@ -22,6 +22,7 @@ $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invok
 if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
 if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
+if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sourceConfigPath') { throw 'Queued task dispatch must reload canonical configuration instead of inheriting the previous task snapshot.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
 function Invoke-SchedulerTestGit {
@@ -126,7 +127,7 @@ if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard 
 if ($dashboardClient -notmatch 'selectedTaskId = item.taskId;' -or $dashboardClient -notmatch 'const selectedRevision = \+\+taskStateRevision;' -or $dashboardClient -notmatch 'try \{' -or $dashboardClient -notmatch 'await loadTaskDetail\(item\.taskId, selectedRevision\)' -or $dashboardClient -notmatch 'catch \(error\)' -or $dashboardClient -notmatch 'log\(`Error: \$\{error\.message\}`\)' -or $dashboardClient -notmatch 'finally \{' -or $dashboardClient -notmatch 'void loadTaskList\(\{ silent: true \}\)') { throw 'Task selection must invalidate stale detail responses and load the clicked task directly when background polling is in flight.' }
 if ((Get-Content -LiteralPath (Join-Path $root 'scripts\Continue-AgentChain.ps1') -Raw -Encoding UTF8) -notmatch '\$currentAgentId -in @\(''orchestrator'',''health_check''\)') { throw 'Health Check continuation must dispatch the first routed role even when the selected mode disables post-role automatic continuation.' }
 if ($dashboardServer -notmatch 'Test-TaskWorkflowActive' -or $dashboardServer -notmatch 'Start-DevelopmentWorkflow\.ps1' -or $dashboardServer -notmatch 'Get-CimInstance Win32_Process' -or $dashboardServer -notmatch 'idle-awaiting-approval' -or $dashboardServer -notmatch 'queued-for-checkpoint' -or $dashboardClient -notmatch 'confirmIdleAgentDispatch' -or $dashboardClient -notmatch 'autoStartIdle: false') { throw 'Idle targeted comments are not wired to approval-gated immediate dispatch and active-workflow batching.' }
-foreach ($controlId in @('repositoryOptions','repositorySummary','taskList','taskDetail','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewDiffScope','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewQuestionThreadsList','reviewFeedbackStatus','requirementTraceabilitySummary','requirementTraceabilityList','reviewDiffCommentDock','reviewDiffCommentPanel','reviewDiffCommentKind','externalReviewWorkspace','externalReviewList','externalReviewSummary','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
+foreach ($controlId in @('repositoryOptions','repositorySummary','capacityStatus','taskList','taskDetail','taskLeaseSummary','taskWorkspaceInfo','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewDiffScope','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewQuestionThreadsList','reviewFeedbackStatus','requirementTraceabilitySummary','requirementTraceabilityList','reviewDiffCommentDock','reviewDiffCommentPanel','reviewDiffCommentKind','externalReviewWorkspace','externalReviewList','externalReviewSummary','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
@@ -194,7 +195,7 @@ $reviewFollowUpAnswer = & (Join-Path $root 'scripts\Add-ReviewQuestionResponse.p
 & (Join-Path $root 'scripts\Acknowledge-AgentCommentBatch.ps1') -TaskId $reviewReplyTaskId -AgentId reviewer -EventIds @([string]$reviewFollowUp.CommentId) -ConfigPath $reviewReplyConfigPath | Out-Null
 if ($dashboardClient -notmatch 'review-question-opened' -or $dashboardClient -notmatch 'review-question-answered' -or $dashboardClient -notmatch 'createInlineReviewQuestion' -or $dashboardClient -notmatch 'renderReviewQuestionThreads' -or $dashboardClient -notmatch 'sendReviewQuestionFollowUp' -or $dashboardClient -notmatch 'parentReviewQuestionId' -or $reviewerPrompt -notmatch 'Add-ReviewQuestionResponse.ps1') { throw 'Reviewer question threads, visible answers, or follow-up replies are not wired end to end.' }
 Add-Check -Name 'reviewer-line-question-answers' -Detail 'Line questions and follow-ups remain response-gated, Reviewer persists cited answers, and dashboard renders a visible replyable thread plus exact-line context'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -202,6 +203,7 @@ if ($dashboardServer -notmatch 'requiredArtifacts=@\(\$_.requiredArtifacts\)' -o
 if ($dashboardClient -notmatch 'isReviewerItemBypassedAsDebt' -or $dashboardClient -notmatch 'activeReviewerSummary' -or $dashboardClient -notmatch 'hiddenFindingIds' -or $dashboardClient -notmatch 'sourceFindingId' -or $dashboardClient -notmatch 'review-decisions\.json' -or $dashboardClient -notmatch 'tech-debt-items\.json' -or $reviewerPrompt -notmatch 'omit that item from the new active') { throw 'Bypassed findings with linked open technical debt are still exposed as active Reviewer outcome items.' }
 Add-Check -Name 'reviewer-active-outcome-filter' -Detail 'Bypassed findings remain auditable in decisions/debt artifacts but are omitted from subsequent active Reviewer outcomes and dashboard cards'
 if ($dashboardServer -notmatch 'Stop-ValidatedWorkflowProcessTree' -or $dashboardServer -notmatch 'Stop-TaskScriptRunspaces') { throw 'Stop workflow must terminate only a validated task process tree or tracked runspace.' }
+if ($dashboardServer -notmatch 'Assert-TaskViewIsCurrent' -or $dashboardServer -notmatch 'Assert-TaskControllerIsIdle' -or $dashboardClient -notmatch 'taskViewGuard' -or $dashboardClient -notmatch 'expectedRevision' -or $dashboardClient -notmatch 'workspaceLeaseId') { throw 'Resume, targeted restart, and reopen must reject stale revision/run/lease dashboard views.' }
 $activityWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Write-AgentActivity.ps1') -Raw -Encoding UTF8
 $activityReader = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentActivity.ps1') -Raw -Encoding UTF8
 $taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
@@ -416,66 +418,121 @@ if (@('developer','reviewer','pipeline_monitor','knowledge_keeper','health_check
 Add-Check -Name 'intent-scoped-execution-policy' -Detail 'Orchestrator can persist research-only intent, skip excluded roles, and stop continuation after Requirements Analyst'
 
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
-$schedulerWorkspace = Join-Path $schedulerRoot 'repository'
+$schedulerSource = Join-Path $schedulerRoot 'source'
+$schedulerRemote = Join-Path $schedulerRoot 'remote.git'
 $schedulerConfigPath = Join-Path $schedulerRoot 'agents.json'
-New-Item -ItemType Directory -Path $schedulerWorkspace -Force | Out-Null
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('init','-b','main') | Out-Null
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('config','user.email','ecosystem-tests@example.invalid') | Out-Null
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('config','user.name','Agent Ecosystem Tests') | Out-Null
-Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "baseline$([Environment]::NewLine)"
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('add','tracked.txt') | Out-Null
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('commit','-m','baseline') | Out-Null
+New-Item -ItemType Directory -Path $schedulerSource -Force | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('init','-b','main') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('config','user.email','ecosystem-tests@example.invalid') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('config','user.name','Agent Ecosystem Tests') | Out-Null
+Write-Utf8NoBom -Path (Join-Path $schedulerSource 'tracked.txt') -Content "baseline$([Environment]::NewLine)"
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('add','tracked.txt') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('commit','-m','baseline') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerRoot -Arguments @('clone','--bare',$schedulerSource,$schedulerRemote) | Out-Null
 
 $schedulerConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $schedulerConfig.runtime.stateRoot = Join-Path $schedulerRoot 'state'
 $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath = Join-Path $schedulerRoot 'state\workspace-coordinator.json'
+$schedulerConfig.workflow.workspaceScheduling.workspaceRoot = Join-Path $schedulerRoot 'state\workspaces'
+$schedulerConfig.workflow.workspaceScheduling.maxActiveTasks = 2
 $schedulerRepository = @($schedulerConfig.repositories | Where-Object id -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
-$schedulerRepository.localWorkspace = $schedulerWorkspace
-Write-Utf8NoBom -Path $schedulerConfigPath -Content (($schedulerConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$schedulerRepository.url = $schedulerRemote
+$schedulerRepository.localWorkspace = $schedulerSource
+Write-Utf8NoBom -Path $schedulerConfigPath -Content (($schedulerConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
 
 $taskAId = 'workspace-a-' + [guid]::NewGuid().ToString('N')
 $taskBId = 'workspace-b-' + [guid]::NewGuid().ToString('N')
 $taskCId = 'workspace-c-' + [guid]::NewGuid().ToString('N')
-$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskAId -TaskSelector synthetic-workspace-a -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('switch','-c','feature/task-a') | Out-Null
-$leaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -ConfigPath $schedulerConfigPath
-Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "task-a$([Environment]::NewLine)"
-Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'task-a-untracked.txt') -Content "task-a-untracked$([Environment]::NewLine)"
-& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Message 'Synthetic task A is idle.' -ConfigPath $schedulerConfigPath | Out-Null
+$taskDId = 'workspace-d-' + [guid]::NewGuid().ToString('N')
+foreach ($taskDefinition in @(@($taskAId,'a'),@($taskBId,'b'),@($taskCId,'c'),@($taskDId,'d'))) {
+    $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskDefinition[0] -TaskSelector ('synthetic-workspace-' + $taskDefinition[1]) -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+}
+$leaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ConfigPath $schedulerConfigPath
+$leaseB = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -RunId ('b' * 32) -ConfigPath $schedulerConfigPath
+$workspaceA = [string]$leaseA.Workspaces[0].Path
+$workspaceB = [string]$leaseB.Workspaces[0].Path
+if ([string]$leaseA.Status -ne 'active' -or [string]$leaseB.Status -ne 'active' -or $workspaceA -eq $workspaceB -or -not (Test-Path -LiteralPath (Join-Path $workspaceA '.git') -PathType Container) -or -not (Test-Path -LiteralPath (Join-Path $workspaceB '.git') -PathType Container)) { throw 'Two tasks targeting one repository did not receive distinct full Git clones.' }
+Write-Utf8NoBom -Path (Join-Path $workspaceA 'task-a-uncommitted.txt') -Content "task-a-only$([Environment]::NewLine)"
+if (Test-Path -LiteralPath (Join-Path $workspaceB 'task-a-uncommitted.txt')) { throw 'Task A working-tree changes leaked into task B clone.' }
+$resolvedA = & (Join-Path $root 'scripts\Resolve-TaskWorkspace.ps1') -TaskId $taskAId -RepositoryId azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+if ([string]$resolvedA.Path -ne $workspaceA -or [string]$resolvedA.LeaseId -ne [string]$leaseA.LeaseId) { throw 'Task workspace resolver did not return the manifest-owned clone.' }
+$heartbeatA = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+$coordinatorAfterHeartbeat = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$heartbeatLeaseA = @($coordinatorAfterHeartbeat.leases | Where-Object { [string]$_.taskId -eq $taskAId -and [string]$_.leaseId -eq [string]$leaseA.LeaseId }) | Select-Object -First 1
+$wrongHeartbeatRejected = $false
+try { $null = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ('z' * 32) -ConfigPath $schedulerConfigPath }
+catch { $wrongHeartbeatRejected = $_.Exception.Message -match 'no longer owned' }
+if ([string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not $heartbeatLeaseA.heartbeatAtUtc -or -not $wrongHeartbeatRejected) { throw 'Workspace heartbeat did not enforce exact task/run/lease ownership.' }
+$duplicateControllerRejected = $false
+try { $null = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('x' * 32) -ConfigPath $schedulerConfigPath }
+catch { $duplicateControllerRejected = $_.Exception.Message -match 'already has an active controller' }
+if (-not $duplicateControllerRejected) { throw 'A second controller was allowed to enter the same task.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status completed -Stage synthetic-active-reopen-check -ConfigPath $schedulerConfigPath | Out-Null
+$activeReopenRejected = $false
+try { $null = & (Join-Path $root 'scripts\Reopen-AgentTask.ps1') -TaskId $taskAId -Reason 'Synthetic active lease reopen check.' -ExpectedRevision 1 -ExpectedRunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath }
+catch { $activeReopenRejected = $_.Exception.Message -match 'active workspace lease' }
+$taskAAfterRejectedReopen = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not $activeReopenRejected -or [int]$taskAAfterRejectedReopen.revision -ne 1) { throw 'A completed task was reopened while its previous controller lease was still active.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -Stage synthetic-resumed-active-check -ConfigPath $schedulerConfigPath | Out-Null
 
-$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskBId -TaskSelector synthetic-workspace-b -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
-$leaseB = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath
-$branchAfterB = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
-$statusAfterB = @(Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('status','--porcelain=v1'))
-$taskASessionPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\workspace-session.json"
-$taskASuspended = Get-Content -LiteralPath $taskASessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$leaseA.Status -ne 'active' -or [string]$leaseB.Status -ne 'active' -or $branchAfterB -ne 'main' -or $statusAfterB.Count -ne 0 -or [string]::IsNullOrWhiteSpace([string]$taskASuspended.repositories[0].stashCommit)) { throw 'Switching to task B did not preserve and isolate task A changes.' }
+$queuedC = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskCId -RunId ('c' * 32) -ConfigPath $schedulerConfigPath
+$queuedD = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskDId -RunId ('d' * 32) -ConfigPath $schedulerConfigPath
+if ([string]$queuedC.Status -ne 'queued' -or [int]$queuedC.QueuePosition -ne 1 -or [string]$queuedD.Status -ne 'queued' -or [int]$queuedD.QueuePosition -ne 2) { throw 'Capacity queue did not preserve FIFO positions.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $taskBId -LeaseId ([string]$leaseB.LeaseId) -Reason synthetic-complete -ConfigPath $schedulerConfigPath | Out-Null
+$stillQueuedD = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskDId -RunId ('d' * 32) -ConfigPath $schedulerConfigPath
+if ([string]$stillQueuedD.Status -ne 'queued' -or [int]$stillQueuedD.QueuePosition -ne 2) { throw 'A newer queued task bypassed the older FIFO task when one slot opened.' }
+$leaseC = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskCId -RunId ('c' * 32) -ConfigPath $schedulerConfigPath
+if ([string]$leaseC.Status -ne 'active') { throw 'The oldest queued task was not admitted into the released slot.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskCId -Status failed -Stage synthetic-failure -Message 'Task C failed independently.' -ConfigPath $schedulerConfigPath | Out-Null
+$taskDAfterCFailure = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskDId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$taskDAfterCFailure.status -ne 'queued') { throw 'Task C failure changed task D queue state.' }
+$leaseD = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskDId -RunId ('d' * 32) -ConfigPath $schedulerConfigPath
+$coordinatorAfterFailureRecovery = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$manifestCAfterFailureRecovery = Get-Content -LiteralPath ([string]$leaseC.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$leaseD.Status -ne 'active' -or @($coordinatorAfterFailureRecovery.leases | Where-Object { [string]$_.taskId -eq $taskCId }).Count -ne 0 -or [string]$manifestCAfterFailureRecovery.lifecycle -ne 'released' -or [string]$manifestCAfterFailureRecovery.releaseReason -notmatch 'task-terminal:failed') { throw 'A failed task lease blocked the next FIFO task or lost its preserved workspace state.' }
 
-Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('switch','-c','feature/task-b') | Out-Null
-Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'tracked.txt') -Content "task-b$([Environment]::NewLine)"
-Write-Utf8NoBom -Path (Join-Path $schedulerWorkspace 'task-b-untracked.txt') -Content "task-b-untracked$([Environment]::NewLine)"
-& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskBId -Status interrupted -Message 'Synthetic task B is idle.' -ConfigPath $schedulerConfigPath | Out-Null
-$leaseARestored = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -ConfigPath $schedulerConfigPath
-$branchAfterA = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
-$taskAText = Get-Content -LiteralPath (Join-Path $schedulerWorkspace 'tracked.txt') -Raw -Encoding UTF8
-$taskAUntrackedExists = Test-Path -LiteralPath (Join-Path $schedulerWorkspace 'task-a-untracked.txt') -PathType Leaf
-$taskARestoredSession = Get-Content -LiteralPath $taskASessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$taskBSessionPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskBId\workspace-session.json"
-$taskBSuspended = Get-Content -LiteralPath $taskBSessionPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$leaseARestored.Status -ne 'active' -or $branchAfterA -ne 'feature/task-a' -or $taskAText.Trim() -ne 'task-a' -or -not $taskAUntrackedExists -or -not [string]::IsNullOrWhiteSpace([string]$taskARestoredSession.repositories[0].stashCommit) -or [string]::IsNullOrWhiteSpace([string]$taskBSuspended.repositories[0].stashCommit)) { throw 'Returning to task A did not restore its exact branch and working tree.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $taskAId -LeaseId ([string]$leaseA.LeaseId) -Reason synthetic-yield -ConfigPath $schedulerConfigPath | Out-Null
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $taskDId -LeaseId ([string]$leaseD.LeaseId) -Reason synthetic-complete -ConfigPath $schedulerConfigPath | Out-Null
 
-& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Message 'Synthetic task A yields the lease.' -ConfigPath $schedulerConfigPath | Out-Null
-$leaseBRestored = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath
-$branchAfterBRestore = ((Invoke-SchedulerTestGit -Workspace $schedulerWorkspace -Arguments @('branch','--show-current')) -join '').Trim()
-$taskBText = Get-Content -LiteralPath (Join-Path $schedulerWorkspace 'tracked.txt') -Raw -Encoding UTF8
-if ([string]$leaseBRestored.Status -ne 'active' -or $branchAfterBRestore -ne 'feature/task-b' -or $taskBText.Trim() -ne 'task-b' -or -not (Test-Path -LiteralPath (Join-Path $schedulerWorkspace 'task-b-untracked.txt') -PathType Leaf)) { throw 'Returning to task B did not restore its exact branch and working tree.' }
+$taskFId = 'workspace-f-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskFId -TaskSelector 'synthetic-controller-crash' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+$leaseF = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskFId -RunId ('f' * 32) -ConfigPath $schedulerConfigPath
+$coordinatorForCrash = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$crashedLease = @($coordinatorForCrash.leases | Where-Object { [string]$_.taskId -eq $taskFId }) | Select-Object -First 1
+$expiredHeartbeat = [DateTime]::UtcNow.AddSeconds(-([int]$schedulerConfig.workflow.workspaceScheduling.staleLeaseGraceSeconds + 5)).ToString('o')
+$crashedLease.controllerProcessId = $PID
+$crashedLease.controllerStartedAtUtc = (Get-Process -Id $PID -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')
+$crashedLease.heartbeatAtUtc = $expiredHeartbeat
+Write-Utf8NoBom -Path $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Content (($coordinatorForCrash | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$recoveredCrash = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
+$taskFAfterRecovery = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskFId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$manifestFAfterRecovery = Get-Content -LiteralPath ([string]$leaseF.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($recoveredCrash.Count -ne 1 -or [string]$recoveredCrash[0].reason -ne 'heartbeat-expired' -or [string]$taskFAfterRecovery.status -ne 'interrupted' -or [string]$manifestFAfterRecovery.lifecycle -ne 'released' -or -not (Test-Path -LiteralPath (Join-Path ([string]$leaseF.Workspaces[0].Path) '.git') -PathType Container)) { throw 'An expired in-process runspace heartbeat was not recovered while preserving its isolated clone.' }
 
-& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskBId -Status running -Message 'Synthetic task B owns the workspace.' -ConfigPath $schedulerConfigPath | Out-Null
-$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskCId -TaskSelector synthetic-workspace-c -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
-$queuedC = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskCId -ConfigPath $schedulerConfigPath
-$taskC = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskCId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$queuedC.Status -ne 'queued' -or [string]$taskC.status -ne 'queued') { throw 'A second task was not queued while another task owned the workspace lease.' }
-Add-Check -Name 'serialized-workspace-scheduler' -Detail 'One task owns the workspace; later tasks queue; task branches and tracked/untracked changes survive task-specific stash/restore'
+$taskEId = 'workspace-e-' + [guid]::NewGuid().ToString('N')
+$schedulerFailureConfigPath = Join-Path $schedulerRoot 'agents-missing-base.json'
+$schedulerFailureConfig = Get-Content -LiteralPath $schedulerConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$schedulerFailureConfig.runtime.defaultBaseBranch = 'definitely-missing-base'
+Write-Utf8NoBom -Path $schedulerFailureConfigPath -Content (($schedulerFailureConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskEId -TaskSelector 'synthetic-workspace-provisioning-failure' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerFailureConfigPath
+$failedRunId = 'e' * 32
+$failedLayout = Get-TaskWorkspaceLayout -WorkspaceRoot ([string]$schedulerFailureConfig.workflow.workspaceScheduling.workspaceRoot) -TaskId $taskEId -RepositoryId azure-planningspace-ps-excel-agent -RunId $failedRunId
+$failedProvisioningRejected = $false
+try { $null = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskEId -RunId $failedRunId -ConfigPath $schedulerFailureConfigPath }
+catch { $failedProvisioningRejected = $_.Exception.Message -match 'rev-parse' }
+$coordinatorAfterFailedProvisioning = Get-Content -LiteralPath $schedulerFailureConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$failedLeaseCount = @($coordinatorAfterFailedProvisioning.leases | Where-Object { [string]$_.taskId -eq $taskEId }).Count
+if (-not $failedProvisioningRejected -or (Test-Path -LiteralPath ([string]$failedLayout.ClonePath)) -or $failedLeaseCount -ne 0) { throw 'Failed workspace provisioning left a partial clone or capacity lease behind.' }
+
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status completed -Stage synthetic-stale-reopen-check -ConfigPath $schedulerConfigPath | Out-Null
+$staleReopenRejected = $false
+try { $null = & (Join-Path $root 'scripts\Reopen-AgentTask.ps1') -TaskId $taskAId -Reason 'Synthetic stale revision reopen check.' -ExpectedRevision 2 -ExpectedRunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath }
+catch { $staleReopenRejected = $_.Exception.Message -match 'revision changed' }
+if (-not $staleReopenRejected) { throw 'A stale dashboard revision was allowed to reopen the task.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -Stage synthetic-resume-check -ConfigPath $schedulerConfigPath | Out-Null
+$leaseAResumed = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('r' * 32) -ConfigPath $schedulerConfigPath
+if ([string]$leaseAResumed.Status -ne 'active' -or [string]$leaseAResumed.LeaseId -eq [string]$leaseA.LeaseId -or [string]$leaseAResumed.Workspaces[0].Path -ne $workspaceA -or -not (Test-Path -LiteralPath (Join-Path $workspaceA 'task-a-uncommitted.txt'))) { throw 'Task resume did not reacquire the same preserved clone with a new lease.' }
+Add-Check -Name 'parallel-clone-workspace-scheduler' -Detail 'Two tasks can run in distinct full clones of one repository; FIFO capacity, one controller per task, task-local failure, resolver/heartbeat ownership, clone reuse, failed/task-crash lease recovery, and failed-provisioning rollback are enforced'
 
 $requirementsPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
 foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist','coverage')) {
@@ -788,10 +845,15 @@ $legacyDeliveryTask = [ordered]@{
     agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' } }
 }
 Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'task.json') -Content (($legacyDeliveryTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$legacyWorkspaceManifestRoot = Join-Path $legacyDeliveryTaskRoot 'workspaces'
+New-Item -ItemType Directory -Path $legacyWorkspaceManifestRoot -Force | Out-Null
+$deliveryCommit = ([string](& git -C $deliveryWorkspace rev-parse HEAD)).Trim()
+$legacyWorkspaceManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$legacyDeliveryTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('e' * 32); leaseId=('f' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $legacyWorkspaceManifestRoot "$deliveryRepositoryId.json") }
+Write-Utf8NoBom -Path $legacyWorkspaceManifest.manifestPath -Content (($legacyWorkspaceManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'review-result.json') -Content (([ordered]@{ findings=@(); heldScopeViolations=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $deliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $legacyDeliveryTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne "feature/$deliveryFixtureId" -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/feature/$deliveryFixtureId") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
-Add-Check -Name 'reviewed-branch-delivery-legacy-task' -Detail 'Prepare-only delivery accepts legacy singular repositoryId task state without pushing'
+Add-Check -Name 'reviewed-branch-delivery-task-workspace' -Detail 'Prepare-only delivery accepts legacy singular repositoryId scope but resolves Git state from its task workspace manifest'
 
 $processReviewTaskId = "process-review-$deliveryFixtureId"
 $processReviewTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$processReviewTaskId"
@@ -828,6 +890,10 @@ $bypassFinding = [ordered]@{
 }
 $bypassReview = [ordered]@{ findings=@($bypassFinding); agentProcessFindings=@(); heldScopeViolations=@() }
 Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'task.json') -Content (($bypassTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$bypassManifestRoot = Join-Path $bypassTaskRoot 'workspaces'
+New-Item -ItemType Directory -Path $bypassManifestRoot -Force | Out-Null
+$bypassManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$bypassTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('1' * 32); leaseId=('2' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $bypassManifestRoot "$deliveryRepositoryId.json") }
+Write-Utf8NoBom -Path $bypassManifest.manifestPath -Content (($bypassManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'review-result.json') -Content (($bypassReview | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $bypassDecision = & (Join-Path $root 'scripts\Set-ReviewDecision.ps1') -TaskId $bypassTaskId -FindingId REV-201 -Decision bypassed -DecidedBy user -Note 'Accepted as tracked technical debt.' -ConfigPath $deliveryConfigPath
 $bypassDebt = Get-Content -LiteralPath (Join-Path $bypassTaskRoot 'tech-debt-items.json') -Raw -Encoding UTF8 | ConvertFrom-Json

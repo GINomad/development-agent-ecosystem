@@ -84,8 +84,18 @@ $wrapperPipeline.definitionIds = @(17)
 $wrapperPipeline.autoQueueDefinitionIds = @()
 Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 
+function New-WrapperWorkspaceManifest {
+    param([Parameter(Mandatory)][string]$TaskId)
+    $manifestRoot = Join-Path $wrapperStateRoot "tasks\$TaskId\workspaces"
+    New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
+    $manifestPath = Join-Path $manifestRoot 'azure-palantirplugins-ps-app-delfi.json'
+    $manifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId='azure-palantirplugins-ps-app-delfi'; clonePath=[IO.Path]::GetFullPath($wrapperWorkspace); canonicalOrigin='https://dev.azure.com/example/Example/_git/synthetic'; baseSha=$wrapperCommit; branch=$wrapperBranch; lifecycle='active'; runId=('3' * 32); leaseId=('4' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
+    Write-Utf8NoBom -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+}
+
 $wrapperTaskId = 'pipeline-wrapper-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $wrapperTaskId -TaskSelector 'synthetic post-push recovery' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $wrapperTaskId
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
 $env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
 try {
@@ -103,6 +113,7 @@ $wrapperPipeline.definitionIds = @(892)
 Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 $remediationTaskId = 'pipeline-wrapper-remediation-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $remediationTaskId -TaskSelector 'synthetic post-push remediation' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $remediationTaskId
 $env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
 try {
     $remediationResult = & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $remediationTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -PushWasSuccessful -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
@@ -126,6 +137,7 @@ Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-J
 
 $refreshTaskId = 'pipeline-refresh-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $refreshTaskId -TaskSelector 'synthetic successful pipeline refresh' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $refreshTaskId
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
 $env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
 try {
@@ -151,6 +163,7 @@ if (
 
 $mismatchTaskId = 'pipeline-wrapper-mismatch-' + [guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $mismatchTaskId -TaskSelector 'synthetic post-push mismatch' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $mismatchTaskId
 $originGateRejected = $false
 try {
     & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $mismatchTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -PushWasSuccessful -Branch $wrapperBranch -Commit 'ffffffffffffffffffffffffffffffffffffffff' -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null

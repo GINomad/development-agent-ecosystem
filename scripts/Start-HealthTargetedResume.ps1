@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $FailurePath,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [Parameter(Mandatory)][string] $RecoveryEvidencePath,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
@@ -170,6 +172,8 @@ $workflowParameters = @{
     ConfigPath = $ConfigPath
     CodexHome = $CodexHome
 }
+if ($ExecutionRunId) { $workflowParameters.ExecutionRunId = $ExecutionRunId }
+if ($WorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
 if ($ElevatedApproved) { $workflowParameters.ElevatedApproved = $true }
 
 try {

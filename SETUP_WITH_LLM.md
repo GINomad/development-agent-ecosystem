@@ -36,12 +36,12 @@ Collect and confirm:
 1. Platform: OS, shell, preferred repository root, and the user context that will run interactive sessions and scheduled tasks.
 2. Agent runtime: whether its CLI is installed, whether interactive and headless execution are required, and whether its non-secret authentication-status check succeeds.
 3. Developer identity: display name, email, Azure DevOps and GitHub usernames used to discover assigned work and exclude self-authored reviews.
-4. Repositories: for every managed repository, a stable ID, provider, clone URL, local workspace, default base branch, organization or host, project, repository name or ID, and enabled state.
+4. Repositories: for every managed repository, a stable ID, provider, canonical clone URL, operator/reference local workspace (never used for task execution), default base branch, organization or host, project, repository name or ID, and enabled state.
 5. Credentials: the approved authentication strategy for each provider and the environment-variable name when applicable. Never ask for a credential value.
 6. Task sources: manual-only or automated discovery, organizations and projects, queries or filters, assignment rules, polling interval, and maximum tasks per run.
 7. Delivery: allowed normal-push remote, protected base branches, exact build definition IDs that may be auto-queued, observation-only pipelines, deployment definitions that must never be queued, and the confirmed agents responsible for monitoring, remediation review, exception routing, ecosystem recovery, and completion.
 8. Reviews and knowledge: reviewer identities, review-monitor storage and schedule, initial knowledge sources, versioned knowledge roots, and the global standards file.
-9. Local services: state root, loopback dashboard port, scheduled-task user context, and desired schedules.
+9. Local services: state root, isolated task-clone root, maximum concurrent tasks (at least two), loopback dashboard port, scheduled-task user context, and desired schedules.
 10. Safety policy: repository mutations needed for setup, external-write allowlists, and any unresolved values that must remain disabled or held.
 
 Do not assume similarly named repositories share credentials, organizations, base branches, pipelines, or local paths. Explicitly confirm every repository and every external-write allowlist.

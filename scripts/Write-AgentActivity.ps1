@@ -52,7 +52,9 @@ $record = [ordered]@{
 $activityPath = Join-Path $taskRoot 'agent-activity.jsonl'
 $line = ($record | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine
 $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
-$stream = [IO.File]::Open($activityPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
-try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+$null = Invoke-EcosystemFileLock -LockPath ($activityPath + '.lock') -TimeoutSeconds 30 -Action {
+    $stream = [IO.File]::Open($activityPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+}
 
 [pscustomobject]$record

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1220" viewBox="0 0 1800 1220" role="img" aria-labelledby="title desc">
   <title id="title">Development Agent Ecosystem repository architecture</title>
-  <desc id="desc">Repository source of truth, prompts, skills, Orchestrator routing, explicit pipeline ownership and definition allowlists, single-task workspace lease and queue, task-specific Git branch and stash restoration, event-driven chain scripts, seven agents, guarded Azure delivery, and revisioned task state.</desc>
+  <desc id="desc">Repository source of truth, prompts, skills, Orchestrator routing, explicit pipeline ownership and definition allowlists, capacity-limited task leases, FIFO queueing, and task-specific full Git clones, event-driven chain scripts, seven agents, guarded Azure delivery, and revisioned task state.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/><stop offset="0.55" stop-color="#0b1420"/><stop offset="1" stop-color="#12192a"/>
@@ -56,7 +56,7 @@
     <rect x="320" y="314" width="115" height="27" rx="9" class="extend"/><text x="337" y="332" class="extend-text">+ REPOSITORIES</text>
     <text x="115" y="339" class="mono">config/agents.json</text>
     <text x="115" y="372" class="copy">Single canonical source of truth</text>
-    <text x="115" y="398" class="small">responsibilities · routing · workspace queue · health policy</text>
+    <text x="115" y="398" class="small">responsibilities · routing · clone capacity · health policy</text>
 
     <rect x="85" y="455" width="370" height="145" rx="19" fill="url(#source)" stroke="#32705d"/>
     <rect x="318" y="469" width="117" height="27" rx="9" class="extend"/><text x="335" y="487" class="extend-text">+ PROMPT PATHS</text>
@@ -103,8 +103,8 @@
     <rect x="545" y="635" width="420" height="155" rx="20" fill="url(#runtime)" stroke="#355676"/>
     <rect x="822" y="649" width="123" height="27" rx="9" class="extend"/><text x="838" y="667" class="extend-text">+ WORKFLOWS</text>
     <text x="575" y="675" class="mono">Start-DevelopmentWorkflow.ps1</text>
-    <text x="575" y="708" class="copy">Orchestrator routing + serialized task workspace ownership</text>
-    <text x="575" y="736" class="small">Switch-TaskWorkspace · oldest queue · branch/stash restore</text>
+    <text x="575" y="708" class="copy">Orchestrator routing + capacity-limited task clone ownership</text>
+    <text x="575" y="736" class="small">Switch-TaskWorkspace · FIFO admission · full clone manifests</text>
     <text x="575" y="762" class="small">event chain · push · PR → Orchestrator → final Keeper · Health retry</text>
 
     <rect x="545" y="825" width="420" height="150" rx="20" fill="url(#runtime)" stroke="#355676"/>
@@ -128,7 +128,7 @@
     <text x="1078" y="340" class="lane">CONTROL PLANE</text>
     <text x="1078" y="376" class="agent-title">Workflow</text>
     <text x="1078" y="400" class="agent-title">Orchestrator</text>
-    <text x="1078" y="428" class="agent-copy">routing + workspace lease</text>
+    <text x="1078" y="428" class="agent-copy">routing + task clone lease</text>
     <text x="1273" y="340" class="lane">KNOWLEDGE</text>
     <text x="1273" y="376" class="agent-title">Knowledge Keeper</text>
     <text x="1273" y="406" class="agent-copy">on-demand context + skills</text>

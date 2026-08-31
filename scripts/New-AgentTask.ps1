@@ -23,44 +23,55 @@ foreach ($id in @($RepositoryIds) + @($RepositoryId)) {
 }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
-if ((Test-Path -LiteralPath $taskPath) -and -not $Resume) {
-    throw "Task '$TaskId' already exists. Use -Resume to continue it."
-}
-New-Item -ItemType Directory -Path $taskRoot -Force | Out-Null
-if (-not (Test-Path -LiteralPath $taskPath)) {
-    $task = [ordered]@{
-        taskId = $TaskId
-        selector = $TaskSelector
-        mode = $Mode
-        repositoryId = if ($selectedRepositoryIds.Count) { $selectedRepositoryIds[0] } else { $null }
-        repositoryIds = @($selectedRepositoryIds)
-        status = 'created'
-        createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-        updatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-        currentStage = 'not-started'
-        lastMessage = 'Task created. Workflow has not started yet.'
-        agentStatuses = [ordered]@{
-            orchestrator = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            knowledge_keeper = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            requirements_analyst = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            developer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            reviewer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            pipeline_monitor = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
-            health_check = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+$taskLockPath = Join-Path $taskRoot 'task-state.lock'
+$mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action {
+    if ((Test-Path -LiteralPath $taskPath) -and -not $Resume) {
+        throw "Task '$TaskId' already exists. Use -Resume to continue it."
+    }
+    if (-not (Test-Path -LiteralPath $taskPath)) {
+        $now = [DateTime]::UtcNow.ToString('o')
+        $document = [ordered]@{
+            taskId = $TaskId
+            selector = $TaskSelector
+            mode = $Mode
+            repositoryId = if ($selectedRepositoryIds.Count) { $selectedRepositoryIds[0] } else { $null }
+            repositoryIds = @($selectedRepositoryIds)
+            status = 'created'
+            createdAtUtc = $now
+            updatedAtUtc = $now
+            currentStage = 'not-started'
+            lastMessage = 'Task created. Workflow has not started yet.'
+            revision = 1
+            agentStatuses = [ordered]@{
+                orchestrator = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                knowledge_keeper = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                requirements_analyst = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                developer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                reviewer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                pipeline_monitor = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                health_check = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+            }
+        }
+        Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+        return [pscustomobject]@{ Created=$true; ScopeChanged=$false }
+    }
+    if ($selectedRepositoryIds.Count) {
+        $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $previousIds = if ($document.PSObject.Properties['repositoryIds']) { @($document.repositoryIds) } elseif ($document.PSObject.Properties['repositoryId'] -and $document.repositoryId) { @([string]$document.repositoryId) } else { @() }
+        if (($previousIds -join '|') -ne (@($selectedRepositoryIds) -join '|')) {
+            $document | Add-Member -NotePropertyName repositoryId -NotePropertyValue $selectedRepositoryIds[0] -Force
+            $document | Add-Member -NotePropertyName repositoryIds -NotePropertyValue @($selectedRepositoryIds) -Force
+            $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+            Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+            return [pscustomobject]@{ Created=$false; ScopeChanged=$true }
         }
     }
-    Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+    return [pscustomobject]@{ Created=$false; ScopeChanged=$false }
+}
+if ([bool]$mutation.Created) {
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'user' -Type 'task-created' -Summary "Task selected in $Mode mode for repositories $($selectedRepositoryIds -join ', '): $TaskSelector" -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
-elseif ($selectedRepositoryIds.Count) {
-    $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $previousIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() }
-    if (($previousIds -join '|') -ne (@($selectedRepositoryIds) -join '|')) {
-        $task | Add-Member -NotePropertyName repositoryId -NotePropertyValue $selectedRepositoryIds[0] -Force
-        $task | Add-Member -NotePropertyName repositoryIds -NotePropertyValue @($selectedRepositoryIds) -Force
-        $task | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
-        Write-Utf8NoBom -Path $taskPath -Content (($task | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
-        & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'user' -Type 'workflow-status' -Summary "Repository scope updated: $($selectedRepositoryIds -join ', ')." -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    }
+elseif ([bool]$mutation.ScopeChanged) {
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'user' -Type 'workflow-status' -Summary "Repository scope updated: $($selectedRepositoryIds -join ', ')." -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 [pscustomobject]@{ TaskId = $TaskId; TaskRoot = $taskRoot; TaskPath = $taskPath; Resumed = [bool]$Resume; RepositoryIds=@($selectedRepositoryIds) }

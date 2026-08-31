@@ -12,7 +12,9 @@ param(
     [ValidateRange(0,1)][int] $MaxCapacityFallbackAttempts = 1,
     [ValidateRange(1,10)][int] $MaxIdenticalFailures = 3,
     [ValidateRange(1,1440)][int] $MaxRunMinutes = 120,
-    [ValidateRange(100,5000)][int] $PollMilliseconds = 500
+    [ValidateRange(100,5000)][int] $PollMilliseconds = 500,
+    [scriptblock] $HeartbeatAction,
+    [ValidateRange(5,300)][int] $HeartbeatIntervalSeconds = 30
 )
 
 Set-StrictMode -Version Latest
@@ -20,7 +22,20 @@ $ErrorActionPreference = 'Stop'
 
 function Invoke-Attempt {
     param([string[]] $AttemptArguments, [string] $AttemptGuardPath)
-    & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $FilePath -Arguments $AttemptArguments -Prompt $Prompt -WorkingDirectory $WorkingDirectory -LogPath $LogPath -GuardArtifactPath $AttemptGuardPath -MaxIdenticalFailures $MaxIdenticalFailures -MaxRunMinutes $MaxRunMinutes -PollMilliseconds $PollMilliseconds
+    $attemptParameters = @{
+        FilePath = $FilePath
+        Arguments = $AttemptArguments
+        Prompt = $Prompt
+        WorkingDirectory = $WorkingDirectory
+        LogPath = $LogPath
+        GuardArtifactPath = $AttemptGuardPath
+        MaxIdenticalFailures = $MaxIdenticalFailures
+        MaxRunMinutes = $MaxRunMinutes
+        PollMilliseconds = $PollMilliseconds
+        HeartbeatIntervalSeconds = $HeartbeatIntervalSeconds
+    }
+    if ($HeartbeatAction) { $attemptParameters.HeartbeatAction = $HeartbeatAction }
+    & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') @attemptParameters
 }
 
 $primaryGuardPath = $GuardArtifactPath + '.primary.json'
