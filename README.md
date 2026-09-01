@@ -41,6 +41,22 @@ Every Codex runner is supervised. Three identical execution failures terminate t
 
 See [installation](docs/installation.md), [architecture](docs/architecture.md), [configuration](docs/configuration.md), [pipeline monitoring and ownership](docs/pipeline-monitoring.md), and [operations and rollback](docs/operations.md).
 
+## Parallel tasks in the same repository
+
+The task ID is the isolation boundary. Two tasks may target the same configured repository at the same time because each `(taskId, repositoryId)` pair receives its own full clone, unique task branch, manifest, immutable execution snapshots, controller lease, and task-local status history. A failure, stop, stale heartbeat, comment, or resume action for one task cannot advance or mutate the other task.
+
+Start distinct work items from separate terminals, or create both from the dashboard:
+
+```powershell
+# Terminal 1
+.\scripts\Start-DevelopmentWorkflow.ps1 -Mode manual -TaskSelector 1839566 -RepositoryId azure-planningspace-ps-excel-agent
+
+# Terminal 2
+.\scripts\Start-DevelopmentWorkflow.ps1 -Mode manual -TaskSelector 1839567 -RepositoryId azure-planningspace-ps-excel-agent
+```
+
+With the default capacity of two, both tasks are admitted. Additional tasks remain in the durable FIFO queue until a lease is released. Use the dashboard task selector to switch between them and verify each task's run ID, lease ID, clone path, branch, base SHA, status, agents, and timeline. Physical clone directory segments use Windows-safe keys; the task manifests and dashboard retain the full task and repository IDs. See the [parallel task runbook](docs/operations.md#parallel-task-runbook) for lifecycle and recovery details.
+
 ## Common commands
 
 ```powershell
