@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1160" viewBox="0 0 1600 1160" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="1650" viewBox="0 0 2300 1650" role="img" aria-labelledby="title desc" text-rendering="geometricPrecision">
   <title id="title">Development Agent Ecosystem architecture</title>
-  <desc id="desc">Workflow Orchestrator routes tasks, comments, pipeline exceptions, agent authority handoffs, and completed pull-request closure evidence. Pipeline ownership assigns monitoring to Pipeline Monitor, product remediation to Developer and Reviewer, ecosystem recovery to Health Check, and final publication to Knowledge Keeper. Orchestrator admits tasks up to configured capacity and gives every task/repository pair a full isolated clone with an exact run and lease manifest.</desc>
+  <desc id="desc">Workflow Orchestrator routes tasks, comments, pipeline exceptions, authority handoffs, and completed pull-request evidence. A capacity coordinator gives every task and repository pair a full isolated Git clone with exact run and lease ownership. The enlarged layout separates labels and wraps every card description for readability.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#071019"/>
@@ -19,160 +19,208 @@
       <stop offset="0" stop-color="#23213d"/>
       <stop offset="1" stop-color="#17182c"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000814" flood-opacity="0.45"/>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="145%">
+      <feDropShadow dx="0" dy="20" stdDeviation="20" flood-color="#000814" flood-opacity="0.45"/>
     </filter>
-    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#62e7b8"/>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#62e7b8"/>
     </marker>
-    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#82aaff"/>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#82aaff"/>
     </marker>
     <style>
-      .title{font:700 50px 'Segoe UI',Arial,sans-serif;fill:#f4f8fc;letter-spacing:-1.5px}
-      .subtitle{font:400 21px 'Segoe UI',Arial,sans-serif;fill:#9badc2}
-      .eyebrow{font:700 14px 'Segoe UI',Arial,sans-serif;fill:#63e5b7;letter-spacing:3px}
-      .box-title{font:700 24px 'Segoe UI',Arial,sans-serif;fill:#f4f8fc}
-      .box-copy{font:400 16px 'Segoe UI',Arial,sans-serif;fill:#aebccd}
-      .keeper-title{font:750 29px 'Segoe UI',Arial,sans-serif;fill:#061510}
-      .keeper-copy{font:500 17px 'Segoe UI',Arial,sans-serif;fill:#0d3b2d}
-      .label{font:600 14px 'Segoe UI',Arial,sans-serif;fill:#bfccda}
-      .tiny{font:500 13px 'Segoe UI',Arial,sans-serif;fill:#8093a9}
-      .edge{fill:none;stroke:#62e7b8;stroke-width:3;marker-end:url(#arrowGreen)}
-      .edge-bi{fill:none;stroke:#62e7b8;stroke-width:3;marker-start:url(#arrowGreen);marker-end:url(#arrowGreen)}
-      .edge-blue{fill:none;stroke:#82aaff;stroke-width:2.5;marker-end:url(#arrowBlue)}
-      .edge-dashed{fill:none;stroke:#82aaff;stroke-width:2.5;stroke-dasharray:10 9;marker-end:url(#arrowBlue)}
+      .title{font:700 62px 'Segoe UI',Arial,sans-serif;fill:#f4f8fc;letter-spacing:-1.8px}
+      .subtitle{font:400 26px 'Segoe UI',Arial,sans-serif;fill:#9badc2}
+      .eyebrow{font:700 17px 'Segoe UI',Arial,sans-serif;fill:#63e5b7;letter-spacing:3.4px}
+      .box-title{font:700 29px 'Segoe UI',Arial,sans-serif;fill:#f4f8fc}
+      .box-copy{font:400 20px 'Segoe UI',Arial,sans-serif;fill:#aebccd}
+      .keeper-title{font:750 38px 'Segoe UI',Arial,sans-serif;fill:#061510}
+      .keeper-copy{font:500 21px 'Segoe UI',Arial,sans-serif;fill:#0d3b2d}
+      .label{font:600 17px 'Segoe UI',Arial,sans-serif;fill:#c7d4e2}
+      .tiny{font:500 16px 'Segoe UI',Arial,sans-serif;fill:#899db4}
+      .edge{fill:none;stroke:#62e7b8;stroke-width:3.5;marker-end:url(#arrowGreen)}
+      .edge-bi{fill:none;stroke:#62e7b8;stroke-width:3.5;marker-start:url(#arrowGreen);marker-end:url(#arrowGreen)}
+      .edge-blue{fill:none;stroke:#82aaff;stroke-width:3;marker-end:url(#arrowBlue)}
+      .edge-dashed{fill:none;stroke:#82aaff;stroke-width:3;stroke-dasharray:12 10;marker-end:url(#arrowBlue)}
+      .label-bg{fill:#101a28;stroke:#2b4054;stroke-width:1}
     </style>
   </defs>
 
-  <rect width="1600" height="1160" fill="url(#background)"/>
-  <circle cx="210" cy="115" r="260" fill="#2ed69b" opacity="0.055"/>
-  <circle cx="1440" cy="160" r="330" fill="#718dff" opacity="0.06"/>
-  <path d="M0 790 C320 690 510 910 820 810 C1110 715 1260 760 1600 650 L1600 1160 L0 1160Z" fill="#101b2a" opacity="0.65"/>
+  <rect width="2300" height="1650" fill="url(#background)"/>
+  <circle cx="260" cy="130" r="360" fill="#2ed69b" opacity="0.055"/>
+  <circle cx="2080" cy="150" r="430" fill="#718dff" opacity="0.06"/>
+  <path d="M0 1120C430 970 760 1270 1170 1110C1570 950 1900 1050 2300 865V1650H0Z" fill="#101b2a" opacity="0.65"/>
 
-  <text x="100" y="92" class="eyebrow">EVIDENCE-FIRST SOFTWARE DELIVERY</text>
-  <text x="100" y="150" class="title">Development Agent Ecosystem</text>
-  <text x="100" y="190" class="subtitle">Orchestrator routes intake and authority returns. Out-of-scope comments reroute automatically. Unclear scope stops.</text>
+  <text x="120" y="105" class="eyebrow">EVIDENCE-FIRST SOFTWARE DELIVERY</text>
+  <text x="120" y="180" class="title">Development Agent Ecosystem</text>
+  <text x="120" y="230" class="subtitle">Independent task clones, exact controller leases, durable routing, review gates, and verified delivery.</text>
 
   <!-- External inputs -->
   <g filter="url(#shadow)">
-    <rect x="80" y="285" width="285" height="130" rx="20" fill="url(#external)" stroke="#384164"/>
-    <circle cx="120" cy="326" r="18" fill="#82aaff" opacity="0.18"/>
-    <path d="M112 326h16M120 318v16" stroke="#9ab5ff" stroke-width="2.5" stroke-linecap="round"/>
-    <text x="150" y="330" class="box-title">Azure Boards</text>
-    <text x="110" y="368" class="box-copy">Tasks · requirements · comments</text>
-    <text x="110" y="394" class="tiny">Assigned work items in manual or automate mode</text>
+    <g data-card="azure-boards">
+      <rect x="90" y="350" width="430" height="205" rx="24" fill="url(#external)" stroke="#384164" stroke-width="2"/>
+      <circle cx="145" cy="405" r="23" fill="#82aaff" opacity="0.18"/>
+      <path d="M135 405h20M145 395v20" stroke="#9ab5ff" stroke-width="3" stroke-linecap="round"/>
+      <text x="185" y="414" class="box-title">Azure Boards</text>
+      <text x="135" y="465" class="box-copy">Tasks · requirements · comments</text>
+      <text x="135" y="500" class="tiny">Assigned work items</text>
+      <text x="135" y="524" class="tiny">Manual or automate mode</text>
+    </g>
 
-    <rect x="80" y="470" width="285" height="130" rx="20" fill="url(#external)" stroke="#384164"/>
-    <circle cx="120" cy="511" r="18" fill="#82aaff" opacity="0.18"/>
-    <path d="M111 507h18M111 515h13" stroke="#9ab5ff" stroke-width="2.5" stroke-linecap="round"/>
-    <text x="150" y="515" class="box-title">Codebase</text>
-    <text x="110" y="553" class="box-copy">Source · tests · local history</text>
-    <text x="110" y="579" class="tiny">Repository evidence at an exact revision</text>
+    <g data-card="codebase">
+      <rect x="90" y="610" width="430" height="205" rx="24" fill="url(#external)" stroke="#384164" stroke-width="2"/>
+      <circle cx="145" cy="665" r="23" fill="#82aaff" opacity="0.18"/>
+      <path d="M134 660h22M134 670h17" stroke="#9ab5ff" stroke-width="3" stroke-linecap="round"/>
+      <text x="185" y="674" class="box-title">Codebase</text>
+      <text x="135" y="725" class="box-copy">Source · tests · local history</text>
+      <text x="135" y="760" class="tiny">Repository evidence</text>
+      <text x="135" y="784" class="tiny">at an exact revision</text>
+    </g>
 
-    <rect x="80" y="655" width="285" height="145" rx="20" fill="url(#external)" stroke="#384164"/>
-    <circle cx="120" cy="696" r="18" fill="#82aaff" opacity="0.18"/>
-    <path d="M111 691h18v12h-10l-5 5v-5h-3z" fill="none" stroke="#9ab5ff" stroke-width="2" stroke-linejoin="round"/>
-    <text x="150" y="700" class="box-title">PR discussion</text>
-    <text x="110" y="738" class="box-copy">Code changes · review threads</text>
-    <text x="110" y="764" class="box-copy">User comments · local notes</text>
+    <g data-card="pr-discussion">
+      <rect x="90" y="870" width="430" height="215" rx="24" fill="url(#external)" stroke="#384164" stroke-width="2"/>
+      <circle cx="145" cy="925" r="23" fill="#82aaff" opacity="0.18"/>
+      <path d="M134 918h22v16h-12l-7 7v-7h-3z" fill="none" stroke="#9ab5ff" stroke-width="2.5" stroke-linejoin="round"/>
+      <text x="185" y="934" class="box-title">PR discussion</text>
+      <text x="135" y="985" class="box-copy">Code changes · review threads</text>
+      <text x="135" y="1020" class="box-copy">User comments · local notes</text>
+      <text x="135" y="1055" class="tiny">Per-PR evidence and decisions</text>
+    </g>
   </g>
 
   <!-- Orchestrator -->
-  <g filter="url(#shadow)">
-    <rect x="565" y="280" width="470" height="165" rx="28" fill="url(#keeper)"/>
-    <text x="610" y="333" class="eyebrow" style="fill:#0e4937">CONTROL PLANE</text>
-    <text x="610" y="375" class="keeper-title">Workflow Orchestrator</text>
-    <text x="610" y="409" class="keeper-copy">Classifies tasks + general comments from JSON responsibilities</text>
-    <text x="610" y="433" class="keeper-copy">Auto-routes authority returns · capacity leases · isolated clones</text>
+  <g filter="url(#shadow)" data-card="workflow-orchestrator">
+    <rect x="680" y="340" width="900" height="235" rx="32" fill="url(#keeper)"/>
+    <text x="735" y="400" class="eyebrow" style="fill:#0e4937">CONTROL PLANE</text>
+    <text x="735" y="453" class="keeper-title">Workflow Orchestrator</text>
+    <text x="735" y="495" class="keeper-copy">Classifies tasks and general comments from JSON responsibilities</text>
+    <text x="735" y="528" class="keeper-copy">Routes authority returns and owns task-capacity admission</text>
+    <text x="735" y="559" class="keeper-copy">Keeps task status, context, run, and lease ownership isolated</text>
   </g>
 
-  <!-- Agents -->
+  <!-- Delivery agents -->
   <g filter="url(#shadow)">
-    <rect x="440" y="525" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
-    <text x="475" y="571" class="eyebrow">ANALYZE</text>
-    <text x="475" y="606" class="box-title">Requirements Analyst</text>
-    <text x="475" y="638" class="box-copy">Ready scope · held scope · questions</text>
+    <g data-card="requirements-analyst">
+      <rect x="600" y="700" width="480" height="220" rx="26" fill="url(#agent)" stroke="#314459" stroke-width="2"/>
+      <text x="645" y="755" class="eyebrow">ANALYZE</text>
+      <text x="645" y="800" class="box-title">Requirements Analyst</text>
+      <text x="645" y="842" class="box-copy">Ready scope · held scope</text>
+      <text x="645" y="875" class="box-copy">Questions · sources · acceptance</text>
+    </g>
 
-    <rect x="845" y="525" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
-    <text x="880" y="571" class="eyebrow">IMPLEMENT</text>
-    <text x="880" y="606" class="box-title">Developer</text>
-    <text x="880" y="638" class="box-copy">Approved scope + stack engineering guidance</text>
+    <g data-card="developer">
+      <rect x="1160" y="700" width="480" height="220" rx="26" fill="url(#agent)" stroke="#314459" stroke-width="2"/>
+      <text x="1205" y="755" class="eyebrow">IMPLEMENT</text>
+      <text x="1205" y="800" class="box-title">Developer</text>
+      <text x="1205" y="842" class="box-copy">Approved scope · task branch</text>
+      <text x="1205" y="875" class="box-copy">Engineering guidance · tests · evidence</text>
+    </g>
 
-    <rect x="440" y="750" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
-    <text x="475" y="796" class="eyebrow">VERIFY</text>
-    <text x="475" y="831" class="box-title">Reviewer</text>
-    <text x="475" y="863" class="box-copy">Requirements + principles · no automatic fix</text>
+    <g data-card="reviewer">
+      <rect x="600" y="1020" width="480" height="220" rx="26" fill="url(#agent)" stroke="#314459" stroke-width="2"/>
+      <text x="645" y="1075" class="eyebrow">VERIFY</text>
+      <text x="645" y="1120" class="box-title">Reviewer</text>
+      <text x="645" y="1162" class="box-copy">Requirements · code · principles</text>
+      <text x="645" y="1195" class="box-copy">Findings require a human decision</text>
+    </g>
 
-    <rect x="845" y="750" width="315" height="145" rx="22" fill="url(#agent)" stroke="#314459"/>
-    <text x="880" y="796" class="eyebrow">VALIDATE DELIVERY</text>
-    <text x="880" y="831" class="box-title">Pipeline Monitor</text>
-    <text x="880" y="863" class="box-copy">Guarded push · exact-SHA build</text>
-    <text x="880" y="887" class="tiny">2h native PR gate · completed PR → Orchestrator</text>
+    <g data-card="pipeline-monitor">
+      <rect x="1160" y="1020" width="480" height="240" rx="26" fill="url(#agent)" stroke="#314459" stroke-width="2"/>
+      <text x="1205" y="1075" class="eyebrow">VALIDATE DELIVERY</text>
+      <text x="1205" y="1120" class="box-title">Pipeline Monitor</text>
+      <text x="1205" y="1162" class="box-copy">Guarded push · exact branch and SHA</text>
+      <text x="1205" y="1195" class="box-copy">Build evidence · bounded remediation</text>
+      <text x="1205" y="1228" class="tiny">Completed PR returns to Orchestrator</text>
+    </g>
 
-    <rect x="642" y="940" width="315" height="135" rx="22" fill="#172d35" stroke="#4b8375"/>
-    <text x="677" y="982" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
-    <text x="677" y="1017" class="box-title">Health Check Agent</text>
-    <text x="677" y="1049" class="box-copy">Safe repair · restart failed agent</text>
+    <g data-card="health-check">
+      <rect x="900" y="1370" width="500" height="175" rx="26" fill="#172d35" stroke="#4b8375" stroke-width="2"/>
+      <text x="945" y="1422" class="eyebrow">DIAGNOSE · SAFE REPAIR</text>
+      <text x="945" y="1467" class="box-title">Health Check Agent</text>
+      <text x="945" y="1508" class="box-copy">Bounded repair · affected-agent retry</text>
+    </g>
   </g>
 
-  <!-- Right-side gates and storage -->
+  <!-- Knowledge, capacity, approval, and dashboard -->
   <g filter="url(#shadow)">
-    <rect x="1240" y="300" width="280" height="145" rx="22" fill="#152638" stroke="#3e6178"/>
-    <text x="1275" y="346" class="eyebrow">KNOWLEDGE SERVICE</text>
-    <text x="1275" y="382" class="box-title">Knowledge Keeper</text>
-    <text x="1275" y="414" class="box-copy">On-demand knowledge + skills · final summary</text>
-    <text x="1275" y="438" class="tiny">Successful outcomes · routed final publication only</text>
+    <g data-card="knowledge-keeper">
+      <rect x="1810" y="340" width="410" height="235" rx="26" fill="#152638" stroke="#3e6178" stroke-width="2"/>
+      <text x="1855" y="397" class="eyebrow">KNOWLEDGE SERVICE</text>
+      <text x="1855" y="442" class="box-title">Knowledge Keeper</text>
+      <text x="1855" y="484" class="box-copy">On-demand knowledge and skills</text>
+      <text x="1855" y="517" class="box-copy">Successful outcomes only</text>
+      <text x="1855" y="548" class="tiny">Routed final publication and summary</text>
+    </g>
 
-    <rect x="1240" y="470" width="280" height="78" rx="18" fill="#152638" stroke="#4b8375"/>
-    <text x="1275" y="500" class="eyebrow">TASK CLONE CAPACITY</text>
-    <text x="1275" y="530" class="box-copy">2 active by default · FIFO queue · full clones</text>
+    <g data-card="task-clone-capacity">
+      <rect x="1810" y="625" width="410" height="155" rx="24" fill="#152638" stroke="#4b8375" stroke-width="2"/>
+      <text x="1855" y="680" class="eyebrow">TASK CLONE CAPACITY</text>
+      <text x="1855" y="723" class="box-copy">2 active by default · durable FIFO</text>
+      <text x="1855" y="756" class="box-copy">Full clone per task and repository</text>
+    </g>
 
-    <path d="M1380 545 l100 85 -100 85 -100 -85z" fill="#27213a" stroke="#7767a8" stroke-width="2"/>
-    <text x="1380" y="613" text-anchor="middle" class="box-title" style="font-size:21px">Human review</text>
-    <text x="1380" y="641" text-anchor="middle" class="box-copy">decision gate</text>
-    <text x="1380" y="670" text-anchor="middle" class="tiny">approve · reject · defer</text>
+    <g data-card="human-review">
+      <path d="M2015 830L2190 950L2015 1070L1840 950Z" fill="#27213a" stroke="#7767a8" stroke-width="2.5"/>
+      <text x="2015" y="925" text-anchor="middle" class="box-title">Human review</text>
+      <text x="2015" y="963" text-anchor="middle" class="box-copy">decision gate</text>
+      <text x="2015" y="997" text-anchor="middle" class="tiny">approve · reject</text>
+      <text x="2015" y="1022" text-anchor="middle" class="tiny">defer · tracked bypass</text>
+    </g>
 
-    <rect x="1240" y="775" width="280" height="150" rx="22" fill="#152638" stroke="#4b8375"/>
-    <text x="1275" y="820" class="eyebrow">OPERATOR CONTROL</text>
-    <text x="1275" y="856" class="box-title">Task dashboard</text>
-    <text x="1275" y="887" class="box-copy">Local diff · external PR reports</text>
-    <text x="1275" y="912" class="tiny">live logs · capacity/queue/clone · close · reopen</text>
+    <g data-card="task-dashboard">
+      <rect x="1810" y="1120" width="410" height="230" rx="26" fill="#152638" stroke="#4b8375" stroke-width="2"/>
+      <text x="1855" y="1177" class="eyebrow">OPERATOR CONTROL</text>
+      <text x="1855" y="1222" class="box-title">Task dashboard</text>
+      <text x="1855" y="1264" class="box-copy">Switch tasks · inspect local diff</text>
+      <text x="1855" y="1297" class="box-copy">Capacity · queue · clone · heartbeat</text>
+      <text x="1855" y="1328" class="tiny">Live logs · close · reopen · resume</text>
+    </g>
   </g>
 
-  <!-- Flows -->
-  <path class="edge-blue" d="M365 350 H565"/>
-  <path class="edge-blue" d="M365 535 H440"/>
-  <path class="edge-blue" d="M365 725 C400 725 405 820 440 820"/>
+  <!-- Input and delivery flows -->
+  <path class="edge-blue" d="M520 438H680"/>
+  <path class="edge-blue" d="M520 703C555 703 565 810 600 810"/>
+  <path class="edge-blue" d="M520 978C555 978 565 1130 600 1130"/>
 
-  <path class="edge-bi" d="M680 445 C650 475 620 492 605 525"/>
-  <path class="edge" d="M920 445 C955 475 985 492 995 525"/>
-  <path class="edge" d="M755 595 H845"/>
-  <path class="edge-bi" d="M635 670 C650 708 655 720 640 750"/>
-  <path class="edge-bi" d="M965 670 C950 708 945 720 960 750"/>
-  <path class="edge-blue" d="M598 895 C610 925 665 930 705 940"/>
-  <path class="edge-blue" d="M1002 895 C990 925 935 930 895 940"/>
-  <path class="edge-bi" d="M800 445 C800 535 800 850 800 940"/>
-  <path class="edge-dashed" d="M755 820 C930 710 1110 650 1280 630"/>
-  <path class="edge" d="M1380 715 C1330 815 1230 840 1160 830"/>
-  <path class="edge-bi" d="M1035 360 H1240"/>
-  <path class="edge-blue" d="M1035 430 C1120 450 1160 505 1240 510"/>
-  <path class="edge-bi" d="M1035 410 C1160 470 1135 850 1240 850"/>
+  <path class="edge-bi" d="M900 575C875 625 850 650 840 700"/>
+  <path class="edge" d="M1360 575C1385 625 1395 650 1400 700"/>
+  <path class="edge" d="M1080 810H1160"/>
+  <path class="edge-bi" d="M840 920V1020"/>
+  <path class="edge-bi" d="M1400 920V1020"/>
+  <path class="edge-blue" d="M840 1240C860 1320 965 1335 1040 1370"/>
+  <path class="edge-blue" d="M1400 1260C1380 1320 1325 1340 1270 1370"/>
 
-  <text x="397" y="326" class="label">task + comments</text>
-  <text x="770" y="578" class="label">ready scope</text>
-  <text x="735" y="705" class="label">evidence</text>
-  <text x="1070" y="703" class="label">push / code-test remediation</text>
-  <text x="1008" y="739" class="label">PR complete → Orchestrator → final Keeper publication</text>
-  <text x="1080" y="337" class="label">knowledge requests · successful outcomes</text>
-  <text x="1080" y="475" class="label">task queue · branch/session ownership</text>
-  <text x="1090" y="620" class="label">findings</text>
-  <text x="1080" y="785" class="label">question ID · answer · command</text>
-  <text x="815" y="918" class="label">guard stops after 3 · failure report · live recovery</text>
+  <path class="edge-dashed" d="M1080 1090C1330 930 1590 900 1840 950"/>
+  <path class="edge" d="M2015 1070C1910 1160 1760 1155 1640 1145"/>
+
+  <path class="edge-bi" d="M1580 430H1810"/>
+  <path class="edge-blue" d="M1580 520C1675 545 1705 690 1810 700"/>
+  <path class="edge-bi" d="M1580 500C1740 620 1670 1220 1810 1225"/>
+
+  <!-- Compact flow labels placed only in clear gaps -->
+  <g>
+    <rect x="525" y="396" width="150" height="34" rx="12" class="label-bg"/>
+    <text x="600" y="419" text-anchor="middle" class="label">task + comments</text>
+
+    <rect x="1088" y="770" width="64" height="34" rx="12" class="label-bg"/>
+    <text x="1120" y="793" text-anchor="middle" class="label">scope</text>
+
+    <rect x="1640" y="392" width="150" height="34" rx="12" class="label-bg"/>
+    <text x="1715" y="415" text-anchor="middle" class="label">knowledge</text>
+
+    <rect x="1655" y="650" width="125" height="34" rx="12" class="label-bg"/>
+    <text x="1718" y="673" text-anchor="middle" class="label">queue + lease</text>
+
+    <rect x="1660" y="1165" width="130" height="34" rx="12" class="label-bg"/>
+    <text x="1725" y="1188" text-anchor="middle" class="label">task actions</text>
+
+    <rect x="1060" y="1315" width="180" height="34" rx="12" class="label-bg"/>
+    <text x="1150" y="1338" text-anchor="middle" class="label">failure evidence</text>
+  </g>
 
   <!-- Footer legend -->
-  <line x1="1215" y1="1066" x2="1275" y2="1066" class="edge"/>
-  <text x="1290" y="1072" class="tiny">agent handoff / verified flow</text>
-  <line x1="1215" y1="1106" x2="1275" y2="1106" class="edge-dashed"/>
-  <text x="1290" y="1112" class="tiny">human approval required</text>
+  <line x1="1710" y1="1515" x2="1790" y2="1515" class="edge"/>
+  <text x="1810" y="1522" class="tiny">verified agent handoff</text>
+  <line x1="1710" y1="1570" x2="1790" y2="1570" class="edge-dashed"/>
+  <text x="1810" y="1577" class="tiny">human approval required</text>
 </svg>
