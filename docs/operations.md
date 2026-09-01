@@ -49,6 +49,45 @@ Task execution is capacity-limited rather than globally serialized. `workspace-c
 
 Every human-input gate is self-explanatory: it records the requested action, why automation cannot continue safely, concrete options, one recommended option, and the rationale for preferring it. The dashboard receives the same structured guidance as the durable task ledger.
 
+## Parallel task runbook
+
+Use a different task ID for every independent work item, even when both tasks target the same repository. Start them from separate terminals or create them from the dashboard. With the default `maxActiveTasks=2`, the first two eligible tasks own independent leases; later tasks remain queued without starting an agent. A newly queued task has only planned workspace paths, while a resumed queued task may already have retained clones from an earlier run.
+
+In the dashboard, select each task separately and compare its run ID, lease ID, controller PID/start time, heartbeat, clone path, branch, and base SHA. Actions are scoped to the selected task revision and exact run/lease. If an old browser view submits a stale action, reload or reselect the task instead of editing coordinator or task files.
+
+| Task state | Capacity and workspace behavior |
+|---|---|
+| `created` | Transient state before admission. No agent chain has started. |
+| `queued` | Owns no active lease. FIFO position is durable; a first run has no clone yet, while a resume can retain its existing released clone. |
+| `running` | Owns one exact controller lease. Every selected repository has a task-specific full clone and manifest; only one agent chain runs for this task. |
+| `waiting_for_input`, `held`, or `review_pending` | Delivery is stopped at a gate. The workflow host releases its lease on exit, while clones, changes, artifacts, and task history remain. |
+| `interrupted` | A selected stop or stale-controller recovery ended only this task's run. Its clone remains available for explicit resume. |
+| `failed` | The failed task releases only its lease. Other active tasks and their statuses continue unchanged; failed task evidence and clone remain. |
+| `completed` | The lease is released and the final state is retained. Reopen creates a new task revision rather than mutating another task. |
+
+Inspect scheduler and workspace state without starting an agent:
+
+```powershell
+# Task status plus global capacity, active count, queue position, and exact lease
+.\scripts\Get-AgentTasks.ps1 -TaskId task-1839566 -IncludeCompleted |
+  ConvertTo-Json -Depth 12
+
+# Manifest-backed workspace details; -AllowReleased is required after the lease exits
+.\scripts\Resolve-TaskWorkspace.ps1 -TaskId task-1839566 `
+  -RepositoryId azure-planningspace-ps-excel-agent -AllowReleased |
+  Format-List
+
+# Global lease registry (read-only inspection)
+Get-Content "$env:LOCALAPPDATA\Codex\development-agent-ecosystem\workspace-coordinator.json" -Raw |
+  ConvertFrom-Json | ConvertTo-Json -Depth 12
+
+# Deterministically release terminal or expired leases while preserving every clone
+.\scripts\Repair-StaleTaskWorkspaceLeases.ps1 |
+  ConvertTo-Json -Depth 12
+```
+
+Do not delete a retained clone to clear a queue, copy one task manifest into another task, or start work from `repositories[].localWorkspace`. If a task is recovered as `interrupted`, inspect its last event and manifest, then resume that task explicitly. Admission also runs stale-lease repair before granting capacity, so manual repair is primarily a diagnostic and recovery command.
+
 ## Post-push pipeline and Developer remediation
 
 The canonical owners and current definition IDs are listed in [pipeline monitoring and ownership](pipeline-monitoring.md). In short, Pipeline Monitor owns all configured exact-SHA observation; Developer and Reviewer own the bounded product remediation loop; Orchestrator owns exceptional and terminal routing; Health Check owns ecosystem defects; Knowledge Keeper owns final publication.
@@ -148,6 +187,16 @@ After the new ecosystem is stable, the global `azure-pr-review-monitor` and `azu
 .\scripts\Test-AgentEcosystem.ps1
 .\scripts\Invoke-EnhancedReview.ps1 -Mode Manual -DryRun
 .\scripts\Sync-ReviewMonitorConfig.ps1
+.\scripts\Get-AgentTasks.ps1 -IncludeCompleted | ConvertTo-Json -Depth 12
+.\scripts\Repair-StaleTaskWorkspaceLeases.ps1 | ConvertTo-Json -Depth 12
 ```
+
+| Symptom | Check and action |
+|---|---|
+| A task remains `queued` | Compare `Scheduler.activeTaskCount` with `Scheduler.capacity` and inspect older queue positions. Do not create a duplicate task; allow a running task to release its lease or stop the intended task from its current dashboard view. |
+| Start reports that the task already has an active controller | Inspect that task's scheduler lease and controller identity. Switch to the existing task in the dashboard; do not start a second controller for the same task. |
+| A dashboard action reports stale revision, run, or lease ownership | Reload or reselect the task and retry only if the newly displayed state still permits the action. The rejection protects another or newer run. |
+| A stale lease was recovered | The task is marked `interrupted`, an event records the reason, and its clone is retained. Inspect the task and manifest, then use explicit resume. |
+| A clone path or origin is unexpected | Resolve the task workspace with `-AllowReleased` and compare its manifest with the configured canonical repository URL. Do not move, reset, clean, or repurpose the clone. |
 
 If the new review dry run fails, legacy scheduled tasks remain enabled. If installation fails after partially disabling legacy tasks, the installation script re-enables every legacy task it already disabled.

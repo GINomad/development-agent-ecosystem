@@ -26,6 +26,42 @@ Increase role floors only when representative tasks show a measurable quality ga
 
 `workflow.workspaceScheduling` controls capacity for independent task clones. `maxActiveTasks` is at least two (two by default), `queueWhenBusy` keeps overflow work in a durable FIFO `queued` state, and `maxActiveAgentsPerTask=1` enforces one controller chain per task. `workspaceRoot` contains one full clone per `(taskId, repositoryId)`. `coordinatorStatePath` stores active task leases with exact run/lease IDs, while each clone has a manifest containing its absolute path, canonical origin, base SHA, unique task branch, lifecycle, run ID, and lease ID. Releasing a lease does not delete or reset the clone, so an explicit resume preserves uncommitted task work. `leaseHeartbeatSeconds` controls exact task/run/lease renewal by a live runner. `staleLeaseGraceSeconds` bounds missed-heartbeat recovery, including a crashed in-process runspace while the shared dashboard PID remains alive; terminal task leases are recoverable immediately. Recovery marks a non-terminal orphaned task `interrupted`, records an event, and preserves its clone. `lockTimeoutSeconds` bounds coordinator and per-task state locks. Runtime consumers resolve only the manifest path; they never execute in `repositories[].localWorkspace`, use Git worktrees, or stash/switch another task's checkout.
 
+### Parallel workspace scheduler
+
+The canonical defaults are:
+
+```json
+{
+  "workflow": {
+    "workspaceScheduling": {
+      "enabled": true,
+      "maxActiveTasks": 2,
+      "queueWhenBusy": true,
+      "lockTimeoutSeconds": 30,
+      "leaseHeartbeatSeconds": 30,
+      "staleLeaseGraceSeconds": 300,
+      "coordinatorStatePath": "${STATE_ROOT}/workspace-coordinator.json",
+      "workspaceRoot": "${STATE_ROOT}/workspaces",
+      "maxActiveAgentsPerTask": 1
+    }
+  }
+}
+```
+
+| Setting | Supported contract |
+|---|---|
+| `enabled` | Must remain `true`. |
+| `maxActiveTasks` | Global concurrent task capacity, from 2 through 64. Increasing it also increases the possible number of retained full clones and concurrent Git/model processes. |
+| `queueWhenBusy` | Must remain `true`; overflow tasks are ordered by creation time and then task ID. |
+| `maxActiveAgentsPerTask` | Must remain `1`; roles for one task form one controller-owned chain even while different tasks run concurrently. |
+| `leaseHeartbeatSeconds` | Exact task/run/lease renewal interval, from 5 through 300 seconds. |
+| `staleLeaseGraceSeconds` | Recovery threshold, at least three heartbeat intervals and no more than 3600 seconds. |
+| `lockTimeoutSeconds` | Coordinator and task-state lock timeout, from 5 through 120 seconds. |
+| `coordinatorStatePath` | Durable global lease registry. It contains capacity ownership, not shared task context. |
+| `workspaceRoot` | Root for full task clones. It must have enough free space and must not be a configured operator/reference checkout. |
+
+For two task IDs that select the same repository ID, the scheduler creates two different physical clone paths below `workspaceRoot`. The Windows-safe directory keys may be hashed, but each task-local `workspaces/<repository-id>.json` manifest records the complete task ID, repository ID, absolute clone path, canonical origin, base SHA, branch, lifecycle, run ID, and lease ID. New workflow launches reload the canonical configuration; an admitted run uses its immutable `execution-config-<run-id>.json` and `execution-context-<run-id>.json` snapshots.
+
 `pipeline.delivery` is the narrow standing authorization for reviewed working branches. It permits only `git push origin HEAD:refs/heads/<current-branch>`, requires a clean worktree and clean product review, forbids `main`/`master`, force, and tags, and never publishes review comments or deployments.
 
 `pipeline.pullRequests.pollIntervalMinutes` controls the shared native PR lifecycle sync. The default is 120 minutes. Status discovery does not invoke AI; only a new/changed PR review fingerprint can launch Review Monitor. A completed task PR launches Orchestrator once; after it validates the terminal artifacts and persists a route, the host launches the final Knowledge Keeper update.

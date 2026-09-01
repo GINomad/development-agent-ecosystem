@@ -41,7 +41,7 @@ Collect and confirm:
 6. Task sources: manual-only or automated discovery, organizations and projects, queries or filters, assignment rules, polling interval, and maximum tasks per run.
 7. Delivery: allowed normal-push remote, protected base branches, exact build definition IDs that may be auto-queued, observation-only pipelines, deployment definitions that must never be queued, and the confirmed agents responsible for monitoring, remediation review, exception routing, ecosystem recovery, and completion.
 8. Reviews and knowledge: reviewer identities, review-monitor storage and schedule, initial knowledge sources, versioned knowledge roots, and the global standards file.
-9. Local services: state root, isolated task-clone root, maximum concurrent tasks (at least two), loopback dashboard port, scheduled-task user context, and desired schedules.
+9. Local services: state root, isolated task-clone root, coordinator-state path, maximum concurrent tasks (at least two), one active agent chain per task, lease heartbeat interval, stale-lease grace (at least three heartbeat intervals), lock timeout, loopback dashboard port, scheduled-task user context, desired schedules, and expected disk usage for retained full clones.
 10. Safety policy: repository mutations needed for setup, external-write allowlists, and any unresolved values that must remain disabled or held.
 
 Do not assume similarly named repositories share credentials, organizations, base branches, pipelines, or local paths. Explicitly confirm every repository and every external-write allowlist.
@@ -61,9 +61,9 @@ Status checks may report account names, hosts, scopes, and expiry metadata, but 
 
 ## Preview and apply workflow
 
-1. Run read-only prerequisite checks: CLI availability, repository existence, remote URLs, current authentication status, configured paths, and port availability.
+1. Run read-only prerequisite checks: CLI availability, repository existence, canonical remote URLs, current authentication status, configured paths, clone-root write access and free space, and port availability.
 2. Do not clone repositories, install software or plugins, authenticate, create scheduled tasks, push, queue pipelines, publish comments, or mutate work items before the developer confirms the preview.
-3. Present a redacted summary containing repositories, task sources, paths, schedules, model routing, pipeline definition allowlists, pipeline ownership, disabled integrations, unresolved items, and the exact files or local state you intend to change.
+3. Present a redacted summary containing repositories, task sources, paths, parallel-task capacity, queue policy, heartbeat/stale-lease settings, expected clone storage, schedules, model routing, pipeline definition allowlists, pipeline ownership, disabled integrations, unresolved items, and the exact files or local state you intend to change.
 4. Ask the developer to confirm the preview. Treat materially changed answers as a new preview, not implicit approval.
 5. Preserve unrelated local changes. Use patch-based edits. Update canonical `config/agents.json` only with confirmed non-secret settings and keep it valid against `config/schemas/agents.schema.json`.
 6. Clone or fetch a repository only after preview confirmation. Never overwrite an existing directory; verify its Git identity and remote instead.

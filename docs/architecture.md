@@ -195,6 +195,29 @@ sequenceDiagram
     end
 ```
 
+### Workspace lease lifecycle
+
+Task status, controller lease lifecycle, and clone lifecycle are separate. A task can wait, fail, or be interrupted without lending its context or clone to another task.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Provisioning: capacity admitted
+    Provisioning --> Active: all task clones ready
+    Provisioning --> Released: provisioning failed
+    Active --> Released: gate, stop, failure, completion, or stale recovery
+    Released --> Provisioning: explicit resume
+```
+
+`queued` tasks have no controller lease. The coordinator admits the oldest eligible queued task only after capacity is available. `Released` is a workspace-manifest lifecycle value, not deletion: the full clone, task branch, uncommitted changes, artifacts, and task history stay bound to the same task for explicit resume. A failed first-time provision removes only its own incomplete clone and lease.
+
+| Isolation boundary | Durable owner | Cross-task protection |
+|---|---|---|
+| Capacity lease | Global coordinator record keyed by exact task/run/lease | One controller per task; stale release targets only the matching lease. |
+| Task status and timeline | `tasks/<task-id>/task.json` and `task-ledger.jsonl` | Status, comments, failures, and revisions are read and written under one task lock. |
+| Repository workspace | Task-local manifest plus one full clone per `(taskId, repositoryId)` | A task never uses another task's clone or the operator/reference checkout. |
+| Model context | Immutable execution configuration/context plus per-agent checkpoints | A run consumes its own snapshots and task artifacts; unfinished role context is not published across tasks. |
+| Dashboard action | Task revision plus exact run/lease ownership | A stale tab cannot stop, resume, or mutate a newer or different run. |
+
 ## Per-task artifacts
 
 Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Codex/development-agent-ecosystem/tasks/<task-id>`:

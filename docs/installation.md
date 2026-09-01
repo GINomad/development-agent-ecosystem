@@ -4,8 +4,10 @@
 
 - Windows PowerShell 5.1 or PowerShell 7;
 - Codex CLI with plugin and custom-agent support;
+- Git CLI with non-interactive access to every configured canonical clone URL;
 - Azure CLI with access to the configured Azure DevOps organization;
-- a local working copy of every configured repository.
+- a local operator/reference working copy of every configured repository;
+- a writable task-clone root with enough free space for a full clone of every repository selected by every retained task.
 
 The current configuration uses Azure CLI at `C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd`. Secrets are not copied into this repository.
 
@@ -19,7 +21,9 @@ Open `config/agents.json` and verify:
 - `taskSources[]` for assigned work items;
 - `credentialProfiles[]`, which must contain only CLI or environment authentication strategy, never tokens or passwords;
 - `operation.mode`, set to `manual` or `automate`;
-- `knowledge.seedSources[]` and `knowledge.managedRoot`.
+- `knowledge.seedSources[]` and `knowledge.managedRoot`;
+- `workflow.workspaceScheduling`: `maxActiveTasks` is at least two, `queueWhenBusy=true`, `maxActiveAgentsPerTask=1`, and `workspaceRoot` plus `coordinatorStatePath` resolve outside every `repositories[].localWorkspace`;
+- `leaseHeartbeatSeconds` and `staleLeaseGraceSeconds`; stale grace must be at least three heartbeat intervals and no more than one hour;
 - `pipeline.ownership` and every `pipeline.repositories[]` definition/auto-queue allowlist; compare them with the [pipeline monitoring matrix](pipeline-monitoring.md).
 
 ## 2. Install the plugin and agents
@@ -64,3 +68,5 @@ codex plugin list
 Get-ScheduledTask | Where-Object TaskName -like '*PR Review*' |
   Select-Object TaskName, State, @{n='Enabled';e={$_.Settings.Enabled}}
 ```
+
+Before the first live workflow, confirm that the configured clone root is writable, each canonical repository URL can be reached with the approved Git credential flow, and available disk space covers the expected number of retained full clones. The test suite validates scheduler ranges and isolation contracts but intentionally does not perform authenticated network clones.
