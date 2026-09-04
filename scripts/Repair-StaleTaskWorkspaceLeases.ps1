@@ -14,7 +14,7 @@ $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.worksp
 $lockTimeoutSeconds = [int]$config.workflow.workspaceScheduling.lockTimeoutSeconds
 $staleLeaseGraceSeconds = [int]$config.workflow.workspaceScheduling.staleLeaseGraceSeconds
 $now = [DateTime]::UtcNow
-$terminalStatuses = @('completed','failed','interrupted')
+$terminalStatuses = @('completed','failed')
 
 function ConvertTo-UtcTimestamp {
     param([AllowNull()][object] $Value)
