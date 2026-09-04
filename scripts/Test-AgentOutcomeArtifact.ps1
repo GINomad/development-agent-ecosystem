@@ -92,7 +92,7 @@ if ($ArtifactName -eq 'review-result.json') {
         if ([string]$finding.decisionStatus -ne 'proposed') { throw "Finding '$([string]$finding.id)' must remain proposed." }
     }
 
-    $currentReviewSha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $currentReviewSha256 = Get-EcosystemFileSha256 -Path $Path
     $openDebtItems = @()
     $openDebtIds = @()
     $techDebtPath = Join-Path $TaskRoot 'tech-debt-items.json'
@@ -148,7 +148,7 @@ if ($ArtifactName -eq 'review-result.json') {
             $priorPath = [IO.Path]::GetFullPath((Join-Path $TaskRoot ([string]$priorSnapshot.relativePath).Replace('/', '\')))
             $historyPrefix = [IO.Path]::GetFullPath((Join-Path $TaskRoot 'review-history')).TrimEnd('\') + '\'
             if (-not $priorPath.StartsWith($historyPrefix, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $priorPath -PathType Leaf)) { throw 'Prior review snapshot path is invalid or missing.' }
-            if ((Get-FileHash -LiteralPath $priorPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$priorSnapshot.sha256) { throw 'Prior review snapshot hash does not match its history index.' }
+            if ((Get-EcosystemFileSha256 -Path $priorPath) -ne [string]$priorSnapshot.sha256) { throw 'Prior review snapshot hash does not match its history index.' }
             $priorReview = Get-Content -LiteralPath $priorPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
     }
@@ -202,7 +202,7 @@ if ($ArtifactName -eq 'review-verification.json') {
     $reviewPath = Join-Path $TaskRoot 'review-result.json'
     if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'review-verification.json requires review-result.json.' }
     $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $reviewSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
     if ([string]$verification.reviewArtifactSha256 -ne $reviewSha256 -or [string]$verification.reviewedRevision -ne [string]$review.reviewedRevision) {
         throw 'review-verification.json is stale for the current review artifact or reviewed revision.'
     }

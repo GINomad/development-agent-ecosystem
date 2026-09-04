@@ -215,7 +215,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_coverage_blocked -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
             }
-            $reviewSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
             $verificationById = @{}
             foreach ($entry in @($verification.findingVerifications)) { $verificationById[[string]$entry.findingId] = [string]$entry.verdict }
             $productFindings = @($review.findings | Where-Object { $verificationById[[string]$_.id] -in @('confirmed','needs-human') })

@@ -35,10 +35,10 @@ foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Sort
     if ($file.Extension.ToLowerInvariant() -notin $extensions) { continue }
     $relative = [Uri]::UnescapeDataString($sourceUri.MakeRelativeUri([Uri]$file.FullName).ToString()).Replace('/', '\')
     $target = Join-Path $managedRoot $relative
-    $sourceHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sourceHash = Get-EcosystemFileSha256 -Path $file.FullName
     $status = 'copied'
     if (Test-Path -LiteralPath $target -PathType Leaf) {
-        $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+        $targetHash = Get-EcosystemFileSha256 -Path $target
         $prior = $previousByPath[$relative]
         if ($targetHash -eq $sourceHash) {
             $status = 'unchanged'
@@ -52,7 +52,7 @@ foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Sort
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
-    $importedHash = if (Test-Path -LiteralPath $target) { (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() } else { '' }
+    $importedHash = if (Test-Path -LiteralPath $target) { Get-EcosystemFileSha256 -Path $target } else { '' }
     $entries.Add([pscustomobject][ordered]@{
         relativePath = $relative
         sourcePath = $file.FullName

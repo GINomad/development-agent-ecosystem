@@ -41,7 +41,7 @@ foreach ($nameValue in @($ArtifactNames | Select-Object -Unique)) {
     $path = Join-Path $taskRoot $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Context artifact '$name' is missing." }
     $file = Get-Item -LiteralPath $path
-    $sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sha256 = Get-EcosystemFileSha256 -Path $path
     $summary = ''
     if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
         try {

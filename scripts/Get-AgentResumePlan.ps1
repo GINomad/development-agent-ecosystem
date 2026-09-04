@@ -101,7 +101,7 @@ $currentFingerprints = [ordered]@{}
 $changedArtifacts = [Collections.Generic.List[string]]::new()
 $unchangedArtifacts = [Collections.Generic.List[string]]::new()
 foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { $shareableArtifacts.Contains($_.Name) } | Sort-Object Name)) {
-    $fingerprint = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $fingerprint = Get-EcosystemFileSha256 -Path $file.FullName
     $currentFingerprints[$file.Name] = $fingerprint
     if ($previousFingerprints.ContainsKey($file.Name) -and $previousFingerprints[$file.Name] -eq $fingerprint) { $unchangedArtifacts.Add($file.Name) }
     else { $changedArtifacts.Add($file.Name) }

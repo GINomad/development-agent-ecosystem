@@ -27,7 +27,7 @@ if ([string]$verification.verificationStatus -ne 'passed') { throw 'Human decisi
 $findingVerification = @($verification.findingVerifications | Where-Object { [string]$_.findingId -eq $FindingId }) | Select-Object -First 1
 if (-not $findingVerification) { throw "Finding '$FindingId' has no independent verifier verdict." }
 if ([string]$findingVerification.verdict -eq 'rejected') { throw "Finding '$FindingId' was rejected by Review Verifier and cannot enter the human decision gate." }
-$reviewArtifactSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$reviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
 
 $techDebtItem = $null
 if ($Decision -eq 'bypassed') {

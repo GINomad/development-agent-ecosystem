@@ -96,6 +96,8 @@ function Start-ScriptRunspace {
         $Parameters.ExecutionRunId = $runId
     }
     $runner = [PowerShell]::Create()
+    # Core cmdlets used by workflow scripts must be initialized explicitly in the long-lived host runspace.
+    $null = $runner.AddCommand('Import-Module').AddParameter('Name', 'Microsoft.PowerShell.Utility').AddParameter('ErrorAction', 'Stop').AddStatement()
     $null = $runner.AddCommand($ScriptPath)
     foreach ($key in $Parameters.Keys) {
         $value = $Parameters[$key]
@@ -126,6 +128,13 @@ function Clear-CompletedScriptRunspaces {
         }
         $record = [ordered]@{ type='dashboard-runspace-completed'; runId=$run.runId; taskId=$run.taskId; startedAtUtc=$run.startedAtUtc; completedAtUtc=[DateTime]::UtcNow.ToString('o'); status=$status; diagnostic=$diagnostic } | ConvertTo-Json -Compress
         [IO.File]::AppendAllText($runspaceLogPath, $record + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+        if ($status -eq 'failed' -and -not [string]::IsNullOrWhiteSpace([string]$run.taskId)) {
+            $boundedDiagnostic = if ($diagnostic.Length -gt 2000) { $diagnostic.Substring(0, 2000) + ' [truncated]' } else { $diagnostic }
+            try {
+                & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId ([string]$run.taskId) -Actor ecosystem -Type agent-failure -Summary "Dashboard runspace $([string]$run.runId) failed: $boundedDiagnostic" -Artifact $runspaceLogPath -Evidence @("dashboard-run-id:$([string]$run.runId)") -TargetAgentId health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
+            catch { Write-Warning "Unable to publish dashboard runspace failure for task '$([string]$run.taskId)': $($_.Exception.Message)" }
+        }
         $run.PowerShell.Dispose()
         $scriptRuns.RemoveAt($index)
     }
@@ -418,7 +427,7 @@ try {
                     $stream = [IO.File]::OpenRead($artifactPath)
                     try { $readLength = $stream.Read($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
                     $content = (New-Object Text.UTF8Encoding($false, $false)).GetString($bytes, 0, $readLength)
-                    $artifactSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                    $artifactSha256 = Get-EcosystemFileSha256 -Path $artifactPath
                     Send-Json -Response $response -Value @{ artifact=@{ name=$artifactInfo.Name; content=$content; length=[long]$artifactInfo.Length; sha256=$artifactSha256; truncated=([long]$artifactInfo.Length -gt $maximumPreviewBytes); lastWriteTimeUtc=$artifactInfo.LastWriteTimeUtc.ToString('o') } }
                     continue
                 }
@@ -658,6 +667,7 @@ try {
                         continue
                     }
                     if ([string]$config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Unsupported elevated workflow launch strategy.' }
+                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary 'Elevated workflow resume requested from the dashboard.' -Artifact $taskPath -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
                         RepositoryIds=$repositoryIds
