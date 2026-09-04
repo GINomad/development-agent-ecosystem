@@ -16,6 +16,21 @@ $hostLockPath = Join-Path $stateRoot 'continuation-recovery-host.lock'
 $hostLogPath = Join-Path $stateRoot 'continuation-recovery-host.jsonl'
 New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
 
+function Write-RecoveryHostError {
+    param(
+        [Parameter(Mandatory)][string] $Component,
+        [Parameter(Mandatory)][Management.Automation.ErrorRecord] $ErrorRecord
+    )
+
+    $record = [ordered]@{
+        timestampUtc = [DateTime]::UtcNow.ToString('o')
+        type = 'continuation-recovery-host-error'
+        component = $Component
+        message = $ErrorRecord.Exception.Message
+    } | ConvertTo-Json -Compress
+    [IO.File]::AppendAllText($hostLogPath, $record + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+}
+
 try {
     $hostLock = [IO.File]::Open($hostLockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
 }
@@ -30,20 +45,26 @@ try {
             $parameters = @{ Repair=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) { $parameters.ElevatedApproved=$true }
             & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') @parameters | Out-Null
-            & (Join-Path $PSScriptRoot 'Remove-CompletedTaskWorkspaces.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+        catch {
+            Write-RecoveryHostError -Component 'continuation-repair' -ErrorRecord $_
+        }
 
+        try {
+            & (Join-Path $PSScriptRoot 'Remove-CompletedTaskWorkspaces.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+        catch {
+            Write-RecoveryHostError -Component 'workspace-cleanup' -ErrorRecord $_
+        }
+
+        try {
             # Reload the canonical JSON after every pass so interval and policy
             # changes do not require restarting this resident host.
             $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
             $intervalMinutes = [int]$config.workflow.automaticContinuation.recoveryPollIntervalMinutes
         }
         catch {
-            $record = [ordered]@{
-                timestampUtc = [DateTime]::UtcNow.ToString('o')
-                type = 'continuation-recovery-host-error'
-                message = $_.Exception.Message
-            } | ConvertTo-Json -Compress
-            [IO.File]::AppendAllText($hostLogPath, $record + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+            Write-RecoveryHostError -Component 'config-reload' -ErrorRecord $_
         }
 
         if ($RunOnce) { break }

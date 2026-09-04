@@ -45,6 +45,25 @@ function Resolve-SafeCleanupPath {
     return $resolvedClonePath
 }
 
+function Remove-WorkspaceDirectoryWithRetry {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [ValidateRange(1, 10)][int] $MaximumAttempts = 5
+    )
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        if (-not (Test-Path -LiteralPath $Path)) { return }
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq $MaximumAttempts) { throw }
+            Start-Sleep -Milliseconds (200 * $attempt)
+        }
+    }
+}
+
 foreach ($taskPath in $taskPaths) {
     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
         if ($TaskId) { throw "Task '$TaskId' was not found." }
@@ -80,7 +99,7 @@ foreach ($taskPath in $taskPaths) {
         $removed = [Collections.Generic.List[string]]::new()
         foreach ($entry in $manifests) {
             if ($PSCmdlet.ShouldProcess([string]$entry.ClonePath, "Remove finally closed task workspace '$candidateTaskId'")) {
-                if (Test-Path -LiteralPath ([string]$entry.ClonePath)) { Remove-Item -LiteralPath ([string]$entry.ClonePath) -Recurse -Force }
+                Remove-WorkspaceDirectoryWithRetry -Path ([string]$entry.ClonePath)
                 $cleanedAtUtc = [DateTime]::UtcNow.ToString('o')
                 $entry.Document | Add-Member -NotePropertyName lifecycle -NotePropertyValue 'cleaned' -Force
                 $entry.Document | Add-Member -NotePropertyName cleanupReason -NotePropertyValue 'task-finally-closed' -Force
