@@ -42,6 +42,9 @@ function Publish-VerifiedHealthRepair {
     $actualRemoteUrl = ([string](& git -C $Workspace remote get-url $remote)).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualRemoteUrl -ne $configuredRemoteUrl) { throw 'Health recovery origin does not match the exact configured ecosystem remote URL.' }
 
+    $validatedCommit = ([string](& git -C $Workspace rev-parse ("{0}^{{commit}}" -f $Commit))).Trim()
+    if ($LASTEXITCODE -ne 0 -or $validatedCommit -ne $Commit) { throw 'The validated ecosystem repair commit cannot be resolved locally.' }
+
     $branch = ([string](& git -C $Workspace branch --show-current)).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($branch)) { throw 'Validated ecosystem repair cannot be pushed from a detached HEAD.' }
     if ($branch -in @('main','master')) {
@@ -51,16 +54,17 @@ function Publish-VerifiedHealthRepair {
         $existingCommit = ([string](& git -C $Workspace show-ref --verify --hash $branchRef 2>$null)).Trim()
         $showRefExitCode = [int]$LASTEXITCODE
         if ($showRefExitCode -eq 0) {
-            if ($existingCommit -ne $Commit) { throw ('Existing repair branch does not point to the validated repair commit: {0}' -f $branch) }
+            & git -C $Workspace merge-base --is-ancestor $Commit $existingCommit
+            if ($LASTEXITCODE -ne 0) { throw ('Existing repair branch does not contain the validated repair commit: {0}' -f $branch) }
             & git -C $Workspace switch $branch
         }
-        elseif ($showRefExitCode -eq 1) { & git -C $Workspace switch -c $branch }
+        elseif ($showRefExitCode -eq 1) { & git -C $Workspace switch -c $branch $Commit }
         else { throw ('Unable to inspect repair branch: {0}' -f $branch) }
         if ($LASTEXITCODE -ne 0) { throw ('Unable to select repair branch: {0}' -f $branch) }
     }
     if ($branch -in @('main','master') -or $branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw 'Health recovery selected an unsafe push branch.' }
 
-    $pushRef = 'HEAD:refs/heads/{0}' -f $branch
+    $pushRef = '{0}:refs/heads/{1}' -f $Commit,$branch
     $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -68,7 +72,6 @@ function Publish-VerifiedHealthRepair {
         $pushExitCode = [int]$LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousErrorActionPreference }
-    if ($pushExitCode -ne 0) { throw ('Unable to push the validated ecosystem repair: {0}' -f ($pushOutput -join [Environment]::NewLine)) }
 
     try {
         $ErrorActionPreference = 'Continue'
@@ -78,8 +81,47 @@ function Publish-VerifiedHealthRepair {
     finally { $ErrorActionPreference = $previousErrorActionPreference }
     $remoteLine = @($remoteOutput | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^[a-f0-9]{40}\s+refs/heads/' } | Select-Object -First 1)
     $remoteCommit = if ($remoteLine.Count) { ($remoteLine[0] -split '\s+')[0] } else { '' }
-    if ($remoteExitCode -ne 0 -or $remoteCommit -ne $Commit) { throw 'The remote repair branch does not point to the exact validated repair commit.' }
-    [pscustomobject][ordered]@{ remote=$remote; remoteUrl=$actualRemoteUrl; branch=$branch; commit=$Commit; pushRef=$pushRef; verifiedAtUtc=[DateTime]::UtcNow.ToString('o') }
+    if ($remoteExitCode -ne 0 -or $remoteCommit -notmatch '^[a-f0-9]{40}$') {
+        throw ('Unable to verify the remote repair branch: {0}' -f ($remoteOutput -join [Environment]::NewLine))
+    }
+
+    $relationship = 'exact'
+    if ($remoteCommit -ne $Commit) {
+        $fetchedCommit = ''
+        $containsValidatedCommit = $false
+        try {
+            $ErrorActionPreference = 'Continue'
+            $fetchOutput = @(& git -C $Workspace fetch --no-tags $remote ('refs/heads/{0}' -f $branch) 2>&1)
+            $fetchExitCode = [int]$LASTEXITCODE
+            if ($fetchExitCode -eq 0) {
+                $fetchedCommit = ([string](& git -C $Workspace rev-parse FETCH_HEAD)).Trim()
+                $fetchExitCode = [int]$LASTEXITCODE
+            }
+            & git -C $Workspace merge-base --is-ancestor $Commit $remoteCommit 2>$null
+            $containsValidatedCommit = [int]$LASTEXITCODE -eq 0
+        }
+        finally { $ErrorActionPreference = $previousErrorActionPreference }
+        if ($fetchExitCode -ne 0 -or $fetchedCommit -ne $remoteCommit -or -not $containsValidatedCommit) {
+            if ($pushExitCode -ne 0) { throw ('Unable to push the validated ecosystem repair: {0}' -f ($pushOutput -join [Environment]::NewLine)) }
+            throw 'The remote repair branch does not contain the exact validated repair commit.'
+        }
+        $relationship = 'descendant'
+    }
+    elseif ($pushExitCode -ne 0) {
+        # A concurrent publisher may have delivered this exact commit after our push was rejected.
+        $relationship = 'exact-concurrent'
+    }
+
+    [pscustomobject][ordered]@{
+        remote = $remote
+        remoteUrl = $actualRemoteUrl
+        branch = $branch
+        commit = $Commit
+        deliveredCommit = $remoteCommit
+        relationship = $relationship
+        pushRef = $pushRef
+        verifiedAtUtc = [DateTime]::UtcNow.ToString('o')
+    }
 }
 if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
 if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure artifact was not found: $FailurePath" }
@@ -281,11 +323,15 @@ try {
                 & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_commit -Summary "Validated ecosystem repair committed locally as $recoveryCommit." -Details 'The trusted host created a repair commit on top of any separate preservation commit after complete validation and before configured delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             }
         }
+        $remainingValidatedChanges = @(git -C $workspace status --porcelain)
+        if ($LASTEXITCODE -ne 0 -or $remainingValidatedChanges.Count) { throw 'The validated ecosystem repair is not bound to a clean Git commit.' }
+        $recoveryCommit = ([string](& git -C $workspace rev-parse HEAD)).Trim()
+        if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to bind Health recovery delivery to the validated Git HEAD.' }
         if ($recoveryCommit -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
             $recoveryPush = Publish-VerifiedHealthRepair -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
             $recoveryDeliveryPath = Join-Path $taskRoot 'health-recovery-delivery.json'
             Write-Utf8NoBom -Path $recoveryDeliveryPath -Content (($recoveryPush | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
-            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details 'Trusted host verified the exact remote branch commit after a normal non-force, non-tag push.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details ('Trusted host verified that remote commit {0} contains validated repair commit {1} after a normal non-force, non-tag delivery.' -f $recoveryPush.deliveredCommit,$recoveryCommit) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type external-action -Summary ('Health Check published verified ecosystem repair {0}.' -f $recoveryCommit) -Artifact $recoveryDeliveryPath -Evidence @($resultPath) -TargetAgentId health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
