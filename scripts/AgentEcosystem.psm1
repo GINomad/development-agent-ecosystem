@@ -343,12 +343,30 @@ function New-WorkspaceLeaseHeartbeatAction {
     }.GetNewClosure()
 }
 
+function New-TaskBranchName {
+    param(
+        [Parameter(Mandatory)][string] $TaskName,
+        [string] $TaskType
+    )
+    $normalizedName = $TaskName.Normalize([Text.NormalizationForm]::FormD)
+    $characters = [Text.StringBuilder]::new()
+    foreach ($character in $normalizedName.ToCharArray()) {
+        if ([Globalization.CharUnicodeInfo]::GetUnicodeCategory($character) -ne [Globalization.UnicodeCategory]::NonSpacingMark) { $null = $characters.Append($character) }
+    }
+    $slug = [regex]::Replace($characters.ToString().Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant(), '[^\p{L}\p{Nd}]+', '-').Trim('-')
+    if ([string]::IsNullOrWhiteSpace($slug)) { $slug = 'task' }
+    if ($slug.Length -gt 80) { $slug = $slug.Substring(0, 80).TrimEnd('-') }
+    $prefix = if ($TaskType -match '^(?i:bug|bugfix|defect)$') { 'bugfix' } else { 'features' }
+    return "$prefix/$slug"
+}
+
 function Get-TaskWorkspaceLayout {
     param(
         [Parameter(Mandatory)][string] $WorkspaceRoot,
         [Parameter(Mandatory)][string] $TaskId,
         [Parameter(Mandatory)][string] $RepositoryId,
-        [Parameter(Mandatory)][string] $RunId
+        [Parameter(Mandatory)][string] $RunId,
+        [string] $BranchName
     )
     if ($RunId.Length -lt 12) { throw 'Workspace run ID must contain at least 12 characters.' }
     function Get-StableSegment {
@@ -362,9 +380,9 @@ function Get-TaskWorkspaceLayout {
     $repositoryKey = Get-StableSegment -Value $RepositoryId
     [pscustomobject][ordered]@{
         ClonePath = [IO.Path]::GetFullPath((Join-Path (Join-Path $WorkspaceRoot "task-$taskKey") "repo-$repositoryKey"))
-        Branch = "agent/$taskKey/$repositoryKey/$($RunId.Substring(0, 12))"
+        Branch = if ([string]::IsNullOrWhiteSpace($BranchName)) { "agent/$taskKey/$repositoryKey/$($RunId.Substring(0, 12))" } else { $BranchName }
         TaskKey = $taskKey
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Get-TaskWorkspaceLayout

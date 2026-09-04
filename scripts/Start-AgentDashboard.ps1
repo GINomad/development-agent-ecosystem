@@ -466,9 +466,15 @@ try {
                             continue
                         }
                     }
+                    $taskName = [string](Get-ObjectPropertyValue -Source $body -Name 'taskName')
+                    $taskType = [string](Get-ObjectPropertyValue -Source $body -Name 'taskType')
+                    if ($taskName.Length -gt 512) { throw 'Task name is too long.' }
+                    if ($taskType.Length -gt 128) { throw 'Task type is too long.' }
                     $workflowParameters = @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
+                        TaskName=$taskName
+                        TaskType=$taskType
                         TaskId=$resolvedTaskId
                         RepositoryIds=$repositoryIds
                         UserInstruction=[string]$body.instruction

@@ -3,6 +3,8 @@ param(
     [ValidateSet('manual','automate')][string] $Mode,
     [string] $TaskSelector,
     [string] $TaskId,
+    [string] $TaskName,
+    [string] $TaskType,
     [string] $RepositoryId,
     [string[]] $RepositoryIds = @(),
     [string] $Workspace,
@@ -69,7 +71,7 @@ foreach ($id in $requestedRepositoryIds) {
 if (-not $repositories.Count) { throw 'At least one enabled repository is required.' }
 $RepositoryIds = @($repositories | ForEach-Object { [string]$_.id })
 $RepositoryId = $RepositoryIds[0]
-$task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
+$task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -TaskName $TaskName -TaskType $TaskType -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not $Resume -and -not [string]::IsNullOrWhiteSpace($UserInstruction)) {
     & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') -TaskId $TaskId -Text $UserInstruction -Author user -TargetAgentId ([string]$config.workflow.orchestration.agentId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }

@@ -24,7 +24,8 @@ $plannedWorkspaces = @($repositoryIds | ForEach-Object {
     $requestedRepositoryId = [string]$_
     $repository = @($config.repositories | Where-Object { [string]$_.id -eq $requestedRepositoryId -and [bool]$_.enabled }) | Select-Object -First 1
     if (-not $repository) { throw "Enabled repository '$requestedRepositoryId' was not found." }
-    $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $requestedRepositoryId -RunId $RunId
+    $branchName = if ($task.PSObject.Properties['branchName']) { [string]$task.branchName } else { '' }
+    $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $requestedRepositoryId -RunId $RunId -BranchName $branchName
     [pscustomobject][ordered]@{ RepositoryId=$requestedRepositoryId; Path=[string]$layout.ClonePath; Branch=[string]$layout.Branch; BaseSha=$null; Lifecycle='planned'; CanonicalOrigin=[string]$repository.url; RunId=$RunId; LeaseId=$null; ManifestPath=(Join-Path $taskRoot "workspaces\$requestedRepositoryId.json") }
 })
 $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
