@@ -23,19 +23,21 @@ Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int
     $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $lease = @($coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.runId -eq $RunId -and [string]$_.leaseId -eq $LeaseId } | Select-Object -First 1)
     if (-not $lease.Count) { throw "Workspace lease '$LeaseId' is no longer owned by task '$TaskId' run '$RunId'." }
-    $lease[0].heartbeatAtUtc = $now
-    $coordinator.updatedAtUtc = $now
-    Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
-} | Out-Null
+    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' disappeared while its workspace lease was active." }
+    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $actualRunId = if ($task.PSObject.Properties['executionRunId']) { [string]$task.executionRunId } else { '<missing>' }
+        $actualLeaseId = if ($task.PSObject.Properties['workspaceLeaseId']) { [string]$task.workspaceLeaseId } else { '<missing>' }
+        if ($actualRunId -ne $RunId -or $actualLeaseId -ne $LeaseId) {
+            throw "Task '$TaskId' state no longer matches workspace lease. Expected run '$RunId' and lease '$LeaseId'; found run '$actualRunId' and lease '$actualLeaseId'."
+        }
+        $task | Add-Member -NotePropertyName workflowHeartbeatAtUtc -NotePropertyValue $now -Force
+        Write-Utf8NoBomAtomic -Path $taskPath -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
 
-if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' disappeared while its workspace lease was active." }
-Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
-    $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if (-not $task.PSObject.Properties['executionRunId'] -or -not $task.PSObject.Properties['workspaceLeaseId'] -or [string]$task.executionRunId -ne $RunId -or [string]$task.workspaceLeaseId -ne $LeaseId) {
-        throw "Task '$TaskId' state no longer matches workspace lease '$LeaseId'."
-    }
-    $task | Add-Member -NotePropertyName workflowHeartbeatAtUtc -NotePropertyValue $now -Force
-    Write-Utf8NoBomAtomic -Path $taskPath -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+        $lease[0].heartbeatAtUtc = $now
+        $coordinator.updatedAtUtc = $now
+        Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+    } | Out-Null
 } | Out-Null
 
 [pscustomobject]@{ Status='updated'; TaskId=$TaskId; RunId=$RunId; LeaseId=$LeaseId; HeartbeatAtUtc=$now }

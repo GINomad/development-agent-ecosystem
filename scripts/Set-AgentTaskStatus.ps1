@@ -28,6 +28,9 @@ if (-not $Status -and -not $AgentId -and -not $Stage -and -not $Message -and -no
     throw 'Specify a task status, agent status, stage, message, or comment acknowledgement.'
 }
 if ([bool]$AgentId -xor [bool]$AgentStatus) { throw 'AgentId and AgentStatus must be supplied together.' }
+if ($AgentId -and (($ProcessId -gt 0) -or $ExecutionRunId -or $WorkspaceLeaseId -or $ClearProcessId)) {
+    throw 'Agent status updates cannot set controller-owned process, run, or workspace lease fields.'
+}
 if ([bool]$ExecutionRunId -xor [bool]$WorkspaceLeaseId) {
     throw 'ExecutionRunId and WorkspaceLeaseId must be supplied together.'
 }

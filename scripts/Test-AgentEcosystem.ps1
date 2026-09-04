@@ -114,10 +114,13 @@ function New-SyntheticReviewVerification {
 $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
+$reviewVerificationTestScript = Get-Content -LiteralPath (Join-Path $root 'tests\Test-ReviewVerification.ps1') -Raw -Encoding UTF8
 if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
 if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
 if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sourceConfigPath') { throw 'Queued task dispatch must reload canonical configuration instead of inheriting the previous task snapshot.' }
+if ($reviewVerificationTestScript -match 'Get-FileHash' -or $reviewVerificationTestScript -notmatch 'Get-EcosystemFileSha256') { throw 'Recovery validation tests must use the module-independent ecosystem SHA-256 helper in long-lived dashboard runspaces.' }
+if ($workflowCliScript -notmatch 'Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId') { throw 'Agent prompts must reserve controller identity fields for the trusted workflow host.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
 $heartbeatClosure = & {
@@ -605,20 +608,35 @@ $invalidStatusOwnershipRejected = $false
 try {
     $null = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -AgentId developer -AgentStatus running -ExecutionRunId ([string]$leaseA.LeaseId) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 }
-catch { $invalidStatusOwnershipRejected = $_.Exception.Message -match 'does not own active workspace lease' }
+catch { $invalidStatusOwnershipRejected = $_.Exception.Message -match 'controller-owned' }
+$invalidControllerOwnershipRejected = $false
+try {
+    $null = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -ExecutionRunId ([string]$leaseA.LeaseId) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+}
+catch { $invalidControllerOwnershipRejected = $_.Exception.Message -match 'does not own active workspace lease' }
 $taskAAfterInvalidStatus = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $validStatusOwnership = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -ExecutionRunId ('a' * 32) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 $heartbeatAfterStatus = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+$taskAPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\task.json"
+$taskAWithWrongRun = Get-Content -LiteralPath $taskAPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskAWithWrongRun.executionRunId = 'c' * 32
+Write-Utf8NoBom -Path $taskAPath -Content (($taskAWithWrongRun | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+$mismatchedHeartbeatDiagnostic = ''
+try { $null = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath }
+catch { $mismatchedHeartbeatDiagnostic = $_.Exception.Message }
+$null = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -ExecutionRunId ('a' * 32) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 $wrongHeartbeatRejected = $false
 try { $null = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ('z' * 32) -ConfigPath $schedulerConfigPath }
 catch { $wrongHeartbeatRejected = $_.Exception.Message -match 'no longer owned' }
 if (
     [string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not $heartbeatLeaseA.heartbeatAtUtc -or
-    -not $invalidStatusOwnershipRejected -or [string]$taskAAfterInvalidStatus.executionRunId -ne ('a' * 32) -or
+    -not $invalidStatusOwnershipRejected -or -not $invalidControllerOwnershipRejected -or [string]$taskAAfterInvalidStatus.executionRunId -ne ('a' * 32) -or
     [string]$taskAAfterInvalidStatus.workspaceLeaseId -ne [string]$leaseA.LeaseId -or [string]$validStatusOwnership.Status -ne 'running' -or
-    [string]$heartbeatAfterStatus.Status -ne 'updated' -or -not $wrongHeartbeatRejected
+    [string]$heartbeatAfterStatus.Status -ne 'updated' -or
+    $mismatchedHeartbeatDiagnostic -notmatch "Expected run 'a{32}' and lease '$([regex]::Escape([string]$leaseA.LeaseId))'; found run 'c{32}' and lease '$([regex]::Escape([string]$leaseA.LeaseId))'" -or
+    -not $wrongHeartbeatRejected
 ) { throw 'Workspace heartbeat and task status did not enforce exact task/run/lease ownership.' }
-Add-Check -Name 'task-status-lease-ownership' -Detail 'Task status rejects invalid run/lease ownership without corrupting the active heartbeat pair'
+Add-Check -Name 'task-status-lease-ownership' -Detail 'Task status rejects invalid ownership, and heartbeat validation reports bounded expected/actual IDs from one coordinator/task lock window'
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Stage synthetic-continuation-handoff -Message 'A live controller is handing the lease to its targeted continuation.' -ConfigPath $schedulerConfigPath | Out-Null
 $recoveredDuringContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
 $continuedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
