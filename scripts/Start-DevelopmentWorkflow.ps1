@@ -363,6 +363,8 @@ try {
             $diagnosis = Get-Content -LiteralPath $diagnosisPath -Raw -Encoding UTF8 | ConvertFrom-Json
         }
         $healthStatus = [string]$currentTask.agentStatuses.health_check.status
+        $diagnosisSha256 = if ($diagnosis) { Get-EcosystemFileSha256 -Path $diagnosisPath } else { '' }
+        $diagnosisEvidenceKey = if ($diagnosisSha256) { "health-diagnosis-sha256:$diagnosisSha256" } else { '' }
         $completedEcosystemRecovery = $healthStatus -eq 'completed' -and $diagnosis -and
             $diagnosis.PSObject.Properties['repairOwner'] -and [string]$diagnosis.repairOwner -eq 'ecosystem_recovery' -and
             (-not $diagnosis.PSObject.Properties['requiresUserInput'] -or -not [bool]$diagnosis.requiresUserInput)
@@ -371,7 +373,7 @@ try {
         if ($healthRecoveryEligible -and $completedEcosystemRecovery) {
             foreach ($candidate in @(Get-ChildItem -LiteralPath $task.TaskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
                 try { $candidateFailure = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-                if ([string]$candidateFailure.stage -eq 'health_diagnosis_recovery' -and @($candidateFailure.evidence) -contains $diagnosisPath) {
+                if ([string]$candidateFailure.stage -eq 'health_diagnosis_recovery' -and $diagnosisEvidenceKey -and @($candidateFailure.evidence) -contains $diagnosisEvidenceKey) {
                     $failurePath = $candidate.FullName
                     break
                 }
@@ -383,7 +385,11 @@ try {
                     $affectedAgentId = if ('orchestrator' -in $allowedTargets) { 'orchestrator' } else { $allowedTargets | Select-Object -First 1 }
                 }
                 if ([string]::IsNullOrWhiteSpace($affectedAgentId)) { throw 'Completed Health Check requested ecosystem recovery without an allowed affected agent.' }
-                $failureResult = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $affectedAgentId -Stage health_diagnosis_recovery -Summary ([string]$diagnosis.summary) -Diagnostic ([string]$diagnosis.rootCause) -Evidence @($diagnosisPath, "health-diagnosis-signature:$([string]$diagnosis.failureSignature)") -ConfigPath $ConfigPath -CodexHome $CodexHome
+                $diagnostic = if ($diagnosis.PSObject.Properties['rootCause'] -and -not [string]::IsNullOrWhiteSpace([string]$diagnosis.rootCause)) { [string]$diagnosis.rootCause } else { [string]$diagnosis.summary }
+                $diagnosisSignatureEvidence = if ($diagnosis.PSObject.Properties['failureSignature'] -and -not [string]::IsNullOrWhiteSpace([string]$diagnosis.failureSignature)) { "health-diagnosis-signature:$([string]$diagnosis.failureSignature)" } else { $null }
+                $diagnosisEvidence = @($diagnosisPath, $diagnosisEvidenceKey)
+                if ($diagnosisSignatureEvidence) { $diagnosisEvidence += $diagnosisSignatureEvidence }
+                $failureResult = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $affectedAgentId -Stage health_diagnosis_recovery -Summary ([string]$diagnosis.summary) -Diagnostic $diagnostic -Evidence $diagnosisEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
                 $failurePath = [string]$failureResult.FailurePath
             }
         }
