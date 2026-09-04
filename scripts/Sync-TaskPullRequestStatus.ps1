@@ -38,7 +38,15 @@ $delivery = if (Test-Path -LiteralPath $deliveryPath -PathType Leaf) { Get-Conte
 $pipeline = if (Test-Path -LiteralPath $pipelinePath -PathType Leaf) { Get-Content -LiteralPath $pipelinePath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 $ledgerEvents = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
-$latestDeveloperOutcome = @($ledgerEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'developer' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+$revisionStartUtc = if ($task.PSObject.Properties['reopenedAtUtc'] -and $task.reopenedAtUtc) { [DateTime]::Parse([string]$task.reopenedAtUtc).ToUniversalTime() } else { [DateTime]::MinValue }
+$currentRevisionDeveloperOutcomes = @($ledgerEvents | Where-Object {
+    if ([string]$_.type -ne 'agent-result' -or [string]$_.actor -ne 'developer') { return $false }
+    [DateTime]::Parse([string]$_.timestampUtc).ToUniversalTime() -ge $revisionStartUtc
+})
+$latestDeveloperOutcome = @($currentRevisionDeveloperOutcomes | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+if ($task.PSObject.Properties['reopenedAtUtc'] -and -not $latestDeveloperOutcome.Count) {
+    return [pscustomobject]@{ Status='awaiting-current-revision-delivery'; TaskId=$TaskId; Revision=if ($task.PSObject.Properties['revision']) { [int]$task.revision } else { 1 } }
+}
 if ($latestDeveloperOutcome.Count) {
     $expectedCommitEvidence = @($latestDeveloperOutcome[0].evidence | Where-Object { [string]$_ -match '^commit:[0-9a-fA-F]{40}$' } | Select-Object -First 1)
     if ($expectedCommitEvidence.Count) {

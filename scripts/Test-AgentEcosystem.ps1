@@ -1023,6 +1023,11 @@ if ([string]$recoveredKnowledgePublication.AgentId -ne 'knowledge_keeper' -or [s
 $recoveredResumePlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $lifecycleTaskId -PreserveArtifactIndex -ConfigPath $pipelineTestConfigPath
 if ([bool]$recoveredResumePlan.HasWork -or @($recoveredResumePlan.UnfinishedAgentIds).Count -ne 0 -or 'developer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'reviewer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'review_verifier' -notin @($recoveredResumePlan.PreservedAgentIds)) { throw 'Completed-PR knowledge-only recovery treated intentionally skipped Developer, Reviewer, or Review Verifier roles as unfinished.' }
 Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized safely; completed PR routes Pipeline Monitor to Orchestrator, then a persisted decision dispatches and permits initial or recovered final Knowledge Keeper publication'
+$null = & (Join-Path $root 'scripts\Reopen-AgentTask.ps1') -TaskId $lifecycleTaskId -Reason 'Synthetic revision-two product correction.' -ResumeFrom developer -ConfigPath $pipelineTestConfigPath
+$staleRevisionSync = & (Join-Path $root 'scripts\Sync-TaskPullRequestStatus.ps1') -TaskId $lifecycleTaskId -RepositoryId azure-planningspace-ps-excel-agent -PullRequestsJsonPath $completedPrPath -DoNotStartKnowledgeUpdate -ConfigPath $pipelineTestConfigPath
+$reopenedLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$staleRevisionSync.Status -ne 'awaiting-current-revision-delivery' -or $reopenedLifecycleTask.PSObject.Properties['closure']) { throw 'PR sync reused a prior-revision delivery or completed PR before the reopened revision published a Developer outcome.' }
+Add-Check -Name 'reopened-pr-revision-boundary' -Detail 'A reopened task ignores prior-revision delivery and PR completion until the current revision publishes a Developer outcome'
 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
 $deliveryTestRoot = Join-Path $OutputRoot "reviewed-branch-delivery-$deliveryFixtureId"
