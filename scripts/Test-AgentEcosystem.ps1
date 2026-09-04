@@ -570,6 +570,10 @@ if ([string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not 
 $recoveredDuringContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
 $continuedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 if ($recoveredDuringContinuation.Count -ne 0 -or [string]$continuedLeaseA.Status -ne 'already-active' -or [string]$continuedLeaseA.LeaseId -ne [string]$leaseA.LeaseId) { throw 'An interrupted continuation checkpoint lost its live workspace lease before targeted-agent handoff.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status completed -Stage synthetic-terminal-continuation-handoff -Message 'A live controller is starting a continuation after temporary workflow completion.' -ConfigPath $schedulerConfigPath | Out-Null
+$recoveredDuringTerminalContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
+$continuedTerminalLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+if ($recoveredDuringTerminalContinuation.Count -ne 0 -or [string]$continuedTerminalLeaseA.Status -ne 'already-active' -or [string]$continuedTerminalLeaseA.LeaseId -ne [string]$leaseA.LeaseId) { throw 'A completed checkpoint lost its live workspace lease before synchronous targeted-agent continuation.' }
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -Stage synthetic-continuation-active -ConfigPath $schedulerConfigPath | Out-Null
 $duplicateControllerRejected = $false
 try { $null = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('x' * 32) -ConfigPath $schedulerConfigPath }

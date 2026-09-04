@@ -59,12 +59,27 @@ $recoveredLeases = @(Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" 
             }
         }
         $leaseAgeSeconds = if ($heartbeatAtUtc -eq [DateTime]::MinValue) { [double]::PositiveInfinity } else { [Math]::Max(0, ($now - $heartbeatAtUtc).TotalSeconds) }
+        $hasControllerIdentity = $lease.PSObject.Properties['controllerProcessId'] -and [int]$lease.controllerProcessId -gt 0 -and $lease.PSObject.Properties['controllerStartedAtUtc']
+        $controllerIdentityAlive = $false
+        if ($hasControllerIdentity) {
+            try {
+                $controllerProcess = Get-Process -Id ([int]$lease.controllerProcessId) -ErrorAction Stop
+                $recordedStartUtc = ConvertTo-UtcTimestamp -Value $lease.controllerStartedAtUtc
+                if ($recordedStartUtc -ne [DateTime]::MinValue) {
+                    $controllerIdentityAlive = [Math]::Abs(($controllerProcess.StartTime.ToUniversalTime() - $recordedStartUtc).TotalSeconds) -lt 2
+                }
+            }
+            catch { $controllerIdentityAlive = $false }
+        }
         $reason = $null
 
         if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
             $reason = 'task-missing'
         }
-        elseif ($task -and ([string]$task.status -in $terminalStatuses)) {
+        elseif ($task -and [string]$task.status -eq 'failed') {
+            $reason = "task-terminal:$([string]$task.status)"
+        }
+        elseif ($task -and [string]$task.status -eq 'completed' -and -not $controllerIdentityAlive) {
             $reason = "task-terminal:$([string]$task.status)"
         }
         elseif ($task -and [string]$lease.lifecycle -eq 'active') {
@@ -74,17 +89,7 @@ $recoveredLeases = @(Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" 
         }
 
         if (-not $reason -and $leaseAgeSeconds -ge $staleLeaseGraceSeconds) {
-            $hasControllerIdentity = $lease.PSObject.Properties['controllerProcessId'] -and [int]$lease.controllerProcessId -gt 0 -and $lease.PSObject.Properties['controllerStartedAtUtc']
             if ($hasControllerIdentity) {
-                $controllerIdentityAlive = $false
-                try {
-                    $controllerProcess = Get-Process -Id ([int]$lease.controllerProcessId) -ErrorAction Stop
-                    $recordedStartUtc = ConvertTo-UtcTimestamp -Value $lease.controllerStartedAtUtc
-                    if ($recordedStartUtc -ne [DateTime]::MinValue) {
-                        $controllerIdentityAlive = [Math]::Abs(($controllerProcess.StartTime.ToUniversalTime() - $recordedStartUtc).TotalSeconds) -lt 2
-                    }
-                }
-                catch { $controllerIdentityAlive = $false }
                 $reason = if ($controllerIdentityAlive) { 'heartbeat-expired' } else { 'controller-exited' }
             }
             else {
