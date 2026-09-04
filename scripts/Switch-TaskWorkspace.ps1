@@ -110,11 +110,13 @@ if ($admission.Status -eq 'queue') {
     return [pscustomobject]@{ Status=if($PrepareOnly){'would-queue'}else{'queued'}; TaskId=$TaskId; RunId=$RunId; LeaseId=$null; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$queuePosition; Workspaces=$plannedWorkspaces }
 }
 if ($admission.Status -eq 'already-active') {
+    & (Join-Path $PSScriptRoot 'Repair-LegacyTaskWorkspaceBranches.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $workspaces = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
     return [pscustomobject]@{ Status='already-active'; TaskId=$TaskId; RunId=[string]$admission.Lease.runId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=@($workspaces) }
 }
 if ($PrepareOnly) { return [pscustomobject]@{ Status='would-admit'; TaskId=$TaskId; RunId=$RunId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=$plannedWorkspaces } }
 try {
+    & (Join-Path $PSScriptRoot 'Repair-LegacyTaskWorkspaceBranches.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $workspaces = @(& (Join-Path $PSScriptRoot 'Provision-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryIds $repositoryIds -RunId $RunId -LeaseId ([string]$admission.Lease.leaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome)
     Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
         $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json

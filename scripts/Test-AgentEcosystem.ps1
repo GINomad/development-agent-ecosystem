@@ -19,6 +19,14 @@ function Add-Check {
 $featureBranchName = New-TaskBranchName -TaskName 'Implement FDPlan sensitivity resultsets' -TaskType 'Product Backlog Item'
 $bugfixBranchName = New-TaskBranchName -TaskName 'Fix FDPlan sensitivity / resultsets' -TaskType 'Bug'
 if ($featureBranchName -ne 'features/implement-fdplan-sensitivity-resultsets' -or $bugfixBranchName -ne 'bugfix/fix-fdplan-sensitivity-resultsets') { throw 'Human-readable task branch naming does not distinguish implementation tasks from bug fixes.' }
+Assert-TaskDeliveryBranch -BranchName $featureBranchName -ExpectedBranchName $featureBranchName -ForbiddenBranches @('main','master')
+$invalidDeliveryBranches = @('agent/task/repository/run','feature/legacy-name','main')
+foreach ($invalidDeliveryBranch in $invalidDeliveryBranches) {
+    $rejected = $false
+    try { Assert-TaskDeliveryBranch -BranchName $invalidDeliveryBranch -ExpectedBranchName $featureBranchName -ForbiddenBranches @('main','master') }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw "Invalid delivery branch '$invalidDeliveryBranch' was accepted." }
+}
 Add-Check -Name 'human-readable-task-branches' -Detail 'Implementation tasks use features/<task-name>; bugs use bugfix/<bug-name>'
 
 $syntheticReviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
@@ -303,7 +311,7 @@ $reviewFollowUpAnswer = & (Join-Path $root 'scripts\Add-ReviewQuestionResponse.p
 & (Join-Path $root 'scripts\Acknowledge-AgentCommentBatch.ps1') -TaskId $reviewReplyTaskId -AgentId reviewer -EventIds @([string]$reviewFollowUp.CommentId) -ConfigPath $reviewReplyConfigPath | Out-Null
 if ($dashboardClient -notmatch 'review-question-opened' -or $dashboardClient -notmatch 'review-question-answered' -or $dashboardClient -notmatch 'createInlineReviewQuestion' -or $dashboardClient -notmatch 'renderReviewQuestionThreads' -or $dashboardClient -notmatch 'sendReviewQuestionFollowUp' -or $dashboardClient -notmatch 'parentReviewQuestionId' -or $reviewerPrompt -notmatch 'Add-ReviewQuestionResponse.ps1') { throw 'Reviewer question threads, visible answers, or follow-up replies are not wired end to end.' }
 Add-Check -Name 'reviewer-line-question-answers' -Detail 'Line questions and follow-ups remain response-gated, Reviewer persists cited answers, and dashboard renders a visible replyable thread plus exact-line context'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Remove-CompletedTaskWorkspaces.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Save-ReviewArtifactSnapshot.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Remove-CompletedTaskWorkspaces.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Repair-LegacyTaskWorkspaceBranches.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Save-ReviewArtifactSnapshot.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -616,6 +624,49 @@ if ([string]$leaseD.Status -ne 'active' -or @($coordinatorAfterFailureRecovery.l
 
 & (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $taskAId -LeaseId ([string]$leaseA.LeaseId) -Reason synthetic-yield -ConfigPath $schedulerConfigPath | Out-Null
 & (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $taskDId -LeaseId ([string]$leaseD.LeaseId) -Reason synthetic-complete -ConfigPath $schedulerConfigPath | Out-Null
+
+$legacyTaskId = 'workspace-legacy-' + [guid]::NewGuid().ToString('N')
+$legacyTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $legacyTaskId -TaskSelector 'https://example.invalid/workitems/1860579' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+$legacyTaskPath = Join-Path ([string]$legacyTask.TaskRoot) 'task.json'
+$legacyTaskDocument = Get-Content -LiteralPath $legacyTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$legacyTaskDocument.PSObject.Properties.Remove('taskName')
+$legacyTaskDocument.PSObject.Properties.Remove('taskType')
+$legacyTaskDocument.PSObject.Properties.Remove('branchName')
+Write-Utf8NoBom -Path $legacyTaskPath -Content (($legacyTaskDocument | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+$legacyLease = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $legacyTaskId -RunId ('l' * 32) -ConfigPath $schedulerConfigPath
+$legacyWorkspace = [string]$legacyLease.Workspaces[0].Path
+Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('config','user.email','ecosystem-tests@example.invalid') | Out-Null
+Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('config','user.name','Agent Ecosystem Tests') | Out-Null
+Write-Utf8NoBom -Path (Join-Path $legacyWorkspace 'legacy-change.txt') -Content "preserve this commit$([Environment]::NewLine)"
+Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('add','legacy-change.txt') | Out-Null
+Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('commit','-m','legacy task change') | Out-Null
+$legacyHead = (Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $legacyTaskId -LeaseId ([string]$legacyLease.LeaseId) -Reason synthetic-legacy-migration -ConfigPath $schedulerConfigPath | Out-Null
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $legacyTaskId -TaskSelector 'https://example.invalid/workitems/1860579' -Mode manual -TaskName 'FDPlan agent - add sensitivity logic' -TaskType 'Task' -RepositoryIds azure-planningspace-ps-excel-agent -Resume -ConfigPath $schedulerConfigPath
+$migratedLegacyLease = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $legacyTaskId -RunId ('m' * 32) -ConfigPath $schedulerConfigPath
+$migratedLegacyTask = Get-Content -LiteralPath $legacyTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$migratedLegacyManifest = Get-Content -LiteralPath ([string]$migratedLegacyLease.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+$migratedLegacyBranch = (Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('branch','--show-current') | Select-Object -First 1).Trim()
+$migratedLegacyHead = (Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+if ([string]$migratedLegacyTask.branchName -ne 'features/fdplan-agent-add-sensitivity-logic' -or [string]$migratedLegacyManifest.branch -ne [string]$migratedLegacyTask.branchName -or $migratedLegacyBranch -ne [string]$migratedLegacyTask.branchName -or $migratedLegacyHead -ne $legacyHead) { throw 'Legacy task branch migration did not preserve the exact task commit on the human-readable branch.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $legacyTaskId -LeaseId ([string]$migratedLegacyLease.LeaseId) -Reason synthetic-agent-branch-migration -ConfigPath $schedulerConfigPath | Out-Null
+$singularLegacyBranch = 'feature/fdplan-agent-add-sensitivity-logic'
+Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('branch','-m',$singularLegacyBranch) | Out-Null
+$singularLegacyTask = Get-Content -LiteralPath $legacyTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$singularLegacyTask.branchName = $singularLegacyBranch
+Write-Utf8NoBom -Path $legacyTaskPath -Content (($singularLegacyTask | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+$singularLegacyManifest = Get-Content -LiteralPath ([string]$migratedLegacyLease.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+$singularLegacyManifest.branch = $singularLegacyBranch
+Write-Utf8NoBom -Path ([string]$migratedLegacyLease.Workspaces[0].ManifestPath) -Content (($singularLegacyManifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $legacyTaskId -TaskSelector 'https://example.invalid/workitems/1860579' -Mode manual -TaskName 'FDPlan agent - add sensitivity logic' -TaskType 'Task' -RepositoryIds azure-planningspace-ps-excel-agent -Resume -ConfigPath $schedulerConfigPath
+$singularMigratedLease = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $legacyTaskId -RunId ('n' * 32) -ConfigPath $schedulerConfigPath
+$singularMigratedTask = Get-Content -LiteralPath $legacyTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$singularMigratedManifest = Get-Content -LiteralPath ([string]$singularMigratedLease.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+$singularMigratedBranch = (Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('branch','--show-current') | Select-Object -First 1).Trim()
+$singularMigratedHead = (Invoke-SchedulerTestGit -Workspace $legacyWorkspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+if ([string]$singularMigratedTask.branchName -ne 'features/fdplan-agent-add-sensitivity-logic' -or [string]$singularMigratedManifest.branch -ne [string]$singularMigratedTask.branchName -or $singularMigratedBranch -ne [string]$singularMigratedTask.branchName -or $singularMigratedHead -ne $legacyHead) { throw 'Legacy singular feature branch migration did not preserve the exact task commit on the human-readable branch.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $legacyTaskId -LeaseId ([string]$singularMigratedLease.LeaseId) -Reason synthetic-complete -ConfigPath $schedulerConfigPath | Out-Null
+Add-Check -Name 'legacy-task-branch-migration' -Detail 'Legacy agent/* and singular feature/* manifests migrate to task-owned features/ or bugfix/ branches at the unchanged HEAD; internal and mismatched delivery branches are rejected'
 
 $taskFId = 'workspace-f-' + [guid]::NewGuid().ToString('N')
 $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskFId -TaskSelector 'synthetic-controller-crash' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
@@ -963,8 +1014,9 @@ Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
 $deliveryTestRoot = Join-Path $OutputRoot "reviewed-branch-delivery-$deliveryFixtureId"
 $deliveryWorkspace = Join-Path $deliveryTestRoot 'workspace'
+$deliveryBranch = "features/$deliveryFixtureId"
 New-Item -ItemType Directory -Path $deliveryWorkspace -Force | Out-Null
-& git init --quiet --initial-branch "feature/$deliveryFixtureId" $deliveryWorkspace
+& git init --quiet --initial-branch $deliveryBranch $deliveryWorkspace
 if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the reviewed-branch delivery fixture repository.' }
 & git -C $deliveryWorkspace config user.email 'ecosystem-test@example.invalid'
 & git -C $deliveryWorkspace config user.name 'Ecosystem Test'
@@ -990,13 +1042,14 @@ New-Item -ItemType Directory -Path $legacyDeliveryTaskRoot -Force | Out-Null
 $legacyDeliveryTask = [ordered]@{
     taskId = $legacyDeliveryTaskId
     repositoryId = $deliveryRepositoryId
+    branchName = $deliveryBranch
     agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' }; review_verifier = [ordered]@{ status = 'completed' } }
 }
 Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'task.json') -Content (($legacyDeliveryTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $legacyWorkspaceManifestRoot = Join-Path $legacyDeliveryTaskRoot 'workspaces'
 New-Item -ItemType Directory -Path $legacyWorkspaceManifestRoot -Force | Out-Null
 $deliveryCommit = ([string](& git -C $deliveryWorkspace rev-parse HEAD)).Trim()
-$legacyWorkspaceManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$legacyDeliveryTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('e' * 32); leaseId=('f' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $legacyWorkspaceManifestRoot "$deliveryRepositoryId.json") }
+$legacyWorkspaceManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$legacyDeliveryTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch=$deliveryBranch; lifecycle='active'; runId=('e' * 32); leaseId=('f' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $legacyWorkspaceManifestRoot "$deliveryRepositoryId.json") }
 Write-Utf8NoBom -Path $legacyWorkspaceManifest.manifestPath -Content (($legacyWorkspaceManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $legacyReviewPath = Join-Path $legacyDeliveryTaskRoot 'review-result.json'
 $legacyReview = New-SyntheticReviewResult -TaskId $legacyDeliveryTaskId
@@ -1004,7 +1057,7 @@ Write-Utf8NoBom -Path $legacyReviewPath -Content (($legacyReview | ConvertTo-Jso
 $legacyVerification = New-SyntheticReviewVerification -TaskId $legacyDeliveryTaskId -ReviewPath $legacyReviewPath
 Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'review-verification.json') -Content (($legacyVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $deliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $legacyDeliveryTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
-if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne "feature/$deliveryFixtureId" -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/feature/$deliveryFixtureId") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
+if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne $deliveryBranch -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/$deliveryBranch") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
 Add-Check -Name 'reviewed-branch-delivery-task-workspace' -Detail 'Prepare-only delivery accepts legacy singular repositoryId scope but resolves Git state from its task workspace manifest'
 
 $processReviewTaskId = "process-review-$deliveryFixtureId"
@@ -1036,7 +1089,7 @@ $bypassTaskId = "review-bypass-$deliveryFixtureId"
 $bypassTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$bypassTaskId"
 New-Item -ItemType Directory -Path $bypassTaskRoot -Force | Out-Null
 $bypassTask = [ordered]@{
-    taskId=$bypassTaskId; selector='synthetic-review-bypass'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId
+    taskId=$bypassTaskId; selector='synthetic-review-bypass'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId; branchName=$deliveryBranch
     agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; review_verifier=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='pending' } }
 }
 $bypassFinding = [ordered]@{
@@ -1047,7 +1100,7 @@ $bypassReview = New-SyntheticReviewResult -TaskId $bypassTaskId -ProductFindings
 Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'task.json') -Content (($bypassTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $bypassManifestRoot = Join-Path $bypassTaskRoot 'workspaces'
 New-Item -ItemType Directory -Path $bypassManifestRoot -Force | Out-Null
-$bypassManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$bypassTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('1' * 32); leaseId=('2' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $bypassManifestRoot "$deliveryRepositoryId.json") }
+$bypassManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$bypassTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch=$deliveryBranch; lifecycle='active'; runId=('1' * 32); leaseId=('2' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $bypassManifestRoot "$deliveryRepositoryId.json") }
 Write-Utf8NoBom -Path $bypassManifest.manifestPath -Content (($bypassManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $bypassReviewPath = Join-Path $bypassTaskRoot 'review-result.json'
 Write-Utf8NoBom -Path $bypassReviewPath -Content (($bypassReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)

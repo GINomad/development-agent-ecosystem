@@ -61,25 +61,50 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
             }
         }
         Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-        return [pscustomobject]@{ Created=$true; ScopeChanged=$false }
+        return [pscustomobject]@{ Created=$true; ScopeChanged=$false; BranchMetadataChanged=$false; BranchName=[string]$document.branchName }
     }
+    $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $scopeChanged = $false
     if ($selectedRepositoryIds.Count) {
-        $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $previousIds = if ($document.PSObject.Properties['repositoryIds']) { @($document.repositoryIds) } elseif ($document.PSObject.Properties['repositoryId'] -and $document.repositoryId) { @([string]$document.repositoryId) } else { @() }
         if (($previousIds -join '|') -ne (@($selectedRepositoryIds) -join '|')) {
             $document | Add-Member -NotePropertyName repositoryId -NotePropertyValue $selectedRepositoryIds[0] -Force
             $document | Add-Member -NotePropertyName repositoryIds -NotePropertyValue @($selectedRepositoryIds) -Force
-            $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
-            Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
-            return [pscustomobject]@{ Created=$false; ScopeChanged=$true }
+            $scopeChanged = $true
         }
     }
-    return [pscustomobject]@{ Created=$false; ScopeChanged=$false }
+    $existingTaskName = if ($document.PSObject.Properties['taskName']) { [string]$document.taskName } else { '' }
+    $existingTaskType = if ($document.PSObject.Properties['taskType']) { [string]$document.taskType } else { '' }
+    $existingBranchName = if ($document.PSObject.Properties['branchName']) { [string]$document.branchName } else { '' }
+    $resolvedTaskName = if (-not [string]::IsNullOrWhiteSpace($TaskName)) { $TaskName.Trim() } elseif (-not [string]::IsNullOrWhiteSpace($existingTaskName)) { $existingTaskName.Trim() } elseif ($TaskSelector -notmatch '^(?i:https?://|[0-9]+$)') { $TaskSelector.Trim() } else { $TaskId }
+    $resolvedTaskType = if (-not [string]::IsNullOrWhiteSpace($TaskType)) { $TaskType.Trim() } elseif (-not [string]::IsNullOrWhiteSpace($existingTaskType)) { $existingTaskType.Trim() } else { 'Task' }
+    $branchMetadataChanged = $false
+    if ([string]::IsNullOrWhiteSpace($existingTaskName)) {
+        $document | Add-Member -NotePropertyName taskName -NotePropertyValue $resolvedTaskName -Force
+        $branchMetadataChanged = $true
+    }
+    if ([string]::IsNullOrWhiteSpace($existingTaskType)) {
+        $document | Add-Member -NotePropertyName taskType -NotePropertyValue $resolvedTaskType -Force
+        $branchMetadataChanged = $true
+    }
+    if ([string]::IsNullOrWhiteSpace($existingBranchName) -or -not (Test-TaskBranchName -BranchName $existingBranchName)) {
+        $existingBranchName = New-TaskBranchName -TaskName $resolvedTaskName -TaskType $resolvedTaskType
+        $document | Add-Member -NotePropertyName branchName -NotePropertyValue $existingBranchName -Force
+        $branchMetadataChanged = $true
+    }
+    if ($scopeChanged -or $branchMetadataChanged) {
+        $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+        Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+    }
+    return [pscustomobject]@{ Created=$false; ScopeChanged=$scopeChanged; BranchMetadataChanged=$branchMetadataChanged; BranchName=$existingBranchName }
 }
 if ([bool]$mutation.Created) {
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'user' -Type 'task-created' -Summary "Task selected in $Mode mode for repositories $($selectedRepositoryIds -join ', '): $TaskSelector" -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 elseif ([bool]$mutation.ScopeChanged) {
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'user' -Type 'workflow-status' -Summary "Repository scope updated: $($selectedRepositoryIds -join ', ')." -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+if (-not [bool]$mutation.Created -and [bool]$mutation.BranchMetadataChanged) {
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'workflow_host' -Type 'workflow-status' -Summary "Legacy task branch metadata migrated to '$([string]$mutation.BranchName)'." -Artifact $taskPath -Evidence @('legacy-task-branch-migration') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 [pscustomobject]@{ TaskId = $TaskId; TaskRoot = $taskRoot; TaskPath = $taskPath; Resumed = [bool]$Resume; RepositoryIds=@($selectedRepositoryIds) }

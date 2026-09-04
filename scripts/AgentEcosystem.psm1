@@ -371,6 +371,24 @@ function New-TaskBranchName {
     return "$prefix/$slug"
 }
 
+function Test-TaskBranchName {
+    param([Parameter(Mandatory)][string] $BranchName)
+    return $BranchName -match '^(?:features|bugfix)/[\p{L}\p{Nd}](?:[\p{L}\p{Nd}-]{0,78}[\p{L}\p{Nd}])?$'
+}
+
+function Assert-TaskDeliveryBranch {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string] $BranchName,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $ExpectedBranchName,
+        [string[]] $ForbiddenBranches = @()
+    )
+    if ([string]::IsNullOrWhiteSpace($BranchName) -or $BranchName -in @($ForbiddenBranches)) { throw "Delivery is forbidden from branch '$BranchName'." }
+    if ($BranchName -match '^agent/') { throw "Delivery is forbidden from internal workspace branch '$BranchName'. Migrate the task to its human-readable branch before delivery." }
+    if (-not (Test-TaskBranchName -BranchName $ExpectedBranchName)) { throw "Task branch metadata '$ExpectedBranchName' is missing or invalid; migrate the legacy task before delivery." }
+    if (-not (Test-TaskBranchName -BranchName $BranchName)) { throw "Delivery branch '$BranchName' must use features/<task-name> or bugfix/<bug-name>." }
+    if ($BranchName -ne $ExpectedBranchName) { throw "Delivery branch '$BranchName' does not match the task-owned branch '$ExpectedBranchName'." }
+}
+
 function Get-TaskWorkspaceLayout {
     param(
         [Parameter(Mandatory)][string] $WorkspaceRoot,
@@ -396,4 +414,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

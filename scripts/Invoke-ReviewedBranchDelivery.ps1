@@ -81,7 +81,8 @@ function Invoke-Git {
 
 $branch = [string](Invoke-Git @('branch','--show-current') | Select-Object -First 1)
 $commit = [string](Invoke-Git @('rev-parse','HEAD') | Select-Object -First 1)
-if ([string]::IsNullOrWhiteSpace($branch) -or $branch -in @($config.pipeline.delivery.forbiddenBranches)) { throw "Delivery is forbidden from branch '$branch'." }
+$expectedBranch = if ($task.PSObject.Properties['branchName']) { [string]$task.branchName } else { '' }
+Assert-TaskDeliveryBranch -BranchName $branch -ExpectedBranchName $expectedBranch -ForbiddenBranches @($config.pipeline.delivery.forbiddenBranches)
 if ($commit -notmatch '^[0-9a-fA-F]{40}$') { throw 'Could not resolve the full local commit SHA.' }
 $statusLines = @(Invoke-Git @('status','--porcelain=v1','--untracked-files=all'))
 if ([bool]$config.pipeline.delivery.requireCleanWorktree -and @($statusLines | Where-Object { $_ }).Count) { throw 'The worktree is not clean. Developer must commit the reviewed changes before automatic delivery.' }
