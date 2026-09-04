@@ -61,7 +61,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
     $cloneCreatedByThisRun = $false
     try {
         New-Item -ItemType Directory -Path (Split-Path -Parent $clonePath) -Force | Out-Null
-        $cloneOutput = @(& git clone --origin origin ([string]$repository.url) $clonePath 2>&1)
+        $cloneOutput = @(Invoke-TaskWorkspaceGit -WorkingDirectory (Split-Path -Parent $clonePath) -Arguments @('clone','--origin','origin',([string]$repository.url),$clonePath))
         $cloneCreatedByThisRun = Test-Path -LiteralPath $clonePath
         if ($LASTEXITCODE -ne 0) { throw "git clone failed for repository '$repositoryId': $($cloneOutput -join [Environment]::NewLine)" }
         $canonicalOrigin = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('remote','get-url','origin') | Select-Object -First 1).Trim()

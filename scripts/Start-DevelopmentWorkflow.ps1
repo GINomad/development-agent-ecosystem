@@ -147,7 +147,7 @@ if (-not $PrepareOnly) {
     finally { $ErrorActionPreference = $previousPreference }
     $executionContextPath = Join-Path $task.TaskRoot "execution-context-$ExecutionRunId.json"
     if (-not (Test-Path -LiteralPath $executionContextPath -PathType Leaf)) {
-        $executionContext = [ordered]@{
+        $executionContextDocument = [ordered]@{
             schemaVersion = '2.0.0'
             taskId = $TaskId
             runId = [string]$workspaceLease.RunId
@@ -160,7 +160,7 @@ if (-not $PrepareOnly) {
             agentFiles = @($sync.AgentFiles)
             repositories = @($workspaceRecords | ForEach-Object { [ordered]@{ repositoryId=[string]$_.RepositoryId; path=[string]$_.Path; canonicalOrigin=[string]$_.CanonicalOrigin; baseSha=[string]$_.BaseSha; branch=[string]$_.Branch; manifestPath=[string]$_.ManifestPath } })
         }
-        Write-Utf8NoBomAtomic -Path $executionContextPath -Content (($executionContext | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+        Write-Utf8NoBomAtomic -Path $executionContextPath -Content (($executionContextDocument | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     }
 }
 $agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
