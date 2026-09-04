@@ -37,7 +37,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutS
     foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') -and $_.Extension -ne '.lock' })) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $archiveRoot $file.Name) -Force }
     Write-Utf8NoBom -Path (Join-Path $archiveRoot 'task.json') -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
     $now = [DateTime]::UtcNow.ToString('o')
-    $resetAgentIds = if ($ResumeFrom -eq 'requirements_analyst') { @('requirements_analyst','developer','reviewer','pipeline_monitor','knowledge_keeper') } else { @('developer','reviewer','pipeline_monitor','knowledge_keeper') }
+    $resetAgentIds = if ($ResumeFrom -eq 'requirements_analyst') { @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper') } else { @('developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper') }
     foreach ($agentId in $resetAgentIds) {
         $task.agentStatuses | Add-Member -NotePropertyName $agentId -NotePropertyValue ([pscustomobject][ordered]@{ status='pending'; updatedAtUtc=$now; message="Task revision $($currentRevision + 1) reopened from $ResumeFrom." }) -Force
     }

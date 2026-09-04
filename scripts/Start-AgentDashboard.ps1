@@ -418,7 +418,8 @@ try {
                     $stream = [IO.File]::OpenRead($artifactPath)
                     try { $readLength = $stream.Read($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
                     $content = (New-Object Text.UTF8Encoding($false, $false)).GetString($bytes, 0, $readLength)
-                    Send-Json -Response $response -Value @{ artifact=@{ name=$artifactInfo.Name; content=$content; length=[long]$artifactInfo.Length; truncated=([long]$artifactInfo.Length -gt $maximumPreviewBytes); lastWriteTimeUtc=$artifactInfo.LastWriteTimeUtc.ToString('o') } }
+                    $artifactSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                    Send-Json -Response $response -Value @{ artifact=@{ name=$artifactInfo.Name; content=$content; length=[long]$artifactInfo.Length; sha256=$artifactSha256; truncated=([long]$artifactInfo.Length -gt $maximumPreviewBytes); lastWriteTimeUtc=$artifactInfo.LastWriteTimeUtc.ToString('o') } }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -match '^/api/tasks/([^/]+)$') {

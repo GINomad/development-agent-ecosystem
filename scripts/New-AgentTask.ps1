@@ -48,6 +48,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
                 requirements_analyst = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
                 developer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
                 reviewer = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
+                review_verifier = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
                 pipeline_monitor = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
                 health_check = [ordered]@{ status='pending'; updatedAtUtc=$null; message='' }
             }

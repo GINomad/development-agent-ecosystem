@@ -12,7 +12,7 @@
     "item": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "sourceFindingId", "title", "status", "severity", "category", "createdAtUtc", "createdBy", "bypassReason", "reviewArtifact", "evidence", "impact", "correctionDirection"],
+      "required": ["id", "sourceFindingId", "title", "status", "severity", "category", "createdAtUtc", "createdBy", "bypassReason", "reviewArtifact", "reviewVerificationArtifact", "reviewedRevision", "reviewArtifactSha256", "evidence", "impact", "correctionDirection"],
       "properties": {
         "id": { "type": "string", "pattern": "^TD-REV-[0-9]{3,}$" },
         "sourceFindingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
@@ -24,6 +24,23 @@
         "createdBy": { "type": "string", "minLength": 1 },
         "bypassReason": { "type": "string", "minLength": 1 },
         "reviewArtifact": { "type": "string", "minLength": 1 },
+        "reviewVerificationArtifact": { "type": "string", "minLength": 1 },
+        "reviewedRevision": { "type": "string", "minLength": 1 },
+        "reviewArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "updatedAtUtc": { "type": "string", "format": "date-time" },
+        "previousReviewBindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reviewedRevision", "reviewArtifactSha256", "bypassReason"],
+            "properties": {
+              "reviewedRevision": { "type": "string", "minLength": 1 },
+              "reviewArtifactSha256": { "type": "string", "minLength": 1 },
+              "bypassReason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "evidence": { "type": "string", "minLength": 1 },
         "impact": { "type": "string", "minLength": 1 },
         "correctionDirection": { "type": "string", "minLength": 1 }

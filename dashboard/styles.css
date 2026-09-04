@@ -238,6 +238,21 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .review-feedback-thread p { margin: 4px 0; color: #b9cfff; font-size: .68rem; overflow-wrap: anywhere; }
 .review-feedback-card textarea { width: 100%; min-height: 64px; margin-top: 9px; }
 .review-feedback-actions { margin-top: 8px; }
+.review-coverage, .finding-lifecycle { margin: 14px 0; padding: 12px; border: 1px solid rgba(107, 156, 255, .24); border-radius: 10px; background: rgba(107, 156, 255, .025); }
+.review-coverage-heading, .finding-lifecycle-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
+.review-coverage-heading h6, .finding-lifecycle-heading h6 { margin: 0; color: #dbe7f3; font-size: .78rem; }
+.review-coverage-heading p, .finding-lifecycle-heading p { margin: 0; color: var(--muted); font-size: .68rem; text-align: right; }
+.review-coverage-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; }
+.review-coverage-card, .finding-lifecycle-card { min-width: 0; padding: 10px 11px; border: 1px solid rgba(107, 156, 255, .22); border-radius: 9px; background: #0b1118; }
+.review-coverage-card-header, .finding-lifecycle-card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.review-coverage-card-header strong, .finding-lifecycle-card-header strong { color: #b9cfff; font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; }
+.review-coverage-card-header span, .finding-lifecycle-card-header span { color: var(--accent); font-size: .64rem; font-weight: 800; text-align: right; }
+.review-coverage-card.status-blocked, .review-coverage-card.verdict-rejected, .finding-lifecycle-card.verdict-rejected { border-color: rgba(255, 112, 126, .5); }
+.review-coverage-card.status-blocked .review-coverage-card-header span, .review-coverage-card.verdict-rejected .review-coverage-card-header span, .finding-lifecycle-card.verdict-rejected .finding-lifecycle-card-header span { color: #ff9da8; }
+.review-coverage-card.status-not-applicable { opacity: .82; }
+.finding-lifecycle-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 9px; }
+.finding-lifecycle-card.lifecycle-resolved { border-color: rgba(139, 240, 198, .34); }
+.finding-lifecycle-card.lifecycle-regressed { border-color: rgba(255, 190, 92, .52); }
 .review-question-threads { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(139, 240, 198, .16); }
 .review-question-threads-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .review-question-threads-heading h6 { margin: 0; font-size: .78rem; }
@@ -354,6 +369,8 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
   .review-question-threads-heading { display: block; }
   .review-question-threads-heading p { margin-top: 5px; }
   .review-question-thread-actions { align-items: stretch; flex-direction: column; }
+  .review-coverage-heading, .finding-lifecycle-heading { display: block; }
+  .review-coverage-heading p, .finding-lifecycle-heading p { margin-top: 5px; text-align: left; }
   .requirement-traceability-heading { display: block; }
   .requirement-traceability-heading p { margin-top: 5px; }
 }

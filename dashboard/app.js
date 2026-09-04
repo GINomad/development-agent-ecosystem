@@ -8,6 +8,7 @@ const agentLabels = {
   requirements_analyst: 'Requirements Analyst',
   developer: 'Developer',
   reviewer: 'Reviewer',
+  review_verifier: 'Review Verifier',
   pipeline_monitor: 'Pipeline Monitor',
   health_check: 'Health Check'
 };
@@ -33,6 +34,9 @@ let reviewDiffScope = 'reviewed-commit';
 let reviewDiffRequestInFlight = false;
 let reviewDiffReloadPending = false;
 let reviewerFeedback = null;
+let reviewVerification = null;
+let reviewArtifactSha256 = '';
+let reviewVerificationStale = false;
 let reviewerDecisions = [];
 let reviewerTechDebtItems = [];
 let reviewerFeedbackRequestInFlight = false;
@@ -704,6 +708,9 @@ function closeReviewDiff() {
   selectedDiffFilePath = null;
   selectedDiffLine = null;
   reviewerFeedback = null;
+  reviewVerification = null;
+  reviewArtifactSha256 = '';
+  reviewVerificationStale = false;
   reviewerDecisions = [];
   reviewerTechDebtItems = [];
   const panel = document.querySelector('#reviewDiffPanel');
@@ -733,6 +740,8 @@ function latestReviewerDecision(findingId) {
   let latest = null;
   reviewerDecisions.forEach(decision => {
     if (String(decision?.findingId || '').toLowerCase() !== normalizedId) return;
+    if (String(decision?.reviewedRevision || '') !== String(reviewerFeedback?.reviewedRevision || '')) return;
+    if (String(decision?.reviewArtifactSha256 || '') !== reviewArtifactSha256) return;
     const currentTimestamp = Date.parse(latest?.decidedAtUtc || latest?.decidedAt || '') || 0;
     const candidateTimestamp = Date.parse(decision?.decidedAtUtc || decision?.decidedAt || '') || 0;
     if (!latest || candidateTimestamp >= currentTimestamp) latest = decision;
@@ -747,14 +756,25 @@ function isReviewerItemBypassedAsDebt(item) {
   return reviewerTechDebtItems.some(debt =>
     String(debt?.sourceFindingId || '').toLowerCase() === findingId.toLowerCase()
       && String(debt?.status || '').toLowerCase() === 'open'
+      && String(debt?.reviewArtifactSha256 || '') === reviewArtifactSha256
   );
+}
+
+function reviewVerificationFor(findingId) {
+  return (reviewVerification?.findingVerifications || [])
+    .find(item => String(item?.findingId || '').toLowerCase() === String(findingId || '').toLowerCase()) || null;
+}
+
+function findingLifecycleFor(findingId) {
+  return (reviewerFeedback?.findingLifecycle || [])
+    .find(item => String(item?.findingId || '').toLowerCase() === String(findingId || '').toLowerCase()) || null;
 }
 
 function activeReviewerSummary(result) {
   const summary = String(result?.summary || '').trim();
   if (!summary) return '';
   const hiddenFindingIds = [...(result?.findings || []), ...(result?.agentProcessFindings || [])]
-    .filter(isReviewerItemBypassedAsDebt)
+    .filter(item => isReviewerItemBypassedAsDebt(item) || String(reviewVerificationFor(item?.id)?.verdict || '') === 'rejected')
     .map(item => String(item?.id || '').toLowerCase())
     .filter(Boolean);
   if (!hiddenFindingIds.length) return summary;
@@ -780,7 +800,17 @@ function reviewerFeedbackItems(result) {
     if (!Array.isArray(values)) return;
     values.forEach((value, index) => {
       const item = value && typeof value === 'object' ? value : { summary: String(value) };
-      const normalizedItem = { ...item, id: String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`), kind };
+      const itemId = String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`);
+      const verification = reviewVerificationFor(itemId);
+      const lifecycle = findingLifecycleFor(itemId);
+      const normalizedItem = {
+        ...item,
+        id: itemId,
+        kind,
+        verificationVerdict: verification?.verdict || '',
+        verificationNotes: verification?.notes || '',
+        lifecycleStatus: lifecycle?.status || ''
+      };
       if (!isReviewerItemBypassedAsDebt(normalizedItem)) items.push(normalizedItem);
     });
   });
@@ -834,7 +864,7 @@ function createInlineReviewerComment(item) {
   const identity = document.createElement('span');
   identity.textContent = item.id + ' · ' + item.kind;
   const severity = document.createElement('span');
-  severity.textContent = [item.severity, item.category].filter(Boolean).join(' · ') || 'recorded';
+  severity.textContent = [item.severity, item.category, item.lifecycleStatus, item.verificationVerdict || 'awaiting verification'].filter(Boolean).join(' · ') || 'recorded';
   header.append(identity, severity);
   card.append(header);
   const message = item.title || item.summary || item.evidence || item.message;
@@ -1196,6 +1226,84 @@ function appendReviewerFeedbackField(container, label, value) {
   container.append(row);
 }
 
+function renderReviewCoverage() {
+  const matrix = document.querySelector('#reviewCoverageMatrix');
+  const summary = document.querySelector('#reviewCoverageSummary');
+  matrix.replaceChildren();
+  const coverage = Array.isArray(reviewerFeedback?.reviewCoverage) ? reviewerFeedback.reviewCoverage : [];
+  const verificationEntries = Array.isArray(reviewVerification?.coverageVerification) ? reviewVerification.coverageVerification : [];
+  const rejected = verificationEntries.filter(item => item?.verdict === 'rejected').length;
+  const blocked = coverage.filter(item => item?.status === 'blocked').length;
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
+  summary.textContent = coverage.length
+    ? `${coverage.length} dimension(s); ${rejected} rejected by verifier; ${blocked} blocked; ${verificationState}.`
+    : `Review coverage matrix is not available; ${verificationState}.`;
+  if (!coverage.length) {
+    const empty = document.createElement('p');
+    empty.className = 'agent-log-empty';
+    empty.textContent = 'Reviewer must publish all configured reviewCoverage dimensions.';
+    matrix.append(empty);
+    return;
+  }
+  coverage.forEach(entry => {
+    const verification = verificationEntries.find(item => item?.dimension === entry?.dimension);
+    const card = document.createElement('article');
+    card.className = `review-coverage-card status-${String(entry?.status || 'unknown')} verdict-${String(verification?.verdict || 'pending')}`;
+    const header = document.createElement('div');
+    header.className = 'review-coverage-card-header';
+    const dimension = document.createElement('strong');
+    dimension.textContent = String(entry?.dimension || 'unknown').replaceAll('-', ' ');
+    const badges = document.createElement('span');
+    badges.textContent = [entry?.status, verification?.verdict || 'awaiting verifier'].filter(Boolean).join(' · ');
+    header.append(dimension, badges);
+    card.append(header);
+    appendReviewerFeedbackField(card, 'Reviewer evidence', entry?.evidence);
+    appendReviewerFeedbackField(card, 'Reviewer notes', entry?.notes);
+    appendReviewerFeedbackField(card, 'Verifier evidence', verification?.evidence);
+    appendReviewerFeedbackField(card, 'Falsification', verification?.falsificationAttempts);
+    appendReviewerFeedbackField(card, 'Verifier notes', verification?.notes);
+    matrix.append(card);
+  });
+}
+
+function renderFindingLifecycle() {
+  const list = document.querySelector('#findingLifecycleList');
+  const summary = document.querySelector('#findingLifecycleSummary');
+  list.replaceChildren();
+  const lifecycle = Array.isArray(reviewerFeedback?.findingLifecycle) ? reviewerFeedback.findingLifecycle : [];
+  const lifecycleVerifications = Array.isArray(reviewVerification?.lifecycleVerifications) ? reviewVerification.lifecycleVerifications : [];
+  const counts = lifecycle.reduce((result, item) => {
+    const key = String(item?.status || 'unknown');
+    result[key] = (result[key] || 0) + 1;
+    return result;
+  }, {});
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
+  summary.textContent = lifecycle.length
+    ? `${Object.entries(counts).map(([status, count]) => `${status}: ${count}`).join(' · ')} · ${verificationState}`
+    : `No finding lifecycle records · ${verificationState}`;
+  lifecycle.forEach(entry => {
+    const verification = lifecycleVerifications.find(item => String(item?.findingId || '') === String(entry?.findingId || ''));
+    const card = document.createElement('article');
+    card.className = `finding-lifecycle-card lifecycle-${String(entry?.status || 'unknown')} verdict-${String(verification?.verdict || 'pending')}`;
+    const header = document.createElement('div');
+    header.className = 'finding-lifecycle-card-header';
+    const findingId = document.createElement('strong');
+    findingId.textContent = String(entry?.findingId || 'Finding');
+    const badges = document.createElement('span');
+    badges.textContent = [entry?.status, verification?.verdict || 'awaiting verifier'].filter(Boolean).join(' · ');
+    header.append(findingId, badges);
+    card.append(header);
+    appendReviewerFeedbackField(card, 'First seen', entry?.firstSeenRevision);
+    appendReviewerFeedbackField(card, 'Last observed', entry?.lastObservedRevision);
+    appendReviewerFeedbackField(card, 'Resolved', entry?.resolvedRevision);
+    appendReviewerFeedbackField(card, 'Previous resolution', entry?.previousResolutionRevision);
+    appendReviewerFeedbackField(card, 'Lifecycle evidence', entry?.evidence);
+    appendReviewerFeedbackField(card, 'Verifier evidence', verification?.evidence);
+    appendReviewerFeedbackField(card, 'Verifier notes', verification?.notes);
+    list.append(card);
+  });
+}
+
 async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons) {
   if (!selectedTaskId) throw new Error('Select a task first.');
   const reply = textarea.value.trim();
@@ -1224,6 +1332,7 @@ async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons)
     log(saved);
   } finally {
     buttons.forEach(button => { button.disabled = false; });
+    if (item.verificationVerdict === 'rejected' && buttons[1]) buttons[1].disabled = true;
   }
 }
 
@@ -1232,10 +1341,18 @@ function renderReviewerFeedback() {
   const summary = document.querySelector('#reviewFeedbackSummary');
   list.replaceChildren();
   renderReviewQuestionThreads();
+  renderReviewCoverage();
+  renderFindingLifecycle();
   const items = reviewerFeedbackItems(reviewerFeedback);
   const findings = items.filter(item => item.kind !== 'summary');
+  const verificationCounts = findings.reduce((result, item) => {
+    const key = item.verificationVerdict || 'awaiting';
+    result[key] = (result[key] || 0) + 1;
+    return result;
+  }, {});
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
   summary.textContent = reviewerFeedback
-    ? `${findings.length} finding(s) or suggestion(s); ${items.length ? 'Reviewer summary is included.' : 'no persisted Reviewer text.'}`
+    ? `${findings.length} item(s); confirmed ${verificationCounts.confirmed || 0}, rejected ${verificationCounts.rejected || 0}, needs human ${verificationCounts['needs-human'] || 0}, awaiting ${verificationCounts.awaiting || 0}; ${verificationState}.`
     : 'Reviewer outcome is not available.';
   if (!items.length) {
     const empty = document.createElement('p');
@@ -1243,6 +1360,8 @@ function renderReviewerFeedback() {
     empty.textContent = 'No Reviewer outcome, finding, suggestion, or held-scope violation was persisted.';
     list.append(empty);
     renderRequirementTraceability();
+    renderReviewCoverage();
+    renderFindingLifecycle();
     renderInlineReviewerComments();
     return;
   }
@@ -1254,7 +1373,7 @@ function renderReviewerFeedback() {
     const identity = document.createElement('strong');
     identity.textContent = `${item.id} · ${item.kind}`;
     const badges = document.createElement('span');
-    badges.textContent = [item.severity, item.category, item.decisionStatus].filter(Boolean).join(' · ') || 'recorded';
+    badges.textContent = [item.severity, item.category, item.lifecycleStatus, item.verificationVerdict || (item.kind === 'summary' ? '' : 'awaiting verification'), item.decisionStatus].filter(Boolean).join(' · ') || 'recorded';
     header.append(identity, badges);
     card.append(header);
     appendReviewerFeedbackField(card, 'Summary', item.title || item.summary || item.message);
@@ -1262,6 +1381,7 @@ function renderReviewerFeedback() {
     appendReviewerFeedbackField(card, 'Evidence', item.evidence);
     appendReviewerFeedbackField(card, 'Impact', item.impact);
     appendReviewerFeedbackField(card, 'Suggested correction', item.correctionDirection || item.recommendation || item.suggestion);
+    appendReviewerFeedbackField(card, 'Verifier', item.verificationNotes);
     const replies = reviewerFeedbackReplies(item.id);
     if (replies.length) {
       const thread = document.createElement('div');
@@ -1289,6 +1409,10 @@ function renderReviewerFeedback() {
     developerButton.type = 'button';
     developerButton.className = 'button primary compact-button';
     developerButton.textContent = 'Send to Developer';
+    if (item.verificationVerdict === 'rejected') {
+      developerButton.disabled = true;
+      developerButton.title = 'Review Verifier rejected this candidate finding.';
+    }
     const buttons = [reviewerButton, developerButton];
     reviewerButton.addEventListener('click', async () => {
       try { await sendReviewerFeedbackReply(item, 'reviewer', textarea, buttons); }
@@ -1313,18 +1437,30 @@ async function loadReviewerFeedback() {
   document.querySelector('#reviewFeedbackSummary').textContent = 'Loading Reviewer outcome...';
   try {
     const artifactUrl = name => '/api/tasks/' + encodeURIComponent(taskId) + '/artifacts/' + encodeURIComponent(name);
-    const [result, decisionsResult, debtResult] = await Promise.all([
+    const [result, verificationResult, decisionsResult, debtResult] = await Promise.all([
       api(artifactUrl('review-result.json')),
+      api(artifactUrl('review-verification.json')).catch(() => null),
       api(artifactUrl('review-decisions.json')).catch(() => null),
       api(artifactUrl('tech-debt-items.json')).catch(() => null)
     ]);
     if (selectedTaskId !== taskId) return;
     reviewerFeedback = JSON.parse(result.artifact.content);
+    reviewArtifactSha256 = String(result.artifact.sha256 || '').toLowerCase();
+    const verificationCandidate = verificationResult ? JSON.parse(verificationResult.artifact.content) : null;
+    reviewVerificationStale = Boolean(verificationCandidate) && (
+      !reviewArtifactSha256
+      || String(verificationCandidate.reviewArtifactSha256 || '').toLowerCase() !== reviewArtifactSha256
+      || String(verificationCandidate.reviewedRevision || '') !== String(reviewerFeedback.reviewedRevision || '')
+    );
+    reviewVerification = reviewVerificationStale ? null : verificationCandidate;
     reviewerDecisions = decisionsResult ? (JSON.parse(decisionsResult.artifact.content).decisions || []) : [];
     reviewerTechDebtItems = debtResult ? (JSON.parse(debtResult.artifact.content).items || []) : [];
     renderReviewerFeedback();
   } catch (error) {
     reviewerFeedback = null;
+    reviewVerification = null;
+    reviewArtifactSha256 = '';
+    reviewVerificationStale = false;
     reviewerDecisions = [];
     reviewerTechDebtItems = [];
     renderReviewerFeedback();

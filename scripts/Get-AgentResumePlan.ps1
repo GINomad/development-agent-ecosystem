@@ -29,7 +29,7 @@ if ($TargetAgentId) {
     $unfinished.Add($TargetAgentId)
 }
 else {
-    foreach ($agentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+    foreach ($agentId in @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')) {
         $status = [string]$statusMap[$agentId]
         if ($status -in @('completed','skipped')) { continue }
         $unfinished.Add($agentId)
@@ -89,6 +89,7 @@ if (Test-Path -LiteralPath $artifactIndexPath -PathType Leaf) {
 $shareableArtifacts = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $null = $shareableArtifacts.Add('assigned-task-context.json')
 $null = $shareableArtifacts.Add('review-decisions.json')
+$null = $shareableArtifacts.Add('review-history-index.json')
 foreach ($agent in @($config.agents)) {
     $agentId = [string]$agent.id
     if ([string]$statusMap[$agentId] -ne 'completed') { continue }
