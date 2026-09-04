@@ -1367,6 +1367,8 @@ if ([string]$preservedBaseline.Status -ne 'preserved' -or [string]$preservedBase
 Add-Check -Name 'health-dirty-baseline-preservation' -Detail "tracked and untracked changes preserved as $preservedHead before repair"
 $targetedResumeConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedResumeConfig.enabled -or -not [bool]$targetedResumeConfig.requireSuccessfulRepair -or [int]$targetedResumeConfig.maxAttemptsPerFailureSignature -ne 1) { throw 'Health Check targeted resume must require validated repair and permit exactly one attempt.' }
+$targetedResumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-HealthTargetedResume.ps1') -Raw -Encoding UTF8
+if ($targetedResumeScript -notmatch 'activeRecoveryLease' -or $targetedResumeScript -notmatch '\$activeExecutionRunId = \$null' -or $targetedResumeScript -notmatch '\$activeWorkspaceLeaseId = \$null') { throw 'Health Check targeted resume does not reacquire a workspace after the failed run lease was released.' }
 if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'requirements_analyst' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'developer') { throw 'Health Check targeted resume allowlist is unsafe or incomplete.' }
 foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Save-EcosystemRecoveryBaseline.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
