@@ -39,16 +39,20 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
     if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ([string]$manifest.taskId -ne $TaskId -or [string]$manifest.repositoryId -ne $repositoryId) { throw "Workspace manifest identity mismatch: $manifestPath" }
-        if (-not (Test-Path -LiteralPath (Join-Path ([string]$manifest.clonePath) '.git'))) { throw "Workspace clone is missing: $($manifest.clonePath)" }
-        $ownedByAnotherRun = [string]$manifest.lifecycle -in @('provisioning','active') -and ([string]$manifest.leaseId -ne $LeaseId -or [string]$manifest.runId -ne $RunId)
-        if ($ownedByAnotherRun) { throw "Task '$TaskId' already owns a different active workspace run for '$repositoryId'." }
-        $manifest | Add-Member -NotePropertyName runId -NotePropertyValue $RunId -Force
-        $manifest | Add-Member -NotePropertyName leaseId -NotePropertyValue $LeaseId -Force
-        $manifest | Add-Member -NotePropertyName lifecycle -NotePropertyValue 'provisioning' -Force
-        $manifest | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
-        $manifest | Add-Member -NotePropertyName manifestPath -NotePropertyValue $manifestPath -Force
-        Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
-        $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest)); continue
+        $cloneExists = Test-Path -LiteralPath (Join-Path ([string]$manifest.clonePath) '.git') -PathType Container
+        $cleanedWorkspaceNeedsProvisioning = [string]$manifest.lifecycle -eq 'cleaned' -and -not $cloneExists
+        if (-not $cleanedWorkspaceNeedsProvisioning) {
+            if (-not $cloneExists) { throw "Workspace clone is missing: $($manifest.clonePath)" }
+            $ownedByAnotherRun = [string]$manifest.lifecycle -in @('provisioning','active') -and ([string]$manifest.leaseId -ne $LeaseId -or [string]$manifest.runId -ne $RunId)
+            if ($ownedByAnotherRun) { throw "Task '$TaskId' already owns a different active workspace run for '$repositoryId'." }
+            $manifest | Add-Member -NotePropertyName runId -NotePropertyValue $RunId -Force
+            $manifest | Add-Member -NotePropertyName leaseId -NotePropertyValue $LeaseId -Force
+            $manifest | Add-Member -NotePropertyName lifecycle -NotePropertyValue 'provisioning' -Force
+            $manifest | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+            $manifest | Add-Member -NotePropertyName manifestPath -NotePropertyValue $manifestPath -Force
+            Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+            $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest)); continue
+        }
     }
     $branchName = if ($task.PSObject.Properties['branchName']) { [string]$task.branchName } else { '' }
     $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $repositoryId -RunId $RunId -BranchName $branchName
@@ -56,7 +60,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
     $workspaceRootPrefix = [IO.Path]::GetFullPath($workspaceRoot).TrimEnd([char[]]@('\','/')) + [IO.Path]::DirectorySeparatorChar
     if (-not $clonePath.StartsWith($workspaceRootPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to provision a task workspace outside '$workspaceRoot': $clonePath" }
     $branch = [string]$layout.Branch
-    $conflicts = @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter "$repositoryId.json" -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { try { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } | Where-Object { $_ -and [string]$_.taskId -ne $TaskId -and [string]$_.branch -eq $branch -and [string]$_.canonicalOrigin -eq [string]$repository.url -and [string]$_.lifecycle -ne 'released' })
+    $conflicts = @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter "$repositoryId.json" -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { try { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } | Where-Object { $_ -and [string]$_.taskId -ne $TaskId -and [string]$_.branch -eq $branch -and [string]$_.canonicalOrigin -eq [string]$repository.url -and [string]$_.lifecycle -notin @('released','cleaned') })
     if ($conflicts.Count) { throw "Remote branch '$branch' is already owned by task '$($conflicts[0].taskId)'." }
     if (Test-Path -LiteralPath $clonePath) { throw "Workspace path already exists and is not owned by this task: $clonePath" }
     $cloneCreatedByThisRun = $false
