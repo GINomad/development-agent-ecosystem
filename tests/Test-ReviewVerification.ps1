@@ -113,7 +113,7 @@ function New-Verification {
         [ValidateSet('confirmed','rejected')][string] $LifecycleVerdict = 'confirmed',
         [ValidateSet('passed','review-rework-required')][string] $Status = 'passed'
     )
-    $reviewSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
     [object[]] $findingVerifications = @()
     if (@($Review.findings).Count) {
         $findingVerifications = @([ordered]@{
