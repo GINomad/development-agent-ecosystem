@@ -169,6 +169,7 @@ $knowledgeAgentName = 'development_knowledge_keeper' + $agentProfileSuffix
 $requirementsAgentName = 'development_requirements_analyst' + $agentProfileSuffix
 $developerAgentName = 'development_implementer' + $agentProfileSuffix
 $reviewerAgentName = 'development_reviewer' + $agentProfileSuffix
+$reviewVerifierAgentName = 'development_review_verifier' + $agentProfileSuffix
 $pipelineAgentName = 'development_pipeline_monitor' + $agentProfileSuffix
 $healthAgentName = 'development_health_check' + $agentProfileSuffix
 $resumePlan = $null
@@ -286,7 +287,7 @@ $roleDirectory
 
 $targetExecutionContract
 
-The trusted host follows only the latest persisted Orchestrator agentSequence. Full delivery remains Requirements Analyst -> Developer -> Reviewer -> Pipeline Monitor -> Knowledge Keeper, while research-only and other narrow modes stop after their configured roles. In host-compatible mode the current invocation uses the approved host-compatible sandbox. Dispatch Health Check only through the trusted host when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without explicit human decisions. Do not perform external writes without explicit authorization.
+The trusted host follows only the latest persisted Orchestrator agentSequence. Full delivery remains Requirements Analyst -> Developer -> Reviewer -> Review Verifier -> Pipeline Monitor -> Knowledge Keeper, while research-only and other narrow modes stop after their configured roles. Reviewer and Review Verifier always run in separate targeted invocations; only findings independently marked confirmed or needs-human may enter the human decision gate. In host-compatible mode the current invocation uses the approved host-compatible sandbox. Dispatch Health Check only through the trusted host when an agent fails, a required artifact is missing or invalid, a workflow is stuck, or a dashboard/runtime contract fails. In automate mode, enumerate assigned tasks but process no more than $($config.operation.automate.maxTasksPerRun) tasks in this run. Do not implement held scope. Do not apply proposed review findings without independent verification and explicit human decisions. Do not perform external writes without explicit authorization.
 
 $($activeRolePrompt -join ([Environment]::NewLine + [Environment]::NewLine))
 "@
@@ -472,7 +473,7 @@ try {
     }
     elseif ($currentStatus -eq 'review_pending') {
         if ($updateOrchestratorStatus) {
-            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for human review decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & $statusScript -TaskId $TaskId -AgentId orchestrator -AgentStatus completed -Stage review_pending -Message 'Orchestration is waiting for review verification, missing review evidence, or human decisions.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
     elseif ($currentStatus -eq 'interrupted') {

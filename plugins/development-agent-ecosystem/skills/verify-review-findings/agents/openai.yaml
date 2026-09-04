@@ -1,0 +1,5 @@
+interface:
+  display_name: "Verify Review Findings"
+  short_description: "Falsify review claims independently"
+  default_prompt: "Use $verify-review-findings to independently verify review coverage, findings, and lifecycle transitions."
+

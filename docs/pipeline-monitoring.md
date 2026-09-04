@@ -10,12 +10,13 @@ This page is the operator view of the pipeline contract. The machine-readable so
 |---|---|---|
 | `monitorAgentId` | `pipeline_monitor` | Guarded working-branch delivery, exact-SHA build observation, bounded failed-log extraction, and task-PR status |
 | `productRemediationAgentId` | `developer` | Product code, tests, and product pipeline YAML supported by `code` or `test` failure evidence |
-| `remediationReviewAgentId` | `reviewer` | Review of every remediation before a replacement commit can be delivered and monitored |
+| `remediationReviewAgentId` | `reviewer` | Candidate review, complete coverage matrix, and stable finding lifecycle for every remediation |
+| `reviewVerificationAgentId` | `review_verifier` | Independent falsification of coverage, findings, and lifecycle bound to the exact review SHA before delivery or rework decisions |
 | `exceptionRoutingAgentId` | `orchestrator` | Routing of infrastructure, credential, no-run, unknown, limit-reached, and terminal PR outcomes |
 | `ecosystemRecoveryAgentId` | `health_check` | Ecosystem runtime, scripts, configuration, skills, dashboard, or control-plane defects only |
 | `completionAgentId` | `knowledge_keeper` | Final evidence-backed task history and knowledge publication after Orchestrator validates completion |
 
-The normal remediation loop is `pipeline_monitor -> developer -> reviewer -> pipeline_monitor`. A successful completed PR follows `pipeline_monitor -> orchestrator -> knowledge_keeper`.
+The normal remediation loop is `pipeline_monitor -> developer -> reviewer -> review_verifier -> pipeline_monitor`. Coverage/lifecycle rejection loops `review_verifier -> reviewer`; an approved independently confirmed product finding loops `review_verifier -> developer`. A successful completed PR follows `pipeline_monitor -> orchestrator -> knowledge_keeper`.
 
 ## Repository and definition matrix
 
@@ -29,11 +30,11 @@ Deployment definition `891` is forbidden by semantic validation and must never a
 
 ## Exact-SHA lifecycle
 
-1. Pipeline Monitor may call `Invoke-ReviewedBranchDelivery.ps1` only after the review gate is clean or every remaining product finding is explicitly rejected or bypassed into linked open task-local debt.
+1. Pipeline Monitor may call `Invoke-ReviewedBranchDelivery.ps1` only after Review Verifier passes every coverage/lifecycle claim for the exact review SHA and the review is clean, or every remaining independently confirmed product finding is explicitly rejected or bypassed into linked exact-review-bound open task-local debt. Verifier-rejected findings are auditable but never enter this gate.
 2. The delivery script permits only a clean, non-base, non-force, non-tag push to the configured `origin`, then verifies the full remote SHA.
 3. `Invoke-PostPushPipeline.ps1` accepts the repository ID, branch, full pushed SHA, and pre-push UTC timestamp. The native watcher ignores branch-only and mismatched-commit runs.
 4. Only an allowlisted build definition may be queued. Ordered definitions are fail-closed: a later definition is queued only after the earlier exact-SHA definition succeeds.
-5. `code` or `test` failures produce a deduplicated Developer request. Reviewer must approve the resulting change before Pipeline Monitor observes the replacement SHA. The loop is limited to three cycles.
+5. `code` or `test` failures produce a deduplicated Developer request. Reviewer must review the resulting change and Review Verifier must independently pass the exact artifact before Pipeline Monitor observes the replacement SHA. The loop is limited to three cycles.
 6. Infrastructure, credential, no-run, unknown, and limit-reached outcomes return to Orchestrator. Health Check is selected only when evidence points to the ecosystem itself.
 7. A successful build does not close the task. Pipeline Monitor synchronizes the task PR; a completed PR returns to Orchestrator, which validates terminal evidence before routing final publication to Knowledge Keeper.
 
@@ -61,4 +62,4 @@ After any change, run:
 .\scripts\Test-AgentEcosystem.ps1
 ```
 
-Do not weaken schema, semantic validation, exact-origin verification, review gates, or queue allowlists to make a new repository pass.
+Do not weaken schema, semantic validation, exact-origin verification, independent review-verification gates, human decision gates, or queue allowlists to make a new repository pass.

@@ -25,6 +25,7 @@ Open `config/agents.json` and verify:
 - `workflow.workspaceScheduling`: `maxActiveTasks` is at least two, `queueWhenBusy=true`, `maxActiveAgentsPerTask=1`, and `workspaceRoot` plus `coordinatorStatePath` resolve outside every `repositories[].localWorkspace`;
 - `leaseHeartbeatSeconds` and `staleLeaseGraceSeconds`; stale grace must be at least three heartbeat intervals and no more than one hour;
 - `pipeline.ownership` and every `pipeline.repositories[]` definition/auto-queue allowlist; compare them with the [pipeline monitoring matrix](pipeline-monitoring.md).
+- the separate read-only `reviewer` and `review_verifier` roles, the mandatory ten-dimension `reviewCoverage` matrix, exact review-SHA binding, and `new`/`unchanged`/`resolved`/`regressed` lifecycle contract.
 
 ## 2. Install the plugin and agents
 
@@ -36,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\Install-AgentEcosystem.ps1
 The installer:
 
 1. performs an idempotent, read-only import of the initial knowledge base;
-2. compiles seven standard custom agents from the latest JSON configuration; workflow startup or Health Check compiles the seven derived host-compatible profiles when needed by the standing execution policy;
+2. compiles eight standard custom agents from the latest JSON configuration; workflow startup or Health Check compiles the eight derived host-compatible profiles when needed by the standing execution policy;
 3. creates a derived Review Monitor configuration under `%LOCALAPPDATA%`;
 4. runs local validation;
 5. registers this repository as a Codex marketplace and installs the plugin.
@@ -64,6 +65,7 @@ The UI is available only on loopback. Its URL contains a random session token, a
 
 ```powershell
 .\scripts\Test-AgentEcosystem.ps1 | ConvertTo-Json -Depth 8
+.\tests\Test-ReviewVerification.ps1 | ConvertTo-Json -Depth 8
 codex plugin list
 Get-ScheduledTask | Where-Object TaskName -like '*PR Review*' |
   Select-Object TaskName, State, @{n='Enabled';e={$_.Settings.Enabled}}

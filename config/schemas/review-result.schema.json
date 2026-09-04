@@ -3,7 +3,7 @@
   "title": "Review result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "reviewedRevision", "requirementsRevision", "requirementTraceability", "findings", "heldScopeViolations", "agentProcessFindings", "summary"],
+  "required": ["taskId", "reviewedRevision", "requirementsRevision", "requirementTraceability", "reviewCoverage", "findings", "heldScopeViolations", "agentProcessFindings", "findingLifecycle", "summary"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "reviewedRevision": { "type": "string", "minLength": 1 },
@@ -13,12 +13,37 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/requirementTrace" }
     },
+    "reviewCoverage": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/reviewCoverageEntry" }
+    },
     "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
     "heldScopeViolations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "agentProcessFindings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "findingLifecycle": { "type": "array", "items": { "$ref": "#/$defs/findingLifecycle" } },
     "summary": { "type": "string", "minLength": 1 }
   },
   "$defs": {
+    "reviewDimension": {
+      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation"]
+    },
+    "reviewCoverageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "status", "evidence", "notes"],
+      "properties": {
+        "dimension": { "$ref": "#/$defs/reviewDimension" },
+        "status": { "enum": ["covered", "not-applicable", "blocked"] },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    },
     "finding": {
       "type": "object",
       "additionalProperties": false,
@@ -26,7 +51,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
         "severity": { "enum": ["critical", "high", "medium", "low"] },
-        "category": { "enum": ["correctness", "security", "regression", "testing", "maintainability", "requirements", "knowledge", "agent-process"] },
+        "category": { "enum": ["correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation", "requirements", "knowledge", "agent-process"] },
         "location": { "type": "string", "minLength": 1 },
         "evidence": { "type": "string", "minLength": 1 },
         "impact": { "type": "string", "minLength": 1 },
@@ -34,6 +59,30 @@
         "decisionStatus": { "const": "proposed" },
         "codeLocation": { "$ref": "#/$defs/codeLocation" }
       }
+    },
+    "findingLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "status", "firstSeenRevision", "lastObservedRevision", "evidence"],
+      "properties": {
+        "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+        "status": { "enum": ["new", "unchanged", "resolved", "regressed"] },
+        "firstSeenRevision": { "type": "string", "minLength": 1 },
+        "lastObservedRevision": { "type": "string", "minLength": 1 },
+        "resolvedRevision": { "type": "string", "minLength": 1 },
+        "previousResolutionRevision": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "resolved" } }, "required": ["status"] },
+          "then": { "required": ["resolvedRevision"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "regressed" } }, "required": ["status"] },
+          "then": { "required": ["previousResolutionRevision"] }
+        }
+      ]
     },
     "codeLocation": {
       "type": "object",

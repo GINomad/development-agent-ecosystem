@@ -346,6 +346,7 @@
                         "requirements_analyst",
                         "developer",
                         "reviewer",
+                        "review_verifier",
                         "pipeline_monitor",
                         "health_check"
                       ]
@@ -467,8 +468,8 @@
             },
             "orderedAgentIds": {
               "type": "array",
-              "minItems": 5,
-              "maxItems": 5,
+              "minItems": 6,
+              "maxItems": 6,
               "uniqueItems": true,
               "items": {
                 "enum": [
@@ -476,6 +477,7 @@
                   "requirements_analyst",
                   "developer",
                   "reviewer",
+                  "review_verifier",
                   "pipeline_monitor"
                 ]
               }
@@ -605,8 +607,8 @@
         },
         "rolePolicies": {
           "type": "array",
-          "minItems": 7,
-          "maxItems": 7,
+          "minItems": 8,
+          "maxItems": 8,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -858,6 +860,7 @@
                       "requirements_analyst",
                       "developer",
                       "reviewer",
+                      "review_verifier",
                       "pipeline_monitor"
                     ]
                   }
@@ -977,6 +980,7 @@
             "monitorAgentId",
             "productRemediationAgentId",
             "remediationReviewAgentId",
+            "reviewVerificationAgentId",
             "exceptionRoutingAgentId",
             "ecosystemRecoveryAgentId",
             "completionAgentId"
@@ -990,6 +994,9 @@
             },
             "remediationReviewAgentId": {
               "const": "reviewer"
+            },
+            "reviewVerificationAgentId": {
+              "const": "review_verifier"
             },
             "exceptionRoutingAgentId": {
               "const": "orchestrator"
@@ -1452,7 +1459,7 @@
     },
     "agents": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 8,
       "items": {
         "$ref": "#/$defs/agent"
       }

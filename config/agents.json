@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/agents.schema.json",
-  "schemaVersion": "1.1.0",
+  "schemaVersion": "1.2.0",
   "namespace": "development-ecosystem",
   "runtime": {
     "maxConcurrentAgents": 4,
@@ -58,11 +58,12 @@
       "routingArtifact": "workflow-routing.jsonl",
       "executionModes": {
         "full-delivery": {
-          "description": "Run the complete evidence, implementation, review, pipeline, and final knowledge sequence.",
+          "description": "Run the complete evidence, implementation, review, independent verification, pipeline, and final knowledge sequence.",
           "agentSequence": [
             "requirements_analyst",
             "developer",
             "reviewer",
+            "review_verifier",
             "pipeline_monitor",
             "knowledge_keeper"
           ],
@@ -90,18 +91,20 @@
           "agentSequence": [
             "developer",
             "reviewer",
+            "review_verifier",
             "pipeline_monitor"
           ],
           "codeChangesAllowed": true,
           "continueAutomatically": true
         },
         "review-only": {
-          "description": "Run Reviewer only and stop at its outcome or decision gate.",
+          "description": "Run Reviewer and an independent Review Verifier, then stop at the verified outcome or decision gate.",
           "agentSequence": [
-            "reviewer"
+            "reviewer",
+            "review_verifier"
           ],
           "codeChangesAllowed": false,
-          "continueAutomatically": false
+          "continueAutomatically": true
         },
         "pipeline-only": {
           "description": "Run Pipeline Monitor only for read-only observation of an explicitly authorized branch, commit, build, or PR; do not use when the requested outcome includes a source correction.",
@@ -134,6 +137,7 @@
         "knowledge_keeper",
         "developer",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor"
       ]
     },
@@ -159,6 +163,7 @@
         "requirements_analyst",
         "developer",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor",
         "knowledge_keeper"
       ],
@@ -234,6 +239,12 @@
       },
       {
         "agentId": "reviewer",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "review_verifier",
         "defaultTier": "standard",
         "minimumTier": "standard",
         "maximumTier": "critical"
@@ -322,6 +333,7 @@
           "requirements_analyst",
           "developer",
           "reviewer",
+          "review_verifier",
           "pipeline_monitor"
         ]
       },
@@ -351,6 +363,7 @@
       "monitorAgentId": "pipeline_monitor",
       "productRemediationAgentId": "developer",
       "remediationReviewAgentId": "reviewer",
+      "reviewVerificationAgentId": "review_verifier",
       "exceptionRoutingAgentId": "orchestrator",
       "ecosystemRecoveryAgentId": "health_check",
       "completionAgentId": "knowledge_keeper"
@@ -602,6 +615,7 @@
         "requirements_analyst",
         "developer",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor",
         "health_check"
       ],
@@ -616,7 +630,7 @@
       "responsibilities": [
         "Provide bounded verified code, domain, decision, and skill context when another agent requests it.",
         "Ingest only successful final agent outcomes and decide what verified knowledge must be updated.",
-        "Promote every confirmed review comment about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles into a global or technology-scoped standard after successful implementation when applicable and clean review; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
+        "Promote independently confirmed review guidance about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles into a global or technology-scoped standard only after successful implementation when applicable, a clean review, and passing exact-SHA verification; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude verifier-rejected, bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
         "Maintain per-task history and publish the final task summary after delivery completion.",
         "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
@@ -642,6 +656,7 @@
         "requirements_analyst",
         "developer",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor",
         "health_check"
       ],
@@ -714,6 +729,7 @@
         "knowledge_keeper",
         "requirements_analyst",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor"
       ],
       "requiredArtifacts": [
@@ -728,10 +744,11 @@
       "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
       "responsibilities": [
         "Review local task diffs, Developer work, and external pull requests against requirements and held scope.",
-        "Report product and agent-process findings with evidence, render source-specific findings at exact diff lines, and require human decisions before rework.",
+        "Report product and agent-process candidate findings with evidence and render source-specific findings at exact diff lines.",
         "Publish requirement-to-code traceability for every analyzed requirement with exact repository-relative file and line evidence without inventing missing mappings.",
+        "Publish the complete reviewCoverage matrix and stable new, unchanged, resolved, or regressed finding lifecycle records for independent verification.",
         "Answer user questions attached to exact diff lines with bounded code, caller, test, and requirement evidence while remaining read-only.",
-        "Treat an explicit human bypass as a non-resolution decision, preserve the finding, and create a linked task-local technical-debt item before allowing delivery to continue.",
+        "Treat an explicit human bypass as a non-resolution decision and require the trusted decision action to preserve exact-review-bound task-local technical debt before delivery can continue.",
         "Remain read-only and never silently convert a finding into implementation authority.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],
@@ -756,10 +773,48 @@
         "orchestrator",
         "knowledge_keeper",
         "requirements_analyst",
-        "developer"
+        "developer",
+        "review_verifier"
       ],
       "requiredArtifacts": [
         "review-result.json"
+      ]
+    },
+    {
+      "id": "review_verifier",
+      "name": "development_review_verifier",
+      "description": "Independent read-only verifier that falsifies Reviewer claims, validates review coverage and finding lifecycle, and gates human decisions.",
+      "responsibilities": [
+        "Independently verify the exact persisted Reviewer artifact against requirements, code, tests, accepted knowledge, and prior review snapshots without consuming Reviewer private reasoning.",
+        "Confirm, reject, or escalate every product and agent-process finding after explicit falsification attempts.",
+        "Verify every reviewCoverage matrix entry and every new, unchanged, resolved, or regressed lifecycle transition against direct evidence.",
+        "Bind review-verification.json to the exact review-result.json SHA-256 and reviewed revision so stale verification cannot authorize rework or delivery.",
+        "Remain source-code read-only, never rewrite Reviewer findings, and never convert a verification verdict into implementation authority.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/review-verifier.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/verify-review-findings/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "reviewer"
+      ],
+      "requiredArtifacts": [
+        "review-verification.json"
       ]
     },
     {
@@ -767,7 +822,7 @@
       "name": "development_pipeline_monitor",
       "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
       "responsibilities": [
-        "Push only a clean reviewed task branch under configured authorization and monitor exact-commit builds.",
+        "Push only a clean reviewed task branch after passing independent exact-SHA review verification under configured authorization and monitor exact-commit builds.",
         "Queue only allowlisted build definitions, classify bounded failure logs, and route code or test remediation to Developer.",
         "Track task pull-request lifecycle and report completed-PR closure evidence to Orchestrator for final routing.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
@@ -789,7 +844,8 @@
         "orchestrator",
         "knowledge_keeper",
         "developer",
-        "reviewer"
+        "reviewer",
+        "review_verifier"
       ],
       "requiredArtifacts": [
         "pipeline-result.json"
@@ -825,6 +881,7 @@
         "requirements_analyst",
         "developer",
         "reviewer",
+        "review_verifier",
         "pipeline_monitor"
       ],
       "requiredArtifacts": [

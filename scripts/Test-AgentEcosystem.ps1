@@ -16,6 +16,88 @@ function Add-Check {
     $checks.Add([pscustomobject]@{ Name=$Name; Status='passed'; Detail=$Detail })
 }
 
+$syntheticReviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
+
+function New-SyntheticReviewFinding {
+    param(
+        [Parameter(Mandatory)][string] $Id,
+        [Parameter(Mandatory)][ValidateSet('correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation','requirements','knowledge','agent-process')][string] $Category,
+        [Parameter(Mandatory)][string] $CorrectionDirection
+    )
+    [ordered]@{
+        id = $Id
+        severity = if ($Category -eq 'agent-process') { 'low' } else { 'medium' }
+        category = $Category
+        location = 'synthetic.ps1:1'
+        evidence = "Synthetic direct evidence for $Id."
+        impact = "Synthetic impact for $Id."
+        correctionDirection = $CorrectionDirection
+        decisionStatus = 'proposed'
+    }
+}
+
+function New-SyntheticReviewResult {
+    param(
+        [Parameter(Mandatory)][string] $TaskId,
+        [string] $ReviewedRevision = 'synthetic-review-v1',
+        [object[]] $ProductFindings = @(),
+        [object[]] $ProcessFindings = @()
+    )
+    [object[]] $activeFindings = @($ProductFindings) + @($ProcessFindings)
+    [ordered]@{
+        taskId = $TaskId
+        reviewedRevision = $ReviewedRevision
+        requirementsRevision = 'synthetic-requirements-v1'
+        requirementTraceability = @([ordered]@{
+            requirementId = 'REQ-SYNTHETIC-1'
+            requirementText = 'The synthetic review contract is complete.'
+            implementationStatus = 'verified'
+            codeReferences = @()
+            testEvidence = @('Test-AgentEcosystem.ps1 synthetic fixture')
+            notes = 'Synthetic contract evidence.'
+        })
+        reviewCoverage = @($syntheticReviewDimensions | ForEach-Object {
+            [ordered]@{ dimension=$_; status='covered'; evidence=@("Synthetic evidence for $_."); notes="Synthetic $_ coverage." }
+        })
+        findings = [object[]]@($ProductFindings)
+        heldScopeViolations = @()
+        agentProcessFindings = [object[]]@($ProcessFindings)
+        findingLifecycle = @($activeFindings | ForEach-Object {
+            [ordered]@{ findingId=[string]$_.id; status='new'; firstSeenRevision=$ReviewedRevision; lastObservedRevision=$ReviewedRevision; evidence="Synthetic lifecycle evidence for $([string]$_.id)." }
+        })
+        summary = 'Synthetic complete review result.'
+    }
+}
+
+function New-SyntheticReviewVerification {
+    param(
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $ReviewPath,
+        [hashtable] $FindingVerdicts = @{}
+    )
+    $review = Get-Content -LiteralPath $ReviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $sha256 = (Get-FileHash -LiteralPath $ReviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    [object[]] $activeFindings = @($review.findings) + @($review.agentProcessFindings)
+    [ordered]@{
+        taskId = $TaskId
+        reviewedRevision = [string]$review.reviewedRevision
+        reviewArtifactSha256 = $sha256
+        verificationStatus = 'passed'
+        coverageVerification = @($review.reviewCoverage | ForEach-Object {
+            [ordered]@{ dimension=[string]$_.dimension; claimedStatus=[string]$_.status; verdict='confirmed'; evidence=@("Independent synthetic evidence for $([string]$_.dimension)."); falsificationAttempts=@("Synthetic falsification of $([string]$_.dimension)."); notes='Claim confirmed independently.' }
+        })
+        findingVerifications = @($activeFindings | ForEach-Object {
+            $id = [string]$_.id
+            $verdict = if ($FindingVerdicts.ContainsKey($id)) { [string]$FindingVerdicts[$id] } else { 'confirmed' }
+            [ordered]@{ findingId=$id; findingKind=if ([string]$_.category -eq 'agent-process') { 'agent-process' } else { 'product' }; verdict=$verdict; evidence=@("Independent synthetic evidence for $id."); falsificationAttempts=@("Synthetic falsification of $id."); notes='Finding checked independently.' }
+        })
+        lifecycleVerifications = @($review.findingLifecycle | ForEach-Object {
+            [ordered]@{ findingId=[string]$_.findingId; claimedStatus=[string]$_.status; verdict='confirmed'; evidence=@("Independent lifecycle evidence for $([string]$_.findingId)."); notes='Lifecycle checked independently.' }
+        })
+        summary = 'Synthetic independent review verification passed.'
+    }
+}
+
 $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
@@ -116,6 +198,7 @@ $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js')
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
 $dashboardCss = Get-Content -LiteralPath (Join-Path $root 'dashboard\styles.css') -Raw -Encoding UTF8
 $reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
+$reviewVerifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
 foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff','/close','/reopen','/api/external-reviews','/external-review-report/','activePullRequests','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','/workflow/stop','/resume','Start-HealthTargetedResume.ps1','Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
@@ -127,12 +210,12 @@ if ($dashboardServer -notmatch 'tasks=@\(\$result\.Tasks\)') { throw 'Dashboard 
 if ($dashboardClient -notmatch 'selectedTaskId = item.taskId;' -or $dashboardClient -notmatch 'const selectedRevision = \+\+taskStateRevision;' -or $dashboardClient -notmatch 'try \{' -or $dashboardClient -notmatch 'await loadTaskDetail\(item\.taskId, selectedRevision\)' -or $dashboardClient -notmatch 'catch \(error\)' -or $dashboardClient -notmatch 'log\(`Error: \$\{error\.message\}`\)' -or $dashboardClient -notmatch 'finally \{' -or $dashboardClient -notmatch 'void loadTaskList\(\{ silent: true \}\)') { throw 'Task selection must invalidate stale detail responses and load the clicked task directly when background polling is in flight.' }
 if ((Get-Content -LiteralPath (Join-Path $root 'scripts\Continue-AgentChain.ps1') -Raw -Encoding UTF8) -notmatch '\$currentAgentId -in @\(''orchestrator'',''health_check''\)') { throw 'Health Check continuation must dispatch the first routed role even when the selected mode disables post-role automatic continuation.' }
 if ($dashboardServer -notmatch 'Test-TaskWorkflowActive' -or $dashboardServer -notmatch 'Start-DevelopmentWorkflow\.ps1' -or $dashboardServer -notmatch 'Get-CimInstance Win32_Process' -or $dashboardServer -notmatch 'idle-awaiting-approval' -or $dashboardServer -notmatch 'queued-for-checkpoint' -or $dashboardClient -notmatch 'confirmIdleAgentDispatch' -or $dashboardClient -notmatch 'autoStartIdle: false') { throw 'Idle targeted comments are not wired to approval-gated immediate dispatch and active-workflow batching.' }
-foreach ($controlId in @('repositoryOptions','repositorySummary','capacityStatus','taskList','taskDetail','taskLeaseSummary','taskWorkspaceInfo','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewDiffScope','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewQuestionThreadsList','reviewFeedbackStatus','requirementTraceabilitySummary','requirementTraceabilityList','reviewDiffCommentDock','reviewDiffCommentPanel','reviewDiffCommentKind','externalReviewWorkspace','externalReviewList','externalReviewSummary','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
+foreach ($controlId in @('repositoryOptions','repositorySummary','capacityStatus','taskList','taskDetail','taskLeaseSummary','taskWorkspaceInfo','inputRequiredPanel','openQuestions','taskInterventionPanel','taskComment','taskQuestionTarget','sendTaskComment','resumeTask','stopWorkflow','resumeElevatedWorkflow','executionPolicyNotice','runHealthCheck','artifactViewer','artifactContent','closeArtifactViewer','agentLogPanel','agentLogTitle','agentLogMeta','agentLogEntries','closeAgentLog','agentOutcomePanel','agentOutcomeTitle','agentOutcomeMeta','agentOutcomeSummary','agentOutcomeArtifacts','agentOutcomeArtifactMeta','agentOutcomeContent','closeAgentOutcome','openReviewDiff','reviewDiffPanel','reviewDiffScope','reviewFeedbackTitle','reviewFeedbackSummary','reviewFeedbackList','reviewQuestionThreadsList','reviewFeedbackStatus','requirementTraceabilitySummary','requirementTraceabilityList','reviewCoverageTitle','reviewCoverageSummary','reviewCoverageMatrix','findingLifecycleTitle','findingLifecycleSummary','findingLifecycleList','reviewDiffCommentDock','reviewDiffCommentPanel','reviewDiffCommentKind','externalReviewWorkspace','externalReviewList','externalReviewSummary','refreshExternalReviews','manualClosePanel','manualCloseReason','closeTaskManually','reopenTaskPanel','reopenTaskReason','reopenTask','agentComment','agentActionStatus','sendAgentComment','restartAgentWithComment','approveElevatedRecovery')) {
     if ($dashboardHtml -notmatch ('id=["'']' + [regex]::Escape($controlId) + '["'']')) { throw "Dashboard UI is missing control: $controlId" }
     if ($dashboardClient -notmatch [regex]::Escape("#$controlId")) { throw "Dashboard client does not use control: $controlId" }
 }
 if ($dashboardHtml -notmatch 'id=["'']requirementTraceabilityTitle["'']') { throw 'Dashboard UI is missing the Requirement Traceability heading.' }
-foreach ($marker in @('resetReviewDiffCommentEditor','isSameSelection','renderInlineReviewerComments','renderRequirementTraceability','reviewerCodeLocation','row.dataset.newLine','click the selected line again to close','Select a diff line first.')) {
+foreach ($marker in @('resetReviewDiffCommentEditor','isSameSelection','renderInlineReviewerComments','renderRequirementTraceability','renderReviewCoverage','renderFindingLifecycle','reviewVerificationFor','findingLifecycleFor','reviewerCodeLocation','row.dataset.newLine','click the selected line again to close','Select a diff line first.')) {
     if ($dashboardClient -notmatch [regex]::Escape($marker)) { throw "Dashboard local review is missing inline comment or traceability behavior: $marker" }
 }
 if ($dashboardHtml -notmatch 'reviewDiffCommentDock' -or $dashboardCss -notmatch 'height:\s*clamp\(420px,\s*68vh,\s*900px\)' -or $dashboardCss -notmatch 'scrollbar-gutter:\s*stable') { throw 'Dashboard diff viewer must keep the selected-line editor in the diff and provide independent file scrolling.' }
@@ -141,14 +224,21 @@ if ($taskDiffScript -notmatch "ValidateSet\('reviewed-commit','all-task-changes'
 Add-Check -Name 'reviewer-diff-scope' -Detail 'Reviewer diff defaults to reviewed commit versus first parent; dashboard can switch to the complete task-branch diff'
 if ($taskDiffScript -notmatch '\(\?:;\|\$\)') { throw 'Reviewer diff must parse extended git revision evidence that also contains its review base.' }
 $reviewResultSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-result.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if (@($reviewResultSchema.required) -notcontains 'requirementTraceability' -or -not $reviewResultSchema.properties.requirementTraceability -or -not $reviewResultSchema.'$defs'.finding.properties.codeLocation) { throw 'Review result schema must require requirement traceability and support structured inline code locations.' }
+$reviewVerificationSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-verification.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if (@($reviewResultSchema.required) -notcontains 'requirementTraceability' -or @($reviewResultSchema.required) -notcontains 'reviewCoverage' -or @($reviewResultSchema.required) -notcontains 'findingLifecycle' -or -not $reviewResultSchema.properties.requirementTraceability -or -not $reviewResultSchema.'$defs'.finding.properties.codeLocation) { throw 'Review result schema must require traceability, the complete review coverage matrix, finding lifecycle, and structured inline code locations.' }
+if (@($reviewVerificationSchema.required) -notcontains 'reviewArtifactSha256' -or @($reviewVerificationSchema.required) -notcontains 'coverageVerification' -or @($reviewVerificationSchema.required) -notcontains 'findingVerifications' -or @($reviewVerificationSchema.required) -notcontains 'lifecycleVerifications') { throw 'Independent review verification must bind coverage, findings, and lifecycle verdicts to the exact review SHA.' }
+if ($reviewerPrompt -notmatch 'Do not read or write `review-verification.json`' -or $reviewVerifierPrompt -notmatch 'Do not read Reviewer private checkpoints' -or $reviewVerifierPrompt -notmatch 'SHA-256') { throw 'Reviewer and Review Verifier context boundaries are not independent or exact-artifact-bound.' }
+Add-Check -Name 'independent-review-verification-contract' -Detail 'Reviewer publishes candidates, coverage, and lifecycle; a separate read-only verifier falsifies them against the exact artifact SHA'
+$reviewVerificationContract = & (Join-Path $root 'tests\Test-ReviewVerification.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'review-verification-contract')
+if ([string]$reviewVerificationContract.Status -ne 'passed' -or [int]$reviewVerificationContract.Snapshots -ne 5) { throw 'Independent review verification lifecycle contract failed.' }
+Add-Check -Name 'review-verification-lifecycle' -Detail 'Coverage completeness, exact SHA binding, rejected-finding isolation, and new/unchanged/resolved/regressed transitions pass locally'
 $requirementsSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\requirements-analysis.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($requirementsSchema.required) -notcontains 'humanReadable' -or -not $requirementsSchema.'$defs'.humanReadable -or -not $requirementsSchema.'$defs'.humanReadable.properties.workflow -or -not $requirementsSchema.'$defs'.humanReadable.properties.implementationPlan) { throw 'Requirements analysis schema must require a human-readable requirements, workflow, and implementation-plan presentation.' }
 if ($dashboardClient -notmatch 'renderRequirementsOutcome' -or $dashboardClient -notmatch 'requirementsPresentation' -or $dashboardHtml -notmatch 'agent-outcome-content' -or $dashboardCss -notmatch 'requirements-outcome') { throw 'Dashboard does not interpret the Requirements Analyst presentation while preserving raw outcomes.' }
 Add-Check -Name 'human-readable-requirements-outcome' -Detail 'Requirements Analyst schema and dashboard expose requirements, acceptance criteria, workflow, and implementation plan with legacy fallback'
 $reviewDecisionsSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-decisions.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $techDebtSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\tech-debt-items.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if (@($reviewDecisionsSchema.properties.decisions.items.properties.decision.enum) -notcontains 'bypassed' -or -not $reviewDecisionsSchema.properties.decisions.items.properties.techDebtItemId -or -not $techDebtSchema.'$defs'.item.properties.sourceFindingId) { throw 'Review bypass decisions must require a linked task-local technical-debt item.' }
+if (@($reviewDecisionsSchema.properties.decisions.items.properties.decision.enum) -notcontains 'bypassed' -or @($reviewDecisionsSchema.properties.decisions.items.required) -notcontains 'reviewArtifactSha256' -or @($reviewDecisionsSchema.properties.decisions.items.required) -notcontains 'verificationVerdict' -or -not $reviewDecisionsSchema.properties.decisions.items.properties.techDebtItemId -or @($techDebtSchema.'$defs'.item.required) -notcontains 'reviewVerificationArtifact' -or @($techDebtSchema.'$defs'.item.required) -notcontains 'reviewArtifactSha256') { throw 'Review decisions and bypass debt must be bound to an independently verified exact review artifact.' }
 if ($dashboardServer -notmatch 'ReviewFindingId' -or $dashboardClient -notmatch 'review-finding:' -or $dashboardClient -notmatch 'Send to Reviewer' -or $dashboardClient -notmatch 'Send to Developer') { throw 'Reviewer feedback threads or addressable Reviewer/Developer replies are incomplete.' }
 $reviewReplyRoot = Join-Path $OutputRoot 'review-feedback-reply'
 $reviewReplyConfigPath = Join-Path $reviewReplyRoot 'agents.json'
@@ -195,11 +285,11 @@ $reviewFollowUpAnswer = & (Join-Path $root 'scripts\Add-ReviewQuestionResponse.p
 & (Join-Path $root 'scripts\Acknowledge-AgentCommentBatch.ps1') -TaskId $reviewReplyTaskId -AgentId reviewer -EventIds @([string]$reviewFollowUp.CommentId) -ConfigPath $reviewReplyConfigPath | Out-Null
 if ($dashboardClient -notmatch 'review-question-opened' -or $dashboardClient -notmatch 'review-question-answered' -or $dashboardClient -notmatch 'createInlineReviewQuestion' -or $dashboardClient -notmatch 'renderReviewQuestionThreads' -or $dashboardClient -notmatch 'sendReviewQuestionFollowUp' -or $dashboardClient -notmatch 'parentReviewQuestionId' -or $reviewerPrompt -notmatch 'Add-ReviewQuestionResponse.ps1') { throw 'Reviewer question threads, visible answers, or follow-up replies are not wired end to end.' }
 Add-Check -Name 'reviewer-line-question-answers' -Detail 'Line questions and follow-ups remain response-gated, Reviewer persists cited answers, and dashboard renders a visible replyable thread plus exact-line context'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Save-ReviewArtifactSnapshot.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
-if ($dashboardServer -notmatch 'requiredArtifacts=@\(\$_.requiredArtifacts\)' -or $dashboardClient -notmatch 'agentRequiredArtifacts' -or $dashboardClient -notmatch 'openAgentOutcome') { throw 'Dashboard per-agent persisted outcome mapping is incomplete.' }
+if ($dashboardServer -notmatch 'requiredArtifacts=@\(\$_.requiredArtifacts\)' -or $dashboardServer -notmatch 'artifactSha256' -or $dashboardClient -notmatch 'agentRequiredArtifacts' -or $dashboardClient -notmatch 'openAgentOutcome' -or $dashboardClient -notmatch 'reviewVerificationStale' -or $dashboardClient -notmatch 'reviewArtifactSha256') { throw 'Dashboard per-agent outcome mapping or stale review-verification protection is incomplete.' }
 if ($dashboardClient -notmatch 'isReviewerItemBypassedAsDebt' -or $dashboardClient -notmatch 'activeReviewerSummary' -or $dashboardClient -notmatch 'hiddenFindingIds' -or $dashboardClient -notmatch 'sourceFindingId' -or $dashboardClient -notmatch 'review-decisions\.json' -or $dashboardClient -notmatch 'tech-debt-items\.json' -or $reviewerPrompt -notmatch 'omit that item from the new active') { throw 'Bypassed findings with linked open technical debt are still exposed as active Reviewer outcome items.' }
 Add-Check -Name 'reviewer-active-outcome-filter' -Detail 'Bypassed findings remain auditable in decisions/debt artifacts but are omitted from subsequent active Reviewer outcomes and dashboard cards'
 if ($dashboardServer -notmatch 'Stop-ValidatedWorkflowProcessTree' -or $dashboardServer -notmatch 'Stop-TaskScriptRunspaces') { throw 'Stop workflow must terminate only a validated task process tree or tracked runspace.' }
@@ -207,7 +297,7 @@ if ($dashboardServer -notmatch 'Assert-TaskViewIsCurrent' -or $dashboardServer -
 $activityWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Write-AgentActivity.ps1') -Raw -Encoding UTF8
 $activityReader = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentActivity.ps1') -Raw -Encoding UTF8
 $taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
-if ($taskProtocol -match 'set only Developer back to pending' -or $taskProtocol -notmatch 'set Developer, Reviewer, and Pipeline Monitor back to pending') { throw 'Pipeline remediation protocol must invalidate every required downstream role without restarting unrelated agents.' }
+if ($taskProtocol -match 'set only Developer back to pending' -or $taskProtocol -notmatch 'set Developer, Reviewer, Review Verifier, and Pipeline Monitor back to pending') { throw 'Pipeline remediation protocol must invalidate every required downstream role without restarting unrelated agents.' }
 foreach ($marker in @('Operation','Target','ProgressPercent','NextAction','Evidence')) {
     if ($activityWriter -notmatch ('\$' + $marker) -or $activityReader -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1)) -or $dashboardClient -notmatch ([char]::ToLowerInvariant($marker[0]) + $marker.Substring(1))) { throw "Detailed agent activity field is not wired end-to-end: $marker" }
 }
@@ -414,7 +504,7 @@ $researchRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskI
 $researchContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $researchTaskId -CompletedAgentId requirements_analyst -PrepareOnly -ConfigPath $routingConfigPath
 $researchTaskAfter = Get-Content -LiteralPath (Join-Path $researchTask.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$researchRoute.Routing.executionMode -ne 'research-only' -or [bool]$researchRoute.Routing.codeChangesAllowed -or [bool]$researchRoute.Routing.continueAutomatically -or [string]$researchContinuation.Status -ne 'completed') { throw 'Research-only routing did not persist or stop at its no-code terminal boundary.' }
-if (@('developer','reviewer','pipeline_monitor','knowledge_keeper','health_check') | Where-Object { [string]$researchTaskAfter.agentStatuses.$_.status -ne 'skipped' }) { throw 'Research-only routing left an excluded agent eligible to run.' }
+if (@('developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper','health_check') | Where-Object { [string]$researchTaskAfter.agentStatuses.$_.status -ne 'skipped' }) { throw 'Research-only routing left an excluded agent eligible to run.' }
 Add-Check -Name 'intent-scoped-execution-policy' -Detail 'Orchestrator can persist research-only intent, skip excluded roles, and stop continuation after Requirements Analyst'
 
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
@@ -593,11 +683,12 @@ $pipelineOwnershipContract = @(
     [string]$pipelineOwnership.monitorAgentId,
     [string]$pipelineOwnership.productRemediationAgentId,
     [string]$pipelineOwnership.remediationReviewAgentId,
+    [string]$pipelineOwnership.reviewVerificationAgentId,
     [string]$pipelineOwnership.exceptionRoutingAgentId,
     [string]$pipelineOwnership.ecosystemRecoveryAgentId,
     [string]$pipelineOwnership.completionAgentId
 ) -join ','
-if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,orchestrator,health_check,knowledge_keeper') { throw 'Pipeline ownership must explicitly preserve monitoring, remediation, review, exception, ecosystem recovery, and completion responsibilities.' }
+if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,review_verifier,orchestrator,health_check,knowledge_keeper') { throw 'Pipeline ownership must explicitly preserve monitoring, remediation, independent review verification, exception, ecosystem recovery, and completion responsibilities.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
 if ((@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892' -or (@($excelPipeline.skipOnMissingYamlDefinitionIds) -join ',') -ne '892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Approved build definitions must be ordered 814 then 892; only 892 may be skipped for a missing YAML; deployment 891 is forbidden.' }
 $delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
@@ -755,11 +846,12 @@ $pipelineTestConfig.runtime.stateRoot = (Join-Path $pipelineTestRoot 'state')
 Write-Utf8NoBom -Path $pipelineTestConfigPath -Content (($pipelineTestConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 $pipelineTestTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $pipelineTestTaskId -TaskSelector synthetic-pipeline-test -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $pipelineTestConfigPath
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $pipelineTestTaskId -AgentId reviewer -AgentStatus completed -ConfigPath $pipelineTestConfigPath | Out-Null
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $pipelineTestTaskId -AgentId review_verifier -AgentStatus completed -ConfigPath $pipelineTestConfigPath | Out-Null
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $pipelineTestTaskId -AgentId pipeline_monitor -AgentStatus completed -ConfigPath $pipelineTestConfigPath | Out-Null
 $firstRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
 $duplicateRemediation = & (Join-Path $root 'scripts\Request-PipelineRemediation.ps1') -TaskId $pipelineTestTaskId -PipelineResultPath $pipelineResultPath -ConfigPath $pipelineTestConfigPath
 $pipelineTaskState = Get-Content -LiteralPath $pipelineTestTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.status -ne 'interrupted' -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.reviewer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.pipeline_monitor.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Pipeline remediation request was not persisted, deduplicated, or projected through Developer, Reviewer, and Pipeline Monitor as unfinished task work.' }
+if (-not [bool]$firstRemediation.Requested -or [bool]$duplicateRemediation.Requested -or [string]$pipelineTaskState.status -ne 'interrupted' -or [string]$pipelineTaskState.agentStatuses.developer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.reviewer.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.review_verifier.status -ne 'pending' -or [string]$pipelineTaskState.agentStatuses.pipeline_monitor.status -ne 'pending' -or -not (Test-Path -LiteralPath $firstRemediation.Artifact -PathType Leaf)) { throw 'Pipeline remediation request was not persisted, deduplicated, or projected through Developer, Reviewer, Review Verifier, and Pipeline Monitor as unfinished task work.' }
 Add-Check -Name 'post-push-pipeline-remediation' -Detail 'Exact-SHA run, bounded code/test classification, Developer routing, infrastructure exclusion, and three-cycle ceiling'
 
 $lifecycleTaskId = 'pr-lifecycle-test-' + [guid]::NewGuid().ToString('N')
@@ -803,13 +895,14 @@ $publishedLifecycleTask.closure.status = 'completed'
 $publishedLifecycleTask.agentStatuses.requirements_analyst.status = 'completed'
 $publishedLifecycleTask.agentStatuses.developer.status = 'skipped'
 $publishedLifecycleTask.agentStatuses.reviewer.status = 'skipped'
+$publishedLifecycleTask.agentStatuses.review_verifier.status = 'skipped'
 $publishedLifecycleTask.agentStatuses.knowledge_keeper.status = 'failed'
 Write-Utf8NoBom -Path $lifecycleTask.TaskPath -Content (($publishedLifecycleTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $recoveredKnowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $lifecycleTaskId -AgentId knowledge_keeper -Summary 'Synthetic completed-PR Knowledge Keeper recovery republished.' -ConfigPath $pipelineTestConfigPath
 $recoveredLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$recoveredKnowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$recoveredLifecycleTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'A completed-PR recovery could not republish the validated Knowledge Keeper outcome after closure completed with excluded delivery roles.' }
 $recoveredResumePlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $lifecycleTaskId -PreserveArtifactIndex -ConfigPath $pipelineTestConfigPath
-if ([bool]$recoveredResumePlan.HasWork -or @($recoveredResumePlan.UnfinishedAgentIds).Count -ne 0 -or 'developer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'reviewer' -notin @($recoveredResumePlan.PreservedAgentIds)) { throw 'Completed-PR knowledge-only recovery treated intentionally skipped Developer or Reviewer roles as unfinished.' }
+if ([bool]$recoveredResumePlan.HasWork -or @($recoveredResumePlan.UnfinishedAgentIds).Count -ne 0 -or 'developer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'reviewer' -notin @($recoveredResumePlan.PreservedAgentIds) -or 'review_verifier' -notin @($recoveredResumePlan.PreservedAgentIds)) { throw 'Completed-PR knowledge-only recovery treated intentionally skipped Developer, Reviewer, or Review Verifier roles as unfinished.' }
 Add-Check -Name 'pull-request-lifecycle' -Detail 'Azure PR status is normalized safely; completed PR routes Pipeline Monitor to Orchestrator, then a persisted decision dispatches and permits initial or recovered final Knowledge Keeper publication'
 
 $deliveryFixtureId = [guid]::NewGuid().ToString('N')
@@ -842,7 +935,7 @@ New-Item -ItemType Directory -Path $legacyDeliveryTaskRoot -Force | Out-Null
 $legacyDeliveryTask = [ordered]@{
     taskId = $legacyDeliveryTaskId
     repositoryId = $deliveryRepositoryId
-    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' } }
+    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' }; review_verifier = [ordered]@{ status = 'completed' } }
 }
 Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'task.json') -Content (($legacyDeliveryTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $legacyWorkspaceManifestRoot = Join-Path $legacyDeliveryTaskRoot 'workspaces'
@@ -850,7 +943,11 @@ New-Item -ItemType Directory -Path $legacyWorkspaceManifestRoot -Force | Out-Nul
 $deliveryCommit = ([string](& git -C $deliveryWorkspace rev-parse HEAD)).Trim()
 $legacyWorkspaceManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$legacyDeliveryTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('e' * 32); leaseId=('f' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $legacyWorkspaceManifestRoot "$deliveryRepositoryId.json") }
 Write-Utf8NoBom -Path $legacyWorkspaceManifest.manifestPath -Content (($legacyWorkspaceManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'review-result.json') -Content (([ordered]@{ findings=@(); heldScopeViolations=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$legacyReviewPath = Join-Path $legacyDeliveryTaskRoot 'review-result.json'
+$legacyReview = New-SyntheticReviewResult -TaskId $legacyDeliveryTaskId
+Write-Utf8NoBom -Path $legacyReviewPath -Content (($legacyReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$legacyVerification = New-SyntheticReviewVerification -TaskId $legacyDeliveryTaskId -ReviewPath $legacyReviewPath
+Write-Utf8NoBom -Path (Join-Path $legacyDeliveryTaskRoot 'review-verification.json') -Content (($legacyVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $deliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $legacyDeliveryTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$deliveryPlan.repositoryId -ne $deliveryRepositoryId -or [string]$deliveryPlan.workspace -ne [IO.Path]::GetFullPath($deliveryWorkspace) -or [string]$deliveryPlan.branch -ne "feature/$deliveryFixtureId" -or [string]$deliveryPlan.pushRef -ne "HEAD:refs/heads/feature/$deliveryFixtureId") { throw 'Prepare-only reviewed delivery did not accept the legacy singular repositoryId task scope.' }
 Add-Check -Name 'reviewed-branch-delivery-task-workspace' -Detail 'Prepare-only delivery accepts legacy singular repositoryId scope but resolves Git state from its task workspace manifest'
@@ -864,43 +961,49 @@ $processReviewTask = [ordered]@{
     mode = 'manual'
     status = 'review_pending'
     repositoryId = $deliveryRepositoryId
-    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' } }
+    agentStatuses = [ordered]@{ reviewer = [ordered]@{ status = 'completed' }; review_verifier = [ordered]@{ status = 'pending' }; pipeline_monitor = [ordered]@{ status = 'pending' } }
 }
-$processReviewResult = [ordered]@{
-    findings = @()
-    heldScopeViolations = @()
-    agentProcessFindings = @([ordered]@{ id='REV-001'; severity='low'; category='agent-process'; disposition='proposed' })
-}
+$processFinding = New-SyntheticReviewFinding -Id REV-001 -Category agent-process -CorrectionDirection 'Preserve the synthetic workflow evidence.'
+$processReviewResult = New-SyntheticReviewResult -TaskId $processReviewTaskId -ProcessFindings @($processFinding)
 Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'task.json') -Content (($processReviewTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'review-result.json') -Content (($processReviewResult | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$processReviewPath = Join-Path $processReviewTaskRoot 'review-result.json'
+Write-Utf8NoBom -Path $processReviewPath -Content (($processReviewResult | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $processReviewContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $processReviewTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
-if ([string]$processReviewContinuation.Status -ne 'prepared' -or [string]$processReviewContinuation.NextAgentId -ne 'pipeline_monitor') { throw 'A process-only Reviewer suggestion incorrectly blocks Pipeline Monitor continuation.' }
-Add-Check -Name 'process-suggestion-continuation' -Detail 'A clean product review continues to Pipeline Monitor while process suggestions remain visible and non-blocking'
+if ([string]$processReviewContinuation.Status -ne 'prepared' -or [string]$processReviewContinuation.NextAgentId -ne 'review_verifier') { throw 'Reviewer outcome bypassed independent verification.' }
+$processVerification = New-SyntheticReviewVerification -TaskId $processReviewTaskId -ReviewPath $processReviewPath
+Write-Utf8NoBom -Path (Join-Path $processReviewTaskRoot 'review-verification.json') -Content (($processVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $processReviewTaskId -AgentId review_verifier -AgentStatus completed -ConfigPath $deliveryConfigPath | Out-Null
+$processVerificationContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $processReviewTaskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$processVerificationContinuation.Status -ne 'prepared' -or [string]$processVerificationContinuation.NextAgentId -ne 'pipeline_monitor') { throw 'An independently verified process-only suggestion incorrectly blocked Pipeline Monitor continuation.' }
+Add-Check -Name 'process-suggestion-continuation' -Detail 'Reviewer always hands off to Review Verifier; a verified clean product review then continues to Pipeline Monitor while process suggestions remain visible'
 
 $bypassTaskId = "review-bypass-$deliveryFixtureId"
 $bypassTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$bypassTaskId"
 New-Item -ItemType Directory -Path $bypassTaskRoot -Force | Out-Null
 $bypassTask = [ordered]@{
     taskId=$bypassTaskId; selector='synthetic-review-bypass'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId
-    agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='pending' } }
+    agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; review_verifier=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='pending' } }
 }
 $bypassFinding = [ordered]@{
     id='REV-201'; severity='medium'; category='maintainability'; location='sample.ps1:1'
     evidence='Synthetic evidence.'; impact='Synthetic debt impact.'; correctionDirection='Resolve the synthetic debt.'; decisionStatus='proposed'
 }
-$bypassReview = [ordered]@{ findings=@($bypassFinding); agentProcessFindings=@(); heldScopeViolations=@() }
+$bypassReview = New-SyntheticReviewResult -TaskId $bypassTaskId -ProductFindings @($bypassFinding)
 Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'task.json') -Content (($bypassTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $bypassManifestRoot = Join-Path $bypassTaskRoot 'workspaces'
 New-Item -ItemType Directory -Path $bypassManifestRoot -Force | Out-Null
 $bypassManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$bypassTaskId; repositoryId=$deliveryRepositoryId; clonePath=[IO.Path]::GetFullPath($deliveryWorkspace); canonicalOrigin='https://example.invalid/synthetic-reviewed-delivery'; baseSha=$deliveryCommit; branch="feature/$deliveryFixtureId"; lifecycle='active'; runId=('1' * 32); leaseId=('2' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $bypassManifestRoot "$deliveryRepositoryId.json") }
 Write-Utf8NoBom -Path $bypassManifest.manifestPath -Content (($bypassManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'review-result.json') -Content (($bypassReview | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$bypassReviewPath = Join-Path $bypassTaskRoot 'review-result.json'
+Write-Utf8NoBom -Path $bypassReviewPath -Content (($bypassReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$bypassVerification = New-SyntheticReviewVerification -TaskId $bypassTaskId -ReviewPath $bypassReviewPath
+Write-Utf8NoBom -Path (Join-Path $bypassTaskRoot 'review-verification.json') -Content (($bypassVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $bypassDecision = & (Join-Path $root 'scripts\Set-ReviewDecision.ps1') -TaskId $bypassTaskId -FindingId REV-201 -Decision bypassed -DecidedBy user -Note 'Accepted as tracked technical debt.' -ConfigPath $deliveryConfigPath
 $bypassDebt = Get-Content -LiteralPath (Join-Path $bypassTaskRoot 'tech-debt-items.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-$bypassContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $bypassTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
+$bypassContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $bypassTaskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $deliveryConfigPath
 $bypassDeliveryPlan = & (Join-Path $root 'scripts\Invoke-ReviewedBranchDelivery.ps1') -TaskId $bypassTaskId -RepositoryId $deliveryRepositoryId -PrepareOnly -ConfigPath $deliveryConfigPath
-if ([string]$bypassDecision.decision -ne 'bypassed' -or [string]$bypassDecision.techDebtItemId -ne 'TD-REV-201' -or @($bypassDebt.items | Where-Object { [string]$_.sourceFindingId -eq 'REV-201' -and [string]$_.status -eq 'open' }).Count -ne 1 -or [string]$bypassContinuation.NextAgentId -ne 'pipeline_monitor' -or [string]$bypassDeliveryPlan.repositoryId -ne $deliveryRepositoryId) { throw 'A bypassed Reviewer finding did not create linked open debt and release only the Pipeline Monitor gate.' }
-Add-Check -Name 'review-bypass-technical-debt' -Detail 'Explicit bypass preserves the finding, creates idempotent task-local debt, and permits guarded Pipeline Monitor delivery'
+if ([string]$bypassDecision.decision -ne 'bypassed' -or [string]$bypassDecision.techDebtItemId -ne 'TD-REV-201' -or [string]$bypassDecision.reviewArtifactSha256 -ne [string]$bypassVerification.reviewArtifactSha256 -or @($bypassDebt.items | Where-Object { [string]$_.sourceFindingId -eq 'REV-201' -and [string]$_.status -eq 'open' -and [string]$_.reviewArtifactSha256 -eq [string]$bypassVerification.reviewArtifactSha256 }).Count -ne 1 -or [string]$bypassContinuation.NextAgentId -ne 'pipeline_monitor' -or [string]$bypassDeliveryPlan.repositoryId -ne $deliveryRepositoryId) { throw 'A bypassed independently verified Reviewer finding did not create exact-review-bound debt and release only the Pipeline Monitor gate.' }
+Add-Check -Name 'review-bypass-technical-debt' -Detail 'Explicit bypass binds the verified finding and task-local debt to the exact review SHA, then permits guarded Pipeline Monitor delivery'
 
 $chainMatrixRoot = Join-Path $deliveryConfig.runtime.stateRoot ('tasks\chain-matrix-' + $deliveryFixtureId)
 New-Item -ItemType Directory -Path $chainMatrixRoot -Force | Out-Null
@@ -915,6 +1018,7 @@ $chainMatrixTask = [ordered]@{
         requirements_analyst = [ordered]@{ status = 'completed' }
         developer = [ordered]@{ status = 'completed' }
         reviewer = [ordered]@{ status = 'pending' }
+        review_verifier = [ordered]@{ status = 'pending' }
         pipeline_monitor = [ordered]@{ status = 'pending' }
         knowledge_keeper = [ordered]@{ status = 'pending' }
         health_check = [ordered]@{ status = 'pending' }
@@ -923,6 +1027,11 @@ $chainMatrixTask = [ordered]@{
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $developerToReviewer = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$developerToReviewer.Status -ne 'prepared' -or [string]$developerToReviewer.NextAgentId -ne 'reviewer') { throw 'Developer completion at review_pending did not schedule Reviewer.' }
+$chainReviewPath = Join-Path $chainMatrixRoot 'review-result.json'
+$chainReview = New-SyntheticReviewResult -TaskId $chainMatrixTaskId
+Write-Utf8NoBom -Path $chainReviewPath -Content (($chainReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$reviewerToVerifier = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$reviewerToVerifier.Status -ne 'prepared' -or [string]$reviewerToVerifier.NextAgentId -ne 'review_verifier') { throw 'Reviewer completion did not schedule the independent Review Verifier.' }
 
 $chainMatrixTask.status = 'interrupted'
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
@@ -963,28 +1072,40 @@ $chainMatrixTask.agentStatuses.orchestrator = [ordered]@{ status = 'completed' }
 $chainMatrixTask.agentStatuses.requirements_analyst.status = 'pending'
 $chainMatrixTask.agentStatuses.developer.status = 'pending'
 $chainMatrixTask.agentStatuses.reviewer.status = 'pending'
+$chainMatrixTask.agentStatuses.review_verifier.status = 'pending'
 $chainMatrixTask.agentStatuses.pipeline_monitor.status = 'pending'
 $chainMatrixTask.agentStatuses.knowledge_keeper.status = 'pending'
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $orchestratorToRequirements = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId orchestrator -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$orchestratorToRequirements.Status -ne 'prepared' -or [string]$orchestratorToRequirements.NextAgentId -ne 'requirements_analyst') { throw 'Initial or resumed Orchestrator completion did not schedule the first pending delivery role.' }
 
-$chainMatrixTask.status = 'waiting_for_input'
-$chainMatrixTask.agentStatuses.reviewer.status = 'waiting'
+$chainMatrixTask.status = 'review_pending'
+$chainMatrixTask.agentStatuses.reviewer.status = 'completed'
+$chainMatrixTask.agentStatuses.review_verifier.status = 'completed'
+$humanGateFinding = New-SyntheticReviewFinding -Id REV-099 -Category correctness -CorrectionDirection 'Resolve the synthetic human-gate finding.'
+$humanGateReview = New-SyntheticReviewResult -TaskId $chainMatrixTaskId -ReviewedRevision 'human-gate-v1' -ProductFindings @($humanGateFinding)
+Write-Utf8NoBom -Path $chainReviewPath -Content (($humanGateReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$humanGateVerification = New-SyntheticReviewVerification -TaskId $chainMatrixTaskId -ReviewPath $chainReviewPath
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'review-verification.json') -Content (($humanGateVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-$reviewerHumanGate = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
-if ([string]$reviewerHumanGate.Status -ne 'waiting') { throw 'Reviewer human-decision gate was misclassified as a failed or abnormal chain stop.' }
+$verifierHumanGate = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$verifierHumanGate.Status -ne 'review-pending') { throw 'Verified human-decision gate was misclassified as a failed or abnormal chain stop.' }
 
 $approvedHandoffTaskId = 'approved-handoff-' + $deliveryFixtureId
 $approvedHandoffRoot = Join-Path $deliveryConfig.runtime.stateRoot ('tasks\' + $approvedHandoffTaskId)
 New-Item -ItemType Directory -Path $approvedHandoffRoot -Force | Out-Null
-$approvedHandoffTask = [ordered]@{ taskId=$approvedHandoffTaskId; selector='synthetic-approved-handoff'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId; agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; developer=[ordered]@{ status='completed' }; orchestrator=[ordered]@{ status='completed' } } }
+$approvedHandoffTask = [ordered]@{ taskId=$approvedHandoffTaskId; selector='synthetic-approved-handoff'; mode='manual'; status='review_pending'; repositoryId=$deliveryRepositoryId; agentStatuses=[ordered]@{ reviewer=[ordered]@{ status='completed' }; review_verifier=[ordered]@{ status='completed' }; developer=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='pending' }; orchestrator=[ordered]@{ status='completed' } } }
 Write-Utf8NoBom -Path (Join-Path $approvedHandoffRoot 'task.json') -Content (($approvedHandoffTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-$approvedReview = [ordered]@{ findings=@([ordered]@{ id='REV-101'; correctionDirection='Implement approved product coverage.' }); agentProcessFindings=@([ordered]@{ id='REV-102'; correctionDirection='Repair approved workflow fingerprints.' }); heldScopeViolations=@() }
-Write-Utf8NoBom -Path (Join-Path $approvedHandoffRoot 'review-result.json') -Content (($approvedReview | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-$approvedDecisions = [ordered]@{ taskId=$approvedHandoffTaskId; decisions=@([ordered]@{ findingId='REV-101'; decision='approved' },[ordered]@{ findingId='REV-102'; decision='approved' }) }
-Write-Utf8NoBom -Path (Join-Path $approvedHandoffRoot 'review-decisions.json') -Content (($approvedDecisions | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-$approvedHandoff = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $approvedHandoffTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
+$approvedProductFinding = New-SyntheticReviewFinding -Id REV-101 -Category correctness -CorrectionDirection 'Implement approved product coverage.'
+$approvedProcessFinding = New-SyntheticReviewFinding -Id REV-102 -Category agent-process -CorrectionDirection 'Repair approved workflow fingerprints.'
+$approvedReview = New-SyntheticReviewResult -TaskId $approvedHandoffTaskId -ProductFindings @($approvedProductFinding) -ProcessFindings @($approvedProcessFinding)
+$approvedReviewPath = Join-Path $approvedHandoffRoot 'review-result.json'
+Write-Utf8NoBom -Path $approvedReviewPath -Content (($approvedReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$approvedVerification = New-SyntheticReviewVerification -TaskId $approvedHandoffTaskId -ReviewPath $approvedReviewPath
+Write-Utf8NoBom -Path (Join-Path $approvedHandoffRoot 'review-verification.json') -Content (($approvedVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Set-ReviewDecision.ps1') -TaskId $approvedHandoffTaskId -FindingId REV-101 -Decision approved -DecidedBy user -ConfigPath $deliveryConfigPath | Out-Null
+& (Join-Path $root 'scripts\Set-ReviewDecision.ps1') -TaskId $approvedHandoffTaskId -FindingId REV-102 -Decision approved -DecidedBy user -ConfigPath $deliveryConfigPath | Out-Null
+$approvedHandoff = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $approvedHandoffTaskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $deliveryConfigPath
 $approvedDeveloperBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $approvedHandoffTaskId -AgentId developer -ConfigPath $deliveryConfigPath
 $approvedOrchestratorBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $approvedHandoffTaskId -AgentId orchestrator -ConfigPath $deliveryConfigPath
 if ([string]$approvedHandoff.NextAgentId -ne 'developer' -or @($approvedDeveloperBatch.comments | Where-Object { @($_.evidence) -contains 'review-finding:REV-101' -and @($_.evidence) -contains 'decision:approved' -and [string]$_.text -match 'Implement approved product coverage' }).Count -ne 1 -or @($approvedOrchestratorBatch.comments | Where-Object { @($_.evidence) -contains 'review-finding:REV-102' -and @($_.evidence) -contains 'decision:approved' -and [string]$_.text -match 'Repair approved workflow fingerprints' }).Count -ne 1) { throw 'Approved product and process findings were not durably routed with their correction direction.' }
@@ -993,12 +1114,12 @@ $approvedHandoffTask.agentStatuses.developer.status = 'completed'
 Write-Utf8NoBom -Path (Join-Path $approvedHandoffRoot 'task.json') -Content (($approvedHandoffTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $approvedProcessPriority = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $approvedHandoffTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$approvedProcessPriority.NextAgentId -ne 'orchestrator') { throw 'An approved process workflow input did not prioritize Orchestrator before the normal post-Developer Reviewer transition.' }
-Add-Check -Name 'automatic-chain-transition-matrix' -Detail 'Requirements to Developer, Developer to Reviewer, Pipeline remediation to Developer, and scoped Knowledge Keeper return are host-driven across valid task gates'
+Add-Check -Name 'automatic-chain-transition-matrix' -Detail 'Requirements to Developer, Developer to Reviewer, Reviewer to independent Verifier, Pipeline remediation to Developer, and scoped Knowledge Keeper return are host-driven across valid task gates'
 
 $orphanTaskId = 'orphan-continuation-' + $deliveryFixtureId
 $orphanRoot = Join-Path $deliveryConfig.runtime.stateRoot ('tasks\' + $orphanTaskId)
 New-Item -ItemType Directory -Path $orphanRoot -Force | Out-Null
-$orphanTask = [ordered]@{ taskId=$orphanTaskId; selector='synthetic-orphan-continuation'; mode='manual'; status='interrupted'; repositoryId=$deliveryRepositoryId; agentStatuses=[ordered]@{ requirements_analyst=[ordered]@{ status='completed' }; developer=[ordered]@{ status='completed' }; reviewer=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='completed' }; knowledge_keeper=[ordered]@{ status='completed' } } }
+$orphanTask = [ordered]@{ taskId=$orphanTaskId; selector='synthetic-orphan-continuation'; mode='manual'; status='interrupted'; repositoryId=$deliveryRepositoryId; agentStatuses=[ordered]@{ requirements_analyst=[ordered]@{ status='completed' }; developer=[ordered]@{ status='completed' }; reviewer=[ordered]@{ status='completed' }; review_verifier=[ordered]@{ status='completed' }; pipeline_monitor=[ordered]@{ status='completed' }; knowledge_keeper=[ordered]@{ status='completed' } } }
 Write-Utf8NoBom -Path (Join-Path $orphanRoot 'task.json') -Content (($orphanTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $orphanRequestId = [guid]::NewGuid().ToString('N')
 $orphanTime = [DateTime]::UtcNow.AddMinutes(-5).ToString('o')
@@ -1188,7 +1309,7 @@ foreach ($incompatibleArgument in @("'--resource','workItemComments'", "'--api-v
 Add-Check -Name 'assigned-task-comments-cli-compatibility' -Detail 'Comments fetch uses resource comments and API 7.1-preview without network access'
 
 $engineeringSkills = @('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react')
-foreach ($agentId in @('knowledge_keeper','developer','reviewer')) {
+foreach ($agentId in @('knowledge_keeper','developer','reviewer','review_verifier')) {
     $engineeringAgent = @($config.agents | Where-Object id -eq $agentId) | Select-Object -First 1
     if (-not $engineeringAgent) { throw "Engineering-guidance agent is missing: $agentId" }
     $skillPaths = @($engineeringAgent.skillPaths | ForEach-Object { [IO.Path]::GetFileName([IO.Path]::GetDirectoryName([string]$_)) })
@@ -1196,7 +1317,7 @@ foreach ($agentId in @('knowledge_keeper','developer','reviewer')) {
         if ($skillPaths -notcontains $skillName) { throw "$agentId is missing required engineering skill: $skillName" }
     }
 }
-Add-Check -Name 'engineering-skill-routing' -Detail 'Knowledge Keeper, Developer, and Reviewer share common plus .NET/JS/React guidance'
+Add-Check -Name 'engineering-skill-routing' -Detail 'Knowledge Keeper, Developer, Reviewer, and Review Verifier share common plus .NET/JS/React guidance'
 
 $healthAgent = @($config.agents | Where-Object id -eq 'health_check') | Select-Object -First 1
 if (-not $healthAgent) { throw 'Health Check Agent is missing from the canonical configuration.' }

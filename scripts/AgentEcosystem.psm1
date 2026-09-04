@@ -104,7 +104,7 @@ function Assert-EcosystemConfig {
     if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 3) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 3.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -lt 30 -or [int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -gt 600) { throw 'workflow.automaticContinuation.recoveryGraceSeconds is outside the supported range.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -lt 1 -or [int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -gt 60) { throw 'workflow.automaticContinuation.recoveryPollIntervalMinutes is outside the supported range.' }
-    if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
+    if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|review_verifier|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
     if ([string]$Config.ui.listenAddress -ne '127.0.0.1') { throw 'The dashboard must listen on 127.0.0.1.' }
     if ([int]$Config.ui.port -lt 1024 -or [int]$Config.ui.port -gt 65535) { throw 'ui.port must be between 1024 and 65535.' }
     if ([int]$Config.ui.taskRefreshSeconds -lt 2 -or [int]$Config.ui.taskRefreshSeconds -gt 300) { throw 'ui.taskRefreshSeconds must be between 2 and 300.' }
@@ -187,13 +187,14 @@ function Assert-EcosystemConfig {
         $agentIds[[string]$agent.id] = $true
         $agentNames[[string]$agent.name] = $true
     }
-    foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
+    foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check')) {
         if (-not $agentIds.ContainsKey($requiredId)) { throw "Required agent '$requiredId' is missing." }
     }
     $pipelineOwners = [ordered]@{
         monitorAgentId = 'pipeline_monitor'
         productRemediationAgentId = 'developer'
         remediationReviewAgentId = 'reviewer'
+        reviewVerificationAgentId = 'review_verifier'
         exceptionRoutingAgentId = 'orchestrator'
         ecosystemRecoveryAgentId = 'health_check'
         completionAgentId = 'knowledge_keeper'

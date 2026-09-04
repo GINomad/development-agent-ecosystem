@@ -11,9 +11,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["findingId", "decision", "decidedAtUtc", "decidedBy", "note"],
+        "required": ["findingId", "reviewedRevision", "reviewArtifactSha256", "verificationVerdict", "decision", "decidedAtUtc", "decidedBy", "note"],
         "properties": {
           "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+          "reviewedRevision": { "type": "string", "minLength": 1 },
+          "reviewArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "verificationVerdict": { "enum": ["confirmed", "needs-human"] },
           "decision": { "enum": ["approved", "rejected", "deferred", "bypassed"] },
           "decidedAtUtc": { "type": "string", "format": "date-time" },
           "decidedBy": { "type": "string", "minLength": 1 },

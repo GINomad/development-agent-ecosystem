@@ -5,7 +5,7 @@ description: Integrate exact-branch and exact-commit Azure pipeline monitoring i
 
 # Monitor Delivery Pipelines
 
-1. After a clean local review, call `scripts/Invoke-ReviewedBranchDelivery.ps1`; otherwise require proof of a successful authorized push, repository ID, exact branch, full pushed SHA, and pre-push UTC timestamp.
+1. After a clean local review and passing independent verification bound to its exact SHA, call `scripts/Invoke-ReviewedBranchDelivery.ps1`; otherwise require proof of a successful authorized push, repository ID, exact branch, full pushed SHA, and pre-push UTC timestamp.
 2. The delivery script performs the guarded non-force branch push and calls `scripts/Invoke-PostPushPipeline.ps1 -PushWasSuccessful`; the latter uses the vendored `azure-pipeline-monitor`.
 3. Apply only the repository-specific build allowlist from `config/agents.json`; never infer a definition and never auto-queue a deployment.
 4. Let the native watcher wait for every exact-SHA run to reach a terminal state without model polling. If its command yields a running cell or session, retain the handle and use the provided wait/resume mechanism until the same watcher command completes; do not start another refresh or watcher while that handle is live. Treat an `inProgress` result or execution yield as ongoing work, not a failure; only terminal watcher completion or a real nonzero exit can drive result/failure handling.

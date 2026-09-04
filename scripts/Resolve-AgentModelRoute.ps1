@@ -56,7 +56,7 @@ $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
     Add-BoundedEvidence -Text ((Get-Content -LiteralPath $ledgerPath -Tail ([int]$config.runtime.contextLimits.ledgerTailLines) -Encoding UTF8) -join [Environment]::NewLine)
 }
-foreach ($artifactName in @('requirements-analysis.json', 'implementation-plan.json', 'review-result.json', 'pipeline-result.json', 'health-check-result.json')) {
+foreach ($artifactName in @('requirements-analysis.json', 'implementation-plan.json', 'review-result.json', 'review-verification.json', 'pipeline-result.json', 'health-check-result.json')) {
     $artifactPath = Join-Path $taskRoot $artifactName
     if (Test-Path -LiteralPath $artifactPath -PathType Leaf) { Add-BoundedEvidence -Text (Get-Content -LiteralPath $artifactPath -Raw -Encoding UTF8) }
 }

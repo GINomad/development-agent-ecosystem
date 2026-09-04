@@ -1,7 +1,7 @@
 {
   "name": "development-agent-ecosystem",
-  "version": "0.1.0+codex.20260827204702",
-  "description": "Evidence-first multi-agent workflow for requirements, knowledge, implementation, review, and Azure pipelines.",
+  "version": "0.1.0+codex.20260901162508",
+  "description": "Evidence-first multi-agent workflow for requirements, knowledge, implementation, independent review verification, and Azure pipelines.",
   "author": {
     "name": "PlanningSpace Engineering"
   },
@@ -11,13 +11,14 @@
     "multi-agent",
     "requirements",
     "review",
+    "verification",
     "azure-devops"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Development Agent Ecosystem",
-    "shortDescription": "Evidence-first software delivery agents",
-    "longDescription": "Coordinates requirements analysis, task knowledge, implementation, review approval, and exact-SHA Azure pipeline monitoring with bounded Developer remediation.",
+    "shortDescription": "Verified software delivery agents",
+    "longDescription": "Coordinates requirements analysis, task knowledge, implementation, candidate review, independent exact-SHA verification with coverage and finding lifecycle, human decisions, and Azure pipeline monitoring.",
     "developerName": "PlanningSpace Engineering",
     "category": "Developer Tools",
     "capabilities": [
@@ -27,7 +28,8 @@
     "defaultPrompt": [
       "Analyze an assigned task without assumptions.",
       "Implement only the approved task scope.",
-      "Review code against requirements and open questions."
+      "Review code with a complete coverage matrix and stable finding lifecycle.",
+      "Independently verify review claims before rework decisions or delivery."
     ]
   }
 }
