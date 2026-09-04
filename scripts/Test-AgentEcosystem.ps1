@@ -601,10 +601,24 @@ if ([string]$resolvedA.Path -ne $workspaceA -or [string]$resolvedA.LeaseId -ne [
 $heartbeatA = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 $coordinatorAfterHeartbeat = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
 $heartbeatLeaseA = @($coordinatorAfterHeartbeat.leases | Where-Object { [string]$_.taskId -eq $taskAId -and [string]$_.leaseId -eq [string]$leaseA.LeaseId }) | Select-Object -First 1
+$invalidStatusOwnershipRejected = $false
+try {
+    $null = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -AgentId developer -AgentStatus running -ExecutionRunId ([string]$leaseA.LeaseId) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+}
+catch { $invalidStatusOwnershipRejected = $_.Exception.Message -match 'does not own active workspace lease' }
+$taskAAfterInvalidStatus = Get-Content -LiteralPath (Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$validStatusOwnership = & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -ExecutionRunId ('a' * 32) -WorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+$heartbeatAfterStatus = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
 $wrongHeartbeatRejected = $false
 try { $null = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ('z' * 32) -ConfigPath $schedulerConfigPath }
 catch { $wrongHeartbeatRejected = $_.Exception.Message -match 'no longer owned' }
-if ([string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not $heartbeatLeaseA.heartbeatAtUtc -or -not $wrongHeartbeatRejected) { throw 'Workspace heartbeat did not enforce exact task/run/lease ownership.' }
+if (
+    [string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not $heartbeatLeaseA.heartbeatAtUtc -or
+    -not $invalidStatusOwnershipRejected -or [string]$taskAAfterInvalidStatus.executionRunId -ne ('a' * 32) -or
+    [string]$taskAAfterInvalidStatus.workspaceLeaseId -ne [string]$leaseA.LeaseId -or [string]$validStatusOwnership.Status -ne 'running' -or
+    [string]$heartbeatAfterStatus.Status -ne 'updated' -or -not $wrongHeartbeatRejected
+) { throw 'Workspace heartbeat and task status did not enforce exact task/run/lease ownership.' }
+Add-Check -Name 'task-status-lease-ownership' -Detail 'Task status rejects invalid run/lease ownership without corrupting the active heartbeat pair'
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Stage synthetic-continuation-handoff -Message 'A live controller is handing the lease to its targeted continuation.' -ConfigPath $schedulerConfigPath | Out-Null
 $recoveredDuringContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
 $continuedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath

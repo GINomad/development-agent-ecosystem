@@ -28,10 +28,13 @@ if (-not $Status -and -not $AgentId -and -not $Stage -and -not $Message -and -no
     throw 'Specify a task status, agent status, stage, message, or comment acknowledgement.'
 }
 if ([bool]$AgentId -xor [bool]$AgentStatus) { throw 'AgentId and AgentStatus must be supplied together.' }
+if ([bool]$ExecutionRunId -xor [bool]$WorkspaceLeaseId) {
+    throw 'ExecutionRunId and WorkspaceLeaseId must be supplied together.'
+}
 
 $taskLockPath = Join-Path $taskRoot 'task-state.lock'
 $now = [DateTime]::UtcNow.ToString('o')
-$task = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action {
+$updateTaskState = {
     $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($Status) { $document | Add-Member -NotePropertyName status -NotePropertyValue $Status -Force }
     if ($Stage) { $document | Add-Member -NotePropertyName currentStage -NotePropertyValue $Stage -Force }
@@ -64,6 +67,28 @@ $task = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Act
 
     Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     return $document
+}
+$task = if ($ExecutionRunId -and $WorkspaceLeaseId) {
+    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+    Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        if (-not (Test-Path -LiteralPath $coordinatorPath -PathType Leaf)) {
+            throw "Workspace coordinator state is missing for task '$TaskId'."
+        }
+        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $activeLease = @($coordinator.leases | Where-Object {
+            [string]$_.taskId -eq $TaskId -and
+            [string]$_.runId -eq $ExecutionRunId -and
+            [string]$_.leaseId -eq $WorkspaceLeaseId -and
+            [string]$_.lifecycle -eq 'active'
+        } | Select-Object -First 1)
+        if (-not $activeLease.Count) {
+            throw "Task '$TaskId' does not own active workspace lease '$WorkspaceLeaseId' for run '$ExecutionRunId'."
+        }
+        Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action $updateTaskState
+    }
+}
+else {
+    Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action $updateTaskState
 }
 
 $eventType = if ($AgentId) { 'agent-status' } else { 'workflow-status' }
