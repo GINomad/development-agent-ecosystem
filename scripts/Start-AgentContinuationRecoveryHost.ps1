@@ -30,6 +30,7 @@ try {
             $parameters = @{ Repair=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) { $parameters.ElevatedApproved=$true }
             & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') @parameters | Out-Null
+            & (Join-Path $PSScriptRoot 'Remove-CompletedTaskWorkspaces.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
             # Reload the canonical JSON after every pass so interval and policy
             # changes do not require restarting this resident host.

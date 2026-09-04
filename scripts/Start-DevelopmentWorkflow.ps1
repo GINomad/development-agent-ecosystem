@@ -258,7 +258,7 @@ Unchanged artifacts available through existing summaries: $(if ($resumePlan -and
 Resume rules:
 - The coordinator admits up to $([int]$config.workflow.workspaceScheduling.maxActiveTasks) tasks concurrently. This run owns lease $([string]$workspaceLease.LeaseId) and may use only the task clones listed above.
 - Every (task, repository) pair has a full Git clone and a unique task branch recorded in its workspace manifest. Never use repository.localWorkspace, another task's clone, Git worktree, or Git stash for task scheduling.
-- The clone persists across role runs for this task while leases are task-local and released when a workflow host exits. A failure, stop, or dirty worktree in another task must not alter this task's status, branch, queue position, or files.
+- The clone persists across role runs while this task remains open; leases are task-local and released when a workflow host exits. Final summarized closure removes only this task clone, and a later reopen provisions it again. A failure, stop, or dirty worktree in another task must not alter this task's status, branch, queue position, or files.
 - On a new workflow or a non-targeted checkpoint resume, dispatch $orchestratorAgentName first. It must classify the requested outcome, select the narrowest workflow.orchestration.executionModes entry, and route the task-created event and every pending comment addressed to orchestrator through Set-WorkflowInputRoute.ps1 with explicit -ExecutionMode before any newly selected role starts.
 - On an explicit targeted-agent resume, execute that exact role directly in this process. Do not replace it, delegate it, or start another role in that targeted invocation.
 - Orchestrator must use the freshly loaded role directory below, select the smallest sufficient target set, and use Requirements Analyst as the configured fallback when the evidence is actionable but ownership remains unclear.
@@ -553,6 +553,10 @@ finally {
             $leaseReleased = $true
         }
         catch { Write-Warning "Workspace lease release failed: $($_.Exception.Message)" }
+        if ($leaseReleased) {
+            try { & (Join-Path $PSScriptRoot 'Remove-CompletedTaskWorkspaces.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null }
+            catch { Write-Warning "Completed-task workspace cleanup failed: $($_.Exception.Message)" }
+        }
         if ($leaseReleased -and -not $SkipChainContinuation) {
             try { & (Join-Path $PSScriptRoot 'Start-NextQueuedTask.ps1') -CompletedTaskId $TaskId -ElevatedApproved:$ElevatedApproved -ConfigPath $sourceConfigPath -CodexHome $CodexHome | Out-Null }
             catch { Write-Warning "Queued-task continuation failed: $($_.Exception.Message)" }

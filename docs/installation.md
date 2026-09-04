@@ -7,7 +7,7 @@
 - Git CLI with non-interactive access to every configured canonical clone URL;
 - Azure CLI with access to the configured Azure DevOps organization;
 - a local operator/reference working copy of every configured repository;
-- a writable task-clone root with enough free space for a full clone of every repository selected by every retained task.
+- a writable task-clone root with enough free space for every repository selected by active and resumable open tasks; finally closed summarized task clones are removed automatically.
 
 The current configuration uses Azure CLI at `C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd`. Secrets are not copied into this repository.
 
