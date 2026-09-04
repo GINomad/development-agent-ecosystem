@@ -328,6 +328,21 @@ function Invoke-EcosystemFileLock {
     try { return & $Action }
     finally { $stream.Dispose() }
 }
+
+function New-WorkspaceLeaseHeartbeatAction {
+    param(
+        [Parameter(Mandatory)][string] $HeartbeatScriptPath,
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $RunId,
+        [Parameter(Mandatory)][string] $LeaseId,
+        [Parameter(Mandatory)][string] $ConfigPath,
+        [AllowEmptyString()][string] $CodexHome
+    )
+    return {
+        & $HeartbeatScriptPath -TaskId $TaskId -RunId $RunId -LeaseId $LeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    }.GetNewClosure()
+}
+
 function Get-TaskWorkspaceLayout {
     param(
         [Parameter(Mandatory)][string] $WorkspaceRoot,
@@ -352,4 +367,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, Get-TaskWorkspaceLayout

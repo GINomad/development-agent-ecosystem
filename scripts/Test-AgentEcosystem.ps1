@@ -107,6 +107,19 @@ if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch 
 if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sourceConfigPath') { throw 'Queued task dispatch must reload canonical configuration instead of inheriting the previous task snapshot.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
+$heartbeatClosure = & {
+    param([ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId)
+    New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath (Join-Path $root 'tests\fixtures\Mock-WorkspaceLeaseHeartbeat.ps1') -TaskId 'heartbeat-closure-test' -RunId ('r' * 32) -LeaseId ('l' * 32) -ConfigPath $ConfigPath -CodexHome ''
+}
+$heartbeatProbe = & $heartbeatClosure
+if ([string]$heartbeatProbe.TaskId -ne 'heartbeat-closure-test' -or [string]$heartbeatProbe.RunId -ne ('r' * 32) -or [string]$heartbeatProbe.LeaseId -ne ('l' * 32)) {
+    throw 'Workspace lease heartbeat callback did not preserve its exact invocation values.'
+}
+if ($workflowCliScript -notmatch 'New-WorkspaceLeaseHeartbeatAction' -or $workflowCliScript -match '\$leaseHeartbeatAction\s*=\s*\{[^}]+\}\.GetNewClosure\(\)') {
+    throw 'Workflow heartbeat callback must be created outside the scope of optional validated workflow parameters.'
+}
+Add-Check -Name 'workspace-heartbeat-closure' -Detail 'Heartbeat callback construction ignores unrelated empty validated workflow parameters and preserves exact lease values'
+
 function Invoke-SchedulerTestGit {
     param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments)
     $previousErrorActionPreference = $ErrorActionPreference
