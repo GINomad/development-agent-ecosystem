@@ -11,10 +11,15 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
 $checks = [Collections.Generic.List[object]]::new()
 
+
 function Add-Check {
     param([string] $Name, [string] $Detail)
     $checks.Add([pscustomobject]@{ Name=$Name; Status='passed'; Detail=$Detail })
 }
+$featureBranchName = New-TaskBranchName -TaskName 'Implement FDPlan sensitivity resultsets' -TaskType 'Product Backlog Item'
+$bugfixBranchName = New-TaskBranchName -TaskName 'Fix FDPlan sensitivity / resultsets' -TaskType 'Bug'
+if ($featureBranchName -ne 'features/implement-fdplan-sensitivity-resultsets' -or $bugfixBranchName -ne 'bugfix/fix-fdplan-sensitivity-resultsets') { throw 'Human-readable task branch naming does not distinguish implementation tasks from bug fixes.' }
+Add-Check -Name 'human-readable-task-branches' -Detail 'Implementation tasks use features/<task-name>; bugs use bugfix/<bug-name>'
 
 $syntheticReviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
 
@@ -547,14 +552,20 @@ $taskAId = 'workspace-a-' + [guid]::NewGuid().ToString('N')
 $taskBId = 'workspace-b-' + [guid]::NewGuid().ToString('N')
 $taskCId = 'workspace-c-' + [guid]::NewGuid().ToString('N')
 $taskDId = 'workspace-d-' + [guid]::NewGuid().ToString('N')
-foreach ($taskDefinition in @(@($taskAId,'a'),@($taskBId,'b'),@($taskCId,'c'),@($taskDId,'d'))) {
-    $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskDefinition[0] -TaskSelector ('synthetic-workspace-' + $taskDefinition[1]) -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
+foreach ($taskDefinition in @(
+    @($taskAId,'a','Implement Friendly Branch Names','Product Backlog Item'),
+    @($taskBId,'b','Fix Sensitivity Endpoint','Bug'),
+    @($taskCId,'c','Queued Workspace C','Task'),
+    @($taskDId,'d','Queued Workspace D','Task')
+)) {
+    $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskDefinition[0] -TaskSelector ('synthetic-workspace-' + $taskDefinition[1]) -Mode manual -TaskName $taskDefinition[2] -TaskType $taskDefinition[3] -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
 }
 $leaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ConfigPath $schedulerConfigPath
 $leaseB = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskBId -RunId ('b' * 32) -ConfigPath $schedulerConfigPath
 $workspaceA = [string]$leaseA.Workspaces[0].Path
 $workspaceB = [string]$leaseB.Workspaces[0].Path
 if ([string]$leaseA.Status -ne 'active' -or [string]$leaseB.Status -ne 'active' -or $workspaceA -eq $workspaceB -or -not (Test-Path -LiteralPath (Join-Path $workspaceA '.git') -PathType Container) -or -not (Test-Path -LiteralPath (Join-Path $workspaceB '.git') -PathType Container)) { throw 'Two tasks targeting one repository did not receive distinct full Git clones.' }
+if ([string]$leaseA.Workspaces[0].Branch -ne 'features/implement-friendly-branch-names' -or [string]$leaseB.Workspaces[0].Branch -ne 'bugfix/fix-sensitivity-endpoint') { throw 'Workspace provisioning did not use the persisted human-readable branch names.' }
 Write-Utf8NoBom -Path (Join-Path $workspaceA 'task-a-uncommitted.txt') -Content "task-a-only$([Environment]::NewLine)"
 if (Test-Path -LiteralPath (Join-Path $workspaceB 'task-a-uncommitted.txt')) { throw 'Task A working-tree changes leaked into task B clone.' }
 $resolvedA = & (Join-Path $root 'scripts\Resolve-TaskWorkspace.ps1') -TaskId $taskAId -RepositoryId azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath

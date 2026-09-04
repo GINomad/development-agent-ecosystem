@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $TaskSelector,
     [Parameter(Mandatory)][ValidateSet('manual','automate')][string] $Mode,
+    [string] $TaskName,
+    [string] $TaskType,
     [string] $RepositoryId,
     [string[]] $RepositoryIds = @(),
     [switch] $Resume,
@@ -30,10 +32,15 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
     }
     if (-not (Test-Path -LiteralPath $taskPath)) {
         $now = [DateTime]::UtcNow.ToString('o')
+        $resolvedTaskName = if (-not [string]::IsNullOrWhiteSpace($TaskName)) { $TaskName.Trim() } elseif ($TaskSelector -notmatch '^(?i:https?://|[0-9]+$)') { $TaskSelector.Trim() } else { $TaskId }
+        $resolvedTaskType = if ([string]::IsNullOrWhiteSpace($TaskType)) { 'Task' } else { $TaskType.Trim() }
         $document = [ordered]@{
             taskId = $TaskId
             selector = $TaskSelector
             mode = $Mode
+            taskName = $resolvedTaskName
+            taskType = $resolvedTaskType
+            branchName = New-TaskBranchName -TaskName $resolvedTaskName -TaskType $resolvedTaskType
             repositoryId = if ($selectedRepositoryIds.Count) { $selectedRepositoryIds[0] } else { $null }
             repositoryIds = @($selectedRepositoryIds)
             status = 'created'

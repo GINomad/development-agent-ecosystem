@@ -17,6 +17,7 @@ let mode = 'manual';
 let taskFilter = 'active';
 let selectedTaskId = null;
 let selectedTask = null;
+let selectedInboxTask = null;
 let selectedArtifactName = null;
 let selectedAgentId = null;
 let selectedOutcomeAgentId = null;
@@ -74,11 +75,15 @@ function updateRepositorySummary() {
 
 function payloadBase() {
   const repositoryIds = selectedRepositoryIds();
+  const taskSelector = document.querySelector('#taskSelector').value.trim();
+  const inboxMetadata = selectedInboxTask && selectedInboxTask.url === taskSelector ? selectedInboxTask : null;
   return {
     mode,
     repositoryIds,
     repositoryId: repositoryIds[0] || '',
-    taskSelector: document.querySelector('#taskSelector').value.trim(),
+    taskSelector,
+    taskName: inboxMetadata ? inboxMetadata.title : '',
+    taskType: inboxMetadata ? inboxMetadata.type : '',
     taskId: document.querySelector('#taskId').value.trim(),
     instruction: document.querySelector('#instruction').value.trim()
   };
@@ -2271,6 +2276,7 @@ document.querySelector('#loadTasks').addEventListener('click', async () => {
       meta.textContent = `${item.type} - ${item.state}`;
       button.append(title, meta);
       button.addEventListener('click', () => {
+        selectedInboxTask = item;
         document.querySelector('[data-mode="manual"]').click();
         document.querySelector('#taskSelector').value = item.url;
         document.querySelector('#taskId').value = `task-${item.id}`;

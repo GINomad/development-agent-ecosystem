@@ -50,7 +50,8 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
         $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest)); continue
     }
-    $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $repositoryId -RunId $RunId
+    $branchName = if ($task.PSObject.Properties['branchName']) { [string]$task.branchName } else { '' }
+    $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $repositoryId -RunId $RunId -BranchName $branchName
     $clonePath = [IO.Path]::GetFullPath([string]$layout.ClonePath)
     $workspaceRootPrefix = [IO.Path]::GetFullPath($workspaceRoot).TrimEnd([char[]]@('\','/')) + [IO.Path]::DirectorySeparatorChar
     if (-not $clonePath.StartsWith($workspaceRootPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to provision a task workspace outside '$workspaceRoot': $clonePath" }
