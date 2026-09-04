@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\AgentEcosystem.psm1') -Force
 
 $root = Get-EcosystemRoot
-$taskId = 'review-verification-' + [guid]::NewGuid().ToString('N')
+$taskId = 'rv-' + [guid]::NewGuid().ToString('N').Substring(0, 16)
 $runRoot = Join-Path $OutputRoot $taskId
 $stateRoot = Join-Path $runRoot 'state'
 $testConfigPath = Join-Path $runRoot 'agents.json'

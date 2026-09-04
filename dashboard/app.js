@@ -1227,8 +1227,10 @@ function appendReviewerFeedbackField(container, label, value) {
 }
 
 function renderReviewCoverage() {
+  const title = document.querySelector('#reviewCoverageTitle');
   const matrix = document.querySelector('#reviewCoverageMatrix');
   const summary = document.querySelector('#reviewCoverageSummary');
+  title.textContent = 'Review Coverage Matrix';
   matrix.replaceChildren();
   const coverage = Array.isArray(reviewerFeedback?.reviewCoverage) ? reviewerFeedback.reviewCoverage : [];
   const verificationEntries = Array.isArray(reviewVerification?.coverageVerification) ? reviewVerification.coverageVerification : [];
@@ -1267,8 +1269,10 @@ function renderReviewCoverage() {
 }
 
 function renderFindingLifecycle() {
+  const title = document.querySelector('#findingLifecycleTitle');
   const list = document.querySelector('#findingLifecycleList');
   const summary = document.querySelector('#findingLifecycleSummary');
+  title.textContent = 'Finding Lifecycle';
   list.replaceChildren();
   const lifecycle = Array.isArray(reviewerFeedback?.findingLifecycle) ? reviewerFeedback.findingLifecycle : [];
   const lifecycleVerifications = Array.isArray(reviewVerification?.lifecycleVerifications) ? reviewVerification.lifecycleVerifications : [];

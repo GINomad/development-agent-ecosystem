@@ -290,7 +290,7 @@ foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-Agen
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
 if ($dashboardServer -notmatch 'requiredArtifacts=@\(\$_.requiredArtifacts\)' -or $dashboardServer -notmatch 'artifactSha256' -or $dashboardClient -notmatch 'agentRequiredArtifacts' -or $dashboardClient -notmatch 'openAgentOutcome' -or $dashboardClient -notmatch 'reviewVerificationStale' -or $dashboardClient -notmatch 'reviewArtifactSha256') { throw 'Dashboard per-agent outcome mapping or stale review-verification protection is incomplete.' }
-if ($dashboardClient -notmatch 'isReviewerItemBypassedAsDebt' -or $dashboardClient -notmatch 'activeReviewerSummary' -or $dashboardClient -notmatch 'hiddenFindingIds' -or $dashboardClient -notmatch 'sourceFindingId' -or $dashboardClient -notmatch 'review-decisions\.json' -or $dashboardClient -notmatch 'tech-debt-items\.json' -or $reviewerPrompt -notmatch 'omit that item from the new active') { throw 'Bypassed findings with linked open technical debt are still exposed as active Reviewer outcome items.' }
+if ($dashboardClient -notmatch 'isReviewerItemBypassedAsDebt' -or $dashboardClient -notmatch 'activeReviewerSummary' -or $dashboardClient -notmatch 'hiddenFindingIds' -or $dashboardClient -notmatch 'sourceFindingId' -or $dashboardClient -notmatch 'review-decisions\.json' -or $dashboardClient -notmatch 'tech-debt-items\.json' -or $reviewerPrompt -notmatch 'Omit the debt-backed item from the new active') { throw 'Bypassed findings with linked open technical debt are still exposed as active Reviewer outcome items.' }
 Add-Check -Name 'reviewer-active-outcome-filter' -Detail 'Bypassed findings remain auditable in decisions/debt artifacts but are omitted from subsequent active Reviewer outcomes and dashboard cards'
 if ($dashboardServer -notmatch 'Stop-ValidatedWorkflowProcessTree' -or $dashboardServer -notmatch 'Stop-TaskScriptRunspaces') { throw 'Stop workflow must terminate only a validated task process tree or tracked runspace.' }
 if ($dashboardServer -notmatch 'Assert-TaskViewIsCurrent' -or $dashboardServer -notmatch 'Assert-TaskControllerIsIdle' -or $dashboardClient -notmatch 'taskViewGuard' -or $dashboardClient -notmatch 'expectedRevision' -or $dashboardClient -notmatch 'workspaceLeaseId') { throw 'Resume, targeted restart, and reopen must reject stale revision/run/lease dashboard views.' }
@@ -1030,6 +1030,8 @@ if ([string]$developerToReviewer.Status -ne 'prepared' -or [string]$developerToR
 $chainReviewPath = Join-Path $chainMatrixRoot 'review-result.json'
 $chainReview = New-SyntheticReviewResult -TaskId $chainMatrixTaskId
 Write-Utf8NoBom -Path $chainReviewPath -Content (($chainReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$chainMatrixTask.agentStatuses.reviewer.status = 'completed'
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $reviewerToVerifier = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$reviewerToVerifier.Status -ne 'prepared' -or [string]$reviewerToVerifier.NextAgentId -ne 'review_verifier') { throw 'Reviewer completion did not schedule the independent Review Verifier.' }
 
