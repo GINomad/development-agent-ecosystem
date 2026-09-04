@@ -35,7 +35,7 @@ $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 |
 & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 if ([string]$verification.verificationStatus -ne 'passed') { throw 'Review coverage or lifecycle verification requires Reviewer rework before delivery.' }
 if (@($review.reviewCoverage | Where-Object { [string]$_.status -eq 'blocked' }).Count) { throw 'Blocked review coverage dimensions prevent delivery.' }
-$reviewArtifactSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$reviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
 $verificationById = @{}
 foreach ($entry in @($verification.findingVerifications)) { $verificationById[[string]$entry.findingId] = [string]$entry.verdict }
 $productFindings = @($review.findings | Where-Object { $verificationById[[string]$_.id] -in @('confirmed','needs-human') })

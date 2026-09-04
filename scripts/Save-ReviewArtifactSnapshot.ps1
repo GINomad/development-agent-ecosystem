@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'review-re
 $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$review.taskId -ne $TaskId) { throw 'review-result.json belongs to another task.' }
 
-$reviewSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
 $historyRoot = [IO.Path]::GetFullPath((Join-Path $taskRoot 'review-history'))
 $taskPrefix = $taskRoot.TrimEnd('\') + '\'
 if (-not $historyRoot.StartsWith($taskPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Review history path escaped the task root.' }
@@ -29,7 +29,7 @@ $result = Invoke-EcosystemFileLock -LockPath ($indexPath + '.lock') -TimeoutSeco
     if (-not (Test-Path -LiteralPath $snapshotPath -PathType Leaf)) {
         Copy-Item -LiteralPath $reviewPath -Destination $snapshotPath
     }
-    $snapshotSha256 = (Get-FileHash -LiteralPath $snapshotPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $snapshotSha256 = Get-EcosystemFileSha256 -Path $snapshotPath
     if ($snapshotSha256 -ne $reviewSha256) { throw 'Persisted review snapshot does not match review-result.json.' }
 
     $index = if (Test-Path -LiteralPath $indexPath -PathType Leaf) {

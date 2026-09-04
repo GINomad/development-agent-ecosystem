@@ -25,7 +25,7 @@ $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 |
 if ([string]$verification.verificationStatus -ne 'passed') { throw 'Bypass debt is blocked until review coverage and lifecycle verification pass.' }
 $findingVerification = @($verification.findingVerifications | Where-Object { [string]$_.findingId -eq $FindingId -and [string]$_.verdict -in @('confirmed','needs-human') }) | Select-Object -First 1
 if (-not $findingVerification) { throw "Finding '$FindingId' is not independently verified for a bypass decision." }
-$reviewArtifactSha256 = (Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$reviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
 
 $debtPath = Join-Path $taskRoot 'tech-debt-items.json'
 $document = if (Test-Path -LiteralPath $debtPath -PathType Leaf) { Get-Content -LiteralPath $debtPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject][ordered]@{ taskId=$TaskId; items=@() } }

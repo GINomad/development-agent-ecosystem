@@ -81,7 +81,7 @@ function New-SyntheticReviewVerification {
         [hashtable] $FindingVerdicts = @{}
     )
     $review = Get-Content -LiteralPath $ReviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $sha256 = (Get-FileHash -LiteralPath $ReviewPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sha256 = Get-EcosystemFileSha256 -Path $ReviewPath
     [object[]] $activeFindings = @($review.findings) + @($review.agentProcessFindings)
     [ordered]@{
         taskId = $TaskId
@@ -220,7 +220,7 @@ $reviewVerifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles
 foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff','/close','/reopen','/api/external-reviews','/external-review-report/','activePullRequests','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','/workflow/stop','/resume','Start-HealthTargetedResume.ps1','Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
-if ($dashboardServer -notmatch 'Start-ScriptRunspace' -or $dashboardServer -notmatch 'in-process-runspace') { throw 'Elevated workflow must avoid the nested PowerShell process through a tracked in-process runspace.' }
+if ($dashboardServer -notmatch 'Start-ScriptRunspace' -or $dashboardServer -notmatch 'in-process-runspace' -or $dashboardServer -notmatch "AddCommand\('Import-Module'\).+Microsoft\.PowerShell\.Utility.+AddStatement\(\)" -or $dashboardServer -notmatch 'dashboard runspace.+failed' -or $dashboardServer -notmatch 'dashboard-run-id:' -or $dashboardServer -notmatch 'Elevated workflow resume requested from the dashboard' -or $dashboardServer -match 'Get-FileHash' -or $dashboardServer -notmatch 'Get-EcosystemFileSha256') { throw 'Elevated workflow runspaces lack deterministic initialization, module-independent hashing, durable start evidence, or visible failure reporting.' }
 if ($dashboardServer -match 'Start-ScriptProcess' -or $dashboardServer -match 'Start-Process\s+.*powershell' -or $dashboardServer -match 'ExecutionPolicy\s+Bypass') { throw 'Dashboard actions must not create nested PowerShell launchers that host security can block before task state exists.' }
 if ($dashboardServer -notmatch '\[string\]::IsNullOrWhiteSpace\(\$ConfigPath\)' -or $dashboardServer -match '\[string\] \$ConfigPath = \(Join-Path') { throw 'Dashboard ConfigPath must be resolved after parameter binding so direct -File startup works in Windows PowerShell 5.1.' }
 if ($dashboardServer -notmatch '\$elevatedRequested = \[bool\]\(Get-ObjectPropertyValue -Source \$body -Name ''elevated''\)' -or $dashboardServer -notmatch '\$workflowParameters\.ElevatedApproved = \$true' -or $dashboardClient -notmatch 'payload\.elevated = true' -or $dashboardClient -notmatch 'Start this workflow in host-compatible elevated mode') { throw 'Start Workflow elevated execution must require explicit UI confirmation and use the in-process runspace.' }
