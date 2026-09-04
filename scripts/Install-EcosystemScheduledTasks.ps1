@@ -59,6 +59,7 @@ if ($Action -eq 'Rollback') {
 & $wrapper -Mode Manual -DryRun -ConfigPath $ConfigPath -CodexHome $CodexHome
 
 $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+$maintenancePrincipal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest
 $nonInteractivePrincipal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 4)
 $backgroundPowerShellArguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass'
@@ -101,7 +102,7 @@ try {
     Register-ScheduledTask -TaskName $newNames[1] -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the vendored ecosystem PR review monitor daily.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[2] -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves vendored ecosystem review reports on loopback.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and routes completed PR tasks through Orchestrator for final Knowledge Keeper publication.' -Force | Out-Null
-    Register-ScheduledTask -TaskName $newNames[4] -Action $continuationAction -Trigger $continuationTrigger -Settings $continuationSettings -Principal $principal -Description 'Runs one hidden resident recovery host; the recurring trigger is ignored while healthy and relaunches it after termination.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $newNames[4] -Action $continuationAction -Trigger $continuationTrigger -Settings $continuationSettings -Principal $maintenancePrincipal -Description 'Runs one hidden resident elevated recovery host; the recurring trigger is ignored while healthy and relaunches it after termination.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[5] -Action $weeklyKnowledgeAction -Trigger $weeklyKnowledgeTrigger -Settings $settings -Principal $nonInteractivePrincipal -Description 'Generates a Friday HTML report from verified Knowledge Keeper learning, decisions, and durable evidence without invoking AI.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { throw "New scheduled task '$name' was not registered." }
