@@ -62,6 +62,15 @@ if (-not $TargetAgentId) {
 $applicableComments = if ($TargetAgentId) {
     @($unacknowledgedComments | Where-Object { -not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $TargetAgentId })
 } else { @($unacknowledgedComments) }
+if (-not $TargetAgentId -and [string]$task.status -ne 'completed' -and (-not $task.PSObject.Properties['closure'] -or [string]$task.closure.status -ne 'completed')) {
+    foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+        $candidateId = [string]$candidate
+        if ($candidateId -eq $orchestratorId -or $candidateId -in @($unfinished)) { continue }
+        $hasDirectInput = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $candidateId }).Count -gt 0
+        if ($hasDirectInput) { $unfinished.Add($candidateId) }
+    }
+    $preserved = @($preserved | Where-Object { $_ -notin @($unfinished) })
+}
 
 $artifactIndexPath = Join-Path $taskRoot 'resume-artifact-index.json'
 $artifactConsumerAgentId = if ($TargetAgentId) { $TargetAgentId } else { $orchestratorId }

@@ -41,7 +41,16 @@ $task = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Act
     if ($WorkspaceLeaseId) { $document | Add-Member -NotePropertyName workspaceLeaseId -NotePropertyValue $WorkspaceLeaseId -Force }
     if ($ExecutionRunId -or $WorkspaceLeaseId) { $document | Add-Member -NotePropertyName workflowHeartbeatAtUtc -NotePropertyValue $now -Force }
     if ($ClearProcessId -and $document.PSObject.Properties['workflowProcessId']) { $document.PSObject.Properties.Remove('workflowProcessId') }
-    if ($AcknowledgeComments) { $document | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $false -Force }
+    if ($AcknowledgeComments) {
+        $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+        $events = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
+        $acknowledged = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($ack in @($events | Where-Object { [string]$_.type -eq 'user-comment-acknowledged' })) {
+            foreach ($value in @($ack.evidence)) { if ($value) { $null = $acknowledged.Add([string]$value) } }
+        }
+        $hasUnreadComments = @($events | Where-Object { [string]$_.type -in @('user-comment','workflow-input-routed') -and -not $acknowledged.Contains([string]$_.eventId) }).Count -gt 0
+        $document | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $hasUnreadComments -Force
+    }
     $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue $now -Force
 
     if (-not $document.PSObject.Properties['agentStatuses']) {

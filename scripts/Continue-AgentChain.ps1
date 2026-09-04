@@ -140,6 +140,18 @@ function Get-NextPolicyAgent {
     return [string]$sequence[$nextIndex]
 }
 
+function Get-PendingCommentOwner {
+    param([Parameter(Mandatory)][string] $ExcludeAgentId)
+
+    foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+        $candidateId = [string]$candidate
+        if ($candidateId -in @($ExcludeAgentId, 'orchestrator')) { continue }
+        $pendingInput = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $candidateId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        if ([int]$pendingInput.count -gt 0) { return $candidateId }
+    }
+    return $null
+}
+
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $executionPolicy = Get-ActiveExecutionPolicy
@@ -304,12 +316,21 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'health_check' {
-            foreach ($candidate in $agentSequence) {
-                if ([string]$candidate -in @('orchestrator','health_check')) { continue }
-                $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
-                if ($candidateStatus -in @('pending','skipped')) {
-                    $nextAgentId = [string]$candidate
-                    break
+            $pendingCommentOwner = Get-PendingCommentOwner -ExcludeAgentId 'health_check'
+            if ($pendingCommentOwner) {
+                # The active execution mode may contain only Health Check. Return
+                # remaining explicit input to Orchestrator so it can select a new
+                # authority mode instead of silently ending the resume.
+                $nextAgentId = 'orchestrator'
+            }
+            else {
+                foreach ($candidate in $agentSequence) {
+                    if ([string]$candidate -in @('orchestrator','health_check')) { continue }
+                    $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
+                    if ($candidateStatus -in @('pending','skipped')) {
+                        $nextAgentId = [string]$candidate
+                        break
+                    }
                 }
             }
         }
