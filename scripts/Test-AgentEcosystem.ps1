@@ -553,6 +553,11 @@ $wrongHeartbeatRejected = $false
 try { $null = & (Join-Path $root 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $taskAId -RunId ('a' * 32) -LeaseId ('z' * 32) -ConfigPath $schedulerConfigPath }
 catch { $wrongHeartbeatRejected = $_.Exception.Message -match 'no longer owned' }
 if ([string]$heartbeatA.Status -ne 'updated' -or -not $heartbeatLeaseA -or -not $heartbeatLeaseA.heartbeatAtUtc -or -not $wrongHeartbeatRejected) { throw 'Workspace heartbeat did not enforce exact task/run/lease ownership.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Stage synthetic-continuation-handoff -Message 'A live controller is handing the lease to its targeted continuation.' -ConfigPath $schedulerConfigPath | Out-Null
+$recoveredDuringContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
+$continuedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+if ($recoveredDuringContinuation.Count -ne 0 -or [string]$continuedLeaseA.Status -ne 'already-active' -or [string]$continuedLeaseA.LeaseId -ne [string]$leaseA.LeaseId) { throw 'An interrupted continuation checkpoint lost its live workspace lease before targeted-agent handoff.' }
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -Stage synthetic-continuation-active -ConfigPath $schedulerConfigPath | Out-Null
 $duplicateControllerRejected = $false
 try { $null = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('x' * 32) -ConfigPath $schedulerConfigPath }
 catch { $duplicateControllerRejected = $_.Exception.Message -match 'already has an active controller' }
@@ -587,6 +592,7 @@ if ([string]$leaseD.Status -ne 'active' -or @($coordinatorAfterFailureRecovery.l
 $taskFId = 'workspace-f-' + [guid]::NewGuid().ToString('N')
 $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskFId -TaskSelector 'synthetic-controller-crash' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
 $leaseF = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskFId -RunId ('f' * 32) -ConfigPath $schedulerConfigPath
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskFId -Status interrupted -Stage synthetic-controller-crash -Message 'The interrupted controller stopped heartbeating.' -ConfigPath $schedulerConfigPath | Out-Null
 $coordinatorForCrash = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
 $crashedLease = @($coordinatorForCrash.leases | Where-Object { [string]$_.taskId -eq $taskFId }) | Select-Object -First 1
 $expiredHeartbeat = [DateTime]::UtcNow.AddSeconds(-([int]$schedulerConfig.workflow.workspaceScheduling.staleLeaseGraceSeconds + 5)).ToString('o')
@@ -622,7 +628,7 @@ if (-not $staleReopenRejected) { throw 'A stale dashboard revision was allowed t
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status running -Stage synthetic-resume-check -ConfigPath $schedulerConfigPath | Out-Null
 $leaseAResumed = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('r' * 32) -ConfigPath $schedulerConfigPath
 if ([string]$leaseAResumed.Status -ne 'active' -or [string]$leaseAResumed.LeaseId -eq [string]$leaseA.LeaseId -or [string]$leaseAResumed.Workspaces[0].Path -ne $workspaceA -or -not (Test-Path -LiteralPath (Join-Path $workspaceA 'task-a-uncommitted.txt'))) { throw 'Task resume did not reacquire the same preserved clone with a new lease.' }
-Add-Check -Name 'parallel-clone-workspace-scheduler' -Detail 'Two tasks can run in distinct full clones of one repository; FIFO capacity, one controller per task, task-local failure, resolver/heartbeat ownership, clone reuse, failed/task-crash lease recovery, and failed-provisioning rollback are enforced'
+Add-Check -Name 'parallel-clone-workspace-scheduler' -Detail 'Two tasks can run in distinct full clones of one repository; FIFO capacity, one controller per task, live continuation handoff, task-local failure, resolver/heartbeat ownership, clone reuse, failed/task-crash lease recovery, and failed-provisioning rollback are enforced'
 
 $requirementsPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
 foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist','coverage')) {
