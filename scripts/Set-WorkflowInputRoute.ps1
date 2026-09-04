@@ -40,10 +40,18 @@ $routableSourceTypes = @('task-created') + $workflowCommentSourceTypes
 if ([string]$source.type -notin $routableSourceTypes) { throw "Event '$SourceEventId' is not routable task intake or a workflow comment." }
 if ($InputKind -eq 'task-intake' -and [string]$source.type -ne 'task-created') { throw 'task-intake requires a task-created source event.' }
 if ($InputKind -eq 'workflow-comment' -and [string]$source.type -notin $workflowCommentSourceTypes) { throw 'workflow-comment requires a user comment, agent authority handoff, or routed workflow input source event.' }
+$preservedDirectTarget = ''
 if ([string]$source.type -in $workflowCommentSourceTypes) {
     $existingTarget = if ($source.PSObject.Properties['targetAgentId']) { [string]$source.targetAgentId } else { '' }
     if ([string]$source.type -eq 'workflow-input-routed' -and $existingTarget -ne $orchestratorId) { throw "Routed workflow input '$SourceEventId' must be explicitly targeted to '$orchestratorId' and cannot be reclassified." }
-    if ([string]$source.type -ne 'workflow-input-routed' -and -not [string]::IsNullOrWhiteSpace($existingTarget) -and $existingTarget -ne $orchestratorId) { throw "Comment '$SourceEventId' is explicitly targeted to '$existingTarget' and cannot be reclassified." }
+    if ([string]$source.type -eq 'user-comment' -and -not [string]::IsNullOrWhiteSpace($existingTarget) -and $existingTarget -ne $orchestratorId) {
+        $requestedDirectTargets = @($TargetAgentIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { ([string]$_).Trim() } | Select-Object -Unique)
+        if ($requestedDirectTargets.Count -ne 1 -or [string]$requestedDirectTargets[0] -ne $existingTarget) { throw "Comment '$SourceEventId' is explicitly targeted to '$existingTarget' and cannot be reclassified." }
+        $preservedDirectTarget = $existingTarget
+    }
+    elseif ([string]$source.type -ne 'workflow-input-routed' -and -not [string]::IsNullOrWhiteSpace($existingTarget) -and $existingTarget -ne $orchestratorId) {
+        throw "Comment '$SourceEventId' is explicitly targeted to '$existingTarget' and cannot be reclassified."
+    }
 }
 
 $routingPath = Join-Path $taskRoot ([string]$policy.routingArtifact)
@@ -74,9 +82,11 @@ if (-not $codeChangesAllowed -and $targets.Contains('developer')) { throw "Execu
 
 $routingId = [guid]::NewGuid().ToString('N')
 $routedEvents = [Collections.Generic.List[object]]::new()
-foreach ($target in $targets) {
-    $routed = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type workflow-input-routed -Summary ([string]$source.summary) -Artifact $routingPath -Evidence @($SourceEventId, "routing:$routingId", "execution-mode:$ExecutionMode") -TargetAgentId $target -ConfigPath $ConfigPath -CodexHome $CodexHome
-    $routedEvents.Add($routed)
+if (-not $preservedDirectTarget) {
+    foreach ($target in $targets) {
+        $routed = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type workflow-input-routed -Summary ([string]$source.summary) -Artifact $routingPath -Evidence @($SourceEventId, "routing:$routingId", "execution-mode:$ExecutionMode") -TargetAgentId $target -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $routedEvents.Add($routed)
+    }
 }
 $decision = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $orchestratorId -Type routing-decision -Summary $Rationale.Trim() -Artifact $routingPath -Evidence (@($SourceEventId, "routing:$routingId") + @($routedEvents | ForEach-Object { [string]$_.eventId })) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $record = [ordered]@{
@@ -94,6 +104,7 @@ $record = [ordered]@{
     codeChangesAllowed = $codeChangesAllowed
     continueAutomatically = $continueAutomatically
     routedEventIds = @($routedEvents | ForEach-Object { [string]$_.eventId })
+    preservedDirectTarget = [bool]$preservedDirectTarget
     createdAtUtc = [DateTime]::UtcNow.ToString('o')
 }
 $line = ($record | ConvertTo-Json -Depth 10 -Compress) + [Environment]::NewLine
@@ -114,7 +125,7 @@ foreach ($agentId in $modeAgentIds) {
     }
 }
 
-if ([string]$source.type -in $workflowCommentSourceTypes) {
+if ([string]$source.type -in $workflowCommentSourceTypes -and -not $preservedDirectTarget) {
     & (Join-Path $PSScriptRoot 'Acknowledge-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $orchestratorId -EventIds @($SourceEventId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 if ($RequiresUserInput) {

@@ -475,10 +475,17 @@ $routeAgain = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $
 $developerBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId developer -ConfigPath $routingConfigPath
 $orchestratorAfter = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
 $directComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $routingTaskId -Text 'Review the signing diff.' -TargetAgentId reviewer -ConfigPath $routingConfigPath
+$directModeRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $directComment.CommentId -TargetAgentIds reviewer -ExecutionMode review-only -Rationale 'The explicit Reviewer target is preserved while the compatible review-only mode is confirmed.' -Confidence high -ConfigPath $routingConfigPath
+$directModeWrongTargetRejected = $false
+try {
+    & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $routingTaskId -SourceEventId $directComment.CommentId -TargetAgentIds developer -ExecutionMode implementation-only -Rationale 'A different target must still be rejected.' -Confidence high -ConfigPath $routingConfigPath | Out-Null
+}
+catch { $directModeWrongTargetRejected = $_.Exception.Message -eq "Comment '$([string]$directComment.CommentId)' is explicitly targeted to 'reviewer' and cannot be reclassified." }
+$directReviewerBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId reviewer -ConfigPath $routingConfigPath
 $orchestratorFinal = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $routingTaskId -AgentId orchestrator -ConfigPath $routingConfigPath
 $routingTaskAfter = Get-Content -LiteralPath (Join-Path $routingTask.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$route.Status -ne 'routed' -or [string]$routeAgain.Status -ne 'already-routed' -or @($route.Routing.targets) -notcontains 'developer') { throw 'Workflow routing is not durable and idempotent.' }
-if (@($developerBatch.comments | Where-Object sourceEventId -eq $generalComment.CommentId).Count -ne 1 -or [int]$orchestratorAfter.count -ne 0 -or [int]$orchestratorFinal.count -ne 0 -or [string]$directComment.RoutingStatus -ne 'direct' -or [string]$routingTaskAfter.agentStatuses.developer.status -ne 'completed') { throw 'Routed inputs must remain addressable without changing a preserved target agent status.' }
+if (@($developerBatch.comments | Where-Object sourceEventId -eq $generalComment.CommentId).Count -ne 1 -or [int]$orchestratorAfter.count -ne 0 -or [int]$orchestratorFinal.count -ne 0 -or [string]$directComment.RoutingStatus -ne 'direct' -or [string]$routingTaskAfter.agentStatuses.developer.status -ne 'completed' -or [string]$directModeRoute.Routing.executionMode -ne 'review-only' -or -not [bool]$directModeRoute.Routing.preservedDirectTarget -or @($directModeRoute.Routing.routedEventIds).Count -ne 0 -or @($directReviewerBatch.eventIds) -notcontains [string]$directComment.CommentId -or -not $directModeWrongTargetRejected) { throw 'Routed inputs or exact-target mode confirmation changed an explicit owner, acknowledged its input, or rewrote preserved agent status.' }
 if (-not (Test-Path -LiteralPath (Join-Path $routingTask.TaskRoot 'workflow-routing.jsonl') -PathType Leaf)) { throw 'workflow-routing.jsonl was not persisted.' }
 Add-Check -Name 'workflow-orchestrator-routing' -Detail 'General comments route once; explicit targets remain direct; routed inputs are addressable without rewriting preserved target status'
 

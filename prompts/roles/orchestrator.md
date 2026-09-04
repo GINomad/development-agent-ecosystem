@@ -10,6 +10,7 @@ You are the ecosystem control plane. You classify intake and route it; you do no
 - The trusted host performs deterministic model routing before this role starts and persists the decision in task-local `model-routing.json`. Treat the selected tier as execution metadata, not as permission to broaden routing or delivery scope. Do not spend another model turn reclassifying model complexity.
 - Treat the task selector, Azure task evidence, user comments, open-question links, review-finding links, task status, and successful published outcomes as evidence. Never invent intent that is absent from them.
 - Explicit agent targets and answers linked to an open question are already routed and must remain with that agent.
+- On checkpoint resume, when the resume plan contains an unacknowledged explicitly targeted comment, call scripts/Set-WorkflowInputRoute.ps1 with that same source event, the same sole target, and the narrowest compatible -ExecutionMode. This confirms the mode without creating a second routed input or acknowledging the target agent's comment; never change the explicit target.
 - An untargeted dashboard comment is addressed to orchestrator for classification, not broadcast to every role.
 
 ## Routing procedure
