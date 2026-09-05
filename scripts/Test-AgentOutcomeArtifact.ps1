@@ -60,6 +60,103 @@ function Test-NonEmptyStringArray {
 
 $reviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
 
+function Assert-DocumentationUpdates {
+    param(
+        [Parameter(Mandatory)] $Presentation,
+        [Parameter(Mandatory)][string] $UpdatesPropertyName,
+        [Parameter(Mandatory)][string] $Label
+    )
+
+    Assert-RequiredProperties -Document $Presentation -Names @('title','overview',$UpdatesPropertyName) -Label $Label
+    if ([string]::IsNullOrWhiteSpace([string]$Presentation.title) -or [string]::IsNullOrWhiteSpace([string]$Presentation.overview)) {
+        throw "$Label requires a title and overview written for people."
+    }
+    $updates = @($Presentation.$UpdatesPropertyName | Where-Object { $null -ne $_ })
+    $ids = [Collections.Generic.List[string]]::new()
+    foreach ($update in $updates) {
+        Assert-RequiredProperties -Document $update -Names @('knowledgeId','title','description','applicability','status') -Label "$Label documentation item"
+        foreach ($propertyName in @('knowledgeId','title','description','applicability','status')) {
+            if ([string]::IsNullOrWhiteSpace([string]$update.$propertyName)) { throw "$Label documentation item has an empty '$propertyName'." }
+        }
+        if ([string]$update.status -notin @('verified','superseded')) { throw "$Label documentation item '$([string]$update.knowledgeId)' has an unsupported status." }
+        $ids.Add([string]$update.knowledgeId)
+    }
+    if (@($ids | Select-Object -Unique).Count -ne $ids.Count) { throw "$Label contains duplicate documented knowledge IDs." }
+    return @($updates)
+}
+
+function Assert-ExactKnowledgeIds {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Expected,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Actual,
+        [Parameter(Mandatory)][string] $Label
+    )
+
+    if (@($Actual | Select-Object -Unique).Count -ne $Actual.Count -or $Actual.Count -ne $Expected.Count -or @($Expected | Where-Object { $_ -notin $Actual }).Count) {
+        throw "$Label must document every verified or superseded knowledge entry exactly once and no proposed entries."
+    }
+}
+
+function Get-EligibleKnowledgeEntries {
+    param(
+        [Parameter(Mandatory)] $Knowledge,
+        [Parameter(Mandatory)][string] $Label
+    )
+
+    $entries = @($Knowledge.entries | Where-Object { $null -ne $_ })
+    $ids = @($entries | ForEach-Object { [string]$_.id })
+    if (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -or @($ids | Select-Object -Unique).Count -ne $ids.Count) {
+        throw "$Label knowledge entry IDs must be non-empty and unique."
+    }
+    foreach ($entry in $entries) {
+        if ([string]$entry.status -notin @('verified','proposed','superseded')) { throw "$Label knowledge entry '$([string]$entry.id)' has an unsupported status." }
+    }
+    return @($entries | Where-Object { [string]$_.status -in @('verified','superseded') })
+}
+
+if ($ArtifactName -eq 'knowledge-update.json') {
+    if ($AgentId -ne 'knowledge_keeper') { throw 'Only Knowledge Keeper may publish knowledge-update.json.' }
+    $knowledge = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-RequiredProperties -Document $knowledge -Names @('taskId','entries','humanReadable') -Label 'knowledge-update.json'
+    if ([string]$knowledge.taskId -ne $TaskId) { throw "knowledge-update.json must identify task '$TaskId'." }
+    Assert-RequiredProperties -Document $knowledge.humanReadable -Names @('audience') -Label 'knowledge-update.json humanReadable'
+    if ([string]::IsNullOrWhiteSpace([string]$knowledge.humanReadable.audience)) { throw 'knowledge-update.json humanReadable requires a reader audience.' }
+    $eligible = @(Get-EligibleKnowledgeEntries -Knowledge $knowledge -Label 'knowledge-update.json')
+    $documented = @(Assert-DocumentationUpdates -Presentation $knowledge.humanReadable -UpdatesPropertyName 'updates' -Label 'knowledge-update.json humanReadable')
+    Assert-ExactKnowledgeIds -Expected @($eligible | ForEach-Object { [string]$_.id }) -Actual @($documented | ForEach-Object { [string]$_.knowledgeId }) -Label 'knowledge-update.json humanReadable'
+    foreach ($update in $documented) {
+        $entry = @($eligible | Where-Object { [string]$_.id -eq [string]$update.knowledgeId }) | Select-Object -First 1
+        if ([string]$update.status -ne [string]$entry.status) { throw "Documented knowledge '$([string]$update.knowledgeId)' does not match its machine status." }
+    }
+    return
+}
+
+if ($ArtifactName -eq 'task-summary.json') {
+    if ($AgentId -ne 'knowledge_keeper') { throw 'Only Knowledge Keeper may publish task-summary.json.' }
+    $summary = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-RequiredProperties -Document $summary -Names @('taskId','status','completedAtUtc','repositories','outcomes','decisions','verification','knowledgeUpdates','artifacts','residualItems','humanReadable') -Label 'task-summary.json'
+    if ([string]$summary.taskId -ne $TaskId -or [string]$summary.status -ne 'completed') { throw "task-summary.json must identify completed task '$TaskId'." }
+    Assert-RequiredProperties -Document $summary.humanReadable -Names @('delivered','decisions','verification','knowledgeUpdates','residualItems') -Label 'task-summary.json humanReadable'
+    foreach ($propertyName in @('delivered','decisions','verification','residualItems')) {
+        if (@($summary.humanReadable.$propertyName | Where-Object { [string]::IsNullOrWhiteSpace([string]$_) }).Count) { throw "task-summary.json humanReadable '$propertyName' contains an empty item." }
+    }
+    $documented = @(Assert-DocumentationUpdates -Presentation $summary.humanReadable -UpdatesPropertyName 'knowledgeUpdates' -Label 'task-summary.json humanReadable')
+    $machineIds = @($summary.knowledgeUpdates | ForEach-Object { [string]$_ })
+    if (@($machineIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count) { throw 'task-summary.json knowledgeUpdates contains an empty ID.' }
+    $knowledgePath = Join-Path $TaskRoot 'knowledge-update.json'
+    if (-not (Test-Path -LiteralPath $knowledgePath -PathType Leaf)) { throw 'task-summary.json requires knowledge-update.json for documentation verification.' }
+    $knowledge = Get-Content -LiteralPath $knowledgePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $eligible = @(Get-EligibleKnowledgeEntries -Knowledge $knowledge -Label 'task-summary.json')
+    $eligibleIds = @($eligible | ForEach-Object { [string]$_.id })
+    Assert-ExactKnowledgeIds -Expected $eligibleIds -Actual $machineIds -Label 'task-summary.json machine knowledgeUpdates'
+    Assert-ExactKnowledgeIds -Expected $eligibleIds -Actual @($documented | ForEach-Object { [string]$_.knowledgeId }) -Label 'task-summary.json humanReadable'
+    foreach ($update in $documented) {
+        $entry = @($eligible | Where-Object { [string]$_.id -eq [string]$update.knowledgeId }) | Select-Object -First 1
+        if ([string]$update.status -ne [string]$entry.status) { throw "Task-summary documentation '$([string]$update.knowledgeId)' does not match its machine status." }
+    }
+    return
+}
+
 if ($ArtifactName -eq 'review-result.json') {
     if ($AgentId -ne 'reviewer') { throw 'Only Reviewer may publish review-result.json.' }
     $review = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json

@@ -228,6 +228,7 @@ $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html
 $dashboardCss = Get-Content -LiteralPath (Join-Path $root 'dashboard\styles.css') -Raw -Encoding UTF8
 $reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
 $reviewVerifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
+$knowledgeKeeperPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\knowledge-keeper.md') -Raw -Encoding UTF8
 foreach ($marker in @('/api/tasks','/agents/','/artifacts/','/comments','/diff','/close','/reopen','/api/external-reviews','/external-review-report/','activePullRequests','/api/health-checks/run','/health-recovery/elevated','/workflow/elevated','/workflow/stop','/resume','Start-HealthTargetedResume.ps1','Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Add-TaskComment.ps1','Invoke-EcosystemHealthCheck.ps1','maximumPreviewBytes')) {
     if ($dashboardServer -notmatch [regex]::Escape($marker)) { throw "Dashboard server is missing task-monitor contract marker: $marker" }
 }
@@ -265,6 +266,15 @@ $requirementsSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\
 if (@($requirementsSchema.required) -notcontains 'humanReadable' -or -not $requirementsSchema.'$defs'.humanReadable -or -not $requirementsSchema.'$defs'.humanReadable.properties.workflow -or -not $requirementsSchema.'$defs'.humanReadable.properties.implementationPlan) { throw 'Requirements analysis schema must require a human-readable requirements, workflow, and implementation-plan presentation.' }
 if ($dashboardClient -notmatch 'renderRequirementsOutcome' -or $dashboardClient -notmatch 'requirementsPresentation' -or $dashboardHtml -notmatch 'agent-outcome-content' -or $dashboardCss -notmatch 'requirements-outcome') { throw 'Dashboard does not interpret the Requirements Analyst presentation while preserving raw outcomes.' }
 Add-Check -Name 'human-readable-requirements-outcome' -Detail 'Requirements Analyst schema and dashboard expose requirements, acceptance criteria, workflow, and implementation plan with legacy fallback'
+$knowledgeUpdateSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\knowledge-update.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskSummarySchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\task-summary.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if (@($knowledgeUpdateSchema.required) -notcontains 'humanReadable' -or @($taskSummarySchema.required) -notcontains 'humanReadable' -or -not $knowledgeUpdateSchema.'$defs'.humanReadable.properties.audience -or -not $knowledgeUpdateSchema.'$defs'.documentationUpdate.properties.applicability -or -not $taskSummarySchema.'$defs'.humanReadable.properties.delivered -or -not $taskSummarySchema.'$defs'.humanReadable.properties.knowledgeUpdates) {
+    throw 'Knowledge Keeper schemas must require documentation-style knowledge updates and task summaries.'
+}
+if ($dashboardClient -notmatch 'renderKnowledgeUpdateOutcome' -or $dashboardClient -notmatch 'renderTaskSummaryOutcome' -or $dashboardClient -notmatch 'knowledgeUpdatePresentation' -or $dashboardClient -notmatch 'taskSummaryPresentation' -or $dashboardCss -notmatch 'knowledge-outcome' -or $knowledgeKeeperPrompt -notmatch '## Human-readable outcome' -or $knowledgeKeeperPrompt -notmatch 'Do not expose proposed') {
+    throw 'Knowledge Keeper does not publish or render a safe human-readable outcome with legacy fallback.'
+}
+Add-Check -Name 'human-readable-knowledge-outcome' -Detail 'Knowledge Keeper schemas, prompt, validator, and dashboard publish end-user documentation while excluding proposed knowledge and supporting legacy artifacts'
 $reviewDecisionsSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-decisions.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $techDebtSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\tech-debt-items.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($reviewDecisionsSchema.properties.decisions.items.properties.decision.enum) -notcontains 'bypassed' -or @($reviewDecisionsSchema.properties.decisions.items.required) -notcontains 'reviewArtifactSha256' -or @($reviewDecisionsSchema.properties.decisions.items.required) -notcontains 'verificationVerdict' -or -not $reviewDecisionsSchema.properties.decisions.items.properties.techDebtItemId -or @($techDebtSchema.'$defs'.item.required) -notcontains 'reviewVerificationArtifact' -or @($techDebtSchema.'$defs'.item.required) -notcontains 'reviewArtifactSha256') { throw 'Review decisions and bypass debt must be bound to an independently verified exact review artifact.' }
@@ -1045,9 +1055,35 @@ $closureInput = @($orchestratorClosureBatch.comments) | Select-Object -First 1
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $lifecycleTaskId -AgentId orchestrator -AgentStatus completed -Stage orchestration_complete -Message 'Synthetic closure route completed.' -ConfigPath $pipelineTestConfigPath | Out-Null
 $orchestratorContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $lifecycleTaskId -CompletedAgentId orchestrator -PrepareOnly -ConfigPath $pipelineTestConfigPath
 if ([string]$orchestratorContinuation.Status -ne 'prepared' -or [string]$orchestratorContinuation.NextAgentId -ne 'knowledge_keeper') { throw 'Knowledge Keeper must start only after Orchestrator persists the final-publication route.' }
-Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'knowledge-update.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; entries=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$knowledgeDocumentation = [ordered]@{
+    knowledgeId='SYNTH-KNOWLEDGE-001'; title='Completed pull requests enter the final publication stage';
+    description='After the pipeline succeeds and the pull request completes, Orchestrator routes the task to Knowledge Keeper for final publication.';
+    applicability='Applies to completed delivery workflows with a persisted final-publication route.'; status='verified'
+}
+$knowledgeOutcome = [ordered]@{
+    taskId=$lifecycleTaskId
+    entries=@(
+        [ordered]@{ id='SYNTH-KNOWLEDGE-001'; status='verified'; statement=$knowledgeDocumentation.description; source='synthetic:lifecycle-test'; revision='git:synthetic'; observedAtUtc='2026-08-10T12:00:00Z'; observedBy='knowledge_keeper'; targetPath='knowledge\delivery\completed-pull-requests.md'; scope=$knowledgeDocumentation.applicability; evidence=@('pipeline-result.json','task-closure.json') },
+        [ordered]@{ id='SYNTH-PROPOSED-001'; status='proposed'; statement='A proposal must not appear in end-user documentation.'; source='synthetic:lifecycle-test'; revision='git:synthetic'; observedAtUtc='2026-08-10T12:00:00Z'; observedBy='knowledge_keeper'; targetPath='knowledge\delivery\draft.md' }
+    )
+    humanReadable=[ordered]@{ title='Completed delivery knowledge'; overview='One verified workflow rule was recorded for users and maintainers.'; audience='Ecosystem users and maintainers'; updates=@($knowledgeDocumentation) }
+}
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'knowledge-update.json') -Content (($knowledgeOutcome | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'context-pack.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; artifacts=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'task-summary.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; status='completed'; completedAtUtc=[DateTime]::UtcNow.ToString('o'); repositories=@('azure-planningspace-ps-excel-agent'); outcomes=@('Synthetic completed-PR closure published.'); decisions=@(); verification=@('Pipeline succeeded and PR completed.'); knowledgeUpdates=@(); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$humanSummary = [ordered]@{ title='Synthetic completed delivery'; overview='The completed pull request was validated and its durable knowledge was published.'; delivered=@('Published the completed-PR closure.'); decisions=@('Final publication starts only after the Orchestrator route is persisted.'); verification=@('Pipeline succeeded and pull request 123 completed.'); knowledgeUpdates=@($knowledgeDocumentation); residualItems=@() }
+Write-Utf8NoBom -Path (Join-Path $lifecycleTask.TaskRoot 'task-summary.json') -Content (([ordered]@{ taskId=$lifecycleTaskId; status='completed'; completedAtUtc=[DateTime]::UtcNow.ToString('o'); repositories=@('azure-planningspace-ps-excel-agent'); outcomes=@([ordered]@{ agentId='orchestrator'; summary='Synthetic completed-PR closure published.'; artifact='task-closure.json' }); decisions=@('Final publication follows the persisted Orchestrator route.'); verification=@('Pipeline succeeded and PR completed.'); knowledgeUpdates=@('SYNTH-KNOWLEDGE-001'); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@(); humanReadable=$humanSummary } | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$invalidKnowledgeOutcome = $knowledgeOutcome | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+$invalidKnowledgeOutcome.humanReadable.updates = @()
+$invalidKnowledgePath = Join-Path $lifecycleTask.TaskRoot 'invalid-knowledge-update.json'
+Write-Utf8NoBom -Path $invalidKnowledgePath -Content (($invalidKnowledgeOutcome | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$invalidKnowledgeRejected = $false
+try {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $lifecycleTaskId -AgentId knowledge_keeper -ArtifactName 'knowledge-update.json' -Path $invalidKnowledgePath -TaskRoot $lifecycleTask.TaskRoot
+} catch {
+    if ($_.Exception.Message -notmatch 'exactly once') { throw }
+    $invalidKnowledgeRejected = $true
+}
+if (-not $invalidKnowledgeRejected) { throw 'Knowledge Keeper validation accepted documentation that omitted verified knowledge.' }
 $knowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $lifecycleTaskId -AgentId knowledge_keeper -Summary 'Synthetic completed-PR closure published.' -ConfigPath $pipelineTestConfigPath
 $publishedLifecycleTask = Get-Content -LiteralPath $lifecycleTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$knowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLifecycleTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'Completed-PR knowledge-only routing did not permit final Knowledge Keeper publication after excluded delivery roles became validated no-op states.' }

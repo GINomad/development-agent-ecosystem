@@ -202,21 +202,25 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .agent-outcome-artifact.missing { color: var(--muted); opacity: .7; }
 .agent-outcome-artifact-meta { margin: 10px 16px 0; color: var(--muted); font-size: .69rem; }
 .agent-outcome-content > pre { margin: 10px 16px 16px; padding: 12px; max-height: 460px; overflow: auto; border-radius: 9px; background: #070b10; color: #cbd8e7; white-space: pre-wrap; word-break: break-word; font: .72rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.requirements-outcome { display: grid; gap: 16px; padding: 12px 16px 18px; color: #dce7f4; }
-.requirements-outcome > header { padding: 14px; border: 1px solid rgba(107, 156, 255, .28); border-radius: 10px; background: rgba(107, 156, 255, .06); }
-.requirements-outcome h5, .requirements-outcome h6 { margin: 0 0 8px; color: #f2f7ff; }
-.requirements-outcome h5 { font-size: 1rem; }
-.requirements-outcome h6 { font-size: .82rem; letter-spacing: .02em; }
-.requirements-outcome p { margin: 6px 0; line-height: 1.5; }
-.requirements-outcome section { display: grid; gap: 9px; min-width: 0; }
-.requirements-card, .requirements-step { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; overflow-wrap: anywhere; }
+:is(.requirements-outcome, .knowledge-outcome) { display: grid; gap: 16px; padding: 12px 16px 18px; color: #dce7f4; }
+:is(.requirements-outcome, .knowledge-outcome) > header { padding: 14px; border: 1px solid rgba(107, 156, 255, .28); border-radius: 10px; background: rgba(107, 156, 255, .06); }
+:is(.requirements-outcome, .knowledge-outcome) h5, :is(.requirements-outcome, .knowledge-outcome) h6 { margin: 0 0 8px; color: #f2f7ff; }
+:is(.requirements-outcome, .knowledge-outcome) h5 { font-size: 1rem; }
+:is(.requirements-outcome, .knowledge-outcome) h6 { font-size: .82rem; letter-spacing: .02em; }
+:is(.requirements-outcome, .knowledge-outcome) p { margin: 6px 0; line-height: 1.5; }
+:is(.requirements-outcome, .knowledge-outcome) section { display: grid; gap: 9px; min-width: 0; }
+.requirements-card, .requirements-step, .knowledge-update-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; overflow-wrap: anywhere; }
 .requirements-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .requirements-card b, .requirements-step b { display: block; margin-top: 9px; color: #b9cfff; font-size: .7rem; }
-.requirements-card ul, .requirements-step ul { margin: 7px 0 0; padding-left: 20px; color: #c5d3e3; line-height: 1.45; }
+.requirements-card ul, .requirements-step ul, .knowledge-outcome ul { margin: 7px 0 0; padding-left: 20px; color: #c5d3e3; line-height: 1.45; }
 .requirements-step > span { display: inline-block; margin: 4px 0 0 8px; color: var(--muted); font-size: .69rem; }
 .requirements-status { flex: 0 0 auto; padding: 3px 7px; border: 1px solid currentColor; border-radius: 999px; font-size: .63rem; font-weight: 800; text-transform: uppercase; }
 .requirements-gate { color: #9dbdff; font-size: .72rem; }
 .requirements-empty, .requirements-legacy-note { color: var(--muted); font-size: .7rem; }
+.knowledge-update-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.knowledge-identifier, .knowledge-audience { color: var(--muted); font-size: .7rem; }
+.knowledge-applicability { color: #9dbdff; font-size: .72rem; }
+.knowledge-status { margin-left: 12px; }
 .review-diff-panel { min-width: 0; max-width: 100%; margin-top: 12px; border: 1px solid rgba(107, 156, 255, .45); border-radius: 12px; background: #080d13; overflow: hidden; }
 .review-diff-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .review-diff-header h4 { margin: 3px 0 2px; }
