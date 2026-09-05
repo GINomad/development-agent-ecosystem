@@ -617,6 +617,169 @@ function renderRequirementsOutcome(rawContent) {
   return true;
 }
 
+function documentedKnowledgeUpdate(entry) {
+  return {
+    knowledgeId: entry?.id || 'legacy-entry',
+    title: entry?.id || 'Knowledge update',
+    description: entry?.statement || 'No description was published.',
+    applicability: entry?.scope || entry?.targetPath || 'See the persisted knowledge target for applicability.',
+    status: entry?.status || 'verified'
+  };
+}
+
+function knowledgeUpdatePresentation(result) {
+  if (result?.humanReadable) return result.humanReadable;
+  const eligible = (Array.isArray(result?.entries) ? result.entries : [])
+    .filter(entry => ['verified', 'superseded'].includes(entry?.status))
+    .map(documentedKnowledgeUpdate);
+  return {
+    title: `Knowledge update for ${result?.taskId || 'task'}`,
+    overview: eligible.length
+      ? `${eligible.length} verified or superseded knowledge update${eligible.length === 1 ? '' : 's'} were published.`
+      : 'No durable knowledge update was published for this task.',
+    audience: 'Maintainers and users of the affected repositories',
+    updates: eligible,
+    legacyDerived: true
+  };
+}
+
+function taskSummaryPresentation(result) {
+  if (result?.humanReadable) return result.humanReadable;
+  const delivered = (Array.isArray(result?.outcomes) ? result.outcomes : []).map(outcome =>
+    typeof outcome === 'string' ? outcome : outcome?.summary
+  ).filter(Boolean);
+  return {
+    title: `Completed task ${result?.taskId || ''}`.trim(),
+    overview: delivered[0] || 'The task was completed and its machine-readable outcome was published.',
+    delivered,
+    decisions: Array.isArray(result?.decisions) ? result.decisions : [],
+    verification: Array.isArray(result?.verification) ? result.verification : [],
+    knowledgeUpdates: (Array.isArray(result?.knowledgeUpdates) ? result.knowledgeUpdates : []).map(id => ({
+      knowledgeId: id,
+      title: id,
+      description: 'See knowledge-update.json for the persisted statement and evidence.',
+      applicability: 'See the persisted knowledge target for applicability.',
+      status: 'verified'
+    })),
+    residualItems: Array.isArray(result?.residualItems) ? result.residualItems : [],
+    legacyDerived: true
+  };
+}
+
+function appendKnowledgeDocumentation(parent, updates, emptyText) {
+  const items = Array.isArray(updates) ? updates : [];
+  if (!items.length) {
+    appendOutcomeList(parent, [], emptyText);
+    return;
+  }
+  items.forEach(update => {
+    const card = document.createElement('article');
+    card.className = 'knowledge-update-card';
+    const heading = document.createElement('div');
+    heading.className = 'knowledge-update-heading';
+    const title = document.createElement('strong');
+    title.textContent = update.title || update.knowledgeId || 'Knowledge update';
+    const status = document.createElement('span');
+    status.className = `requirements-status knowledge-status ${statusClass(update.status)}`;
+    status.textContent = update.status || 'unknown';
+    heading.append(title, status);
+    const identifier = document.createElement('p');
+    identifier.className = 'knowledge-identifier';
+    identifier.textContent = `Knowledge ID: ${update.knowledgeId || 'not published'}`;
+    const description = document.createElement('p');
+    description.textContent = update.description || '';
+    const applicability = document.createElement('p');
+    applicability.className = 'knowledge-applicability';
+    applicability.textContent = `Applies to: ${update.applicability || 'not published'}`;
+    card.append(heading, identifier, description, applicability);
+    parent.append(card);
+  });
+}
+
+function appendKnowledgeSection(parent, titleText, values, emptyText) {
+  const section = document.createElement('section');
+  const title = document.createElement('h6');
+  title.textContent = titleText;
+  section.append(title);
+  appendOutcomeList(section, values, emptyText);
+  parent.append(section);
+}
+
+function renderKnowledgeUpdateOutcome(rawContent) {
+  let result;
+  try {
+    result = JSON.parse(rawContent);
+  } catch {
+    return false;
+  }
+  const presentation = knowledgeUpdatePresentation(result);
+  if (!presentation || !Array.isArray(presentation.updates)) return false;
+  const documentView = document.createElement('article');
+  documentView.className = 'knowledge-outcome';
+  const heading = document.createElement('header');
+  const title = document.createElement('h5');
+  title.textContent = presentation.title || 'Knowledge update';
+  const overview = document.createElement('p');
+  overview.textContent = presentation.overview || '';
+  const audience = document.createElement('p');
+  audience.className = 'knowledge-audience';
+  audience.textContent = `For: ${presentation.audience || 'users and maintainers'}`;
+  heading.append(title, overview, audience);
+  if (presentation.legacyDerived) {
+    const legacy = document.createElement('p');
+    legacy.className = 'requirements-legacy-note';
+    legacy.textContent = 'Legacy outcome: this documentation view was derived from persisted machine fields.';
+    heading.append(legacy);
+  }
+  documentView.append(heading);
+  const updates = document.createElement('section');
+  const updatesTitle = document.createElement('h6');
+  updatesTitle.textContent = 'Documented knowledge';
+  updates.append(updatesTitle);
+  appendKnowledgeDocumentation(updates, presentation.updates, 'No durable knowledge changes were recorded.');
+  documentView.append(updates);
+  document.querySelector('#agentOutcomeContent').replaceChildren(documentView);
+  return true;
+}
+
+function renderTaskSummaryOutcome(rawContent) {
+  let result;
+  try {
+    result = JSON.parse(rawContent);
+  } catch {
+    return false;
+  }
+  const presentation = taskSummaryPresentation(result);
+  if (!presentation || !Array.isArray(presentation.knowledgeUpdates)) return false;
+  const documentView = document.createElement('article');
+  documentView.className = 'knowledge-outcome';
+  const heading = document.createElement('header');
+  const title = document.createElement('h5');
+  title.textContent = presentation.title || 'Task outcome';
+  const overview = document.createElement('p');
+  overview.textContent = presentation.overview || '';
+  heading.append(title, overview);
+  if (presentation.legacyDerived) {
+    const legacy = document.createElement('p');
+    legacy.className = 'requirements-legacy-note';
+    legacy.textContent = 'Legacy outcome: this documentation view was derived from persisted machine fields.';
+    heading.append(legacy);
+  }
+  documentView.append(heading);
+  appendKnowledgeSection(documentView, 'What was delivered', presentation.delivered, 'No delivery summary was published.');
+  appendKnowledgeSection(documentView, 'Decisions', presentation.decisions, 'No durable decisions were recorded.');
+  appendKnowledgeSection(documentView, 'Verification', presentation.verification, 'No verification summary was published.');
+  const updates = document.createElement('section');
+  const updatesTitle = document.createElement('h6');
+  updatesTitle.textContent = 'Knowledge for users';
+  updates.append(updatesTitle);
+  appendKnowledgeDocumentation(updates, presentation.knowledgeUpdates, 'No durable knowledge changes were recorded.');
+  documentView.append(updates);
+  appendKnowledgeSection(documentView, 'Residual items', presentation.residualItems, 'No residual items were reported.');
+  document.querySelector('#agentOutcomeContent').replaceChildren(documentView);
+  return true;
+}
+
 function renderRawAgentOutcome(rawContent) {
   const content = document.querySelector('#agentOutcomeContent');
   const pre = document.createElement('pre');
@@ -637,9 +800,14 @@ async function loadAgentOutcomeArtifact(name) {
     if (selectedTaskId !== taskId || selectedOutcomeAgentId !== agentId || selectedOutcomeArtifactName !== name) return;
     const artifact = result.artifact;
     document.querySelector('#agentOutcomeArtifactMeta').textContent = `${artifact.name} - ${artifact.length} bytes - updated ${formatDate(artifact.lastWriteTimeUtc)}${artifact.truncated ? ' - preview limited to 1 MiB' : ''}`;
-    const rendered = agentId === 'requirements_analyst' && name === 'requirements-analysis.json'
-      ? renderRequirementsOutcome(artifact.content || '')
-      : false;
+    let rendered = false;
+    if (agentId === 'requirements_analyst' && name === 'requirements-analysis.json') {
+      rendered = renderRequirementsOutcome(artifact.content || '');
+    } else if (agentId === 'knowledge_keeper' && name === 'knowledge-update.json') {
+      rendered = renderKnowledgeUpdateOutcome(artifact.content || '');
+    } else if (agentId === 'knowledge_keeper' && name === 'task-summary.json') {
+      rendered = renderTaskSummaryOutcome(artifact.content || '');
+    }
     if (!rendered) renderRawAgentOutcome(artifact.content || '');
     document.querySelectorAll('.agent-outcome-artifact').forEach(button => button.classList.toggle('selected', button.dataset.name === name));
   } catch (error) {

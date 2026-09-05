@@ -626,12 +626,13 @@
     {
       "id": "knowledge_keeper",
       "name": "development_knowledge_keeper",
-      "description": "On-demand knowledge service that selects verified context, records completed task history, and maintains evidence-backed knowledge.",
+      "description": "On-demand knowledge service that selects verified context, records completed task history, maintains evidence-backed knowledge, and publishes documentation-style human-readable outcomes.",
       "responsibilities": [
         "Provide bounded verified code, domain, decision, and skill context when another agent requests it.",
         "Ingest only successful final agent outcomes and decide what verified knowledge must be updated.",
         "Evaluate every confirmed review comment about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles and promote it into a global or technology-scoped standard only after independent verification, successful implementation when applicable, a clean review, and passing exact-SHA verification; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude verifier-rejected, bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
         "Maintain per-task history and publish the final task summary after delivery completion.",
+        "Present verified and superseded knowledge updates in plain language with applicability, and summarize completed delivery as end-user documentation while preserving machine-readable evidence.",
         "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
       ],

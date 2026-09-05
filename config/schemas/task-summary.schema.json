@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "status", "completedAtUtc", "repositories", "outcomes", "decisions", "verification", "knowledgeUpdates", "artifacts", "residualItems"],
+  "required": ["taskId", "status", "completedAtUtc", "repositories", "outcomes", "decisions", "verification", "knowledgeUpdates", "artifacts", "residualItems", "humanReadable"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "status": { "const": "completed" },
@@ -13,6 +13,38 @@
     "verification": { "type": "array", "items": { "type": "string" } },
     "knowledgeUpdates": { "type": "array", "items": { "type": "string" } },
     "artifacts": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
-    "residualItems": { "type": "array", "items": { "type": "string" } }
+    "residualItems": { "type": "array", "items": { "type": "string" } },
+    "humanReadable": { "$ref": "#/$defs/humanReadable" }
+  },
+  "$defs": {
+    "humanReadable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "overview", "delivered", "decisions", "verification", "knowledgeUpdates", "residualItems"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "overview": { "type": "string", "minLength": 1 },
+        "delivered": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "decisions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "verification": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "knowledgeUpdates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/documentationUpdate" }
+        },
+        "residualItems": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "documentationUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["knowledgeId", "title", "description", "applicability", "status"],
+      "properties": {
+        "knowledgeId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "applicability": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["verified", "superseded"] }
+      }
+    }
   }
 }
