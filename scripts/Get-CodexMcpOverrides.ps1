@@ -1,0 +1,13 @@
+[CmdletBinding()]
+param([Parameter(Mandatory)][string] $CodexPath,[string[]] $EnabledServers=@(),[object[]] $ServerPolicies=@(),[ValidateRange(1,3600)][int] $ToolTimeoutSeconds=20)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+function ConvertTo-TomlString { param([string]$Value) '"'+$Value.Replace('\','\\').Replace('"','\"')+'"' }
+function Get-InventoryTransport { param($Entry) if($Entry -is [string]){throw "MCP inventory transport for '$Entry' is incomplete."};if($Entry.PSObject.Properties['transport']){$Entry.transport}else{$Entry} }
+if(-not(Test-Path $CodexPath)){throw 'Codex MCP inventory executable was not found.'}
+try{$json=& $CodexPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $json){throw 'empty inventory'};$document=$json|ConvertFrom-Json;$inventory=if($document.PSObject.Properties['servers']){@($document.servers)}else{@($document)}}catch{throw 'Codex MCP inventory cannot be verified; MCP dispatch is denied.'}
+$names=@($inventory|ForEach-Object{[string]$_.name});foreach($name in $names){if($name -notmatch '^[A-Za-z0-9_-]+$'){throw 'Codex MCP inventory contains an unsafe configuration key; MCP dispatch is denied.'}}
+foreach($requested in $EnabledServers){if($requested -notin $names){throw "Requested MCP server '$requested' is not present in the verified Codex inventory."}}
+$result=[Collections.Generic.List[string]]::new()
+foreach($entry in $inventory){$name=[string]$entry.name;$transport=Get-InventoryTransport $entry;$enabled=$name -in $EnabledServers;if($transport.PSObject.Properties['command']){$result.Add(('mcp_servers.{0}.command={1}' -f $name,(ConvertTo-TomlString ([string]$transport.command))));$args=@($transport.args);$encoded = (@($args | ForEach-Object { ConvertTo-TomlString ([string]$_) })) -join ',';$result.Add(('mcp_servers.{0}.args=[{1}]' -f $name,$encoded))}elseif($transport.PSObject.Properties['url']){$result.Add(('mcp_servers.{0}.url={1}' -f $name,(ConvertTo-TomlString ([string]$transport.url))))}else{throw "MCP inventory transport for '$name' is incomplete."};$result.Add(('mcp_servers.{0}.enabled={1}' -f $name,$enabled.ToString().ToLowerInvariant()));if($enabled){$policy=@($ServerPolicies|Where-Object{[string]$_.name -eq $name}|Select-Object -First 1);$tools=@($policy.roleTools|ForEach-Object{[string]$_}|Select-Object -Unique);if(-not $tools.Count){throw "Enabled MCP server '$name' has no role tool allowlist."};$encoded = (@($tools | ForEach-Object { ConvertTo-TomlString ([string]$_) })) -join ',';$result.Add(('mcp_servers.{0}.enabled_tools=[{1}]' -f $name,$encoded));$result.Add(('mcp_servers.{0}.tool_timeout_sec={1}' -f $name,$ToolTimeoutSeconds))}}
+@($result)

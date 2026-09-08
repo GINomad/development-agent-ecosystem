@@ -83,10 +83,15 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
+    if ([string]$Config.mcp.defaultMode -notin @('disabled','allowlist')) { throw 'mcp.defaultMode is invalid.' }
+    $mcpNames=@('ecosystem-read')+@($Config.mcp.servers|ForEach-Object{[string]$_.name})
+    if (@($mcpNames|Select-Object -Unique).Count -ne $mcpNames.Count) { throw 'MCP server names must be unique.' }
+    foreach($server in @($Config.mcp.servers)){if($server.PSObject.Properties['command'] -or $server.PSObject.Properties['arguments']){throw "External MCP server '$($server.name)' must reference an already registered server name, not a command."};if(-not @($server.allowedTools).Count -or @($server.allowedTools|Where-Object{$_ -notmatch '^(get|list|read|search)_' }).Count){throw "External MCP server '$($server.name)' must declare only read-only adapter tools."}}
+    foreach($role in @($Config.mcp.rolePolicies.PSObject.Properties)){foreach($entry in @($role.Value)){if($entry -is [string]){throw "MCP role policy '$($role.Name)' must use a server/tools object."};$name=[string]$entry.server;if($name -notin $mcpNames){throw "MCP role policy '$($role.Name)' references unknown server '$name'."};if(-not $entry.PSObject.Properties['tools'] -or -not @($entry.tools).Count){throw "MCP role policy '$($role.Name)' must declare allowed tools."};$declared=if($name -eq 'ecosystem-read'){@($Config.mcp.localServer.enabledTools)}else{@(@($Config.mcp.servers|Where-Object{[string]$_.name -eq $name}|Select-Object -First 1).allowedTools)};if(@($entry.tools|Where-Object{$_ -notin $declared}).Count){throw "MCP role policy '$($role.Name)' enables an undeclared tool for '$name'."}}}
     if (-not [bool]$Config.workflow.orchestration.enabled -or [string]$Config.workflow.orchestration.agentId -ne 'orchestrator') { throw 'workflow.orchestration must enable the configured orchestrator.' }
     if (-not [bool]$Config.workflow.orchestration.outcomeDrivenTransitions -or [string]$Config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Every successful role outcome must return through the canonical Orchestrator transition entry point.' }
     if (-not [bool]$Config.workflow.orchestration.routeUntargetedComments -or -not [bool]$Config.workflow.orchestration.preserveExplicitTargets) { throw 'Workflow intake must route untargeted comments and preserve explicit targets.' }

@@ -1680,6 +1680,9 @@ if ($commentCollector -notmatch 'ChangedPullRequestKeys' -or $commentCollector -
 Add-Check -Name 'review-monitor-config' -Detail $reviewConfig.ConfigPath
 Add-Check -Name 'per-pr-review-invalidation' -Detail 'Only the changed PR is forced; unprocessed and failed AI review state remains visible'
 
+& (Join-Path $root 'tests\Test-McpResilience.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'mcp-resilience' -Detail 'Session integrity, task isolation, quotas, metrics, and circuit canary behavior'
+
 [pscustomobject]@{
     Passed = $true
     CheckedAtUtc = [DateTime]::UtcNow.ToString('o')

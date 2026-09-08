@@ -156,3 +156,13 @@ An independently verified finding moved into linked open bypass debt is removed 
 `includeActivePrComments` adds Azure DevOps PR threads or GitHub issue, review, and inline comments to the matching PR prompt only. `rerunWhenCommentsChange` compares a per-PR discussion fingerprint and forces only the changed PR. Notes entered through the dashboard are stored separately under `reviewer-notes`. Unprocessed changes remain in `pending-review-changes.json` as `pending-ai-review`; a failed model review changes that entry to `requires-human-intervention`.
 
 `review.maxFilesPerReview` and `review.maxDiffCharacters` stop oversized PRs before a model call. The pending entry becomes `requires-human-intervention`, making the unprocessed change visible instead of silently consuming an unbounded context.
+
+## MCP context access
+
+`mcp` is deny-by-default. `ecosystem-read` is a local stdio server constrained to the current task root and public artifacts. External entries are registered runtime names only; canonical configuration never stores a URL, command, token, or secret. An external server is disabled unless a setup-confirmed role allowlist contains its registered name.
+
+The local server exposes only task-state, public-artifact summary/evidence, and bounded role-filtered comments. It cannot enumerate another task or private checkpoints. The Azure mapping, relation limits, provenance contract, prompt-injection handling, and fallback rules are specified in [Azure DevOps MCP adapter contract](mcp-azure-adapter-contract.md).
+
+For each role run the host resolves `classic`, `mcp`, or `classic-after-mcp-failure`. A circuit opens on transport, protocol, schema, or repeated timeout failures; new runs then start directly in classic mode. Health recovery is explicitly MCP-disabled, uses bounded deterministic probes, and returns through half-open state only after the configured number of successful read-only probes. Existing runs never change mode halfway through a role block.
+
+MCP sessions are HMAC-signed by a key outside the task root and are checked against the active task, role, run, and lease. The local server records successful and failed calls in `mcp-metrics.jsonl`, rejects responses over `maxResponseBytes`, and stops a role after `maxCallsPerRoleRun`. MCP is evidence transport only. The trusted PowerShell host retains task leases, workflow transitions, artifact validation, commit and delivery control, Review Verifier isolation, and all write approvals. Use `scripts/Get-McpMigrationReport.ps1` after representative baseline and canary runs; it returns `continue`, `hold`, or `rollback` only after its sample-size and quality/reliability/latency gates are evaluated; missing comparable quality evidence is a `hold`.
