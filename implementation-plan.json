@@ -1,0 +1,34 @@
+{
+  "taskId": "mcp-resilient-context-integration",
+  "branch": "feature/mcp-resilient-context-integration",
+  "baseBranch": "main",
+  "steps": [
+    {
+      "id": "mcp-policy-and-server",
+      "requirementIds": ["MCP-001", "MCP-002", "MCP-003"],
+      "files": ["config/agents.json", "config/schemas/agents.schema.json", "scripts/Start-EcosystemReadMcpServer.ps1"],
+      "change": "Add a task-scoped read-only local MCP server and strict role/server policy without storing credentials.",
+      "validation": ["Validate canonical configuration schema.", "Verify tools cannot escape the active task and role scope."]
+    },
+    {
+      "id": "mcp-resilience-and-metrics",
+      "requirementIds": ["MCP-004", "MCP-005"],
+      "files": ["scripts/Start-DevelopmentWorkflow.ps1", "scripts/Invoke-EcosystemHealthCheck.ps1", "tests/Test-McpResilience.ps1"],
+      "change": "Add classic-mode fallback, a deduplicated asynchronous MCP recovery lane, circuit breaking, and redacted metrics.",
+      "validation": ["Exercise startup, tool, protocol, isolation, fallback, recovery, and half-open scenarios.", "Verify Health Check recovery runs with MCP disabled."]
+    },
+    {
+      "id": "mcp-setup-and-documentation",
+      "requirementIds": ["MCP-006", "MCP-007"],
+      "files": ["SETUP_WITH_LLM.md", "scripts/Install-AgentEcosystem.ps1", "README.md", "docs"],
+      "change": "Add installation interview and validation for the local server and user-selected registered external servers; update documentation and diagrams.",
+      "validation": ["Validate setup contracts and external-server allowlists.", "Run the complete ecosystem test suite and a no-push/no-pipeline closed-task smoke test."]
+    }
+  ],
+  "heldScope": [
+    "The divergent Claude Code port remains outside this implementation.",
+    "No external MCP server is installed or authenticated without a separate user-confirmed setup action."
+  ],
+  "requirementsRevision": "user-approved:2026-09-08",
+  "knowledgeRevision": "3cf37873680857d6dad811780767373cd21c050e"
+}

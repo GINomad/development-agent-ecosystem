@@ -14,6 +14,7 @@
     "ui",
     "health",
     "review",
+    "mcp",
     "pipeline",
     "credentialProfiles",
     "repositories",
@@ -953,6 +954,193 @@
         }
       }
     },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "defaultMode",
+        "localServer",
+        "servers",
+        "rolePolicies",
+        "resilience"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "defaultMode": {
+          "enum": [
+            "disabled",
+            "allowlist"
+          ]
+        },
+        "localServer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "command",
+            "arguments",
+            "enabledTools"
+          ],
+          "properties": {
+            "name": {
+              "const": "ecosystem-read"
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "arguments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "enabledTools": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "get_task_state",
+                  "get_artifact_summary",
+                  "read_artifact_evidence",
+                  "list_pending_comments"
+                ]
+              }
+            }
+          }
+        },
+        "servers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "allowedTools"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+              },
+              "allowedTools": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_.-]+$"
+                }
+              }
+            }
+          }
+        },
+        "rolePolicies": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^(orchestrator|knowledge_keeper|requirements_analyst|developer|reviewer|review_verifier|pipeline_monitor|health_check)$": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "server",
+                  "tools"
+                ],
+                "properties": {
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_.-]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "resilience": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "failureThreshold",
+            "failureWindowSeconds",
+            "circuitOpenSeconds",
+            "requiredSuccessfulProbes",
+            "toolTimeoutSeconds",
+            "maxCallsPerRoleRun",
+            "maxResponseBytes",
+            "maxConcurrentRepairs",
+            "relatedTaskDepth",
+            "maxRelatedTasks"
+          ],
+          "properties": {
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "failureWindowSeconds": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 3600
+            },
+            "circuitOpenSeconds": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 3600
+            },
+            "requiredSuccessfulProbes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "toolTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 300
+            },
+            "maxCallsPerRoleRun": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "maxResponseBytes": {
+              "type": "integer",
+              "minimum": 4096,
+              "maximum": 1048576
+            },
+            "maxConcurrentRepairs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "relatedTaskDepth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "maxRelatedTasks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        }
+      }
+    },
     "pipeline": {
       "type": "object",
       "additionalProperties": false,
@@ -1561,5 +1749,44 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "mcp": {
+          "properties": {
+            "rolePolicies": {
+              "patternProperties": {
+                "^(orchestrator|knowledge_keeper|requirements_analyst|developer|reviewer|review_verifier|pipeline_monitor|health_check)$": {
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "server",
+                      "tools"
+                    ],
+                    "properties": {
+                      "server": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                      },
+                      "tools": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_.-]+$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

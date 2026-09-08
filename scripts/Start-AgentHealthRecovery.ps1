@@ -6,6 +6,8 @@ param(
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [string] $DiagnosisPath,
     [switch] $ElevatedApproved,
+    [switch] $SuppressExternalDelivery,
+    [switch] $SuppressTargetedResume,
     [ValidateRange(0,2)][int] $RecoveryDepth = 0,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -166,7 +168,7 @@ if ($successfulAttempt.Count) {
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus completed -Stage health_recovered -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $targetedResume = $null
     $successfulResultPath = [string]$successfulAttempt[0].resultPath
-    if ([bool]$config.health.automaticRecovery.targetedResume.enabled -and (Test-Path -LiteralPath $successfulResultPath -PathType Leaf)) {
+    if (-not $SuppressTargetedResume -and [bool]$config.health.automaticRecovery.targetedResume.enabled -and (Test-Path -LiteralPath $successfulResultPath -PathType Leaf)) {
         $targetedParameters = @{ TaskId=$TaskId; FailurePath=$FailurePath; RecoveryEvidencePath=$successfulResultPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
         if ($ExecutionRunId) { $targetedParameters.ExecutionRunId = $ExecutionRunId }
         if ($WorkspaceLeaseId) { $targetedParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
@@ -280,6 +282,9 @@ $recoveryWasValidated = $false
 try {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
+    if ($SuppressExternalDelivery -or [string]$env:ECOSYSTEM_MCP_DISABLED -eq 'true') {
+        try { $inventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $inventory){throw 'empty inventory'};$inventory=$inventory|ConvertFrom-Json;$servers=if($inventory.PSObject.Properties['servers']){@($inventory.servers)}else{@($inventory)};foreach($entry in $servers){$name=if($entry -is [string]){[string]$entry}else{[string]$entry.name};if($name -notmatch '^[A-Za-z0-9_-]+$'){throw 'unsafe server name'};$arguments=@($arguments[0..3]+@('--config',('mcp_servers.{0}.enabled=false' -f $name))+$arguments[4..($arguments.Count-1)])}} catch { throw 'MCP inventory cannot be verified for disabled recovery; repair agent was not started.' }
+    }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
@@ -327,7 +332,7 @@ try {
         if ($LASTEXITCODE -ne 0 -or $remainingValidatedChanges.Count) { throw 'The validated ecosystem repair is not bound to a clean Git commit.' }
         $recoveryCommit = ([string](& git -C $workspace rev-parse HEAD)).Trim()
         if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to bind Health recovery delivery to the validated Git HEAD.' }
-        if ($recoveryCommit -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
+        if ($recoveryCommit -and -not $SuppressExternalDelivery -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
             $recoveryPush = Publish-VerifiedHealthRepair -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
             $recoveryDeliveryPath = Join-Path $taskRoot 'health-recovery-delivery.json'
             Write-Utf8NoBom -Path $recoveryDeliveryPath -Content (($recoveryPush | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
@@ -368,7 +373,7 @@ try {
     $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; preservationCommit=$preservationCommit; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null }; push=if ($recoveryWasValidated -and $recoveryPush) { $recoveryPush } else { $null } }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $targetedResume = $null
-    if ([string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
+    if (-not $SuppressTargetedResume -and [string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
         $targetedParameters = @{
             TaskId = $TaskId
             FailurePath = $FailurePath

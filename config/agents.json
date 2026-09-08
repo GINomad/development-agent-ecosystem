@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/agents.schema.json",
-  "schemaVersion": "1.2.0",
+  "schemaVersion": "1.3.0",
   "namespace": "development-ecosystem",
   "runtime": {
     "maxConcurrentAgents": 4,
@@ -354,6 +354,39 @@
     "mcp": {
       "mode": "disabled",
       "allowedServers": []
+    }
+  },
+  "mcp": {
+    "enabled": true,
+    "defaultMode": "disabled",
+    "localServer": {
+      "name": "ecosystem-read",
+      "command": "powershell",
+      "arguments": ["-NoProfile", "-File", "${REPO_ROOT}/scripts/Start-EcosystemReadMcpServer.ps1"],
+      "enabledTools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"]
+    },
+    "servers": [],
+    "rolePolicies": {
+      "orchestrator": [],
+      "knowledge_keeper": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "requirements_analyst": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "developer": [],
+      "reviewer": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "review_verifier": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "pipeline_monitor": [],
+      "health_check": []
+    },
+    "resilience": {
+      "failureThreshold": 2,
+      "failureWindowSeconds": 60,
+      "circuitOpenSeconds": 300,
+      "requiredSuccessfulProbes": 3,
+      "toolTimeoutSeconds": 20,
+      "maxCallsPerRoleRun": 30,
+      "maxResponseBytes": 262144,
+      "maxConcurrentRepairs": 1,
+      "relatedTaskDepth": 1,
+      "maxRelatedTasks": 20
     }
   },
   "pipeline": {

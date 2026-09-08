@@ -72,3 +72,7 @@ Get-ScheduledTask | Where-Object TaskName -like '*PR Review*' |
 ```
 
 Before the first live workflow, confirm that the configured clone root is writable, each canonical repository URL can be reached with the approved Git credential flow, and available disk space covers the expected number of retained full clones. The test suite validates scheduler ranges and isolation contracts but intentionally does not perform authenticated network clones.
+
+## Optional MCP setup
+
+The installer validates the local read-only MCP probe. During the setup interview, choose any external read-only servers by registered name and role; do not place commands, URLs, credentials, or secrets in `agents.json`. Leave unknown or write-capable integrations disabled. Azure DevOps server selection follows [the adapter contract](mcp-azure-adapter-contract.md).

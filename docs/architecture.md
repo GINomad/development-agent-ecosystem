@@ -265,3 +265,16 @@ The global `%LOCALAPPDATA%/Codex/development-agent-ecosystem/workspace-coordinat
 Every context pack has an `engineeringGuidance` section. Knowledge Keeper derives the stack from repository evidence, always selects pragmatic DRY, KISS, SOLID, YAGNI, separation-of-concerns, testability, and maintainability guidance, and adds only the applicable .NET, JavaScript/TypeScript, and React skills. Developer implements against that selection; Reviewer uses it to produce evidence-backed candidates and coverage; Review Verifier uses the same public guidance independently to try to falsify those claims.
 
 Schemas are stored under `config/schemas`. Knowledge Keeper may publish only evidence-backed claims with all required evidence fields.
+
+## Resilient MCP context path
+
+```text
+role dispatch -> policy + circuit -> MCP read tools
+                              | failure/open circuit
+                              v
+                    classic context pack + Health Check probe
+```
+
+The local `ecosystem-read` session is bound to one task, role, run, and lease. An explicitly allowlisted Azure DevOps adapter may return current work-item details, bounded relations, comments, history, and linked PR context. All external text remains untrusted; every fact retains ID, provider revision, and retrieval time. Requirements Analyst publishes that evidence as the review input, preserving the Reviewer/Verifier boundary.
+
+The circuit transitions `healthy → suspect → open → half-open → healthy`. In `open`, a new role run starts in classic context mode immediately; it does not wait for repair. Health Check starts an MCP-disabled asynchronous repair/probe lane. Only configured consecutive read-only probes permit a canary role run after half-open; security or isolation failures require human review. MCP supplies evidence only. The trusted PowerShell host retains leases, workflow transitions, artifact validation, commits, delivery and all write approvals.

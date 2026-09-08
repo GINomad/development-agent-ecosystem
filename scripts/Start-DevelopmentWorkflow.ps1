@@ -332,6 +332,50 @@ $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
 foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
 $additionalDirectories = @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot))
+$mcpStateRoot=Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
+$mcpExecution = if ($HealthRecoveryRetry) { [pscustomobject]@{ Mode='classic'; Reason='health-recovery-mcp-disabled'; Servers=@() } } else { & (Join-Path $PSScriptRoot 'Resolve-McpExecutionMode.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome }
+$mcpCanaryClaimId = $TaskId+'-'+$executedAgentId
+$mcpCanaryCompletionRecorded = $false
+$mcpJsonlFailedServers = @()
+function Complete-CurrentMcpCanary([bool]$Succeeded) {
+    if (-not $mcpExecution -or [string]$mcpExecution.Mode -ne 'mcp') { return }
+    foreach($candidate in @($mcpExecution.Servers)){
+        $statePath=Join-Path $mcpStateRoot ('health\mcp\'+[string]$candidate.name+'.json')
+        try{$state=Get-Content -LiteralPath $statePath -Raw -Encoding UTF8|ConvertFrom-Json;if([string]$state.state -eq 'half-open' -and [string]$state.canaryClaimId -eq $mcpCanaryClaimId){& (Join-Path $PSScriptRoot 'Complete-McpCanary.ps1') -ServerName ([string]$candidate.name) -ClaimId $mcpCanaryClaimId -Succeeded $Succeeded -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null}}catch{Write-Warning "MCP canary completion failed: $($_.Exception.Message)"}
+    }
+}
+function Write-CurrentMcpRoleMetric([string]$Outcome,[Nullable[int]]$QualityProxy) {
+    if (-not (Get-Variable -Name workflowStartedAtUtc -ErrorAction SilentlyContinue)) { return }
+    $mode=if($mcpExecution){[string]$mcpExecution.Mode}else{'classic'};$qualityObserved=$null -ne $QualityProxy;$record=[ordered]@{schemaVersion=1;timestampUtc=[DateTime]::UtcNow.ToString('o');taskId=$TaskId;runId=[string]$workspaceLease.RunId;leaseId=[string]$workspaceLease.LeaseId;agentId=$executedAgentId;server=if($mode -eq 'mcp'){'mcp'}else{'classic'};mode=$mode;status=$Outcome;durationMs=[int]([DateTime]::UtcNow-$workflowStartedAtUtc).TotalMilliseconds;qualityObserved=$qualityObserved;qualityValue=$QualityProxy;qualitySource=if($qualityObserved){'validated-artifact-or-review-evidence'}else{$null};artifactValidation=if($qualityObserved){'passed'}else{'not-observed'}};$path=Join-Path $task.TaskRoot 'role-metrics.jsonl';$lock=$path+'.lock';$stream=[IO.File]::Open($lock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);try{[IO.File]::AppendAllText($path,(($record|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))}finally{$stream.Dispose()}
+}
+function New-McpFailureDiagnostic([string]$Server,[string]$ErrorMessage) {
+    $path=Join-Path $task.TaskRoot ('mcp-failure-'+$executedAgentId+'-'+[guid]::NewGuid().ToString('N')+'.json')
+    $diagnostic=[ordered]@{schemaVersion=1;taskId=$TaskId;agentId=$executedAgentId;runId=[string]$workspaceLease.RunId;leaseId=[string]$workspaceLease.LeaseId;server=$Server;error=$ErrorMessage;codexLogPath=$codexLogPath;createdAtUtc=[DateTime]::UtcNow.ToString('o')}
+    Write-Utf8NoBomAtomic -Path $path -Content (($diagnostic|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
+    return $path
+}
+$enabledMcpServerNames = if ($HealthRecoveryRetry) { @() } else { @($mcpExecution.Servers | ForEach-Object { [string]$_.name }) }
+$mcpCodexCliPath=Resolve-CodexCliPath
+if(-not $mcpCodexCliPath){throw 'Codex CLI was not found for MCP inventory verification.'}
+foreach ($override in @(& (Join-Path $PSScriptRoot 'Get-CodexMcpOverrides.ps1') -CodexPath $mcpCodexCliPath -EnabledServers $enabledMcpServerNames -ServerPolicies @($mcpExecution.Servers) -ToolTimeoutSeconds ([int]$config.mcp.resilience.toolTimeoutSeconds))) { $arguments.Add('--config'); $arguments.Add($override) }
+if ([string]$mcpExecution.Mode -eq 'mcp') {
+    $mcpSession = & (Join-Path $PSScriptRoot 'New-McpSession.ps1') -TaskId $TaskId -AgentId $executedAgentId -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -TaskRoot $task.TaskRoot -Workspaces $workspacePaths -AllowedTools @($mcpExecution.Servers|Where-Object{[string]$_.name -eq 'ecosystem-read'}|ForEach-Object{@($_.roleTools)}|Select-Object -Unique) -Config $config
+    foreach ($mcpServer in @($mcpExecution.Servers)) {
+        $serverName = [string]$mcpServer.name
+        if ($serverName -ne 'ecosystem-read') { continue }
+        $resolvedMcpArguments = @($mcpServer.arguments | ForEach-Object {
+            $value = [string]$_
+            Expand-EcosystemValue -Value $value -RepositoryRoot (Get-EcosystemRoot) -CodexHome (Get-DefaultCodexHome -Override $CodexHome) -StateRoot $mcpStateRoot
+        })
+        $arguments.Add('--config')
+        $arguments.Add(('mcp_servers.{0}.command="{1}"' -f $serverName,([string]$mcpServer.command).Replace('"','\\"')))
+        $arguments.Add('--config')
+        $arguments.Add(('mcp_servers.{0}.args={1}' -f $serverName,($resolvedMcpArguments | ConvertTo-Json -Compress)))
+        if ($serverName -eq 'ecosystem-read') {
+            $arguments.Add('--config'); $arguments.Add(('mcp_servers.{0}.env.ECOSYSTEM_MCP_SESSION_PATH="{1}"' -f $serverName,([string]$mcpSession.Path).Replace('"','\\"')))
+        }
+    }
+}
 foreach ($directory in $additionalDirectories) {
     $resolvedDirectory = [IO.Path]::GetFullPath([string]$directory)
     if ($resolvedDirectory -eq [IO.Path]::GetFullPath($Workspace)) { continue }
@@ -351,7 +395,41 @@ try {
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }
-    & (Join-Path $PSScriptRoot 'Assert-TargetAgentTerminalState.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    # Codex can return exit 0 while its JSONL transcript contains a rejected MCP tool call.
+    # Treat that as a transport failure before accepting the agent's terminal artifact.
+    if ([string]$mcpExecution.Mode -eq 'mcp' -and (Test-Path -LiteralPath $codexLogPath)) {
+        $failedMcpServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach($line in @(Get-Content -LiteralPath $codexLogPath -Encoding UTF8)) {
+            try { $item=$line | ConvertFrom-Json } catch { continue }
+            if([string]$item.type -ne 'mcp_tool_call'){ continue }
+            $failed=([string]$item.status -match '^(failed|error)$') -or [bool]($item.PSObject.Properties['isError'] -and $item.isError) -or [bool]($item.PSObject.Properties['error'] -and $item.error)
+            if(-not $failed){ continue }
+            $serverName=if($item.PSObject.Properties['server']){[string]$item.server}elseif($item.PSObject.Properties['serverName']){[string]$item.serverName}else{''}
+            if($serverName){$null=$failedMcpServers.Add($serverName)}
+        }
+        foreach($serverName in @($failedMcpServers)) {
+            & (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature 'codex-jsonl-mcp-tool-call-failed' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $diagnosticPath=New-McpFailureDiagnostic $serverName 'Codex JSONL recorded a failed MCP tool call.'
+            & (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature 'codex-jsonl-mcp-tool-call-failed' -TaskId $TaskId -AgentId $executedAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        }
+        $mcpJsonlFailedServers=@($failedMcpServers)
+        if($failedMcpServers.Count){ throw ('MCP tool call failed in Codex JSONL for server(s): '+($mcpJsonlFailedServers -join ', ')) }
+    }
+    $terminalState = & (Join-Path $PSScriptRoot 'Assert-TargetAgentTerminalState.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $mcpTerminalOutcome = & (Join-Path $PSScriptRoot 'Resolve-McpTerminalOutcome.ps1') -AgentStatus ([string]$terminalState.AgentStatus)
+    $qualityEvidence=$null
+    if([bool]$mcpTerminalOutcome.Succeeded){
+        try{
+            $agentDefinition=@($config.agents|Where-Object{[string]$_.id -eq $executedAgentId}|Select-Object -First 1)
+            if(-not $agentDefinition){throw 'Agent definition is unavailable for artifact validation.'}
+            foreach($artifactName in @($agentDefinition.requiredArtifacts)){$artifactPath=Join-Path $task.TaskRoot ([string]$artifactName);if(-not(Test-Path -LiteralPath $artifactPath -PathType Leaf)){throw "Required artifact '$artifactName' is missing."};if([IO.Path]::GetExtension([string]$artifactName) -eq '.json'){& (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId $executedAgentId -ArtifactName ([string]$artifactName) -Path $artifactPath -TaskRoot $task.TaskRoot|Out-Null}}
+            $qualityEvidence=[Nullable[int]]1
+        }catch{$mcpTerminalOutcome=[pscustomobject]@{Succeeded=$false;MetricStatus='failed';QualityProxy=0;Reason=('artifact-validation: '+$_.Exception.Message)}}
+    }
+    Complete-CurrentMcpCanary ([bool]$mcpTerminalOutcome.Succeeded)
+    $mcpCanaryCompletionRecorded = $true
+    Write-CurrentMcpRoleMetric ([string]$mcpTerminalOutcome.MetricStatus) $qualityEvidence
+    if(-not [bool]$mcpTerminalOutcome.Succeeded){ return [pscustomobject]@{TaskId=$TaskId;AgentId=$executedAgentId;Status=[string]$terminalState.AgentStatus;McpMode=[string]$mcpExecution.Mode} }
     $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $currentStatus = [string]$currentTask.status
     if ($TargetAgentId) {
@@ -505,8 +583,16 @@ try {
     }
 }
 catch {
+    if ((Get-Variable -Name mcpExecution -ErrorAction SilentlyContinue) -and -not $mcpCanaryCompletionRecorded) { Complete-CurrentMcpCanary $false }
+    Write-CurrentMcpRoleMetric 'failed' 0
     $failureMessage = $_.Exception.Message
     $failureAgentId = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
+    if (-not $HealthRecoveryRetry -and $failureMessage -match '(?i)\bmcp\b|protocol|tools/list') {
+        $mcpSignature = (Get-FileHash -Algorithm SHA256 -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($failureMessage)))).Hash.ToLowerInvariant()
+        $recoveryServers=if(@($mcpJsonlFailedServers).Count){@($mcpJsonlFailedServers)}else{@('ecosystem-read')}
+        foreach($serverName in $recoveryServers){if(-not @($mcpJsonlFailedServers).Count){& (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature $mcpSignature -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null;$diagnosticPath=New-McpFailureDiagnostic $serverName $failureMessage;& (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature $mcpSignature -TaskId $TaskId -AgentId $failureAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null};& (Join-Path $PSScriptRoot 'Write-McpMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AgentId $failureAgentId -Server $serverName -Status failed -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -ErrorClass 'transport-or-protocol' -FallbackUsed | Out-Null}
+        if ($TargetAgentId) { return & $PSCommandPath -Mode $Mode -TaskId $TaskId -TaskSelector $TaskSelector -RepositoryIds $RepositoryIds -Resume -TargetAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -HealthRecoveryRetry -SkipChainContinuation -ConfigPath $ConfigPath -CodexHome $CodexHome }
+    }
     & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $failureEvidence = @($codexLogPath, $finalResponsePath, $guardArtifactPath) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
