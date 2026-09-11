@@ -187,6 +187,14 @@ if ($Resume) {
 
 $executedAgentId = if ($TargetAgentId) { $TargetAgentId } else { [string]$config.workflow.orchestration.agentId }
 $activeAgent = @($config.agents | Where-Object { [string]$_.id -eq $executedAgentId }) | Select-Object -First 1
+$workflowRouteExecutionMode = ''
+$workflowRoutingPath = Join-Path $task.TaskRoot ([string]$config.workflow.orchestration.routingArtifact)
+if (Test-Path -LiteralPath $workflowRoutingPath -PathType Leaf) {
+    $latestWorkflowRoute = @(Get-Content -LiteralPath $workflowRoutingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] }) | Select-Object -Last 1
+    if ($latestWorkflowRoute) { $workflowRouteExecutionMode = [string]$latestWorkflowRoute.executionMode }
+}
+$agentWorkingDirectory = Resolve-AgentWorkingDirectory -ProductWorkspace $Workspace -AgentId $executedAgentId -WorkflowExecutionMode $workflowRouteExecutionMode
+$ecosystemWorkingDirectorySelected = $agentWorkingDirectory.Equals([IO.Path]::GetFullPath((Get-EcosystemRoot)), [StringComparison]::OrdinalIgnoreCase)
 $contextPack = $null
 if (-not $PrepareOnly) {
     $contextArtifactNames = if ($resumePlan) { @(@($resumePlan.ChangedArtifactNames) + @($resumePlan.UnchangedArtifactNames) | Select-Object -Unique) } else { @() }
@@ -241,6 +249,7 @@ Task state: $($task.TaskRoot)
 Validated context pack: $(if ($contextPack) { [string]$contextPack.ContextPath } else { 'prepare-only; not written' })
 Ecosystem root: $(Get-EcosystemRoot)
 Primary workspace: $([IO.Path]::GetFullPath($Workspace))
+Active working directory: $agentWorkingDirectory$(if ($ecosystemWorkingDirectorySelected) { ' (automatically selected for ecosystem maintenance)' } else { '' })
 All target workspaces: $($workspacePaths -join '; ')
 Repository config IDs: $($RepositoryIds -join ', ')
 Global coding standards (apply to every repository): $globalStandardsPath
@@ -304,6 +313,7 @@ $result = [pscustomobject]@{
     ExecutionConfigPath = $executionConfigPath
     ExecutionContextPath = $executionContextPath
     Workspace = [IO.Path]::GetFullPath($Workspace)
+    WorkingDirectory = $agentWorkingDirectory
     Workspaces = @($workspacePaths)
     RepositoryIds = @($RepositoryIds)
     ManagedKnowledgeRoot = $knowledgeImport.ManagedRoot
@@ -330,8 +340,8 @@ $codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
-foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', [IO.Path]::GetFullPath($Workspace))) { $arguments.Add([string]$argument) }
-$additionalDirectories = @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot))
+foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$modelRoute.model, '--config', ('model_reasoning_effort="' + [string]$modelRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', $agentWorkingDirectory)) { $arguments.Add([string]$argument) }
+$additionalDirectories = if ($ecosystemWorkingDirectorySelected) { @($task.TaskRoot) } else { @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot)) }
 $mcpStateRoot=Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $mcpExecution = if ($HealthRecoveryRetry) { [pscustomobject]@{ Mode='classic'; Reason='health-recovery-mcp-disabled'; Servers=@() } } else { & (Join-Path $PSScriptRoot 'Resolve-McpExecutionMode.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome }
 $mcpCanaryClaimId = $TaskId+'-'+$executedAgentId
@@ -378,7 +388,7 @@ if ([string]$mcpExecution.Mode -eq 'mcp') {
 }
 foreach ($directory in $additionalDirectories) {
     $resolvedDirectory = [IO.Path]::GetFullPath([string]$directory)
-    if ($resolvedDirectory -eq [IO.Path]::GetFullPath($Workspace)) { continue }
+    if ($resolvedDirectory -eq $agentWorkingDirectory) { continue }
     $arguments.Add('--add-dir')
     $arguments.Add($resolvedDirectory)
 }
@@ -391,7 +401,7 @@ try {
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
     & $leaseHeartbeatAction | Out-Null
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory ([IO.Path]::GetFullPath($Workspace)) -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }

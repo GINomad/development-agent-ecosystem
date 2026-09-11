@@ -130,6 +130,12 @@ if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure 
 
 $workspace = Resolve-EcosystemPath -Value ([string]$config.health.automaticRecovery.workspace) -Config $config -CodexHome $CodexHome
 if ([IO.Path]::GetFullPath($workspace) -ne [IO.Path]::GetFullPath((Get-EcosystemRoot))) { throw 'Automatic health recovery workspace must be the ecosystem repository root.' }
+foreach ($repository in @($config.repositories)) {
+    $productWorkspace = [IO.Path]::GetFullPath(([Environment]::ExpandEnvironmentVariables([string]$repository.localWorkspace) -replace '/', [IO.Path]::DirectorySeparatorChar))
+    if (Test-EcosystemRootInsideProductWorkspace -Left $workspace -Right $productWorkspace) {
+        throw "Automatic health recovery refuses an ecosystem workspace that overlaps product repository '$($repository.id)': $productWorkspace"
+    }
+}
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic recovery boundary is invalid.' }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
 if ($ElevatedApproved) {

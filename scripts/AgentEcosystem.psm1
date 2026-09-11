@@ -77,6 +77,30 @@ function Resolve-EcosystemPath {
     return [IO.Path]::GetFullPath(($expanded -replace '/', [IO.Path]::DirectorySeparatorChar))
 }
 
+function Test-EcosystemRootInsideProductWorkspace {
+    param(
+        [Parameter(Mandatory)][string] $Left,
+        [Parameter(Mandatory)][string] $Right
+    )
+    $leftPath = [IO.Path]::GetFullPath($Left).TrimEnd([char[]]@('\','/'))
+    $rightPath = [IO.Path]::GetFullPath($Right).TrimEnd([char[]]@('\','/'))
+    $separator = [IO.Path]::DirectorySeparatorChar
+    return $leftPath.Equals($rightPath, [StringComparison]::OrdinalIgnoreCase) -or
+        $leftPath.StartsWith($rightPath + $separator, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-AgentWorkingDirectory {
+    param(
+        [Parameter(Mandatory)][string] $ProductWorkspace,
+        [Parameter(Mandatory)][string] $AgentId,
+        [string] $WorkflowExecutionMode
+    )
+    if ($AgentId -eq 'health_check' -and $WorkflowExecutionMode -eq 'ecosystem-repair') {
+        return [IO.Path]::GetFullPath((Get-EcosystemRoot))
+    }
+    return [IO.Path]::GetFullPath($ProductWorkspace)
+}
+
 function Assert-EcosystemConfig {
     param(
         [Parameter(Mandatory)] $Config,
@@ -156,9 +180,15 @@ function Assert-EcosystemConfig {
         }
     }
     $repositoryIds = @{}
+    $ecosystemRoot = [IO.Path]::GetFullPath((Get-EcosystemRoot))
     foreach ($repository in @($Config.repositories)) {
         if (-not $repository.id -or $repositoryIds.ContainsKey([string]$repository.id)) { throw 'Repository IDs must be unique and non-empty.' }
         $repositoryIds[[string]$repository.id] = $true
+        if ([string]::IsNullOrWhiteSpace([string]$repository.localWorkspace)) { throw "Repository '$($repository.id)' requires a product localWorkspace." }
+        $productWorkspace = [IO.Path]::GetFullPath(([Environment]::ExpandEnvironmentVariables([string]$repository.localWorkspace) -replace '/', [IO.Path]::DirectorySeparatorChar))
+        if (Test-EcosystemRootInsideProductWorkspace -Left $ecosystemRoot -Right $productWorkspace) {
+            throw "Ecosystem repository root must not overlap product localWorkspace '$($repository.id)': $productWorkspace"
+        }
         if (-not $profileIds.ContainsKey([string]$repository.credentialProfile)) {
             throw "Repository '$($repository.id)' references missing credential profile '$($repository.credentialProfile)'."
         }
@@ -419,4 +449,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
