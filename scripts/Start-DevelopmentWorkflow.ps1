@@ -5,6 +5,7 @@ param(
     [string] $TaskId,
     [string] $TaskName,
     [string] $TaskType,
+    [string] $ProjectId,
     [string] $RepositoryId,
     [string[]] $RepositoryIds = @(),
     [string] $Workspace,
@@ -71,7 +72,14 @@ foreach ($id in $requestedRepositoryIds) {
 if (-not $repositories.Count) { throw 'At least one enabled repository is required.' }
 $RepositoryIds = @($repositories | ForEach-Object { [string]$_.id })
 $RepositoryId = $RepositoryIds[0]
-$task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -TaskName $TaskName -TaskType $TaskType -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
+$matchingProjects = @($config.projects | Where-Object {
+    $candidateRepositoryIds = @($_.repositoryIds)
+    $_.enabled -and @($RepositoryIds | Where-Object { $_ -notin $candidateRepositoryIds }).Count -eq 0
+})
+if ($ProjectId) { $matchingProjects = @($matchingProjects | Where-Object { $_.id -eq $ProjectId }) }
+if ($matchingProjects.Count -ne 1) { throw 'Selected repositories must belong to exactly one enabled project. Specify -ProjectId when required.' }
+$ProjectId = [string]$matchingProjects[0].id
+$task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSelector $TaskSelector -Mode $Mode -TaskName $TaskName -TaskType $TaskType -ProjectId $ProjectId -RepositoryIds $RepositoryIds -Resume:$Resume -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not $Resume -and -not [string]::IsNullOrWhiteSpace($UserInstruction)) {
     & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') -TaskId $TaskId -Text $UserInstruction -Author user -TargetAgentId ([string]$config.workflow.orchestration.agentId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
@@ -124,7 +132,7 @@ if (-not $PrepareOnly) {
 $bootstrapLockPath = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) 'runtime-bootstrap.lock'
 Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
 $bootstrap = Invoke-EcosystemFileLock -LockPath $bootstrapLockPath -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
-    $importResult = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $importResult = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ProjectId $ProjectId -ConfigPath $ConfigPath -CodexHome $CodexHome
     Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
     $standardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
     if (-not (Test-Path -LiteralPath $standardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $standardsPath" }
@@ -152,13 +160,15 @@ if (-not $PrepareOnly) {
         $executionContextDocument = [ordered]@{
             schemaVersion = '2.0.0'
             taskId = $TaskId
+            projectId = $ProjectId
             runId = [string]$workspaceLease.RunId
             leaseId = [string]$workspaceLease.LeaseId
             createdAtUtc = [DateTime]::UtcNow.ToString('o')
             ecosystemRevision = $ecosystemRevision
             configSnapshotPath = $executionConfigPath
             globalStandardsPath = $globalStandardsPath
-            managedKnowledgeRoot = [string]$knowledgeImport.ManagedRoot
+            technicalKnowledgeRoot = Resolve-EcosystemPath -Value ([string]$config.knowledge.technicalRoot) -Config $config -CodexHome $CodexHome
+            domainKnowledgeRoot = [string]$knowledgeImport.ManagedRoot
             agentFiles = @($sync.AgentFiles)
             repositories = @($workspaceRecords | ForEach-Object { [ordered]@{ repositoryId=[string]$_.RepositoryId; path=[string]$_.Path; canonicalOrigin=[string]$_.CanonicalOrigin; baseSha=[string]$_.BaseSha; branch=[string]$_.Branch; manifestPath=[string]$_.ManifestPath } })
         }

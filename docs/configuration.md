@@ -78,7 +78,7 @@ For two task IDs that select the same repository ID, the scheduler creates two d
 
 ## Knowledge scope
 
-`knowledge.globalStandardsPath` points to the versioned engineering standards applied to every configured repository. Confirmed review guidance about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, and engineering principles is promoted there, or to a technology-scoped section, after applicable implementation and a clean review. Business rules, domain behavior, API contracts, integrations, and product-specific decisions stay under repository-scoped managed knowledge. Bypassed, deferred, rejected, unresolved, speculative, and explicitly task-only comments are not promoted.
+`knowledge.technicalRoot` is the common cross-project technical root for architecture, requirements analysis, implementation, testing, and review practices. `knowledge.globalStandardsPath` points to its canonical standards file. `projects[]` defines the domain boundary: every enabled repository belongs to exactly one project, while a project may contain several repositories and owns one `domainKnowledgeRoot`. Domain, business, API, integration, and product knowledge is shared only inside that project. Confirmed general engineering guidance may be promoted to the technical root after applicable implementation, clean review, and verification; unresolved or task-only comments are not promoted.
 
 ## Loading fresh changes at startup
 

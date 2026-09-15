@@ -269,11 +269,14 @@ try {
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/config') {
+                    $safeProjects = @($config.projects | Where-Object { $_.enabled } | ForEach-Object {
+                        [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; repositoryIds=@($_.repositoryIds) }
+                    })
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
                     $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts) } })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
+                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; projects=$safeProjects; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
@@ -485,6 +488,7 @@ try {
                         TaskName=$taskName
                         TaskType=$taskType
                         TaskId=$resolvedTaskId
+                        ProjectId=[string]$body.projectId
                         RepositoryIds=$repositoryIds
                         UserInstruction=[string]$body.instruction
                         Resume=$resume

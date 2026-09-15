@@ -2,6 +2,9 @@ const token = document.documentElement.dataset.sessionToken;
 const activity = document.querySelector('#activity');
 const repositoryOptions = document.querySelector('#repositoryOptions');
 const repositorySummary = document.querySelector('#repositorySummary');
+const projectPicker = document.querySelector('#projectPicker');
+let configuredProjects = [];
+let configuredRepositories = [];
 const agentLabels = {
   orchestrator: 'Workflow Orchestrator',
   knowledge_keeper: 'Knowledge Keeper',
@@ -79,6 +82,7 @@ function payloadBase() {
   const inboxMetadata = selectedInboxTask && selectedInboxTask.url === taskSelector ? selectedInboxTask : null;
   return {
     mode,
+    projectId: projectPicker.value,
     repositoryIds,
     repositoryId: repositoryIds[0] || '',
     taskSelector,
@@ -209,7 +213,7 @@ function renderTaskList(tasks) {
     heading.append(id, badge);
     const selector = document.createElement('span');
     selector.className = 'tracked-task-selector';
-    selector.textContent = item.selector;
+    selector.textContent = `[${item.projectId || 'legacy project'}] ${item.selector}`;
     const meta = document.createElement('span');
     meta.className = 'tracked-task-meta';
     const scheduling = item.scheduler || {};
@@ -2558,9 +2562,20 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
       if (!agentLabels[agent.id]) agentLabels[agent.id] = agent.name || agent.id;
       agentRequiredArtifacts[agent.id] = Array.isArray(agent.requiredArtifacts) ? agent.requiredArtifacts : [];
     });
-    repositoryOptions.replaceChildren();
-    const repositories = Array.isArray(config.repositories) ? config.repositories : [];
-    repositories.forEach((item, index) => {
+    configuredProjects = Array.isArray(config.projects) ? config.projects : [];
+    configuredRepositories = Array.isArray(config.repositories) ? config.repositories : [];
+    projectPicker.replaceChildren();
+    configuredProjects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      projectPicker.append(option);
+    });
+    const renderProjectRepositories = () => {
+      repositoryOptions.replaceChildren();
+      const project = configuredProjects.find(item => item.id === projectPicker.value);
+      const allowedIds = new Set(project?.repositoryIds || []);
+      configuredRepositories.filter(item => allowedIds.has(item.id)).forEach((item, index) => {
       const option = document.createElement('label');
       option.className = 'multi-select-option';
       const checkbox = document.createElement('input');
@@ -2573,8 +2588,11 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
       label.textContent = checkbox.dataset.label;
       option.append(checkbox, label);
       repositoryOptions.append(option);
-    });
-    updateRepositorySummary();
+      });
+      updateRepositorySummary();
+    };
+    projectPicker.addEventListener('change', renderProjectRepositories);
+    renderProjectRepositories();
     document.querySelector(`[data-mode="${config.mode}"]`).click();
     document.querySelector('#connectionStatus').textContent = 'Local - ready';
     document.querySelector('#connectionStatus').classList.add('online');

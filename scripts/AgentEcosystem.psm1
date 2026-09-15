@@ -107,7 +107,7 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','projects','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
@@ -195,6 +195,26 @@ function Assert-EcosystemConfig {
         if ($repository.provider -ne $profileIds[[string]$repository.credentialProfile].provider) {
             throw "Repository '$($repository.id)' and credential profile '$($repository.credentialProfile)' use different providers."
         }
+    }
+    $projectIds = @{}
+    $repositoryOwners = @{}
+    foreach ($project in @($Config.projects)) {
+        $projectId = [string]$project.id
+        if (-not $projectId -or $projectIds.ContainsKey($projectId)) { throw 'Project IDs must be unique and non-empty.' }
+        $projectIds[$projectId] = $project
+        foreach ($projectRepositoryId in @($project.repositoryIds)) {
+            $value = [string]$projectRepositoryId
+            if (-not $repositoryIds.ContainsKey($value)) { throw "Project '$projectId' references unknown repository '$value'." }
+            if ($repositoryOwners.ContainsKey($value)) { throw "Repository '$value' belongs to more than one project." }
+            $repositoryOwners[$value] = $projectId
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$project.domainKnowledgeRoot)) { throw "Project '$projectId' requires a domainKnowledgeRoot." }
+    }
+    foreach ($configuredRepositoryId in @($repositoryIds.Keys)) {
+        if (-not $repositoryOwners.ContainsKey($configuredRepositoryId)) { throw "Repository '$configuredRepositoryId' is not assigned to a project." }
+    }
+    foreach ($seed in @($Config.knowledge.seedSources)) {
+        if (-not $projectIds.ContainsKey([string]$seed.projectId)) { throw "Knowledge seed '$($seed.id)' references unknown project '$($seed.projectId)'." }
     }
     if ([int]$Config.pipeline.postPush.maxRemediationCycles -lt 1 -or [int]$Config.pipeline.postPush.maxRemediationCycles -gt 3) { throw 'pipeline.postPush.maxRemediationCycles must be between 1 and 3.' }
     if ([bool]$Config.pipeline.delivery.allowForce -or [bool]$Config.pipeline.delivery.allowTags -or [string]$Config.pipeline.delivery.remote -ne 'origin') { throw 'Pipeline delivery permits only a normal branch push to origin.' }
