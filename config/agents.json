@@ -509,6 +509,19 @@
       "excludeAuthors": []
     }
   ],
+  "projects": [
+    {
+      "id": "planning-space",
+      "name": "PlanningSpace",
+      "enabled": true,
+      "repositoryIds": [
+        "azure-planningspace-ps-excel-agent",
+        "azure-planningspace-ps-bicep",
+        "azure-palantirplugins-ps-app-delfi"
+      ],
+      "domainKnowledgeRoot": "${REPO_ROOT}/knowledge/managed/projects/planning-space"
+    }
+  ],
   "taskSources": [
     {
       "id": "planning-space-azure-boards",
@@ -543,6 +556,7 @@
     "seedSources": [
       {
         "id": "ps-excel-agent-initial",
+        "projectId": "planning-space",
         "path": "C:/Repos/AI Knowledge/ps_excel_agent",
         "mode": "read-only-import",
         "includeExtensions": [
@@ -555,13 +569,11 @@
         ]
       }
     ],
-    "managedRoot": "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
+    "technicalRoot": "${REPO_ROOT}/knowledge/managed/global",
     "globalStandardsPath": "${REPO_ROOT}/knowledge/managed/global/engineering-code-standards.md",
     "versionedRoots": [
-      "${REPO_ROOT}/knowledge/managed/ps-excel-agent",
       "${REPO_ROOT}/knowledge/managed/global",
-      "${REPO_ROOT}/knowledge/components",
-      "${REPO_ROOT}/knowledge/decisions"
+      "${REPO_ROOT}/knowledge/managed/projects/planning-space"
     ],
     "taskHistoryRoot": "${STATE_ROOT}/tasks",
     "publicationPolicy": "verified-evidence-only",

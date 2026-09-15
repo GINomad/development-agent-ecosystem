@@ -50,6 +50,8 @@ See [installation](docs/installation.md), [architecture](docs/architecture.md), 
 
 ## Parallel tasks in the same repository
 
+Projects are the domain-isolation boundary. Every task persists one `projectId`; every enabled repository belongs to exactly one project, while a project may contain multiple repositories. Architecture practices, requirements-analysis methods, implementation guidance, and review standards live in the shared technical knowledge root. Business rules, domain behavior, product APIs, integrations, and decisions live only in the selected project's domain knowledge root. The dashboard selects a project first, offers only its repositories, and labels persisted tasks with their project.
+
 The task ID is the isolation boundary. Two tasks may target the same configured repository at the same time because each `(taskId, repositoryId)` pair receives its own full clone, unique task branch, manifest, immutable execution snapshots, controller lease, and task-local status history. A failure, stop, stale heartbeat, comment, or resume action for one task cannot advance or mutate the other task.
 
 Start distinct work items from separate terminals, or create both from the dashboard:

@@ -40,7 +40,8 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/Test-AgentOutcomeArtifact.ps1` | Rejects incomplete coverage, invalid lifecycle transitions, stale verifier hashes, and contradictory outcome evidence before an agent result can be published |
 | `scripts/Invoke-EnhancedReview.ps1` | Per-PR comment fingerprints, pending AI-processing state, and targeted Review Monitor invocation |
 | `dashboard` | Full-width loopback UI with local diff review, coverage/verifier matrix, finding lifecycle, external PR reports, persisted statuses, live logs, interventions, manual closure, revision reopen, and tracked elevated runspaces |
-| `knowledge/managed` | Versioned knowledge: global/technology engineering standards plus repository-scoped business, domain, API, integration, and product knowledge |
+| `knowledge/managed/global` | Shared technical knowledge: architecture practices, requirements analysis, implementation, testing, and code-review standards |
+| `knowledge/managed/projects/<project-id>` | Project-scoped domain, business, API, integration, and product knowledge shared by all repositories in that project |
 | `%LOCALAPPDATA%/Codex/development-agent-ecosystem` | Mutable task ledgers, review prompts, notes, reports, and scheduler backups |
 
 ### Extension points shown on the diagram

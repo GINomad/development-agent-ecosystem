@@ -29,13 +29,19 @@
         </div>
       </div>
 
+      <label>
+        Project
+        <select id="projectPicker" aria-describedby="projectHint"></select>
+      </label>
+      <p class="hint" id="projectHint">Domain knowledge is shared only by repositories in the selected project.</p>
+
       <div class="repository-field">
         <span class="field-label" id="repositoryLabel">Repositories</span>
         <details class="multi-select" id="repositoryPicker">
           <summary id="repositorySummary" aria-labelledby="repositoryLabel repositorySummary">Select repositories</summary>
           <div class="multi-select-options" id="repositoryOptions" role="group" aria-labelledby="repositoryLabel"></div>
         </details>
-        <p class="hint">Select every repository that the agents may inspect or modify for this task. The first selected repository is the primary workspace.</p>
+        <p class="hint">Only repositories belonging to the selected project are available. The first selected repository is the primary workspace.</p>
       </div>
 
       <div id="manualFields">

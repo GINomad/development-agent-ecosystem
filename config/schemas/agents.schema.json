@@ -18,6 +18,7 @@
     "pipeline",
     "credentialProfiles",
     "repositories",
+    "projects",
     "taskSources",
     "knowledge",
     "gates",
@@ -1518,12 +1519,33 @@
         }
       }
     },
+    "projects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "enabled", "repositoryIds", "domainKnowledgeRoot"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "name": { "type": "string", "minLength": 1 },
+          "enabled": { "type": "boolean" },
+          "repositoryIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+          },
+          "domainKnowledgeRoot": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "knowledge": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "seedSources",
-        "managedRoot",
+        "technicalRoot",
         "globalStandardsPath",
         "versionedRoots",
         "taskHistoryRoot",
@@ -1540,6 +1562,7 @@
             "additionalProperties": false,
             "required": [
               "id",
+              "projectId",
               "path",
               "mode",
               "includeExtensions"
@@ -1548,6 +1571,10 @@
               "id": {
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
               },
               "path": {
                 "type": "string",
@@ -1568,7 +1595,7 @@
             }
           }
         },
-        "managedRoot": {
+        "technicalRoot": {
           "type": "string",
           "minLength": 1
         },

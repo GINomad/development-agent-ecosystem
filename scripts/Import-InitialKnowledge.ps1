@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string] $SourceId = 'ps-excel-agent-initial',
+    [string] $ProjectId,
+    [string] $SourceId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -9,10 +10,23 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
-$sourceConfig = @($config.knowledge.seedSources | Where-Object { $_.id -eq $SourceId }) | Select-Object -First 1
+if (-not $ProjectId -and $SourceId) {
+    $requestedSeed = @($config.knowledge.seedSources | Where-Object { $_.id -eq $SourceId }) | Select-Object -First 1
+    if ($requestedSeed) { $ProjectId = [string]$requestedSeed.projectId }
+}
+if (-not $ProjectId -and @($config.projects | Where-Object enabled).Count -eq 1) { $ProjectId = [string]@($config.projects | Where-Object enabled)[0].id }
+if (-not $ProjectId) { throw 'ProjectId is required when more than one project is enabled.' }
+$project = @($config.projects | Where-Object { $_.id -eq $ProjectId -and $_.enabled }) | Select-Object -First 1
+if (-not $project) { throw "Enabled project '$ProjectId' was not found." }
+$sourceConfig = @($config.knowledge.seedSources | Where-Object { $_.projectId -eq $ProjectId -and (-not $SourceId -or $_.id -eq $SourceId) }) | Select-Object -First 1
+if (-not $sourceConfig -and -not $SourceId) {
+    $managedRoot = Resolve-EcosystemPath -Value ([string]$project.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome
+    New-Item -ItemType Directory -Path $managedRoot -Force | Out-Null
+    return [pscustomobject]@{ SourceRoot=$null; ManagedRoot=$managedRoot; ManifestPath=$null; FileCount=0; ConflictCount=0; Conflicts=@(); ManifestUpdated=$false }
+}
 if (-not $sourceConfig) { throw "Knowledge seed '$SourceId' is not configured." }
 $sourceRoot = Resolve-EcosystemPath -Value ([string]$sourceConfig.path) -Config $config -CodexHome $CodexHome
-$managedRoot = Resolve-EcosystemPath -Value ([string]$config.knowledge.managedRoot) -Config $config -CodexHome $CodexHome
+$managedRoot = Resolve-EcosystemPath -Value ([string]$project.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw "Knowledge seed root was not found: $sourceRoot" }
 if ([string]::Equals($sourceRoot.TrimEnd('\'), $managedRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Seed and managed knowledge roots must be different.'

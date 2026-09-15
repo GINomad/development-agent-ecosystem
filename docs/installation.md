@@ -21,7 +21,8 @@ Open `config/agents.json` and verify:
 - `taskSources[]` for assigned work items;
 - `credentialProfiles[]`, which must contain only CLI or environment authentication strategy, never tokens or passwords;
 - `operation.mode`, set to `manual` or `automate`;
-- `knowledge.seedSources[]` and `knowledge.managedRoot`;
+- `projects[]`, including exclusive repository membership and one `domainKnowledgeRoot` per project;
+- `knowledge.technicalRoot`, `knowledge.globalStandardsPath`, and project-tagged `knowledge.seedSources[]`;
 - `workflow.workspaceScheduling`: `maxActiveTasks` is at least two, `queueWhenBusy=true`, `maxActiveAgentsPerTask=1`, and `workspaceRoot` plus `coordinatorStatePath` resolve outside every `repositories[].localWorkspace`;
 - `leaseHeartbeatSeconds` and `staleLeaseGraceSeconds`; stale grace must be at least three heartbeat intervals and no more than one hour;
 - `pipeline.ownership` and every `pipeline.repositories[]` definition/auto-queue allowlist; compare them with the [pipeline monitoring matrix](pipeline-monitoring.md).
@@ -42,7 +43,7 @@ The installer:
 4. runs local validation;
 5. registers this repository as a Codex marketplace and installs the plugin.
 
-The seed source at `C:\Repos\AI Knowledge\ps_excel_agent` is never modified. Its managed copy is stored under `knowledge/managed/ps-excel-agent`; import provenance is recorded in `.knowledge-import.json`.
+The seed source at `C:\Repos\AI Knowledge\ps_excel_agent` is never modified. Its managed copy is stored under the PlanningSpace project's domain root; import provenance is recorded in `.knowledge-import.json`. Other projects use separate roots and cannot consume it.
 
 ## 3. Start the dashboard
 

@@ -802,6 +802,26 @@ if ($requirementsPrompt -notmatch 'first-party source code' -or $requirementsPro
 Add-Check -Name 'requirements-first-party-boundary' -Detail 'Requirements Analyst excludes dependency implementations, caches, vendor trees, and generated output'
 
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$crossProjectConfigPath = Join-Path $schedulerRoot 'cross-project-agents.json'
+$crossProjectConfig = Get-Content -LiteralPath $schedulerConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$primaryProject = @($crossProjectConfig.projects | Where-Object id -eq 'planning-space') | Select-Object -First 1
+$primaryProject.repositoryIds = @($primaryProject.repositoryIds | Where-Object { $_ -ne 'azure-palantirplugins-ps-app-delfi' })
+$crossProjectConfig.projects = @($crossProjectConfig.projects) + @([pscustomobject][ordered]@{
+    id = 'synthetic-separate-project'
+    name = 'Synthetic separate project'
+    enabled = $true
+    repositoryIds = @('azure-palantirplugins-ps-app-delfi')
+    domainKnowledgeRoot = (Join-Path $schedulerRoot 'synthetic-separate-project-knowledge')
+})
+Write-Utf8NoBom -Path $crossProjectConfigPath -Content (($crossProjectConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
+$crossProjectRejected = $false
+try {
+    & (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Mode manual -TaskId 'synthetic-cross-project-rejected' -TaskSelector 'synthetic cross-project rejection' -RepositoryIds @('azure-planningspace-ps-excel-agent','azure-palantirplugins-ps-app-delfi') -PrepareOnly -ConfigPath $crossProjectConfigPath -CodexHome $CodexHome | Out-Null
+}
+catch { $crossProjectRejected = $_.Exception.Message -match 'exactly one enabled project' }
+if (-not $crossProjectRejected) { throw 'A task was allowed to mix repositories from different projects.' }
+if (@($config.projects).Count -lt 1 -or [string]::IsNullOrWhiteSpace([string]$config.knowledge.technicalRoot)) { throw 'Project-scoped domain knowledge or the common technical root is not configured.' }
+Add-Check -Name 'project-domain-isolation' -Detail 'Every task belongs to one project; cross-project repository selection fails before task creation'
 if (-not [bool]$config.workflow.orchestration.enabled -or [string]$config.workflow.orchestration.agentId -ne 'orchestrator' -or [string]$config.workflow.orchestration.fallbackAgentId -ne 'requirements_analyst') { throw 'Workflow Orchestrator configuration is incomplete.' }
 $orchestratorAgent = @($config.agents | Where-Object id -eq 'orchestrator') | Select-Object -First 1
 if (-not $orchestratorAgent -or @($orchestratorAgent.responsibilities).Count -lt 3) { throw 'Orchestrator responsibilities are not defined in the canonical agent directory.' }
@@ -1628,7 +1648,7 @@ Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 $setupPromptPath = Join-Path $root 'SETUP_WITH_LLM.md'
 if (-not (Test-Path -LiteralPath $setupPromptPath -PathType Leaf)) { throw 'The interactive LLM setup prompt is missing.' }
 $setupPrompt = Get-Content -LiteralPath $setupPromptPath -Raw -Encoding UTF8
-foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','Repositories: for every managed repository','Never ask the developer to paste passwords','az devops login','redacted summary','Start-DevelopmentWorkflow.ps1 -PrepareOnly','separate confirmation before running `scripts/Install-AgentEcosystem.ps1`')) {
+foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','Projects and repositories: define a stable ecosystem project ID','Never ask the developer to paste passwords','az devops login','redacted summary','Start-DevelopmentWorkflow.ps1 -PrepareOnly','separate confirmation before running `scripts/Install-AgentEcosystem.ps1`')) {
     if ($setupPrompt -notmatch [regex]::Escape($requiredSetupContract)) { throw "The interactive LLM setup prompt is missing contract text: $requiredSetupContract" }
 }
 Add-Check -Name 'llm-guided-installation' -Detail 'The branch contains a provider-aware interactive setup interview with secret handling, preview, validation, prepare-only smoke, and separate installation approval'
@@ -1657,7 +1677,8 @@ foreach ($file in $profileTomlFiles) {
 }
 Add-Check -Name 'host-compatible-agent-compilation' -Detail "$($profileTomlFiles.Count) derived profiles preserve prompts and use current-user execution"
 
-$manifestPath = Join-Path (Resolve-EcosystemPath -Value ([string]$config.knowledge.managedRoot) -Config $config -CodexHome $CodexHome) '.knowledge-import.json'
+$planningSpaceProject = @($config.projects | Where-Object id -eq 'planning-space') | Select-Object -First 1
+$manifestPath = Join-Path (Resolve-EcosystemPath -Value ([string]$planningSpaceProject.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome) '.knowledge-import.json'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Knowledge import manifest is missing: $manifestPath" }
 $knowledgeManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if (@($knowledgeManifest.entries).Count -lt 1) { throw 'Knowledge import manifest contains no entries.' }
@@ -1670,8 +1691,8 @@ $knowledgeImportConfigPath = Join-Path $knowledgeImportFixtureRoot 'agents.json'
 New-Item -ItemType Directory -Path $knowledgeImportSourceRoot,$knowledgeImportManagedRoot -Force | Out-Null
 Write-Utf8NoBom -Path (Join-Path $knowledgeImportSourceRoot 'seed.md') -Content ('seed version' + [Environment]::NewLine)
 $knowledgeImportConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$knowledgeImportConfig.knowledge.seedSources = @([pscustomobject][ordered]@{ id='knowledge-import-test'; path=$knowledgeImportSourceRoot; mode='read-only-import'; includeExtensions=@('.md') })
-$knowledgeImportConfig.knowledge.managedRoot = $knowledgeImportManagedRoot
+$knowledgeImportConfig.knowledge.seedSources = @([pscustomobject][ordered]@{ id='knowledge-import-test'; projectId='planning-space'; path=$knowledgeImportSourceRoot; mode='read-only-import'; includeExtensions=@('.md') })
+(@($knowledgeImportConfig.projects | Where-Object id -eq 'planning-space') | Select-Object -First 1).domainKnowledgeRoot = $knowledgeImportManagedRoot
 Write-Utf8NoBom -Path $knowledgeImportConfigPath -Content (($knowledgeImportConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 
 $null = & (Join-Path $root 'scripts\Import-InitialKnowledge.ps1') -SourceId 'knowledge-import-test' -ConfigPath $knowledgeImportConfigPath -CodexHome $CodexHome

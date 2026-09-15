@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][ValidateSet('manual','automate')][string] $Mode,
     [string] $TaskName,
     [string] $TaskType,
+    [string] $ProjectId,
     [string] $RepositoryId,
     [string[]] $RepositoryIds = @(),
     [switch] $Resume,
@@ -16,11 +17,27 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$requestedIds = @(@($RepositoryIds) + @($RepositoryId) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+if (-not $requestedIds.Count) {
+    $defaultRepository = @($config.repositories | Where-Object enabled) | Select-Object -First 1
+    if ($defaultRepository) { $requestedIds = @([string]$defaultRepository.id); $RepositoryIds = @($requestedIds) }
+}
+if (-not $ProjectId) {
+    $matchingProjects = @($config.projects | Where-Object {
+        $candidateIds = @($_.repositoryIds)
+        $_.enabled -and @($requestedIds | Where-Object { $_ -notin $candidateIds }).Count -eq 0
+    })
+    if ($matchingProjects.Count -ne 1) { throw 'Repositories must resolve to exactly one enabled project.' }
+    $ProjectId = [string]$matchingProjects[0].id
+}
+$project = @($config.projects | Where-Object { $_.id -eq $ProjectId -and $_.enabled }) | Select-Object -First 1
+if (-not $project) { throw "Enabled project '$ProjectId' was not found." }
 $selectedRepositoryIds = [Collections.Generic.List[string]]::new()
 foreach ($id in @($RepositoryIds) + @($RepositoryId)) {
     $value = [string]$id
     if ([string]::IsNullOrWhiteSpace($value) -or $selectedRepositoryIds.Contains($value)) { continue }
     if (-not @($config.repositories | Where-Object { $_.id -eq $value -and $_.enabled }).Count) { throw "Enabled repository '$value' was not found." }
+    if ($value -notin @($project.repositoryIds)) { throw "Repository '$value' does not belong to project '$ProjectId'." }
     $selectedRepositoryIds.Add($value)
 }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
@@ -40,6 +57,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
             mode = $Mode
             taskName = $resolvedTaskName
             taskType = $resolvedTaskType
+            projectId = $ProjectId
             branchName = New-TaskBranchName -TaskName $resolvedTaskName -TaskType $resolvedTaskType
             repositoryId = if ($selectedRepositoryIds.Count) { $selectedRepositoryIds[0] } else { $null }
             repositoryIds = @($selectedRepositoryIds)
@@ -64,6 +82,9 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
         return [pscustomobject]@{ Created=$true; ScopeChanged=$false; BranchMetadataChanged=$false; BranchName=[string]$document.branchName }
     }
     $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $existingProjectId = if ($document.PSObject.Properties['projectId']) { [string]$document.projectId } else { '' }
+    if ($existingProjectId -and $existingProjectId -ne $ProjectId) { throw "Task '$TaskId' belongs to project '$existingProjectId', not '$ProjectId'." }
+    if (-not $existingProjectId) { $document | Add-Member -NotePropertyName projectId -NotePropertyValue $ProjectId -Force }
     $scopeChanged = $false
     if ($selectedRepositoryIds.Count) {
         $previousIds = if ($document.PSObject.Properties['repositoryIds']) { @($document.repositoryIds) } elseif ($document.PSObject.Properties['repositoryId'] -and $document.repositoryId) { @([string]$document.repositoryId) } else { @() }
@@ -92,7 +113,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
         $document | Add-Member -NotePropertyName branchName -NotePropertyValue $existingBranchName -Force
         $branchMetadataChanged = $true
     }
-    if ($scopeChanged -or $branchMetadataChanged) {
+    if ($scopeChanged -or $branchMetadataChanged -or -not $existingProjectId) {
         $document | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
         Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     }
