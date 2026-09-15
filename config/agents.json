@@ -155,7 +155,7 @@
     "automaticContinuation": {
       "enabled": true,
       "maxChainSteps": 16,
-      "maxTransitionRepeats": 3,
+      "maxTransitionRepeats": 4,
       "useElevatedExecution": true,
       "recoveryGraceSeconds": 60,
       "recoveryPollIntervalMinutes": 1,
