@@ -130,7 +130,7 @@ function Assert-EcosystemConfig {
     if ($leaseHeartbeatSeconds -lt 5 -or $leaseHeartbeatSeconds -gt 300) { throw 'Workspace lease heartbeat interval is outside the supported range.' }
     if ($staleLeaseGraceSeconds -lt ($leaseHeartbeatSeconds * 3) -or $staleLeaseGraceSeconds -gt 3600) { throw 'Workspace stale lease grace must be at least three heartbeat intervals and no more than one hour.' }
     if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 32) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
-    if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 3) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 3.' }
+    if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 4) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 4.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -lt 30 -or [int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -gt 600) { throw 'workflow.automaticContinuation.recoveryGraceSeconds is outside the supported range.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -lt 1 -or [int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -gt 60) { throw 'workflow.automaticContinuation.recoveryPollIntervalMinutes is outside the supported range.' }
     if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|review_verifier|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
