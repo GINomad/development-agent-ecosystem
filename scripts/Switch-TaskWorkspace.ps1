@@ -111,7 +111,9 @@ if ($admission.Status -eq 'queue') {
 }
 if ($admission.Status -eq 'already-active') {
     & (Join-Path $PSScriptRoot 'Repair-LegacyTaskWorkspaceBranches.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    $workspaces = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $workspaces = @($repositoryIds | ForEach-Object {
+        & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId ([string]$_) -ConfigPath $ConfigPath -CodexHome $CodexHome
+    })
     return [pscustomobject]@{ Status='already-active'; TaskId=$TaskId; RunId=[string]$admission.Lease.runId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=@($workspaces) }
 }
 if ($PrepareOnly) { return [pscustomobject]@{ Status='would-admit'; TaskId=$TaskId; RunId=$RunId; LeaseId=[string]$admission.Lease.leaseId; Capacity=$admission.Capacity; ActiveTaskCount=$admission.ActiveTaskCount; QueuePosition=$null; Workspaces=$plannedWorkspaces } }
