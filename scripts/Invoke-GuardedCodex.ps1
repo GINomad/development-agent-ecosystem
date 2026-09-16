@@ -42,7 +42,7 @@ function Get-FailureFingerprint {
     if ([string]$item.status -ne 'failed') { return $null }
     $detail = if ($item.PSObject.Properties['aggregated_output']) { [string]$item.aggregated_output } elseif ($item.PSObject.Properties['error']) { [string]$item.error } else { ($item | ConvertTo-Json -Depth 12 -Compress) }
     if ([string]::IsNullOrWhiteSpace($detail)) { return $null }
-    $kind = if ($detail -match '(?m)^\s*ParserError:\s*$') { 'command-parse-failure' } else { 'execution-failure' }
+    $kind = if ($detail -match '(?i)\bParserError\s*:') { 'command-parse-failure' } else { 'execution-failure' }
     $canonical = if ($detail -match 'CreateProcessWithLogonW failed:\s*1260') { 'windows-sandbox-create-process-1260' } elseif ($detail -match 'Cannot overwrite variable PID') { 'powershell-readonly-pid' } else { (($detail -replace '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', '<timestamp>') -replace '\s+', ' ').Trim() }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }

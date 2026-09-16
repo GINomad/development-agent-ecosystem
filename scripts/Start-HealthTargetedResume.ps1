@@ -195,6 +195,9 @@ if ($activeWorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $activeWor
 if ($ElevatedApproved) { $workflowParameters.ElevatedApproved = $true }
 
 try {
+    if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
+        & (Join-Path $PSScriptRoot 'Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $TaskId -RunId $activeExecutionRunId -LeaseId $activeWorkspaceLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
     & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
     $finalTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $finalAgentStatus = [string]$finalTask.agentStatuses.$targetAgentId.status

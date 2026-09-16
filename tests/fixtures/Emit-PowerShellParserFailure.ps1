@@ -5,8 +5,7 @@ $failure = [ordered]@{
         type = 'command_execution'
         status = 'failed'
         aggregated_output = @'
-ParserError:
-Line |
+ParserError: Line |
    2 |  } } | ConvertTo-Json
      |      ~
      | An empty pipe element is not allowed.
