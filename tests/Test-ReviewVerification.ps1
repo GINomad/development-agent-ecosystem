@@ -158,7 +158,7 @@ New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
 $testConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $testConfig.runtime.stateRoot = $stateRoot
 Write-JsonFile -Path $testConfigPath -Value $testConfig
-& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'synthetic-review-verification' -Mode manual -ConfigPath $testConfigPath | Out-Null
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'synthetic-review-verification' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath | Out-Null
 
 $reviewOne = New-Review -Revision 'rev-1' -LifecycleStatus new
 Write-JsonFile -Path $reviewPath -Value $reviewOne

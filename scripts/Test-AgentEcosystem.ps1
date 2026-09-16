@@ -850,7 +850,6 @@ $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $resumeScopeTask
 $resumeScopePlan = & (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Mode manual -TaskId $resumeScopeTaskId -TaskSelector 'synthetic resume repository scope' -Resume -TargetAgentId developer -PrepareOnly -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
 $resumeScopeTask = Get-Content -LiteralPath (Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$resumeScopeTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 if ((@($resumeScopePlan.RepositoryIds) -join '|') -ne ($originalResumeRepositoryIds -join '|') -or (@($resumeScopeTask.repositoryIds) -join '|') -ne ($originalResumeRepositoryIds -join '|') -or [string]$resumeScopeTask.projectId -ne 'planning-space' -or @($resumeScopePlan.WorkspaceLease.Workspaces).Count -ne 2 -or @($resumeScopePlan.WorkspaceLease.Workspaces | Where-Object { [string]$_.RepositoryId -notin $originalResumeRepositoryIds }).Count -ne 0) { throw 'Resume without explicit repository arguments replaced persisted multi-repository scope or project association with the first enabled configuration repository.' }
-& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $resumeScopeTaskId -LeaseId ([string]$resumeScopePlan.LeaseId) -Reason 'synthetic-resume-scope-test' -ConfigPath $resumeScopeConfigPath | Out-Null
 Add-Check -Name 'resume-preserves-persisted-repository-scope' -Detail 'Resume without repository arguments preserves persisted multi-repository task scope, project association, and workspace selection even when another enabled repository is first in configuration'
 
 $missingScopeTaskId = 'missing-repository-scope-' + [guid]::NewGuid().ToString('N')
@@ -869,7 +868,7 @@ $scopeAuditEvents = @(Get-Content -LiteralPath (Join-Path $resumeScopeConfig.run
 if ((@($scopeAuditTask.repositoryIds) -join '|') -ne 'azure-planningspace-ps-excel-agent' -or @($scopeAuditEvents | Where-Object { [string]$_.summary -eq 'Repository scope updated: azure-planningspace-ps-excel-agent.' }).Count -ne 1) { throw 'An explicit repository scope change was not persisted and audited exactly once.' }
 $historicalManifestPath = Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$scopeAuditTaskId\workspaces\azure-planningspace-ps-bicep.json"
 New-Item -ItemType Directory -Path (Split-Path -Parent $historicalManifestPath) -Force | Out-Null
-Write-Utf8NoBom -Path $historicalManifestPath -Content (([ordered]@{ taskId=$scopeAuditTaskId; repositoryId='azure-planningspace-ps-bicep'; clonePath='C:\synthetic-outside-scope'; lifecycle='released' } | ConvertTo-Json) + [Environment]::NewLine)
+Write-Utf8NoBom -Path $historicalManifestPath -Content (([ordered]@{ taskId=$scopeAuditTaskId; repositoryId='azure-planningspace-ps-bicep'; clonePath='C:\synthetic-outside-scope'; canonicalOrigin=$schedulerRemote; branch='feature/synthetic-historical-scope'; lifecycle='released' } | ConvertTo-Json) + [Environment]::NewLine)
 $scopeTaskProjection = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $scopeAuditTaskId -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
 if (@($scopeTaskProjection.Tasks[0].workspaces | Where-Object { [string]$_.repositoryId -eq 'azure-planningspace-ps-bicep' }).Count) { throw 'A historical manifest outside the current repository scope appeared in the active task projection.' }
 
