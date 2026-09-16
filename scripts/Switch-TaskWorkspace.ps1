@@ -82,6 +82,8 @@ $admission = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -Timeout
     $existing = $coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId } | Select-Object -First 1
     $capacity = [int]$config.workflow.workspaceScheduling.maxActiveTasks
     if ($null -ne $existing) {
+        $leasedRepositoryIds = @($existing.repositories | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique)
+        if (($leasedRepositoryIds -join '|') -ne ($repositoryIds -join '|')) { throw "Task '$TaskId' active workspace lease scope does not match its persisted repository scope." }
         if (-not $ExpectedLeaseId) { throw "Task '$TaskId' already has an active controller." }
         if ([string]$existing.leaseId -ne $ExpectedLeaseId -or [string]$existing.runId -ne $RunId) { throw "Task '$TaskId' active lease does not match the requested run." }
         return [pscustomobject]@{ Status='already-active'; Lease=$existing; Capacity=$capacity; ActiveTaskCount=@($coordinator.leases).Count }

@@ -82,8 +82,7 @@ if ($Resume -and -not $requestedRepositoryIds.Count) {
     }
 }
 if (-not $requestedRepositoryIds.Count) {
-    $defaultRepository = @($config.repositories | Where-Object { $_.enabled }) | Select-Object -First 1
-    if ($defaultRepository) { $requestedRepositoryIds.Add([string]$defaultRepository.id) }
+    throw "Task '$TaskId' has no repository scope. Specify -RepositoryId or -RepositoryIds when starting a new workflow; resume requires a persisted task repositoryIds (legacy repositoryId is accepted)."
 }
 $repositories = [Collections.Generic.List[object]]::new()
 foreach ($id in $requestedRepositoryIds) {

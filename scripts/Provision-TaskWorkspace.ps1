@@ -18,6 +18,10 @@ if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$Task
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $RepositoryIds.Count) { $RepositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.repositoryId) { @([string]$task.repositoryId) } else { @() } }
 if (-not $RepositoryIds.Count) { throw "Task '$TaskId' has no repository workspace." }
+$taskRepositoryIds = @(if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() })
+$requestedRepositoryIds = @($RepositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique)
+if (-not $taskRepositoryIds.Count -or ($taskRepositoryIds -join '|') -ne ($requestedRepositoryIds -join '|')) { throw "Workspace provisioning for task '$TaskId' must use exactly its persisted repository scope: $($taskRepositoryIds -join ', ')." }
+$RepositoryIds = $taskRepositoryIds
 function Invoke-TaskWorkspaceGit {
     param([Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string[]] $Arguments)
     $savedPreference = $ErrorActionPreference

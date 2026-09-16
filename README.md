@@ -75,8 +75,8 @@ With the default capacity of two, both tasks are admitted. Additional tasks rema
 # Work on one explicitly selected task across two repositories
 .\scripts\Start-DevelopmentWorkflow.ps1 -Mode manual -TaskSelector 1839566 -RepositoryIds azure-planningspace-ps-excel-agent,azure-planningspace-ps-bicep
 
-# Process all active tasks assigned to the configured user
-.\scripts\Start-DevelopmentWorkflow.ps1 -Mode automate
+# Resume a persisted task; its saved repository scope is used when no repository argument is supplied
+.\scripts\Start-DevelopmentWorkflow.ps1 -Mode manual -TaskSelector 1839566 -TaskId task-1839566 -Resume
 
 # Run Review Monitor without publishing comments
 .\scripts\Invoke-EnhancedReview.ps1 -Mode Manual -DryRun

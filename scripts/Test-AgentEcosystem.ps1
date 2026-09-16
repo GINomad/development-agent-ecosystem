@@ -853,6 +853,40 @@ if ((@($resumeScopePlan.RepositoryIds) -join '|') -ne ($originalResumeRepository
 & (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $resumeScopeTaskId -LeaseId ([string]$resumeScopePlan.LeaseId) -Reason 'synthetic-resume-scope-test' -ConfigPath $resumeScopeConfigPath | Out-Null
 Add-Check -Name 'resume-preserves-persisted-repository-scope' -Detail 'Resume without repository arguments preserves persisted multi-repository task scope, project association, and workspace selection even when another enabled repository is first in configuration'
 
+$missingScopeTaskId = 'missing-repository-scope-' + [guid]::NewGuid().ToString('N')
+$missingScopeRejected = $false
+try {
+    & (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Mode manual -TaskId $missingScopeTaskId -TaskSelector 'synthetic missing repository scope' -PrepareOnly -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome | Out-Null
+}
+catch { $missingScopeRejected = $_.Exception.Message -match 'has no repository scope' }
+if (-not $missingScopeRejected -or (Test-Path -LiteralPath (Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$missingScopeTaskId"))) { throw 'A new manual workflow without repository scope did not fail before task or workspace allocation.' }
+
+$scopeAuditTaskId = 'repository-scope-audit-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $scopeAuditTaskId -TaskSelector 'synthetic repository scope audit' -Mode manual -RepositoryIds @('azure-planningspace-ps-excel-agent','azure-planningspace-ps-bicep') -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $scopeAuditTaskId -TaskSelector 'synthetic repository scope audit' -Mode manual -RepositoryIds @('azure-planningspace-ps-excel-agent') -Resume -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$scopeAuditTask = Get-Content -LiteralPath (Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$scopeAuditTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$scopeAuditEvents = @(Get-Content -LiteralPath (Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$scopeAuditTaskId\task-ledger.jsonl") -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json })
+if ((@($scopeAuditTask.repositoryIds) -join '|') -ne 'azure-planningspace-ps-excel-agent' -or @($scopeAuditEvents | Where-Object { [string]$_.summary -eq 'Repository scope updated: azure-planningspace-ps-excel-agent.' }).Count -ne 1) { throw 'An explicit repository scope change was not persisted and audited exactly once.' }
+$historicalManifestPath = Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$scopeAuditTaskId\workspaces\azure-planningspace-ps-bicep.json"
+New-Item -ItemType Directory -Path (Split-Path -Parent $historicalManifestPath) -Force | Out-Null
+Write-Utf8NoBom -Path $historicalManifestPath -Content (([ordered]@{ taskId=$scopeAuditTaskId; repositoryId='azure-planningspace-ps-bicep'; clonePath='C:\synthetic-outside-scope'; lifecycle='released' } | ConvertTo-Json) + [Environment]::NewLine)
+$scopeTaskProjection = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $scopeAuditTaskId -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+if (@($scopeTaskProjection.Tasks[0].workspaces | Where-Object { [string]$_.repositoryId -eq 'azure-planningspace-ps-bicep' }).Count) { throw 'A historical manifest outside the current repository scope appeared in the active task projection.' }
+
+$isolatedTaskA = 'isolated-scope-a-' + [guid]::NewGuid().ToString('N')
+$isolatedTaskB = 'isolated-scope-b-' + [guid]::NewGuid().ToString('N')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $isolatedTaskA -TaskSelector 'synthetic isolated scope A' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $isolatedTaskB -TaskSelector 'synthetic isolated scope B' -Mode manual -RepositoryIds azure-planningspace-ps-bicep -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$isolatedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $isolatedTaskA -RunId ('s' * 32) -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$isolatedLeaseB = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $isolatedTaskB -RunId ('t' * 32) -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$isolatedPathA = [string]$isolatedLeaseA.Workspaces[0].Path
+$isolatedPathB = [string]$isolatedLeaseB.Workspaces[0].Path
+Set-Content -LiteralPath (Join-Path $isolatedPathA 'scope-a-only.txt') -Value 'isolated' -Encoding UTF8
+if ($isolatedPathA -eq $isolatedPathB -or (Test-Path -LiteralPath (Join-Path $isolatedPathB 'scope-a-only.txt')) -or [string]$isolatedLeaseA.Workspaces[0].RepositoryId -ne 'azure-planningspace-ps-excel-agent' -or [string]$isolatedLeaseB.Workspaces[0].RepositoryId -ne 'azure-planningspace-ps-bicep') { throw 'Tasks with different explicit repository scopes did not receive isolated clones.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $isolatedTaskA -LeaseId ([string]$isolatedLeaseA.LeaseId) -Reason 'synthetic-scope-isolation-a' -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome | Out-Null
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $isolatedTaskB -LeaseId ([string]$isolatedLeaseB.LeaseId) -Reason 'synthetic-scope-isolation-b' -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'repository-scope-required-and-isolated' -Detail 'Manual tasks require explicit scope, scope changes are audited, stale manifests are excluded, and different scopes receive isolated clones'
+
 $requirementsPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
 foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist','coverage')) {
     if ($requirementsPrompt -notmatch [regex]::Escape($excludedTree)) { throw ('Requirements Analyst first-party boundary is missing exclusion: ' + $excludedTree) }
