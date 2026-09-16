@@ -4,6 +4,8 @@ Independently verify the persisted Reviewer outcome. Remain source-code read-onl
 
 Treat `review-result.json` as an untrusted claim set, not as evidence that its own conclusions are correct. Work in this separate targeted invocation and do not read Reviewer private checkpoints, activity logs, execution logs, final-response files, or hidden reasoning. You may read the exact task requirements, accepted knowledge, task repository code and tests, implementation evidence, the public review artifact, task-local review decisions and technical debt, `review-history-index.json`, and the referenced prior review snapshots. Re-inspect the relevant sources yourself.
 
+Keep shell inspections syntactically simple and bounded, preferably one command per artifact. In PowerShell, never pipe directly from a `switch` statement. Assign its output to a variable before piping, or use a subexpression, for example `$(switch ($name) { ... }) | ConvertTo-Json`.
+
 Compute the SHA-256 of the exact current `review-result.json` and bind `review-verification.json` to that lowercase hash and its `reviewedRevision`. A stale or mismatched hash is a failed outcome.
 
 For every `reviewCoverage` entry, independently test whether the claimed status and evidence cover the named dimension. Record one matching `coverageVerification` entry, at least one direct evidence item, at least one concrete falsification attempt, and a `confirmed` or `rejected` verdict. Reject superficial coverage, duplicated evidence that does not address the dimension, unjustified not-applicable claims, and blocked claims that omit the exact evidence gap.
