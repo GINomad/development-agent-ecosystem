@@ -30,7 +30,17 @@ if ($AgentId -eq 'knowledge_keeper') {
         if ([string]$pullRequestStatus.status -ne 'completed') { throw "Knowledge Keeper cannot publish a completed-PR closure while the persisted pull request status is '$([string]$pullRequestStatus.status)'." }
     }
     if (-not $manualClosure -and -not $completedPrClosure) {
-        foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')) {
+        $deliveryAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')
+        $requiredDeliveryAgentIds = @($deliveryAgentIds)
+        $routingArtifact = [string]$config.workflow.orchestration.routingArtifact
+        $routingPath = Join-Path $taskRoot $routingArtifact
+        if (Test-Path -LiteralPath $routingPath -PathType Leaf) {
+            $latestExecutionRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
+            if ($latestExecutionRoute) {
+                $requiredDeliveryAgentIds = @($latestExecutionRoute.agentSequence | ForEach-Object { [string]$_ } | Where-Object { $_ -in $deliveryAgentIds })
+            }
+        }
+        foreach ($deliveryAgentId in $requiredDeliveryAgentIds) {
             $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
             if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
         }

@@ -14,7 +14,7 @@ $reviewSkill = Resolve-EcosystemPath -Value '${REPO_ROOT}/plugins/development-ag
 New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $promptRoot -Force | Out-Null
 
-$repositories = foreach ($repository in @($config.repositories)) {
+$repositories = foreach ($repository in @($config.repositories | Where-Object { [string]$_.provider -ne 'local-git' })) {
     [pscustomobject][ordered]@{
         id = [string]$repository.id
         enabled = [bool]$repository.enabled

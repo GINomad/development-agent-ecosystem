@@ -566,6 +566,28 @@ if ([string]$researchRoute.Routing.executionMode -ne 'research-only' -or [bool]$
 if (@('developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper','health_check') | Where-Object { [string]$researchTaskAfter.agentStatuses.$_.status -ne 'skipped' }) { throw 'Research-only routing left an excluded agent eligible to run.' }
 Add-Check -Name 'intent-scoped-execution-policy' -Detail 'Orchestrator can persist research-only intent, skip excluded roles, and stop continuation after Requirements Analyst'
 
+$localPocTaskId = 'local-poc-publication-' + [guid]::NewGuid().ToString('N')
+$localPocTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $localPocTaskId -TaskSelector synthetic-local-poc-publication -Mode manual -RepositoryIds planning-space-excel-variable-poc -ConfigPath $routingConfigPath
+$localPocCreatedEvent = Get-Content -LiteralPath (Join-Path $localPocTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
+$localPocRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $localPocTaskId -SourceEventId ([string]$localPocCreatedEvent.eventId) -InputKind task-intake -TargetAgentIds requirements_analyst -ExecutionMode local-poc-delivery -Rationale 'The synthetic task requires local-only implementation, review, verification, and final publication.' -Confidence high -ConfigPath $routingConfigPath
+foreach ($completedLocalPocAgentId in @('requirements_analyst','developer','reviewer','review_verifier')) {
+    & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $localPocTaskId -AgentId $completedLocalPocAgentId -AgentStatus completed -Stage synthetic_local_poc_completed -Message "Synthetic $completedLocalPocAgentId completed." -ConfigPath $routingConfigPath | Out-Null
+}
+$localPocKnowledge = [ordered]@{ taskId=$localPocTaskId; entries=@(); humanReadable=[ordered]@{ title='Synthetic local POC knowledge'; overview='No durable knowledge changes were required.'; audience='Ecosystem maintainers'; updates=@() } }
+$localPocSummary = [ordered]@{
+    taskId=$localPocTaskId; status='completed'; completedAtUtc=[DateTime]::UtcNow.ToString('o'); repositories=@('planning-space-excel-variable-poc')
+    outcomes=@(); decisions=@('The task used local-poc-delivery.'); verification=@('Requirements, implementation, review, and independent verification completed locally.')
+    knowledgeUpdates=@(); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@()
+    humanReadable=[ordered]@{ title='Synthetic local POC completion'; overview='The local-only POC completed without pipeline delivery.'; audience='Ecosystem maintainers'; delivered=@('Completed the local-only POC.'); decisions=@('Pipeline delivery was excluded by the selected execution mode.'); verification=@('Local review verification passed.'); knowledgeUpdates=@(); residualItems=@() }
+}
+Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'knowledge-update.json') -Content (($localPocKnowledge | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'context-pack.json') -Content (([ordered]@{ taskId=$localPocTaskId; artifacts=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'task-summary.json') -Content (($localPocSummary | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$localPocPublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $localPocTaskId -AgentId knowledge_keeper -Summary 'Synthetic local POC final publication completed.' -ConfigPath $routingConfigPath
+$publishedLocalPocTask = Get-Content -LiteralPath $localPocTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$localPocRoute.Routing.executionMode -ne 'local-poc-delivery' -or [string]$publishedLocalPocTask.agentStatuses.pipeline_monitor.status -ne 'skipped' -or [string]$localPocPublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLocalPocTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'Local POC final publication did not honor the selected execution mode or excluded Pipeline Monitor state.' }
+Add-Check -Name 'execution-mode-aware-final-publication' -Detail 'Knowledge Keeper final publication requires successful outcomes only from roles selected by the latest persisted execution mode'
+
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
 $schedulerSource = Join-Path $schedulerRoot 'source'
 $schedulerRemote = Join-Path $schedulerRoot 'remote.git'
