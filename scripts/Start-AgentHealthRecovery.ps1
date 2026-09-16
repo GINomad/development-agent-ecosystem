@@ -397,8 +397,17 @@ try {
         $taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $repositoryIds = if ($taskSnapshot.PSObject.Properties['repositoryIds']) { @($taskSnapshot.repositoryIds) } elseif ($taskSnapshot.PSObject.Properties['repositoryId']) { @([string]$taskSnapshot.repositoryId) } else { @() }
         $routeParameters = @{ Mode=[string]$taskSnapshot.mode; TaskSelector=[string]$taskSnapshot.selector; TaskId=$TaskId; RepositoryIds=@($repositoryIds); UserInstruction="Health Check routed this repair to '$routedAgentId'. Read $routingPath and the bounded evidence it references. Fix only the assigned scope, preserve completed agents and artifacts, and stop for user input when authority or facts are missing."; Resume=$true; TargetAgentId=$routedAgentId; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-        if ($ExecutionRunId) { $routeParameters.ExecutionRunId = $ExecutionRunId }
-        if ($WorkspaceLeaseId) { $routeParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
+        if ($ExecutionRunId -and $WorkspaceLeaseId) {
+            try {
+                & (Join-Path $PSScriptRoot 'Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $TaskId -RunId $ExecutionRunId -LeaseId $WorkspaceLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                $routeParameters.ExecutionRunId = $ExecutionRunId
+                $routeParameters.WorkspaceLeaseId = $WorkspaceLeaseId
+            }
+            catch {
+                $staleLease = $_.Exception.Message -match 'Workspace coordinator state is missing|is no longer owned by task|state no longer matches workspace lease'
+                if (-not $staleLease) { throw }
+            }
+        }
         if ($ElevatedApproved) { $routeParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @routeParameters
     }
