@@ -669,10 +669,24 @@ if (
     -not $wrongHeartbeatRejected
 ) { throw 'Workspace heartbeat and task status did not enforce exact task/run/lease ownership.' }
 Add-Check -Name 'task-status-lease-ownership' -Detail 'Task status rejects invalid ownership, and heartbeat validation reports bounded expected/actual IDs from one coordinator/task lock window'
+$staleManifestPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\workspaces\azure-planningspace-ps-bicep.json"
+$staleManifest = [ordered]@{
+    schemaVersion = '2.0.0'
+    taskId = $taskAId
+    repositoryId = 'azure-planningspace-ps-bicep'
+    clonePath = Join-Path $schedulerRoot 'released-legacy-workspace'
+    branch = 'features/released-legacy-workspace'
+    baseSha = '0' * 40
+    canonicalOrigin = 'https://example.invalid/released-legacy-workspace.git'
+    runId = 'r' * 32
+    leaseId = 'l' * 32
+    lifecycle = 'released'
+}
+Write-Utf8NoBom -Path $staleManifestPath -Content (($staleManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Stage synthetic-continuation-handoff -Message 'A live controller is handing the lease to its targeted continuation.' -ConfigPath $schedulerConfigPath | Out-Null
 $recoveredDuringContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
 $continuedLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
-if ($recoveredDuringContinuation.Count -ne 0 -or [string]$continuedLeaseA.Status -ne 'already-active' -or [string]$continuedLeaseA.LeaseId -ne [string]$leaseA.LeaseId) { throw 'An interrupted continuation checkpoint lost its live workspace lease before targeted-agent handoff.' }
+if ($recoveredDuringContinuation.Count -ne 0 -or [string]$continuedLeaseA.Status -ne 'already-active' -or [string]$continuedLeaseA.LeaseId -ne [string]$leaseA.LeaseId -or @($continuedLeaseA.Workspaces).Count -ne 1 -or [string]$continuedLeaseA.Workspaces[0].RepositoryId -ne 'azure-planningspace-ps-excel-agent') { throw 'An interrupted continuation checkpoint lost its live workspace lease or included a released legacy workspace before targeted-agent handoff.' }
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status completed -Stage synthetic-terminal-continuation-handoff -Message 'A live controller is starting a continuation after temporary workflow completion.' -ConfigPath $schedulerConfigPath | Out-Null
 $recoveredDuringTerminalContinuation = @(& (Join-Path $root 'scripts\Repair-StaleTaskWorkspaceLeases.ps1') -ConfigPath $schedulerConfigPath)
 $continuedTerminalLeaseA = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId $taskAId -RunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
