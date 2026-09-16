@@ -195,6 +195,12 @@ function Assert-EcosystemConfig {
         if ($repository.provider -ne $profileIds[[string]$repository.credentialProfile].provider) {
             throw "Repository '$($repository.id)' and credential profile '$($repository.credentialProfile)' use different providers."
         }
+        if ([string]$repository.provider -eq 'local-git') {
+            if ([string]$repository.credentialProfile -ne 'local-git' -or [string]$profileIds[[string]$repository.credentialProfile].mode -ne 'none') { throw "Local repository '$($repository.id)' must use the credential-free local-git profile." }
+            if ([string]::IsNullOrWhiteSpace([string]$repository.url) -or -not [IO.Path]::IsPathRooted(([string]$repository.url -replace '/', [IO.Path]::DirectorySeparatorChar))) { throw "Local repository '$($repository.id)' requires an absolute filesystem URL." }
+            $allowedModes = @($repository.allowedExecutionModes | ForEach-Object { [string]$_ })
+            if ('local-poc-delivery' -notin $allowedModes -or $allowedModes -contains 'full-delivery' -or $allowedModes -contains 'implementation-only' -or $allowedModes -contains 'pipeline-only') { throw "Local repository '$($repository.id)' must allow local-poc-delivery and must not allow pipeline delivery modes." }
+        }
     }
     $projectIds = @{}
     $repositoryOwners = @{}

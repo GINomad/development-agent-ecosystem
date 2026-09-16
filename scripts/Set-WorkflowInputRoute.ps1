@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory)][ValidateLength(1,2000)][string] $Rationale,
     [ValidateSet('high','medium','low')][string] $Confidence = 'medium',
     [ValidateSet('task-intake','workflow-comment')][string] $InputKind = 'workflow-comment',
-    [ValidateSet('full-delivery','research-only','requirements-only','implementation-only','review-only','pipeline-only','knowledge-only','ecosystem-repair')][string] $ExecutionMode = 'full-delivery',
+    [ValidateSet('full-delivery','local-poc-delivery','research-only','requirements-only','implementation-only','review-only','pipeline-only','knowledge-only','ecosystem-repair')][string] $ExecutionMode = 'full-delivery',
     [switch] $RequiresUserInput,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -31,6 +31,17 @@ $taskPath = Join-Path $taskRoot 'task.json'
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 if (-not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) { throw "Task '$TaskId' has no event ledger." }
+$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskRepositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds | ForEach-Object { [string]$_ }) } elseif ($task.repositoryId) { @([string]$task.repositoryId) } else { @() }
+foreach ($taskRepositoryId in $taskRepositoryIds) {
+    $taskRepository = @($config.repositories | Where-Object { [string]$_.id -eq $taskRepositoryId }) | Select-Object -First 1
+    if (-not $taskRepository) { throw "Task '$TaskId' references unknown repository '$taskRepositoryId'." }
+    [string[]] $allowedModes = @()
+    if ($taskRepository.PSObject.Properties['allowedExecutionModes']) {
+        $allowedModes = @($taskRepository.allowedExecutionModes | ForEach-Object { [string]$_ })
+    }
+    if ($allowedModes.Count -and $ExecutionMode -notin $allowedModes) { throw "Repository '$taskRepositoryId' does not allow execution mode '$ExecutionMode'." }
+}
 
 $events = @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
 $source = @($events | Where-Object { [string]$_.eventId -eq $SourceEventId }) | Select-Object -First 1

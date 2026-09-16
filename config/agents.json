@@ -70,6 +70,18 @@
           "codeChangesAllowed": true,
           "continueAutomatically": true
         },
+        "local-poc-delivery": {
+          "description": "Run the evidence, implementation, review, independent verification, and knowledge sequence for an isolated local-only POC. Pipeline and pull-request delivery are deliberately excluded.",
+          "agentSequence": [
+            "requirements_analyst",
+            "developer",
+            "reviewer",
+            "review_verifier",
+            "knowledge_keeper"
+          ],
+          "codeChangesAllowed": true,
+          "continueAutomatically": true
+        },
         "research-only": {
           "description": "Produce evidence-backed research and requirements analysis without product changes, review, or pipeline execution.",
           "agentSequence": [
@@ -458,6 +470,11 @@
   },
   "credentialProfiles": [
     {
+      "id": "local-git",
+      "provider": "local-git",
+      "mode": "none"
+    },
+    {
       "id": "azure-default",
       "provider": "azure-devops",
       "mode": "azure-cli",
@@ -466,6 +483,19 @@
     }
   ],
   "repositories": [
+    {
+      "id": "planning-space-excel-variable-poc",
+      "enabled": true,
+      "provider": "local-git",
+      "repository": "excel-variable-poc",
+      "url": "C:/Repos/PlanningSpace/excel-variable-poc",
+      "reviewer": "local-review",
+      "credentialProfile": "local-git",
+      "localWorkspace": "C:/Repos/PlanningSpace/excel-variable-poc",
+      "allowedExecutionModes": ["local-poc-delivery", "research-only", "requirements-only", "review-only", "knowledge-only", "ecosystem-repair"],
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
     {
       "id": "azure-planningspace-ps-excel-agent",
       "enabled": true,
@@ -515,6 +545,7 @@
       "name": "PlanningSpace",
       "enabled": true,
       "repositoryIds": [
+        "planning-space-excel-variable-poc",
         "azure-planningspace-ps-excel-agent",
         "azure-planningspace-ps-bicep",
         "azure-palantirplugins-ps-app-delfi"
