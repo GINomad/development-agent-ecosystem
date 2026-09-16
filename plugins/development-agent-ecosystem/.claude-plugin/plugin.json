@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Evidence-first multi-agent workflow for requirements, knowledge, implementation, review, and Azure pipelines.",
   "author": {
-    "name": "PlanningSpace Engineering"
+    "name": "Development Agent Ecosystem"
   },
   "license": "UNLICENSED",
   "keywords": [

@@ -17,7 +17,7 @@ param(
     [ValidateSet('disabled', 'allowlist')]
     [string] $McpMode,
     [string[]] $McpServers,
-    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Codex\azure-pr-review-monitor')
+    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Claude\azure-pr-review-monitor')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -144,16 +144,16 @@ switch ($Action) {
             }
             catch { $failures.Add("$($repository.id): $($_.Exception.Message)") }
         }
-        $codex = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $codex) { $failures.Add('Codex CLI was not found.') }
+        $claude = Get-Command claude.exe, claude -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $claude) { $failures.Add('Claude CLI was not found.') }
         elseif ($config.review.mcp.mode -eq 'allowlist') {
             try {
-                $configured = @((& $codex.Source mcp list --json 2>$null | Out-String | ConvertFrom-Json).name)
+                $configured = @((& $claude.Source mcp list --json 2>$null | Out-String | ConvertFrom-Json).name)
                 foreach ($server in @($config.review.mcp.allowedServers)) {
-                    if ($server -notin $configured) { $failures.Add("MCP server '$server' is allowlisted but is not configured in Codex.") }
+                    if ($server -notin $configured) { $failures.Add("MCP server '$server' is allowlisted but is not configured in Claude.") }
                 }
             }
-            catch { $failures.Add("Unable to validate Codex MCP configuration: $($_.Exception.Message)") }
+            catch { $failures.Add("Unable to validate Claude MCP configuration: $($_.Exception.Message)") }
         }
         if ($failures.Count) { throw "Settings validation failed:`n- $($failures -join "`n- ")" }
         Write-Output 'Configuration validation completed successfully.'

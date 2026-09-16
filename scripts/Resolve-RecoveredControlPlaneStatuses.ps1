@@ -24,7 +24,7 @@ if ([string]$task.status -notin $stableTaskStatuses -or -not (Test-Path -Literal
 }
 
 $events = @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
-$downstreamAgentIds = @('requirements_analyst','developer','reviewer','pipeline_monitor','knowledge_keeper')
+$downstreamAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper')
 $downstreamResults = @($events | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -in $downstreamAgentIds } | Sort-Object { [DateTime]$_.timestampUtc })
 
 function Get-LatestEvent {

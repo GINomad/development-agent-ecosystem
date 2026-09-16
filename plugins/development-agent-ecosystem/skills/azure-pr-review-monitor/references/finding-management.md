@@ -5,7 +5,7 @@ Each review writes stable finding IDs into Markdown and a `.findings.json` sidec
 Use the dashboard or command-line manager:
 
 ```powershell
-$manager = "$HOME/.codex/skills/azure-pr-review-monitor/scripts/manage_review_findings.ps1"
+$manager = "$HOME/.claude/skills/azure-pr-review-monitor/scripts/manage_review_findings.ps1"
 & $manager -Action List
 & $manager -Action Bypass -FindingId 'RVW-...' -Scope repository -Reason 'Accepted design'
 & $manager -Action FalsePositive -FindingId 'RVW-...' -Scope pull-request -Reason 'Validated by gateway'
@@ -16,7 +16,7 @@ $manager = "$HOME/.codex/skills/azure-pr-review-monitor/scripts/manage_review_fi
 
 Publication resolves the provider from the sidecar and dispatches to Azure DevOps or GitHub. It is never automatic and a local record blocks accidental duplicates unless `-ForcePublish` is explicit.
 
-Local files under `%LOCALAPPDATA%\Codex\azure-pr-review-monitor`:
+Local files under `%LOCALAPPDATA%\Claude\azure-pr-review-monitor`:
 
 - `finding-dispositions.json`: bypass and false-positive decisions.
 - `published-comments.json`: externally published comment identifiers.

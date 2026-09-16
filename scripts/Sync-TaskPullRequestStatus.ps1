@@ -38,7 +38,15 @@ $delivery = if (Test-Path -LiteralPath $deliveryPath -PathType Leaf) { Get-Conte
 $pipeline = if (Test-Path -LiteralPath $pipelinePath -PathType Leaf) { Get-Content -LiteralPath $pipelinePath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 $ledgerEvents = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
-$latestDeveloperOutcome = @($ledgerEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'developer' } | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+$revisionStartUtc = if ($task.PSObject.Properties['reopenedAtUtc'] -and $task.reopenedAtUtc) { [DateTime]::Parse([string]$task.reopenedAtUtc).ToUniversalTime() } else { [DateTime]::MinValue }
+$currentRevisionDeveloperOutcomes = @($ledgerEvents | Where-Object {
+    if ([string]$_.type -ne 'agent-result' -or [string]$_.actor -ne 'developer') { return $false }
+    [DateTime]::Parse([string]$_.timestampUtc).ToUniversalTime() -ge $revisionStartUtc
+})
+$latestDeveloperOutcome = @($currentRevisionDeveloperOutcomes | Sort-Object timestampUtc -Descending | Select-Object -First 1)
+if ($task.PSObject.Properties['reopenedAtUtc'] -and -not $latestDeveloperOutcome.Count) {
+    return [pscustomobject]@{ Status='awaiting-current-revision-delivery'; TaskId=$TaskId; Revision=if ($task.PSObject.Properties['revision']) { [int]$task.revision } else { 1 } }
+}
 if ($latestDeveloperOutcome.Count) {
     $expectedCommitEvidence = @($latestDeveloperOutcome[0].evidence | Where-Object { [string]$_ -match '^commit:[0-9a-fA-F]{40}$' } | Select-Object -First 1)
     if ($expectedCommitEvidence.Count) {
@@ -53,7 +61,7 @@ if ($latestDeveloperOutcome.Count) {
 $branch = $null
 if ($delivery) { $branch = [string]$delivery.branch }
 elseif ($pipeline) { $branch = [string]$pipeline.branch }
-if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch is required before PR synchronization.' }
+    if ([string]::IsNullOrWhiteSpace($branch)) { throw 'A delivered working branch is required before PR synchronization.' }
 $sourceRef = 'refs/heads/' + ($branch -replace '^refs/heads/','')
 
 if ($PullRequestsJsonPath) {
@@ -114,7 +122,13 @@ if ($status -in @($config.pipeline.pullRequests.completedStatuses)) {
     return [pscustomobject]@{ Status='completion-requested'; Result=[pscustomobject]$result; Closure=$closure; ResultPath=$resultPath }
 }
 if ($status -in @($config.pipeline.pullRequests.abandonedStatuses)) {
-    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Question "Pull request $($result.pullRequestId) for '$branch' was abandoned. Reopen the task, provide a replacement PR, or confirm manual closure." -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $prOptions = @(
+        ('Reopen pull request {0} and continue monitoring it.' -f $result.pullRequestId)
+        ('Provide the ID of a replacement pull request for {0}.' -f $branch)
+        'Confirm that the task should be closed manually without a completed pull request.'
+    )
+    $prQuestion = ('Pull request {0} for {1} was abandoned. Choose how delivery should continue.' -f $result.pullRequestId, $branch)
+    & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId pipeline_monitor -Question $prQuestion -Reason 'An abandoned pull request cannot prove that the reviewed commit was merged, and only a human can choose the intended delivery path.' -Options $prOptions -RecommendedOption $prOptions[0] -RecommendationRationale 'Reopening the original pull request preserves its review history and exact branch-to-commit traceability.' -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     return [pscustomobject]@{ Status='waiting-for-input'; Result=[pscustomobject]$result; ResultPath=$resultPath }
 }
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage awaiting_pull_request -Message "Build succeeded; waiting for the task PR on '$branch' to complete." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

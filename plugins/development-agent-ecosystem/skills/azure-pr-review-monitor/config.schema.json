@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.codex/pr-review-monitor/config.schema.json",
+  "$id": "https://local.claude/pr-review-monitor/config.schema.json",
   "title": "Multi-provider PR Review Agent configuration",
   "type": "object",
   "required": ["version", "schedule", "review", "credentialProfiles", "repositories"],

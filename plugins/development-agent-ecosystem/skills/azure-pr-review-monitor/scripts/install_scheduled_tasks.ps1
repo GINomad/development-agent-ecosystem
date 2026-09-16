@@ -13,21 +13,21 @@ $powerShellPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.ex
 $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 4)
 
-foreach ($legacyName in @('Codex Azure PR Review - Updates','Codex Azure PR Review - Daily','Codex Azure PR Review - Dashboard')) {
+foreach ($legacyName in @('Claude Azure PR Review - Updates','Claude Azure PR Review - Daily','Claude Azure PR Review - Dashboard')) {
     if (Get-ScheduledTask -TaskName $legacyName -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $legacyName -Confirm:$false }
 }
 
 $pollAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runnerPath`" -Mode Poll"
 $pollTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $PollIntervalMinutes)
-Register-ScheduledTask -TaskName 'Codex PR Review - Updates' -Action $pollAction -Trigger $pollTrigger -Settings $settings -Principal $principal -Description 'Checks configured Azure DevOps and GitHub repositories for changed assigned PRs.' -Force | Out-Null
+Register-ScheduledTask -TaskName 'Claude PR Review - Updates' -Action $pollAction -Trigger $pollTrigger -Settings $settings -Principal $principal -Description 'Checks configured Azure DevOps and GitHub repositories for changed assigned PRs.' -Force | Out-Null
 
 $dailyAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runnerPath`" -Mode Daily"
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At $DailyTime
-Register-ScheduledTask -TaskName 'Codex PR Review - Daily' -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the guarded multi-provider PR review check every day.' -Force | Out-Null
+Register-ScheduledTask -TaskName 'Claude PR Review - Daily' -Action $dailyAction -Trigger $dailyTrigger -Settings $settings -Principal $principal -Description 'Runs the guarded multi-provider PR review check every day.' -Force | Out-Null
 
 $dashboardSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
 $dashboardAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$dashboardPath`" -Server -NoBrowser"
 $dashboardTrigger = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
-Register-ScheduledTask -TaskName 'Codex PR Review - Dashboard' -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves interactive PR review reports only on the local loopback interface.' -Force | Out-Null
+Register-ScheduledTask -TaskName 'Claude PR Review - Dashboard' -Action $dashboardAction -Trigger $dashboardTrigger -Settings $dashboardSettings -Principal $principal -Description 'Serves interactive PR review reports only on the local loopback interface.' -Force | Out-Null
 & $dashboardPath -NoBrowser | Out-Null
-Write-Output 'Installed scheduled tasks: Codex PR Review - Updates, Daily, Dashboard.'
+Write-Output 'Installed scheduled tasks: Claude PR Review - Updates, Daily, Dashboard.'

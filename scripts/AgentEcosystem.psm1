@@ -7,30 +7,14 @@ function Get-EcosystemRoot {
 function Get-DefaultCodexHome {
     param([string] $Override)
     if ($Override) { return [IO.Path]::GetFullPath($Override) }
-    if ($env:CODEX_HOME) { return [IO.Path]::GetFullPath($env:CODEX_HOME) }
-    return [IO.Path]::GetFullPath((Join-Path $HOME '.codex'))
-}
-
-function Resolve-CodexCliPath {
-    $command = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) { return [IO.Path]::GetFullPath([string]$command.Source) }
-
-    $extensionRoots = @(
-        (Join-Path ([string]$env:USERPROFILE) '.vscode\extensions'),
-        (Join-Path ([string]$env:USERPROFILE) '.vscode-insiders\extensions')
-    )
-    foreach ($root in $extensionRoots) {
-        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
-        $candidates = @(Get-ChildItem -Path (Join-Path $root 'openai.chatgpt-*-win32-*\bin\*\codex.exe') -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
-        if ($candidates.Count) { return [IO.Path]::GetFullPath([string]$candidates[0].FullName) }
-    }
-    return $null
+    if ($env:CLAUDE_CONFIG_DIR) { return [IO.Path]::GetFullPath($env:CLAUDE_CONFIG_DIR) }
+    return [IO.Path]::GetFullPath((Join-Path $HOME '.claude'))
 }
 
 function Get-AgentRuntimeProvider {
     param([Parameter(Mandatory)] $Config)
-    $provider = if ($Config.runtime.PSObject.Properties['provider']) { [string]$Config.runtime.provider } else { 'codex' }
-    if ($provider -notin @('codex','claude')) { throw "Unsupported agent runtime provider '$provider'." }
+    $provider = if ($Config.runtime.PSObject.Properties['provider']) { [string]$Config.runtime.provider } else { 'claude' }
+    if ($provider -ne 'claude') { throw "Unsupported agent runtime provider '$provider' in the Claude branch." }
     return $provider
 }
 
@@ -46,10 +30,7 @@ function Resolve-ClaudeCliPath {
 
 function Resolve-AgentCliPath {
     param([Parameter(Mandatory)] $Config)
-    switch (Get-AgentRuntimeProvider -Config $Config) {
-        'claude' { return Resolve-ClaudeCliPath }
-        default { return Resolve-CodexCliPath }
-    }
+    return Resolve-ClaudeCliPath
 }
 
 function Get-ClaudeAgentName {
@@ -66,7 +47,7 @@ function Expand-EcosystemValue {
     )
     $expanded = $Value
     $expanded = $expanded.Replace('${REPO_ROOT}', $RepositoryRoot)
-    $expanded = $expanded.Replace('${CODEX_HOME}', $CodexHome)
+    $expanded = $expanded.Replace('${CLAUDE_HOME}', $CodexHome).Replace('${CODEX_HOME}', $CodexHome)
     $expanded = $expanded.Replace('${LOCALAPPDATA}', [string]$env:LOCALAPPDATA)
     if ($StateRoot) { $expanded = $expanded.Replace('${STATE_ROOT}', $StateRoot) }
     return [Environment]::ExpandEnvironmentVariables($expanded)
@@ -107,29 +88,63 @@ function Resolve-EcosystemPath {
     return [IO.Path]::GetFullPath(($expanded -replace '/', [IO.Path]::DirectorySeparatorChar))
 }
 
+function Test-EcosystemRootInsideProductWorkspace {
+    param(
+        [Parameter(Mandatory)][string] $Left,
+        [Parameter(Mandatory)][string] $Right
+    )
+    $leftPath = [IO.Path]::GetFullPath($Left).TrimEnd([char[]]@('\','/'))
+    $rightPath = [IO.Path]::GetFullPath($Right).TrimEnd([char[]]@('\','/'))
+    $separator = [IO.Path]::DirectorySeparatorChar
+    return $leftPath.Equals($rightPath, [StringComparison]::OrdinalIgnoreCase) -or
+        $leftPath.StartsWith($rightPath + $separator, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-AgentWorkingDirectory {
+    param(
+        [Parameter(Mandatory)][string] $ProductWorkspace,
+        [Parameter(Mandatory)][string] $AgentId,
+        [string] $WorkflowExecutionMode
+    )
+    if ($AgentId -eq 'health_check' -and $WorkflowExecutionMode -eq 'ecosystem-repair') {
+        return [IO.Path]::GetFullPath((Get-EcosystemRoot))
+    }
+    return [IO.Path]::GetFullPath($ProductWorkspace)
+}
+
 function Assert-EcosystemConfig {
     param(
         [Parameter(Mandatory)] $Config,
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','pipeline','credentialProfiles','repositories','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','projects','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
+    if ([string]$Config.mcp.defaultMode -notin @('disabled','allowlist')) { throw 'mcp.defaultMode is invalid.' }
+    $mcpNames=@('ecosystem-read')+@($Config.mcp.servers|ForEach-Object{[string]$_.name})
+    if (@($mcpNames|Select-Object -Unique).Count -ne $mcpNames.Count) { throw 'MCP server names must be unique.' }
+    foreach($server in @($Config.mcp.servers)){if($server.PSObject.Properties['command'] -or $server.PSObject.Properties['arguments']){throw "External MCP server '$($server.name)' must reference an already registered server name, not a command."};if(-not @($server.allowedTools).Count -or @($server.allowedTools|Where-Object{$_ -notmatch '^(get|list|read|search)_' }).Count){throw "External MCP server '$($server.name)' must declare only read-only adapter tools."}}
+    foreach($role in @($Config.mcp.rolePolicies.PSObject.Properties)){foreach($entry in @($role.Value)){if($entry -is [string]){throw "MCP role policy '$($role.Name)' must use a server/tools object."};$name=[string]$entry.server;if($name -notin $mcpNames){throw "MCP role policy '$($role.Name)' references unknown server '$name'."};if(-not $entry.PSObject.Properties['tools'] -or -not @($entry.tools).Count){throw "MCP role policy '$($role.Name)' must declare allowed tools."};$declared=if($name -eq 'ecosystem-read'){@($Config.mcp.localServer.enabledTools)}else{@(@($Config.mcp.servers|Where-Object{[string]$_.name -eq $name}|Select-Object -First 1).allowedTools)};if(@($entry.tools|Where-Object{$_ -notin $declared}).Count){throw "MCP role policy '$($role.Name)' enables an undeclared tool for '$name'."}}}
     if (-not [bool]$Config.workflow.orchestration.enabled -or [string]$Config.workflow.orchestration.agentId -ne 'orchestrator') { throw 'workflow.orchestration must enable the configured orchestrator.' }
     if (-not [bool]$Config.workflow.orchestration.outcomeDrivenTransitions -or [string]$Config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Every successful role outcome must return through the canonical Orchestrator transition entry point.' }
     if (-not [bool]$Config.workflow.orchestration.routeUntargetedComments -or -not [bool]$Config.workflow.orchestration.preserveExplicitTargets) { throw 'Workflow intake must route untargeted comments and preserve explicit targets.' }
     if (-not [bool]$Config.workflow.orchestration.forwardOutOfScopeComments -or -not [bool]$Config.workflow.orchestration.autoDispatchForwardedComments) { throw 'Out-of-scope agent comments must be forwarded to and automatically dispatched through Orchestrator.' }
     if ([IO.Path]::GetFileName([string]$Config.workflow.orchestration.routingArtifact) -ne [string]$Config.workflow.orchestration.routingArtifact) { throw 'workflow.orchestration.routingArtifact must be a direct task artifact.' }
-    if (-not [bool]$Config.workflow.workspaceScheduling.enabled -or [int]$Config.workflow.workspaceScheduling.maxActiveTasks -ne 1 -or -not [bool]$Config.workflow.workspaceScheduling.queueWhenBusy) { throw 'Workspace scheduling must serialize tasks through one active lease.' }
-    if (-not [bool]$Config.workflow.workspaceScheduling.stashUncommittedChanges -or -not [bool]$Config.workflow.workspaceScheduling.restoreStashOnActivation) { throw 'Workspace scheduling must preserve and restore uncommitted task changes.' }
+    if (-not [bool]$Config.workflow.workspaceScheduling.enabled -or [int]$Config.workflow.workspaceScheduling.maxActiveTasks -lt 2 -or -not [bool]$Config.workflow.workspaceScheduling.queueWhenBusy) { throw 'Workspace scheduling must allow at least two independently leased tasks.' }
+    if ([string]::IsNullOrWhiteSpace([string]$Config.workflow.workspaceScheduling.workspaceRoot)) { throw 'Workspace scheduling requires a clone workspace root.' }
+    if ([int]$Config.workflow.workspaceScheduling.maxActiveAgentsPerTask -ne 1) { throw 'Workspace scheduling currently supports exactly one active agent per task.' }
     if ([int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -lt 5 -or [int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds -gt 120) { throw 'Workspace scheduling lock timeout is outside the supported range.' }
+    $leaseHeartbeatSeconds = [int]$Config.workflow.workspaceScheduling.leaseHeartbeatSeconds
+    $staleLeaseGraceSeconds = [int]$Config.workflow.workspaceScheduling.staleLeaseGraceSeconds
+    if ($leaseHeartbeatSeconds -lt 5 -or $leaseHeartbeatSeconds -gt 300) { throw 'Workspace lease heartbeat interval is outside the supported range.' }
+    if ($staleLeaseGraceSeconds -lt ($leaseHeartbeatSeconds * 3) -or $staleLeaseGraceSeconds -gt 3600) { throw 'Workspace stale lease grace must be at least three heartbeat intervals and no more than one hour.' }
     if ([int]$Config.workflow.automaticContinuation.maxChainSteps -lt 1 -or [int]$Config.workflow.automaticContinuation.maxChainSteps -gt 32) { throw 'workflow.automaticContinuation.maxChainSteps is outside the supported range.' }
-    if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 3) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 3.' }
+    if ([int]$Config.workflow.automaticContinuation.maxTransitionRepeats -ne 4) { throw 'workflow.automaticContinuation.maxTransitionRepeats must be exactly 4.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -lt 30 -or [int]$Config.workflow.automaticContinuation.recoveryGraceSeconds -gt 600) { throw 'workflow.automaticContinuation.recoveryGraceSeconds is outside the supported range.' }
     if ([int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -lt 1 -or [int]$Config.workflow.automaticContinuation.recoveryPollIntervalMinutes -gt 60) { throw 'workflow.automaticContinuation.recoveryPollIntervalMinutes is outside the supported range.' }
-    if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
+    if ((@($Config.workflow.automaticContinuation.orderedAgentIds) -join '|') -ne 'requirements_analyst|developer|reviewer|review_verifier|pipeline_monitor|knowledge_keeper') { throw 'The automatic continuation order is invalid.' }
     if ([string]$Config.ui.listenAddress -ne '127.0.0.1') { throw 'The dashboard must listen on 127.0.0.1.' }
     if ([int]$Config.ui.port -lt 1024 -or [int]$Config.ui.port -gt 65535) { throw 'ui.port must be between 1024 and 65535.' }
     if ([int]$Config.ui.taskRefreshSeconds -lt 2 -or [int]$Config.ui.taskRefreshSeconds -gt 300) { throw 'ui.taskRefreshSeconds must be between 2 and 300.' }
@@ -137,14 +152,12 @@ function Assert-EcosystemConfig {
     if ([int]$Config.runtime.executionGuard.maxIdenticalFailures -ne 3) { throw 'runtime.executionGuard.maxIdenticalFailures must be exactly 3.' }
     if ([int]$Config.runtime.executionGuard.maxRunMinutes -lt 5 -or [int]$Config.runtime.executionGuard.maxRunMinutes -gt 1440) { throw 'runtime.executionGuard.maxRunMinutes is outside the supported range.' }
     $runtimeProvider = Get-AgentRuntimeProvider -Config $Config
-    if ($runtimeProvider -eq 'claude') {
-        foreach ($property in @('cliCommand','agentInstallRoot','pluginRoot','permissionMode','outputFormat','maxTurns')) {
-            if (-not $Config.runtime.claude.PSObject.Properties[$property]) { throw "runtime.claude.$property is required." }
-        }
-        if ([string]$Config.runtime.claude.permissionMode -ne 'auto') { throw 'runtime.claude.permissionMode must remain auto in committed configuration.' }
-        if ([string]$Config.runtime.claude.outputFormat -ne 'stream-json') { throw 'runtime.claude.outputFormat must be stream-json.' }
-        if ([int]$Config.runtime.claude.maxTurns -lt 1 -or [int]$Config.runtime.claude.maxTurns -gt 500) { throw 'runtime.claude.maxTurns is outside the supported range.' }
+    foreach ($property in @('cliCommand','agentInstallRoot','pluginRoot','permissionMode','outputFormat','maxTurns')) {
+        if (-not $Config.runtime.claude.PSObject.Properties[$property]) { throw "runtime.claude.$property is required." }
     }
+    if ([string]$Config.runtime.claude.permissionMode -ne 'auto') { throw 'runtime.claude.permissionMode must remain auto in committed configuration.' }
+    if ([string]$Config.runtime.claude.outputFormat -ne 'stream-json') { throw 'runtime.claude.outputFormat must be stream-json.' }
+    if ([int]$Config.runtime.claude.maxTurns -lt 1 -or [int]$Config.runtime.claude.maxTurns -gt 500) { throw 'runtime.claude.maxTurns is outside the supported range.' }
     if (-not [bool]$Config.runtime.elevatedFallback.useByDefault -or [bool]$Config.runtime.elevatedFallback.requiresDashboardApproval -or [string]$Config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access') { throw 'Workflow host-compatible execution must be enabled by default under the standing user authorization.' }
     if (-not [bool]$Config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$Config.health.automaticRecovery.preserveDirtyWorktreeChanges -or -not [bool]$Config.health.automaticRecovery.commitVerifiedRepairs -or -not [bool]$Config.health.automaticRecovery.pushVerifiedRepairs) { throw 'Health recovery must preserve an existing dirty baseline, permit validated ecosystem-only source changes, and deliver the verified commit chain.' }
     if ([string]$Config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$Config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Health recovery push destination must be the exact canonical ecosystem origin.' }
@@ -185,15 +198,47 @@ function Assert-EcosystemConfig {
         }
     }
     $repositoryIds = @{}
+    $ecosystemRoot = [IO.Path]::GetFullPath((Get-EcosystemRoot))
     foreach ($repository in @($Config.repositories)) {
         if (-not $repository.id -or $repositoryIds.ContainsKey([string]$repository.id)) { throw 'Repository IDs must be unique and non-empty.' }
         $repositoryIds[[string]$repository.id] = $true
+        if ([string]::IsNullOrWhiteSpace([string]$repository.localWorkspace)) { throw "Repository '$($repository.id)' requires a product localWorkspace." }
+        $productWorkspace = [IO.Path]::GetFullPath(([Environment]::ExpandEnvironmentVariables([string]$repository.localWorkspace) -replace '/', [IO.Path]::DirectorySeparatorChar))
+        if (Test-EcosystemRootInsideProductWorkspace -Left $ecosystemRoot -Right $productWorkspace) {
+            throw "Ecosystem repository root must not overlap product localWorkspace '$($repository.id)': $productWorkspace"
+        }
         if (-not $profileIds.ContainsKey([string]$repository.credentialProfile)) {
             throw "Repository '$($repository.id)' references missing credential profile '$($repository.credentialProfile)'."
         }
         if ($repository.provider -ne $profileIds[[string]$repository.credentialProfile].provider) {
             throw "Repository '$($repository.id)' and credential profile '$($repository.credentialProfile)' use different providers."
         }
+        if ([string]$repository.provider -eq 'local-git') {
+            if ([string]$repository.credentialProfile -ne 'local-git' -or [string]$profileIds[[string]$repository.credentialProfile].mode -ne 'none') { throw "Local repository '$($repository.id)' must use the credential-free local-git profile." }
+            if ([string]::IsNullOrWhiteSpace([string]$repository.url) -or -not [IO.Path]::IsPathRooted(([string]$repository.url -replace '/', [IO.Path]::DirectorySeparatorChar))) { throw "Local repository '$($repository.id)' requires an absolute filesystem URL." }
+            $allowedModes = @($repository.allowedExecutionModes | ForEach-Object { [string]$_ })
+            if ('local-poc-delivery' -notin $allowedModes -or $allowedModes -contains 'full-delivery' -or $allowedModes -contains 'implementation-only' -or $allowedModes -contains 'pipeline-only') { throw "Local repository '$($repository.id)' must allow local-poc-delivery and must not allow pipeline delivery modes." }
+        }
+    }
+    $projectIds = @{}
+    $repositoryOwners = @{}
+    foreach ($project in @($Config.projects)) {
+        $projectId = [string]$project.id
+        if (-not $projectId -or $projectIds.ContainsKey($projectId)) { throw 'Project IDs must be unique and non-empty.' }
+        $projectIds[$projectId] = $project
+        foreach ($projectRepositoryId in @($project.repositoryIds)) {
+            $value = [string]$projectRepositoryId
+            if (-not $repositoryIds.ContainsKey($value)) { throw "Project '$projectId' references unknown repository '$value'." }
+            if ($repositoryOwners.ContainsKey($value)) { throw "Repository '$value' belongs to more than one project." }
+            $repositoryOwners[$value] = $projectId
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$project.domainKnowledgeRoot)) { throw "Project '$projectId' requires a domainKnowledgeRoot." }
+    }
+    foreach ($configuredRepositoryId in @($repositoryIds.Keys)) {
+        if (-not $repositoryOwners.ContainsKey($configuredRepositoryId)) { throw "Repository '$configuredRepositoryId' is not assigned to a project." }
+    }
+    foreach ($seed in @($Config.knowledge.seedSources)) {
+        if (-not $projectIds.ContainsKey([string]$seed.projectId)) { throw "Knowledge seed '$($seed.id)' references unknown project '$($seed.projectId)'." }
     }
     if ([int]$Config.pipeline.postPush.maxRemediationCycles -lt 1 -or [int]$Config.pipeline.postPush.maxRemediationCycles -gt 3) { throw 'pipeline.postPush.maxRemediationCycles must be between 1 and 3.' }
     if ([bool]$Config.pipeline.delivery.allowForce -or [bool]$Config.pipeline.delivery.allowTags -or [string]$Config.pipeline.delivery.remote -ne 'origin') { throw 'Pipeline delivery permits only a normal branch push to origin.' }
@@ -221,8 +266,22 @@ function Assert-EcosystemConfig {
         $agentIds[[string]$agent.id] = $true
         $agentNames[[string]$agent.name] = $true
     }
-    foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
+    foreach ($requiredId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check')) {
         if (-not $agentIds.ContainsKey($requiredId)) { throw "Required agent '$requiredId' is missing." }
+    }
+    $pipelineOwners = [ordered]@{
+        monitorAgentId = 'pipeline_monitor'
+        productRemediationAgentId = 'developer'
+        remediationReviewAgentId = 'reviewer'
+        reviewVerificationAgentId = 'review_verifier'
+        exceptionRoutingAgentId = 'orchestrator'
+        ecosystemRecoveryAgentId = 'health_check'
+        completionAgentId = 'knowledge_keeper'
+    }
+    foreach ($property in $pipelineOwners.Keys) {
+        $configuredAgentId = [string]$Config.pipeline.ownership.$property
+        if ($configuredAgentId -ne [string]$pipelineOwners[$property]) { throw "pipeline.ownership.$property must be '$($pipelineOwners[$property])'." }
+        if (-not $agentIds.ContainsKey($configuredAgentId)) { throw "pipeline.ownership.$property references missing agent '$configuredAgentId'." }
     }
     $modelTierById = @{}
     foreach ($tier in $modelTiers) { $modelTierById[[string]$tier.id] = $tier }
@@ -258,51 +317,6 @@ function Assert-EcosystemConfig {
             }
         }
     }
-}
-
-function ConvertTo-TomlString {
-    param([AllowEmptyString()][string] $Value)
-    $slash = [string][char]92
-    $quote = [string][char]34
-    $escaped = $Value.Replace($slash, $slash + $slash).Replace($quote, $slash + $quote)
-    $escaped = $escaped.Replace("`r", $slash + 'r').Replace("`n", $slash + 'n').Replace("`t", $slash + 't')
-    return $quote + $escaped + $quote
-}
-
-function New-AgentToml {
-    param(
-        [Parameter(Mandatory)] $Agent,
-        [Parameter(Mandatory)] $Config,
-        [string] $CodexHome
-    )
-    $promptSections = [Collections.Generic.List[string]]::new()
-    foreach ($pathValue in @($Agent.promptPaths)) {
-        $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $Config -CodexHome $CodexHome
-        $promptSections.Add("Source: $path`n$((Get-Content -LiteralPath $path -Raw).Trim())")
-    }
-    $handoffs = @($Agent.handoffs) -join ', '
-    $artifacts = @($Agent.requiredArtifacts) -join ', '
-    $responsibilities = @($Agent.responsibilities | ForEach-Object { "- $([string]$_)" }) -join "`n"
-    $promptSections.Add("Configured responsibilities:`n$responsibilities`n`nConfigured handoffs: $handoffs`nRequired artifacts: $artifacts")
-
-    $lines = [Collections.Generic.List[string]]::new()
-    $lines.Add('# Generated by development-agent-ecosystem. Edit config/agents.json and prompt files, not this file.')
-    $lines.Add("name = $(ConvertTo-TomlString ([string]$Agent.name))")
-    $lines.Add("description = $(ConvertTo-TomlString ([string]$Agent.description))")
-    if ($Agent.PSObject.Properties['model'] -and $Agent.model) {
-        $lines.Add("model = $(ConvertTo-TomlString ([string]$Agent.model))")
-    }
-    $lines.Add("model_reasoning_effort = $(ConvertTo-TomlString ([string]$Agent.reasoningEffort))")
-    $lines.Add("sandbox_mode = $(ConvertTo-TomlString ([string]$Agent.sandboxMode))")
-    $lines.Add("developer_instructions = $(ConvertTo-TomlString ($promptSections -join "`n`n"))")
-    foreach ($pathValue in @($Agent.skillPaths)) {
-        $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $Config -CodexHome $CodexHome
-        $lines.Add('')
-        $lines.Add('[[skills.config]]')
-        $lines.Add("path = $(ConvertTo-TomlString $path)")
-        $lines.Add('enabled = true')
-    }
-    return ($lines -join [Environment]::NewLine) + [Environment]::NewLine
 }
 
 function ConvertTo-YamlSingleQuotedString {
@@ -354,4 +368,126 @@ function Write-Utf8NoBom {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Get-AgentRuntimeProvider, Resolve-CodexCliPath, Resolve-ClaudeCliPath, Resolve-AgentCliPath, Get-ClaudeAgentName, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, ConvertTo-YamlSingleQuotedString, New-AgentClaudeMarkdown, Write-Utf8NoBom
+function Get-EcosystemFileSha256 {
+    param([Parameter(Mandatory)][string] $Path)
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try { $hash = $algorithm.ComputeHash($stream) }
+    finally {
+        $algorithm.Dispose()
+        $stream.Dispose()
+    }
+    return ([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
+}
+function Write-Utf8NoBomAtomic {
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
+    $parent = Split-Path -Parent $Path
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $temporaryPath = Join-Path $parent ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    $backupPath = $temporaryPath + '.bak'
+    try {
+        [IO.File]::WriteAllText($temporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
+        else { [IO.File]::Move($temporaryPath, $Path) }
+    }
+    finally {
+        foreach ($transientPath in @($temporaryPath, $backupPath)) {
+            if (Test-Path -LiteralPath $transientPath -PathType Leaf) { Remove-Item -LiteralPath $transientPath -Force -ErrorAction SilentlyContinue }
+        }
+    }
+}
+
+function Invoke-EcosystemFileLock {
+    param(
+        [Parameter(Mandatory)][string] $LockPath,
+        [Parameter(Mandatory)][scriptblock] $Action,
+        [int] $TimeoutSeconds = 30
+    )
+    $parent = Split-Path -Parent $LockPath
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $stream = $null
+    while (-not $stream -and [DateTime]::UtcNow -lt $deadline) {
+        try { $stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+        catch [IO.IOException] { Start-Sleep -Milliseconds 75 }
+    }
+    if (-not $stream) { throw "Timed out waiting for exclusive lock '$LockPath'." }
+    try { return & $Action }
+    finally { $stream.Dispose() }
+}
+
+function New-WorkspaceLeaseHeartbeatAction {
+    param(
+        [Parameter(Mandatory)][string] $HeartbeatScriptPath,
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $RunId,
+        [Parameter(Mandatory)][string] $LeaseId,
+        [Parameter(Mandatory)][string] $ConfigPath,
+        [AllowEmptyString()][string] $CodexHome
+    )
+    return {
+        & $HeartbeatScriptPath -TaskId $TaskId -RunId $RunId -LeaseId $LeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    }.GetNewClosure()
+}
+
+function New-TaskBranchName {
+    param(
+        [Parameter(Mandatory)][string] $TaskName,
+        [string] $TaskType
+    )
+    $normalizedName = $TaskName.Normalize([Text.NormalizationForm]::FormD)
+    $characters = [Text.StringBuilder]::new()
+    foreach ($character in $normalizedName.ToCharArray()) {
+        if ([Globalization.CharUnicodeInfo]::GetUnicodeCategory($character) -ne [Globalization.UnicodeCategory]::NonSpacingMark) { $null = $characters.Append($character) }
+    }
+    $slug = [regex]::Replace($characters.ToString().Normalize([Text.NormalizationForm]::FormC).ToLowerInvariant(), '[^\p{L}\p{Nd}]+', '-').Trim('-')
+    if ([string]::IsNullOrWhiteSpace($slug)) { $slug = 'task' }
+    if ($slug.Length -gt 80) { $slug = $slug.Substring(0, 80).TrimEnd('-') }
+    $prefix = if ($TaskType -match '^(?i:bug|bugfix|defect)$') { 'bugfix' } else { 'features' }
+    return "$prefix/$slug"
+}
+
+function Test-TaskBranchName {
+    param([Parameter(Mandatory)][string] $BranchName)
+    return $BranchName -match '^(?:features|bugfix)/[\p{L}\p{Nd}](?:[\p{L}\p{Nd}-]{0,78}[\p{L}\p{Nd}])?$'
+}
+
+function Assert-TaskDeliveryBranch {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string] $BranchName,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $ExpectedBranchName,
+        [string[]] $ForbiddenBranches = @()
+    )
+    if ([string]::IsNullOrWhiteSpace($BranchName) -or $BranchName -in @($ForbiddenBranches)) { throw "Delivery is forbidden from branch '$BranchName'." }
+    if ($BranchName -match '^agent/') { throw "Delivery is forbidden from internal workspace branch '$BranchName'. Migrate the task to its human-readable branch before delivery." }
+    if (-not (Test-TaskBranchName -BranchName $ExpectedBranchName)) { throw "Task branch metadata '$ExpectedBranchName' is missing or invalid; migrate the legacy task before delivery." }
+    if (-not (Test-TaskBranchName -BranchName $BranchName)) { throw "Delivery branch '$BranchName' must use features/<task-name> or bugfix/<bug-name>." }
+    if ($BranchName -ne $ExpectedBranchName) { throw "Delivery branch '$BranchName' does not match the task-owned branch '$ExpectedBranchName'." }
+}
+
+function Get-TaskWorkspaceLayout {
+    param(
+        [Parameter(Mandatory)][string] $WorkspaceRoot,
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $RepositoryId,
+        [Parameter(Mandatory)][string] $RunId,
+        [string] $BranchName
+    )
+    if ($RunId.Length -lt 12) { throw 'Workspace run ID must contain at least 12 characters.' }
+    function Get-StableSegment {
+        param([Parameter(Mandatory)][string] $Value)
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try { $hash = $algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value)) }
+        finally { $algorithm.Dispose() }
+        return (([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant().Substring(0, 16))
+    }
+    $taskKey = Get-StableSegment -Value $TaskId
+    $repositoryKey = Get-StableSegment -Value $RepositoryId
+    [pscustomobject][ordered]@{
+        ClonePath = [IO.Path]::GetFullPath((Join-Path (Join-Path $WorkspaceRoot "task-$taskKey") "repo-$repositoryKey"))
+        Branch = if ([string]::IsNullOrWhiteSpace($BranchName)) { "agent/$taskKey/$repositoryKey/$($RunId.Substring(0, 12))" } else { $BranchName }
+        TaskKey = $taskKey
+        RepositoryKey = $repositoryKey
+    }
+}
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Get-AgentRuntimeProvider, Resolve-ClaudeCliPath, Resolve-AgentCliPath, Get-ClaudeAgentName, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-YamlSingleQuotedString, New-AgentClaudeMarkdown, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

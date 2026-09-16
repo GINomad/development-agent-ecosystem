@@ -7,7 +7,7 @@ param(
     [string] $PullRequestContextPath,
     [string] $PendingChangesPath,
     [string] $RepositoryId,
-    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Codex\azure-pr-review-monitor')
+    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Claude\azure-pr-review-monitor')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -64,48 +64,44 @@ function Get-ReviewInstructionBundle {
     [pscustomobject]@{ Content = ($sections -join "`n`n"); Sources = @($sources) }
 }
 
-function Get-CodexPath {
-    $command = Get-Command codex.exe, codex -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) { return $command.Source }
-    $candidates = Get-ChildItem -Path (Join-Path $env:USERPROFILE '.vscode\extensions\openai.chatgpt-*-win32-x64\bin\windows-x86_64\codex.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-    if ($candidates) { return $candidates[0].FullName }
-    throw 'Codex CLI was not found. Open or reinstall the OpenAI VS Code extension.'
+function Get-ClaudePath {
+    $command = Get-Command claude.exe, claude.cmd, claude -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and $command.Source) { return $command.Source }
+    $nativePath = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+    if (Test-Path -LiteralPath $nativePath -PathType Leaf) { return $nativePath }
+    throw 'Claude Code CLI was not found. Install and authenticate Claude Code before running the review monitor.'
 }
 
-function Get-CodexMcpOverrides {
-    param([string] $CodexPath, $McpConfig)
-    $output = Invoke-AgentNative -FilePath $CodexPath -Arguments @('mcp', 'list', '--json')
-    $servers = @(($output -join [Environment]::NewLine | ConvertFrom-Json).name)
+function Assert-ClaudeReviewMcpPolicy {
+    param($McpConfig)
     $allowed = @($McpConfig.allowedServers | Where-Object { $_ })
-    foreach ($server in $allowed) {
-        if ($server -notmatch '^[A-Za-z0-9_-]+$') { throw "Invalid MCP server name '$server'." }
-        if ($server -notin $servers) { throw "MCP server '$server' is allowlisted but not configured in Codex." }
+    if ([string]$McpConfig.mode -ne 'disabled' -or $allowed.Count) {
+        throw 'Claude PR review runs require review.mcp.mode=disabled and an empty allowedServers list; the supplied patch already contains the bounded review input.'
     }
-    $overrides = [Collections.Generic.List[string]]::new()
-    foreach ($server in $servers) {
-        if ($server -notmatch '^[A-Za-z0-9_-]+$') { throw "Configured MCP server name '$server' cannot be safely passed to Codex CLI." }
-        $enabled = $McpConfig.mode -eq 'allowlist' -and $server -in $allowed
-        $overrides.Add("mcp_servers.$server.enabled=$($enabled.ToString().ToLowerInvariant())")
-    }
-    return @($overrides)
 }
 
-function Invoke-CodexReview {
-    param([string] $CodexPath, [string] $WorkingDirectory, [string] $ReportPath, [string] $Prompt, [string[]] $McpOverrides)
-    $mcpText = (@($McpOverrides) | ForEach-Object { "-c $_" }) -join ' '
+function Invoke-ClaudeReview {
+    param([string] $ClaudePath, [string] $WorkingDirectory, [string] $ReportPath, [string] $Prompt)
+    $mcpConfigPath = $ReportPath + '.mcp.json'
+    [IO.File]::WriteAllText($mcpConfigPath, '{"mcpServers":{}}', (New-Object Text.UTF8Encoding($false)))
     $startInfo = New-Object Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $CodexPath
-    $startInfo.Arguments = "-s read-only -a never $mcpText -C `"$WorkingDirectory`" exec --ephemeral --output-last-message `"$ReportPath`" -"
+    $startInfo.FileName = $ClaudePath
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.Arguments = "-p --output-format text --model sonnet --effort high --permission-mode plan --no-session-persistence --tools `"`" --strict-mcp-config --mcp-config `"$mcpConfigPath`""
     $startInfo.UseShellExecute = $false; $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardInput = $true; $startInfo.RedirectStandardOutput = $true; $startInfo.RedirectStandardError = $true
     $process = New-Object Diagnostics.Process; $process.StartInfo = $startInfo
     try {
-        if (-not $process.Start()) { throw 'Codex CLI did not start.' }
+        if (-not $process.Start()) { throw 'Claude Code CLI did not start.' }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync(); $stderrTask = $process.StandardError.ReadToEndAsync()
         $process.StandardInput.Write($Prompt); $process.StandardInput.Close(); $process.WaitForExit()
-        if ($process.ExitCode -ne 0) { throw "Codex CLI failed with exit code $($process.ExitCode).`n$($stderrTask.Result)`n$($stdoutTask.Result)" }
+        if ($process.ExitCode -ne 0) { throw "Claude Code CLI failed with exit code $($process.ExitCode).`n$($stderrTask.Result)`n$($stdoutTask.Result)" }
+        [IO.File]::WriteAllText($ReportPath, [string]$stdoutTask.Result, (New-Object Text.UTF8Encoding($false)))
     }
-    finally { $process.Dispose() }
+    finally {
+        $process.Dispose()
+        if (Test-Path -LiteralPath $mcpConfigPath -PathType Leaf) { Remove-Item -LiteralPath $mcpConfigPath -Force }
+    }
 }
 
 function Get-RepositoryConfigForState {
@@ -244,7 +240,7 @@ try {
             if ([string]::IsNullOrWhiteSpace($patch)) { $patch = 'No textual diff was returned. Check for binary-only or metadata changes.' }
             if ($patch.Length -gt [int]$config.review.maxDiffCharacters) { throw "PR diff has $($patch.Length) characters and exceeds the configured AI review limit of $([int]$config.review.maxDiffCharacters); human scoping is required." }
             if (-not (Test-Path -LiteralPath $ReviewChecklistPath)) { throw "Review checklist was not found at $ReviewChecklistPath." }
-            $codexPath = Get-CodexPath; $mcpOverrides = Get-CodexMcpOverrides -CodexPath $codexPath -McpConfig $config.review.mcp
+            $claudePath = Get-ClaudePath; Assert-ClaudeReviewMcpPolicy -McpConfig $config.review.mcp
             $mcpPolicy = if ($config.review.mcp.mode -eq 'allowlist') { "You may use read-only MCP tools only from this allowlist: $(@($config.review.mcp.allowedServers) -join ', '). Do not execute repository code." } else { 'Do not run commands or use tools.' }
             $prefix = ConvertTo-SafeFileName "$($repository.id)-pr-$($pr.pullRequestId)-v$($pr.version)"; $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
             $reportPath = Join-Path $ReportsRoot "$prefix-$timestamp.md"
@@ -286,9 +282,9 @@ Start with exactly REVIEW_STATUS: COMPLETE only after analyzing the patch. Other
 $patch
 </git_patch>
 "@
-            Invoke-CodexReview -CodexPath $codexPath -WorkingDirectory $repositoryPath -ReportPath $reportPath -Prompt $prompt -McpOverrides $mcpOverrides
-            if (-not (Test-Path $reportPath) -or (Get-Item $reportPath).Length -eq 0) { throw 'Codex completed without creating a review report.' }
-            if ((Get-Content -Raw $reportPath) -notmatch '(?m)^REVIEW_STATUS: COMPLETE\s*$') { throw 'Codex did not confirm a completed patch review; state was not advanced.' }
+            Invoke-ClaudeReview -ClaudePath $claudePath -WorkingDirectory $repositoryPath -ReportPath $reportPath -Prompt $prompt
+            if (-not (Test-Path $reportPath) -or (Get-Item $reportPath).Length -eq 0) { throw 'Claude completed without creating a review report.' }
+            if ((Get-Content -Raw $reportPath) -notmatch '(?m)^REVIEW_STATUS: COMPLETE\s*$') { throw 'Claude did not confirm a completed patch review; state was not advanced.' }
             $findingsPath = & $ReviewProcessorPath -ReportPath $reportPath -DispositionsPath $DispositionsPath -RepositoryName $pr.repositoryName -PullRequestId $pr.pullRequestId -SourceCommit $pr.sourceCommit -Provider $pr.provider -RepositoryConfigId $repository.id -RepositoryUrl $pr.repositoryUrl -PullRequestUrl $pr.url -DispositionRepository "$($pr.provider)/$($repository.id)"
             $diffPath = [IO.Path]::ChangeExtension($reportPath, '.diff'); $htmlPath = [IO.Path]::ChangeExtension($reportPath, '.html'); $utf8 = New-Object Text.UTF8Encoding($false)
             [IO.File]::WriteAllText($diffPath, $patch, $utf8)
@@ -317,10 +313,10 @@ $patch
     $summary.Add("- Run: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')"); $summary.Add("- Mode: $Mode"); $summary.Add("- Enabled repositories: $($repositories.Count)"); $summary.Add("- Eligible active PRs: $($eligible.Count)"); $summary.Add("- Reviewed or pending in dry run: $($reviewed.Count)"); $summary.Add("- Unchanged: $unchanged"); $summary.Add("- Failed: $($failed.Count)"); $summary.Add("- Pending AI review or human intervention: $($pendingByKey.Count)"); $summary.Add("- Closed PRs cleaned: $(@($closed | Where-Object { -not $_.PreviewOnly }).Count)"); $summary.Add("- Review instruction files loaded: $($reviewInstructions.Sources.Count)")
     foreach ($pending in @($pendingByKey.Values | Sort-Object key)) { $summary.Add(''); $summary.Add("## Pending: $($pending.key)"); $summary.Add(''); $summary.Add("- Status: $($pending.status)"); $summary.Add("- Detected: $($pending.detectedAtUtc)"); $summary.Add("- Attempts: $($pending.attempts)"); if ($pending.lastError) { $summary.Add("- Last error: $($pending.lastError)") } }
     foreach ($item in $closed) { $summary.Add(''); $summary.Add("## $($item.Provider) PR $($item.PullRequestId): $(if($item.PreviewOnly){'would clean'}else{'cleaned'})"); $summary.Add(''); $summary.Add("- Repository: $($item.RepositoryName)"); $summary.Add("- Status: $($item.Status)"); if(-not $item.PreviewOnly){$summary.Add("- Removed artifacts: $($item.RemovedFiles)")} }
-    foreach ($item in $reviewed) { $pr=$item.PullRequest; $summary.Add(''); $summary.Add("## $($pr.provider) PR $($pr.pullRequestId): $($pr.title)"); $summary.Add(''); $summary.Add("- Repository: $($pr.repositoryName)"); $summary.Add("- Author: $($pr.authorDisplayName)"); $summary.Add("- Version: $($pr.version)"); $summary.Add("- Source commit: ``$($pr.sourceCommit)``"); $summary.Add("- URL: $($pr.url)"); if($item.DryRun){$summary.Add('- Status: needs review; dry run did not invoke Codex')}else{$summary.Add("- Markdown report: $($item.ReportPath)");$summary.Add("- Interactive review: $($item.HtmlPath)");$summary.Add("- Finding metadata: $($item.FindingsPath)");$summary.Add('');$summary.Add((Get-Content -Raw $item.ReportPath).Trim())} }
+    foreach ($item in $reviewed) { $pr=$item.PullRequest; $summary.Add(''); $summary.Add("## $($pr.provider) PR $($pr.pullRequestId): $($pr.title)"); $summary.Add(''); $summary.Add("- Repository: $($pr.repositoryName)"); $summary.Add("- Author: $($pr.authorDisplayName)"); $summary.Add("- Version: $($pr.version)"); $summary.Add("- Source commit: ``$($pr.sourceCommit)``"); $summary.Add("- URL: $($pr.url)"); if($item.DryRun){$summary.Add('- Status: needs review; dry run did not invoke Claude')}else{$summary.Add("- Markdown report: $($item.ReportPath)");$summary.Add("- Interactive review: $($item.HtmlPath)");$summary.Add("- Finding metadata: $($item.FindingsPath)");$summary.Add('');$summary.Add((Get-Content -Raw $item.ReportPath).Trim())} }
     foreach ($item in $failed) { $identity=if($item.PullRequest){"$($item.PullRequest.provider) PR $($item.PullRequest.pullRequestId)"}else{"repository $($item.Repository.id)"}; $summary.Add(''); $summary.Add("## Failed: $identity"); $summary.Add(''); $summary.Add($item.Error) }
     $summary | Set-Content -LiteralPath $LatestSummaryPath -Encoding UTF8; Write-Output ($summary -join [Environment]::NewLine)
-    if (-not $DryRun -and ($reviewed.Count -or $failed.Count)) { Show-Notification -Title 'Codex PR review' -Message "$($reviewed.Count) reviewed, $($failed.Count) failed. $LatestSummaryPath" }
+    if (-not $DryRun -and ($reviewed.Count -or $failed.Count)) { Show-Notification -Title 'Claude PR review' -Message "$($reviewed.Count) reviewed, $($failed.Count) failed. $LatestSummaryPath" }
     if ($failed.Count) { exit 1 }
 }
 finally { if ($lockStream) { $lockStream.Dispose() } }

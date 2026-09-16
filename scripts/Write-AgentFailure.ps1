@@ -40,4 +40,5 @@ $failure = [ordered]@{
 $failurePath = Join-Path $taskRoot "agent-failure-$($occurredAtUtc.Replace(':','').Replace('-','').Replace('.',''))-$failureId.json"
 Write-Utf8NoBom -Path $failurePath -Content (($failure | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-failure -Summary ([string]$failure.summary) -Artifact $failurePath -Evidence @($failure.evidence) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus failed -Stage $Stage -Message ([string]$failure.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 [pscustomobject]@{ FailurePath=$failurePath; Failure=[pscustomobject]$failure }

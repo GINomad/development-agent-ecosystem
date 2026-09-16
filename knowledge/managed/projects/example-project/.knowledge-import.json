@@ -1,0 +1,19 @@
+{
+  "sourceId": "",
+  "sourceRoot": "C:\\Users\\okruk2\\Documents\\Codex\\development-agent-ecosystem-claude\\knowledge\\seed\\example-project",
+  "managedRoot": "C:\\Users\\okruk2\\Documents\\Codex\\development-agent-ecosystem-claude\\knowledge\\managed\\projects\\example-project",
+  "importedAtUtc": "2026-09-16T16:58:16.6683630Z",
+  "entries": [
+    {
+      "relativePath": "README.md",
+      "sourcePath": "C:\\Users\\okruk2\\Documents\\Codex\\development-agent-ecosystem-claude\\knowledge\\seed\\example-project\\README.md",
+      "sourceHash": "aeb6d42ff8aa0c84d7a23344d3f8e17f51e1fb132d7ef12f6e4621aa9bfe8722",
+      "importedHash": "e2f599c4f94944d044998107925bf97a9263a5cfaa4b60a79b3d9412b01e96ca",
+      "sourceLastWriteUtc": "2026-09-16T16:44:38.0776751Z",
+      "status": "skipped-managed-change"
+    }
+  ],
+  "conflicts": [
+    "README.md"
+  ]
+}

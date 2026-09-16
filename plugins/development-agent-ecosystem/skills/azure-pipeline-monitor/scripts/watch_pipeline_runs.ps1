@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$Organization = 'https://dev.azure.com/Aucerna',
-    [string]$Project = 'PlanningSpace',
+    [string]$Organization = 'https://dev.azure.com/example',
+    [string]$Project = 'ExampleProject',
     [string]$Branch,
     [string]$Commit,
     [int[]]$DefinitionIds = @(),
     [int[]]$AutoQueueDefinitionIds = @(),
+    [int[]]$SkipOnMissingYamlDefinitionIds = @(),
     [datetime]$QueuedAfter = [datetime]::MinValue,
     [int]$DiscoveryTimeoutMinutes = 3,
     [int]$RunTimeoutMinutes = 60,
@@ -16,6 +17,7 @@ param(
     [string]$RepositoryId = 'unknown',
     [string]$ResultPath,
     [string]$ClassifierScript,
+    [string]$QueueDiagnosticsScript,
     [ValidateRange(20,500)][int]$FailureLogTailLines = 120,
     [ValidateRange(4096,262144)][int]$FailureLogMaxBytes = 65536,
     [ValidateRange(0,3)][int]$RemediationCycle = 0,
@@ -60,24 +62,56 @@ if (-not $ClassifierScript) {
     $ClassifierScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\..\scripts\Classify-PipelineFailure.ps1'))
 }
 if (-not (Test-Path -LiteralPath $ClassifierScript -PathType Leaf)) { throw "Pipeline failure classifier was not found: $ClassifierScript" }
+if (-not $QueueDiagnosticsScript) {
+    $QueueDiagnosticsScript = Join-Path $PSScriptRoot 'diagnose_queue_validation.ps1'
+}
+if (-not (Test-Path -LiteralPath $QueueDiagnosticsScript -PathType Leaf)) { throw "Pipeline queue diagnostics script was not found: $QueueDiagnosticsScript" }
+
+function Invoke-AzJsonResult {
+    param([string[]]$Arguments)
+    try {
+        $output = @(& $AzCli @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        $output = @($_)
+        $exitCode = 1
+    }
+    $text = (@($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+    $value = $null
+    $parseError = $null
+    if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($text)) {
+        try { $value = $text | ConvertFrom-Json -ErrorAction Stop }
+        catch { $parseError = "Azure CLI returned invalid JSON: $($_.Exception.Message)" }
+    }
+    [pscustomobject]@{ succeeded=($exitCode -eq 0 -and $null -eq $parseError); exitCode=$exitCode; value=$value; output=@($output); parseError=$parseError }
+}
 
 function Invoke-AzJson {
     param([string[]]$Arguments)
-    $output = & $AzCli @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Azure CLI failed: $($output -join [Environment]::NewLine)" }
-    $text = $output -join [Environment]::NewLine
-    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-    return $text | ConvertFrom-Json
+    $result = Invoke-AzJsonResult -Arguments $Arguments
+    if (-not $result.succeeded) { throw "Azure CLI failed: $(@($result.output) -join [Environment]::NewLine)$($result.parseError)" }
+    return $result.value
 }
 
 function ConvertTo-ObjectArray {
     param([AllowNull()][object]$Value)
     if ($null -eq $Value) { return }
-    if ($Value -is [array]) {
-        foreach ($item in $Value) { Write-Output -NoEnumerate $item }
+    if ($Value -is [Collections.IList]) {
+        foreach ($item in $Value) { Write-Output $item }
         return
     }
-    Write-Output -NoEnumerate $Value
+    Write-Output $Value
+}
+
+function ConvertTo-UtcTimestamp {
+    param([Parameter(Mandatory)][object]$Value)
+    if ($Value -is [datetime]) { return ([datetime]$Value).ToUniversalTime() }
+    return [datetime]::Parse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    ).ToUniversalTime()
 }
 
 function Get-PullRequestSourceCommit {
@@ -144,13 +178,62 @@ function Get-FailureSignature {
     finally { $algorithm.Dispose() }
 }
 
+function New-PipelineHumanIntervention {
+    param(
+        [string]$Category,
+        [string[]]$Signals,
+        [int]$DefinitionId
+    )
+    $signalText = @($Signals) -join [Environment]::NewLine
+    $options = [Collections.Generic.List[object]]::new()
+    if ($signalText -match '(?i)service connection\s+(?<name>[A-Za-z0-9._ -]+?)\s+(?:which could not be found|could not be found|does not exist|has been disabled|has not been authorized|is not authorized)') {
+        $connectionName = ([string]$Matches['name']).Trim()
+        $options.Add([pscustomobject][ordered]@{
+            id='authorize-service-connection'
+            action="Authorize definition $DefinitionId to use service connection '$connectionName' in Azure DevOps pipeline permissions."
+            rationale='This preserves the connection explicitly referenced by the reviewed YAML and avoids creating a duplicate credential boundary.'
+        })
+        $options.Add([pscustomobject][ordered]@{
+            id='verify-service-connection'
+            action="Verify that service connection '$connectionName' exists, is enabled, and its credential can push to the required registry repository."
+            rationale='Azure uses the same validation family for a missing, disabled, or unauthorized connection, so an owner must verify its actual state.'
+        })
+        return [pscustomobject][ordered]@{
+            required=$true
+            reason="Azure rejected definition $DefinitionId before any job started because service connection '$connectionName' was unavailable to the pipeline. The monitor is read-only and cannot grant credential permissions."
+            options=@($options)
+            recommendedOptionId='authorize-service-connection'
+            recommendationRationale=[string]$options[0].rationale
+        }
+    }
+    $options.Add([pscustomobject][ordered]@{
+        id='inspect-azure-run-validation'
+        action="Inspect validation and protected-resource permissions for definition $DefinitionId in Azure DevOps."
+        rationale='An authorized owner can see and change provider-side permissions that the read-only monitor cannot modify.'
+    })
+    $options.Add([pscustomobject][ordered]@{
+        id='provide-additional-evidence'
+        action='Provide the Azure validation detail or grant the monitor read visibility, then perform a read-only refresh.'
+        rationale='Additional bounded evidence lets the monitor replace an unknown classification with a specific safe action.'
+    })
+    [pscustomobject][ordered]@{
+        required=$true
+        reason="Definition $DefinitionId completed with a $Category failure that is not eligible for an automatic product-code change."
+        options=@($options)
+        recommendedOptionId='inspect-azure-run-validation'
+        recommendationRationale=[string]$options[0].rationale
+    }
+}
+
 function New-PipelineResult {
     param(
         [object[]]$Runs,
         [ValidateSet('succeeded','non-success','no-run')][string]$OverallResult,
         $Classification,
         [int[]]$QueuedIds,
-        [string]$Summary
+        [string]$Summary,
+        [AllowNull()][object]$QueueFailure,
+        [AllowNull()][object]$HumanIntervention
     )
     $signature = $null
     if ($OverallResult -ne 'succeeded') {
@@ -190,6 +273,8 @@ function New-PipelineResult {
         runs = @($Runs)
         overallResult = $OverallResult
         failureClassification = $Classification
+        queueFailure = $QueueFailure
+        humanIntervention = $HumanIntervention
         remediation = [pscustomobject][ordered]@{
             status = $remediationStatus
             cycle = $nextCycle
@@ -211,6 +296,13 @@ function Write-PipelineResult {
     }
 }
 
+function Test-MissingYamlSkip {
+    param([int]$DefinitionId, [string[]]$QueueOutput)
+    if ($DefinitionId -notin $SkipOnMissingYamlDefinitionIds) { return $false }
+    $queueText = @($QueueOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+    return [regex]::IsMatch($queueText, '(?im)File\s+/[^\s''"]+\.ya?ml\s+not\s+found\s+in\s+repository')
+}
+
 if ([string]::IsNullOrWhiteSpace($Branch)) {
     $Branch = (& git branch --show-current).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Branch)) { throw 'Could not resolve the current Git branch.' }
@@ -225,6 +317,7 @@ $branchRef = if ($Branch.StartsWith('refs/heads/')) { $Branch } else { "refs/hea
 $Branch = $branchRef -replace '^refs/heads/', ''
 $DefinitionIds = @(ConvertTo-ObjectArray -Value $DefinitionIds | ForEach-Object { [int]$_ })
 $AutoQueueDefinitionIds = @(ConvertTo-ObjectArray -Value $AutoQueueDefinitionIds | ForEach-Object { [int]$_ })
+$SkipOnMissingYamlDefinitionIds = @(ConvertTo-ObjectArray -Value $SkipOnMissingYamlDefinitionIds | ForEach-Object { [int]$_ })
 $queuedAfterUtc = if ($QueuedAfter -eq [datetime]::MinValue) { [DateTime]::UtcNow.AddMinutes(-5) } else { $QueuedAfter.ToUniversalTime() }
 Write-Host "Monitoring Azure pipelines for $branchRef at $Commit"
 Write-Host "Queued after: $($queuedAfterUtc.ToString('o'))"
@@ -233,6 +326,7 @@ Send-MonitorProgress -Stage pipeline_discovery -Summary "Discovering exact-SHA p
 $expectedDefinitionIds = @($DefinitionIds + $AutoQueueDefinitionIds | Sort-Object -Unique)
 $passiveDefinitionIds = @($DefinitionIds | Where-Object { $_ -notin $AutoQueueDefinitionIds } | Sort-Object -Unique)
 $queuedDefinitions = [Collections.Generic.List[int]]::new()
+$skippedDefinitionIds = [Collections.Generic.List[int]]::new()
 $tracked = @{}
 $completed = @{}
 $lastState = @{}
@@ -248,14 +342,59 @@ for ($sequenceIndex = 0; $sequenceIndex -lt $AutoQueueDefinitionIds.Count; $sequ
         $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','runs','list','--organization',$Organization,'--project',$Project,'--branch',$branchRef,'--top','100','--output','json')))
         $selectedRun = @($runs | Where-Object {
             $null -ne $_ -and [string]$_.sourceVersion -eq $Commit -and [int]$_.definition.id -eq $definitionId -and
-            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc
-        } | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+            (ConvertTo-UtcTimestamp -Value $_.queueTime) -ge $queuedAfterUtc
+        } | Sort-Object { ConvertTo-UtcTimestamp -Value $_.queueTime } -Descending | Select-Object -First 1)
         if ($selectedRun.Count -gt 0) { $selectedRun = $selectedRun[0] } else { $selectedRun = $null }
     }
     if ($null -eq $selectedRun) {
         Write-Host "Queueing approved build definition $definitionId at sequence position $($sequenceIndex + 1) for $branchRef."
         Send-MonitorProgress -Stage pipeline_queueing -Summary "Queueing approved definition $definitionId." -Details "Ordered position $($sequenceIndex + 1) of $($AutoQueueDefinitionIds.Count)." -Force
-        $queueResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')))
+        $queueAttempt = Invoke-AzJsonResult -Arguments @('pipelines','run','--id',[string]$definitionId,'--branch',$Branch,'--organization',$Organization,'--project',$Project,'--output','json')
+        if (-not $queueAttempt.succeeded) {
+            if (Test-MissingYamlSkip -DefinitionId $definitionId -QueueOutput @($queueAttempt.output)) {
+                $skippedDefinitionIds.Add($definitionId)
+                $message = "Definition $definitionId was skipped because its YAML is not present at the exact commit."
+                Write-Warning $message
+                Send-MonitorProgress -Stage pipeline_queueing -Summary $message -Details 'This fallback applies only to explicitly configured definitions and the exact Azure missing-YAML response.' -Force
+                continue
+            }
+            Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Diagnosing queue rejection for definition $definitionId." -Details 'Running Azure dry-run preview and read-only resource checks; no second run will be queued.' -Force
+            try {
+                $queueFailures = @(& $QueueDiagnosticsScript -Organization $Organization -Project $Project -DefinitionId $definitionId -Branch $Branch -Commit $Commit -QueueError (@($queueAttempt.output) -join [Environment]::NewLine) -AzCli $AzCli)
+                if ($queueFailures.Count -ne 1) { throw "Queue diagnostics returned $($queueFailures.Count) results instead of one." }
+                $queueFailure = $queueFailures[0]
+            }
+            catch {
+                $queueFailure = [pscustomobject][ordered]@{
+                    diagnosticType='queue-validation'; definitionId=$definitionId; category='infrastructure'; developerEligible=$false
+                    matchedSignals=@('Azure rejected the queue request.','The read-only diagnostic helper failed before producing safe evidence.')
+                    summary="Definition $definitionId queue validation failed; the read-only diagnostic helper did not produce a safe result."
+                    queueError='Azure rejected the queue request.'; definition=$null; preview=$null; resourceChecks=@()
+                    humanIntervention=[pscustomobject][ordered]@{
+                        required=$true
+                        reason='Azure rejected the queue request, but the safe diagnostic helper could not determine a single cause.'
+                        options=@(
+                            [pscustomobject][ordered]@{ id='inspect-azure-validation'; action="Open definition $definitionId in Azure DevOps and inspect its validation details."; rationale='An authorized owner can see protected resource and check details unavailable to the monitor.' }
+                            [pscustomobject][ordered]@{ id='restore-monitor-read-access'; action='Restore read access for the monitor identity, then rerun diagnostics without requeueing solely for debug.'; rationale='Read access allows the monitor to produce a specific recommendation without changing Azure resources.' }
+                        )
+                        recommendedOptionId='inspect-azure-validation'
+                        recommendationRationale='This is the fastest safe path when the monitor cannot obtain reliable read-only evidence.'
+                    }
+                }
+            }
+            $classification = [pscustomobject]@{
+                category=[string]$queueFailure.category
+                developerEligible=[bool]$queueFailure.developerEligible
+                matchedSignals=@($queueFailure.matchedSignals)
+            }
+            $result = New-PipelineResult -Runs @() -OverallResult non-success -Classification $classification -QueuedIds @($queuedDefinitions) -Summary ([string]$queueFailure.summary) -QueueFailure $queueFailure
+            Write-PipelineResult -Result $result
+            Send-MonitorProgress -Stage pipeline_terminal -Summary ([string]$queueFailure.summary) -Details 'Queue validation diagnostics completed without creating another run.' -Force
+            if ($PassThru) { return $result }
+            Write-Error -ErrorAction Continue $result.summary
+            exit 4
+        }
+        $queueResults = @(ConvertTo-ObjectArray -Value $queueAttempt.value)
         if ($queueResults.Count -ne 1 -or $null -eq $queueResults[0].id) { throw "Azure CLI did not return exactly one run ID for definition $definitionId." }
         $selectedRun = $queueResults[0]
         $queuedDefinitions.Add($definitionId)
@@ -322,12 +461,12 @@ if ($discoverPassiveRuns) {
         $runs = @(ConvertTo-ObjectArray -Value (Invoke-AzJson $listArguments))
         $matchingRuns = @($runs | Where-Object {
             (Test-RunMatchesCommit -Run $_ -ExpectedCommit $Commit) -and
-            [datetime]::Parse([string]$_.queueTime).ToUniversalTime() -ge $queuedAfterUtc -and
+            (ConvertTo-UtcTimestamp -Value $_.queueTime) -ge $queuedAfterUtc -and
             ($passiveDefinitionIds.Count -eq 0 -or [int]$_.definition.id -in $passiveDefinitionIds)
         })
         if ($LatestRunPerDefinition) {
             $matchingRuns = @($matchingRuns | Group-Object { [int]$_.definition.id } | ForEach-Object {
-                @($_.Group | Sort-Object { [datetime]::Parse([string]$_.queueTime).ToUniversalTime() } -Descending | Select-Object -First 1)
+                @($_.Group | Sort-Object { ConvertTo-UtcTimestamp -Value $_.queueTime } -Descending | Select-Object -First 1)
             })
         }
         foreach ($run in $matchingRuns) {
@@ -417,10 +556,39 @@ foreach ($run in $completed.Values | Sort-Object id) {
     if ($runResult -ne 'succeeded') {
         Write-Host "Non-success run $($run.id): result=$runResult" -ForegroundColor Red
         Send-MonitorProgress -Stage pipeline_failure_analysis -Summary "Analyzing failed tasks for run $($run.id)." -Details "Definition $($run.definition.id); result: $runResult." -Force
-        $timelineResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')))
-        if ($timelineResults.Count -ne 1) { throw "Azure CLI did not return exactly one timeline for run $($run.id)." }
-        $timeline = $timelineResults[0]
-        foreach ($task in @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })) {
+        $validationResultsProperty = $run.PSObject.Properties['validationResults']
+        $validationMessages = @(
+            if ($validationResultsProperty) {
+                $validationResultsProperty.Value |
+                    Where-Object { [string]$_.result -eq 'error' -and -not [string]::IsNullOrWhiteSpace([string]$_.message) } |
+                    ForEach-Object { [string]$_.message }
+            }
+        )
+        if ($validationMessages.Count) {
+            $excerpt = Get-BoundedLogExcerpt -Lines $validationMessages -MaximumBytes $FailureLogMaxBytes
+            $taskClassification = & $ClassifierScript -TaskNames @('Azure pipeline validation') -LogLines $validationMessages
+            $allCategories.Add([string]$taskClassification.category)
+            foreach ($signal in @($taskClassification.matchedSignals)) { if ($allSignals.Count -lt 8) { $allSignals.Add([string]$signal) } }
+            if ($allSignals.Count -lt 8) { $allSignals.Add($excerpt) }
+            $failedTasks.Add([pscustomobject][ordered]@{ name='Azure pipeline validation'; category=[string]$taskClassification.category; logExcerpt=$excerpt })
+            $failedLogExcerpts.Add($excerpt)
+            Write-Host $excerpt
+        }
+        else {
+            $timelineResults = @(ConvertTo-ObjectArray -Value (Invoke-AzJson @('devops','invoke','--organization',$Organization,'--area','build','--resource','timeline','--route-parameters',"project=$Project","buildId=$($run.id)",'--api-version','7.1','--output','json')))
+            if ($timelineResults.Count -eq 1) {
+                $timeline = $timelineResults[0]
+                $timelineTasks = @($timeline.records | Where-Object { [string]$_.type -eq 'Task' -and [string]$_.result -eq 'failed' })
+            }
+            else {
+                $timelineTasks = @()
+                $excerpt = "Azure returned no timeline or validationResults for failed run $($run.id)."
+                $allCategories.Add('infrastructure')
+                if ($allSignals.Count -lt 8) { $allSignals.Add($excerpt) }
+                $failedTasks.Add([pscustomobject][ordered]@{ name='Azure pipeline metadata'; category='infrastructure'; logExcerpt=$excerpt })
+                $failedLogExcerpts.Add($excerpt)
+            }
+            foreach ($task in $timelineTasks) {
             $excerpt = ''
             if ($null -ne $task.log -and $null -ne $task.log.id) {
                 $logFile = Join-Path ([IO.Path]::GetTempPath()) "azdo-$($run.id)-$($task.log.id)-$([guid]::NewGuid().ToString('N')).log"
@@ -445,6 +613,7 @@ foreach ($run in $completed.Values | Sort-Object id) {
             foreach ($signal in @($taskClassification.matchedSignals)) { if ($allSignals.Count -lt 8) { $allSignals.Add([string]$signal) } }
             $failedTasks.Add([pscustomobject][ordered]@{ name=[string]$task.name; category=[string]$taskClassification.category; logExcerpt=$excerpt })
             if ($excerpt) { $failedLogExcerpts.Add($excerpt) }
+            }
         }
         if ($failedTasks.Count -eq 0) { $allCategories.Add('unknown') }
     }
@@ -460,6 +629,7 @@ if (-not $hasNonSuccess) {
     $classification = [pscustomobject]@{ category='none'; developerEligible=$false; matchedSignals=@() }
     $overallResult = 'succeeded'
     $summary = "All exact-SHA pipeline runs succeeded for $Branch@$Commit."
+    if ($skippedDefinitionIds.Count -gt 0) { $summary += " Skipped optional missing-YAML definition(s): $($skippedDefinitionIds -join ', ')." }
 }
 else {
     $category = if (@($allCategories) -contains 'test') { 'test' } elseif (@($allCategories) -contains 'code') { 'code' } elseif (@($allCategories) -contains 'infrastructure') { 'infrastructure' } else { 'unknown' }
@@ -467,7 +637,13 @@ else {
     $overallResult = 'non-success'
     $summary = "Exact-SHA pipeline completed with non-success; classified as $category."
 }
-$result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary
+$humanIntervention = $null
+if ($overallResult -eq 'non-success' -and (-not [bool]$classification.developerEligible -or $RemediationCycle -ge $MaxRemediationCycles)) {
+    $failedDefinition = @($structuredRuns | Where-Object { [string]$_.result -ne 'succeeded' } | Select-Object -First 1)
+    $failedDefinitionId = if ($failedDefinition.Count) { [int]$failedDefinition[0].definitionId } else { 1 }
+    $humanIntervention = New-PipelineHumanIntervention -Category ([string]$classification.category) -Signals @($allSignals) -DefinitionId $failedDefinitionId
+}
+$result = New-PipelineResult -Runs @($structuredRuns) -OverallResult $overallResult -Classification $classification -QueuedIds @($queuedDefinitions) -Summary $summary -HumanIntervention $humanIntervention
 Write-PipelineResult -Result $result
 Send-MonitorProgress -Stage pipeline_terminal -Summary $summary -Details "Overall result: $overallResult." -Force
 if ($PassThru) { return $result }

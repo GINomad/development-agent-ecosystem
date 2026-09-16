@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string] $SourceId = 'ps-excel-agent-initial',
+    [string] $ProjectId,
+    [string] $SourceId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -9,10 +10,23 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
-$sourceConfig = @($config.knowledge.seedSources | Where-Object { $_.id -eq $SourceId }) | Select-Object -First 1
+if (-not $ProjectId -and $SourceId) {
+    $requestedSeed = @($config.knowledge.seedSources | Where-Object { $_.id -eq $SourceId }) | Select-Object -First 1
+    if ($requestedSeed) { $ProjectId = [string]$requestedSeed.projectId }
+}
+if (-not $ProjectId -and @($config.projects | Where-Object enabled).Count -eq 1) { $ProjectId = [string]@($config.projects | Where-Object enabled)[0].id }
+if (-not $ProjectId) { throw 'ProjectId is required when more than one project is enabled.' }
+$project = @($config.projects | Where-Object { $_.id -eq $ProjectId -and $_.enabled }) | Select-Object -First 1
+if (-not $project) { throw "Enabled project '$ProjectId' was not found." }
+$sourceConfig = @($config.knowledge.seedSources | Where-Object { $_.projectId -eq $ProjectId -and (-not $SourceId -or $_.id -eq $SourceId) }) | Select-Object -First 1
+if (-not $sourceConfig -and -not $SourceId) {
+    $managedRoot = Resolve-EcosystemPath -Value ([string]$project.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome
+    New-Item -ItemType Directory -Path $managedRoot -Force | Out-Null
+    return [pscustomobject]@{ SourceRoot=$null; ManagedRoot=$managedRoot; ManifestPath=$null; FileCount=0; ConflictCount=0; Conflicts=@(); ManifestUpdated=$false }
+}
 if (-not $sourceConfig) { throw "Knowledge seed '$SourceId' is not configured." }
 $sourceRoot = Resolve-EcosystemPath -Value ([string]$sourceConfig.path) -Config $config -CodexHome $CodexHome
-$managedRoot = Resolve-EcosystemPath -Value ([string]$config.knowledge.managedRoot) -Config $config -CodexHome $CodexHome
+$managedRoot = Resolve-EcosystemPath -Value ([string]$project.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw "Knowledge seed root was not found: $sourceRoot" }
 if ([string]::Equals($sourceRoot.TrimEnd('\'), $managedRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Seed and managed knowledge roots must be different.'
@@ -35,10 +49,10 @@ foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Sort
     if ($file.Extension.ToLowerInvariant() -notin $extensions) { continue }
     $relative = [Uri]::UnescapeDataString($sourceUri.MakeRelativeUri([Uri]$file.FullName).ToString()).Replace('/', '\')
     $target = Join-Path $managedRoot $relative
-    $sourceHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sourceHash = Get-EcosystemFileSha256 -Path $file.FullName
     $status = 'copied'
     if (Test-Path -LiteralPath $target -PathType Leaf) {
-        $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+        $targetHash = Get-EcosystemFileSha256 -Path $target
         $prior = $previousByPath[$relative]
         if ($targetHash -eq $sourceHash) {
             $status = 'unchanged'
@@ -52,7 +66,7 @@ foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Sort
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
     }
-    $importedHash = if (Test-Path -LiteralPath $target) { (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() } else { '' }
+    $importedHash = if (Test-Path -LiteralPath $target) { Get-EcosystemFileSha256 -Path $target } else { '' }
     $entries.Add([pscustomobject][ordered]@{
         relativePath = $relative
         sourcePath = $file.FullName
@@ -73,7 +87,15 @@ $manifest = [pscustomobject][ordered]@{
 }
 $manifestUpdated = $true
 if ($previous) {
-    $previousImportTime = [string]$previous.importedAtUtc
+    foreach ($previousEntry in @($previous.entries)) {
+        if ($previousEntry.sourceLastWriteUtc -is [DateTime]) {
+            $previousEntry.sourceLastWriteUtc = ([DateTime]$previousEntry.sourceLastWriteUtc).ToUniversalTime().ToString('o')
+        }
+        elseif ($previousEntry.sourceLastWriteUtc -is [DateTimeOffset]) {
+            $previousEntry.sourceLastWriteUtc = ([DateTimeOffset]$previousEntry.sourceLastWriteUtc).UtcDateTime.ToString('o')
+        }
+    }
+    $previousImportTime = if ($previous.importedAtUtc -is [DateTime]) { ([DateTime]$previous.importedAtUtc).ToUniversalTime().ToString('o') } else { [string]$previous.importedAtUtc }
     $previous.importedAtUtc = [string]$manifest.importedAtUtc
     $previousComparable = $previous | ConvertTo-Json -Depth 8 -Compress
     $currentComparable = $manifest | ConvertTo-Json -Depth 8 -Compress

@@ -2,8 +2,12 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $FailurePath,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [string] $DiagnosisPath,
     [switch] $ElevatedApproved,
+    [switch] $SuppressExternalDelivery,
+    [switch] $SuppressTargetedResume,
     [ValidateRange(0,2)][int] $RecoveryDepth = 0,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -41,6 +45,9 @@ function Publish-VerifiedHealthRepair {
     $actualRemoteUrl = ([string](& git -C $Workspace remote get-url $remote)).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualRemoteUrl -ne $configuredRemoteUrl) { throw 'Health recovery origin does not match the exact configured ecosystem remote URL.' }
 
+    $validatedCommit = ([string](& git -C $Workspace rev-parse ("{0}^{{commit}}" -f $Commit))).Trim()
+    if ($LASTEXITCODE -ne 0 -or $validatedCommit -ne $Commit) { throw 'The validated ecosystem repair commit cannot be resolved locally.' }
+
     $branch = ([string](& git -C $Workspace branch --show-current)).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($branch)) { throw 'Validated ecosystem repair cannot be pushed from a detached HEAD.' }
     if ($branch -in @('main','master')) {
@@ -50,16 +57,17 @@ function Publish-VerifiedHealthRepair {
         $existingCommit = ([string](& git -C $Workspace show-ref --verify --hash $branchRef 2>$null)).Trim()
         $showRefExitCode = [int]$LASTEXITCODE
         if ($showRefExitCode -eq 0) {
-            if ($existingCommit -ne $Commit) { throw ('Existing repair branch does not point to the validated repair commit: {0}' -f $branch) }
+            & git -C $Workspace merge-base --is-ancestor $Commit $existingCommit
+            if ($LASTEXITCODE -ne 0) { throw ('Existing repair branch does not contain the validated repair commit: {0}' -f $branch) }
             & git -C $Workspace switch $branch
         }
-        elseif ($showRefExitCode -eq 1) { & git -C $Workspace switch -c $branch }
+        elseif ($showRefExitCode -eq 1) { & git -C $Workspace switch -c $branch $Commit }
         else { throw ('Unable to inspect repair branch: {0}' -f $branch) }
         if ($LASTEXITCODE -ne 0) { throw ('Unable to select repair branch: {0}' -f $branch) }
     }
     if ($branch -in @('main','master') -or $branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw 'Health recovery selected an unsafe push branch.' }
 
-    $pushRef = 'HEAD:refs/heads/{0}' -f $branch
+    $pushRef = '{0}:refs/heads/{1}' -f $Commit,$branch
     $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -67,7 +75,6 @@ function Publish-VerifiedHealthRepair {
         $pushExitCode = [int]$LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousErrorActionPreference }
-    if ($pushExitCode -ne 0) { throw ('Unable to push the validated ecosystem repair: {0}' -f ($pushOutput -join [Environment]::NewLine)) }
 
     try {
         $ErrorActionPreference = 'Continue'
@@ -77,14 +84,59 @@ function Publish-VerifiedHealthRepair {
     finally { $ErrorActionPreference = $previousErrorActionPreference }
     $remoteLine = @($remoteOutput | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^[a-f0-9]{40}\s+refs/heads/' } | Select-Object -First 1)
     $remoteCommit = if ($remoteLine.Count) { ($remoteLine[0] -split '\s+')[0] } else { '' }
-    if ($remoteExitCode -ne 0 -or $remoteCommit -ne $Commit) { throw 'The remote repair branch does not point to the exact validated repair commit.' }
-    [pscustomobject][ordered]@{ remote=$remote; remoteUrl=$actualRemoteUrl; branch=$branch; commit=$Commit; pushRef=$pushRef; verifiedAtUtc=[DateTime]::UtcNow.ToString('o') }
+    if ($remoteExitCode -ne 0 -or $remoteCommit -notmatch '^[a-f0-9]{40}$') {
+        throw ('Unable to verify the remote repair branch: {0}' -f ($remoteOutput -join [Environment]::NewLine))
+    }
+
+    $relationship = 'exact'
+    if ($remoteCommit -ne $Commit) {
+        $fetchedCommit = ''
+        $containsValidatedCommit = $false
+        try {
+            $ErrorActionPreference = 'Continue'
+            $fetchOutput = @(& git -C $Workspace fetch --no-tags $remote ('refs/heads/{0}' -f $branch) 2>&1)
+            $fetchExitCode = [int]$LASTEXITCODE
+            if ($fetchExitCode -eq 0) {
+                $fetchedCommit = ([string](& git -C $Workspace rev-parse FETCH_HEAD)).Trim()
+                $fetchExitCode = [int]$LASTEXITCODE
+            }
+            & git -C $Workspace merge-base --is-ancestor $Commit $remoteCommit 2>$null
+            $containsValidatedCommit = [int]$LASTEXITCODE -eq 0
+        }
+        finally { $ErrorActionPreference = $previousErrorActionPreference }
+        if ($fetchExitCode -ne 0 -or $fetchedCommit -ne $remoteCommit -or -not $containsValidatedCommit) {
+            if ($pushExitCode -ne 0) { throw ('Unable to push the validated ecosystem repair: {0}' -f ($pushOutput -join [Environment]::NewLine)) }
+            throw 'The remote repair branch does not contain the exact validated repair commit.'
+        }
+        $relationship = 'descendant'
+    }
+    elseif ($pushExitCode -ne 0) {
+        # A concurrent publisher may have delivered this exact commit after our push was rejected.
+        $relationship = 'exact-concurrent'
+    }
+
+    [pscustomobject][ordered]@{
+        remote = $remote
+        remoteUrl = $actualRemoteUrl
+        branch = $branch
+        commit = $Commit
+        deliveredCommit = $remoteCommit
+        relationship = $relationship
+        pushRef = $pushRef
+        verifiedAtUtc = [DateTime]::UtcNow.ToString('o')
+    }
 }
 if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
 if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure artifact was not found: $FailurePath" }
 
 $workspace = Resolve-EcosystemPath -Value ([string]$config.health.automaticRecovery.workspace) -Config $config -CodexHome $CodexHome
 if ([IO.Path]::GetFullPath($workspace) -ne [IO.Path]::GetFullPath((Get-EcosystemRoot))) { throw 'Automatic health recovery workspace must be the ecosystem repository root.' }
+foreach ($repository in @($config.repositories)) {
+    $productWorkspace = [IO.Path]::GetFullPath(([Environment]::ExpandEnvironmentVariables([string]$repository.localWorkspace) -replace '/', [IO.Path]::DirectorySeparatorChar))
+    if (Test-EcosystemRootInsideProductWorkspace -Left $workspace -Right $productWorkspace) {
+        throw "Automatic health recovery refuses an ecosystem workspace that overlaps product repository '$($repository.id)': $productWorkspace"
+    }
+}
 if ([bool]$config.health.automaticRecovery.allowProductCodeChanges -or [bool]$config.health.automaticRecovery.allowExternalWrites) { throw 'Automatic recovery boundary is invalid.' }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
 if ($ElevatedApproved) {
@@ -123,8 +175,10 @@ if ($successfulAttempt.Count) {
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus completed -Stage health_recovered -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $targetedResume = $null
     $successfulResultPath = [string]$successfulAttempt[0].resultPath
-    if ([bool]$config.health.automaticRecovery.targetedResume.enabled -and (Test-Path -LiteralPath $successfulResultPath -PathType Leaf)) {
+    if (-not $SuppressTargetedResume -and [bool]$config.health.automaticRecovery.targetedResume.enabled -and (Test-Path -LiteralPath $successfulResultPath -PathType Leaf)) {
         $targetedParameters = @{ TaskId=$TaskId; FailurePath=$FailurePath; RecoveryEvidencePath=$successfulResultPath; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $targetedParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $targetedParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
@@ -179,7 +233,7 @@ $diagnosticContext = [ordered]@{
         stage = if ($taskSnapshot.PSObject.Properties['currentStage']) { [string]$taskSnapshot.currentStage } else { [string]$taskSnapshot.status }
         message = if ($taskSnapshot.PSObject.Properties['lastMessage']) { [string]$taskSnapshot.lastMessage } else { '' }
     }
-    workflowLogTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'workflow-codex.jsonl') -TailLines ([int]$contextLimits.workflowLogTailLines) -MaximumBytes $maximumBytes
+    workflowLogTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'workflow-claude.jsonl') -TailLines ([int]$contextLimits.workflowLogTailLines) -MaximumBytes $maximumBytes
     ledgerTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'task-ledger.jsonl') -TailLines ([int]$contextLimits.ledgerTailLines) -MaximumBytes $maximumBytes
     finalResponseTail = Get-BoundedTextTail -Path (Join-Path $taskRoot 'workflow-final-response.md') -TailLines ([int]$contextLimits.ledgerTailLines) -MaximumBytes $maximumBytes
     limits = [ordered]@{ workflowLogTailLines=[int]$contextLimits.workflowLogTailLines; ledgerTailLines=[int]$contextLimits.ledgerTailLines; maximumBytesPerTail=$maximumBytes }
@@ -210,45 +264,30 @@ Ecosystem workspace: $workspace
 $diagnosisInstruction
 $dirtyInstruction
 
-If the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or start another workflow yourself. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If another configured role owns the repair, do not perform that role's work: return its agent ID in routeAgentId, set repairOwner consistently, and set requiresUserInput=false. Use Developer for product code, tests, or pipeline YAML; Requirements Analyst for unresolved requirements evidence; Knowledge Keeper for persisted knowledge/context contracts; Reviewer for review-process work; Pipeline Monitor for pipeline observation or provider-side diagnosis. Set routeAgentId=null when repaired here or when human input is required. Credentials, external authority, approval decisions, and genuinely ambiguous evidence require repairOwner=human and requiresUserInput=true. After a validated ecosystem repair, the trusted host coordinator may perform the configured one-shot targeted retry of only the failed agent.
+If the evidence identifies a source-controlled defect in this ecosystem, implement the smallest repair inside the ecosystem workspace. You may update ecosystem configuration, prompts, skills, dashboard, schemas, scripts, tests, and diagrams. You must not access or modify product repositories, weaken sandbox or approval gates, expose credentials, perform network or external writes, commit, push, delete task history, or start another workflow yourself. Preserve unrelated work. Run the exact failed check and scripts/Test-AgentEcosystem.ps1. If another configured role owns the repair, do not perform that role's work: return its agent ID in routeAgentId, set repairOwner consistently, and set requiresUserInput=false. Use Developer for product code, tests, or pipeline YAML; Requirements Analyst for unresolved requirements evidence; Knowledge Keeper for persisted knowledge/context contracts; Reviewer for candidate review work; Review Verifier for independent finding, coverage, or lifecycle verification; Pipeline Monitor for pipeline observation or provider-side diagnosis. Set routeAgentId=null when repaired here or when human input is required. Credentials, external authority, approval decisions, and genuinely ambiguous evidence require repairOwner=human and requiresUserInput=true. Whenever requiresUserInput=true, populate humanIntervention with the exact request, why automation cannot safely proceed, one or more actionable options, one recommended option copied exactly from options, and the rationale for that recommendation. After a validated ecosystem repair, the trusted host coordinator may perform the configured one-shot targeted retry of only the failed agent.
 
-Return only the JSON object required by the configured output schema. Use the exact failure signature $signature.
+Return only the JSON object required by the configured output schema. Use the exact failure signature $signature. Set humanIntervention to null whenever requiresUserInput is false.
 "@
 
-$logPath = Join-Path $taskRoot 'health-recovery-codex.jsonl'
+$logPath = Join-Path $taskRoot 'health-recovery-claude.jsonl'
 $resultPath = Join-Path $taskRoot 'health-recovery-result.json'
 $guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
+& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install | Out-Null
+$pluginRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.claude.pluginRoot) -Config $config -CodexHome $CodexHome
+$schemaJson = (Get-Content -LiteralPath $schemaPath -Raw -Encoding UTF8).Trim()
 $healthAgent = @($config.agents | Where-Object { [string]$_.id -eq 'health_check' }) | Select-Object -First 1
-if ($runtimeProvider -eq 'claude') {
-    & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install | Out-Null
-    $pluginRoot = Resolve-EcosystemPath -Value ([string]$config.runtime.claude.pluginRoot) -Config $config -CodexHome $CodexHome
-    $schemaJson = (Get-Content -LiteralPath $schemaPath -Raw -Encoding UTF8).Trim()
-    $arguments = @('-p','--output-format','json','--model',[string]$healthAgent.model,'--effort',[string]$healthAgent.reasoningEffort,'--permission-mode',[string]$config.runtime.claude.permissionMode,'--max-turns',[string][int]$config.runtime.claude.maxTurns,'--no-session-persistence','--plugin-dir',$pluginRoot,'--agent',('development-agent-ecosystem:' + (Get-ClaudeAgentName -Name ([string]$healthAgent.name))),'--json-schema',$schemaJson,'Return the required structured health-recovery result after following the instruction supplied on standard input.')
-}
-else {
-    $arguments = @(
-    '-a', $recoveryApprovalPolicy,
-    '--config', 'notify=[]',
-    'exec',
-    '-C', $workspace,
-    '-s', $recoverySandboxMode,
-    '--json',
-    '--output-schema', $schemaPath,
-    '-o', $resultPath,
-    '-'
-)
-}
+$arguments = @('-p','--output-format','json','--model',[string]$healthAgent.model,'--effort',[string]$healthAgent.reasoningEffort,'--permission-mode',[string]$config.runtime.claude.permissionMode,'--max-turns',[string][int]$config.runtime.claude.maxTurns,'--no-session-persistence','--plugin-dir',$pluginRoot,'--agent',('development-agent-ecosystem:' + (Get-ClaudeAgentName -Name ([string]$healthAgent.name))),'--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--json-schema',$schemaJson,'Return the required structured health-recovery result after following the instruction supplied on standard input.')
 
 $recoveryWasValidated = $false
 try {
     $agentCliPath = Resolve-AgentCliPath -Config $config
-    if (-not $agentCliPath) { throw 'Configured agent runtime CLI was not found.' }
+    if (-not $agentCliPath) { throw 'Claude Code CLI was not found.' }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedAgentRuntime.ps1') -FilePath $agentCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $runtimeExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
-    if ($runtimeExitCode -ne 0) { throw "Health recovery runtime exited with code $runtimeExitCode. See $logPath" }
-    if ($runtimeProvider -eq 'claude') { & (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $logPath -OutputPath $resultPath -Structured | Out-Null }
+    if ($runtimeExitCode -ne 0) { throw "Health recovery Claude Code exited with code $runtimeExitCode. See $logPath" }
+    & (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $logPath -OutputPath $resultPath -Structured | Out-Null
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$recovery.failureSignature -ne $signature) { throw 'Health recovery result has the wrong failure signature.' }
@@ -288,11 +327,15 @@ try {
                 & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_commit -Summary "Validated ecosystem repair committed locally as $recoveryCommit." -Details 'The trusted host created a repair commit on top of any separate preservation commit after complete validation and before configured delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             }
         }
-        if ($recoveryCommit -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
+        $remainingValidatedChanges = @(git -C $workspace status --porcelain)
+        if ($LASTEXITCODE -ne 0 -or $remainingValidatedChanges.Count) { throw 'The validated ecosystem repair is not bound to a clean Git commit.' }
+        $recoveryCommit = ([string](& git -C $workspace rev-parse HEAD)).Trim()
+        if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to bind Health recovery delivery to the validated Git HEAD.' }
+        if ($recoveryCommit -and -not $SuppressExternalDelivery -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
             $recoveryPush = Publish-VerifiedHealthRepair -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
             $recoveryDeliveryPath = Join-Path $taskRoot 'health-recovery-delivery.json'
             Write-Utf8NoBom -Path $recoveryDeliveryPath -Content (($recoveryPush | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
-            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details 'Trusted host verified the exact remote branch commit after a normal non-force, non-tag push.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details ('Trusted host verified that remote commit {0} contains validated repair commit {1} after a normal non-force, non-tag delivery.' -f $recoveryPush.deliveredCommit,$recoveryCommit) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type external-action -Summary ('Health Check published verified ecosystem repair {0}.' -f $recoveryCommit) -Artifact $recoveryDeliveryPath -Evidence @($resultPath) -TargetAgentId health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -301,8 +344,8 @@ try {
         $recoveryWasValidated = $true
     }
     elseif ([string]$recovery.status -eq 'needs-user-input') {
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status waiting_for_input -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        $guidance = $recovery.humanIntervention
+        & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId health_check -Question ([string]$guidance.request) -Reason ([string]$guidance.reason) -Options @($guidance.options) -RecommendedOption ([string]$guidance.recommendedOption) -RecommendationRationale ([string]$guidance.recommendationRationale) -Evidence @($FailurePath, $resultPath) -Stage health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     }
     else {
         $routedAgentId = if ($recovery.PSObject.Properties['routeAgentId']) { [string]$recovery.routeAgentId } else { '' }
@@ -317,13 +360,19 @@ try {
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type workflow-status -Summary "Health Check routed a bounded repair to '$routedAgentId'." -Artifact $routingPath -Evidence @($FailurePath, $resultPath) -TargetAgentId $routedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         else {
-            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            if ($requiresUserInput) {
+                $guidance = $recovery.humanIntervention
+                & (Join-Path $PSScriptRoot 'Open-AgentQuestion.ps1') -TaskId $TaskId -AgentId health_check -Question ([string]$guidance.request) -Reason ([string]$guidance.reason) -Options @($guidance.options) -RecommendedOption ([string]$guidance.recommendedOption) -RecommendationRationale ([string]$guidance.recommendationRationale) -Evidence @($FailurePath, $resultPath) -Stage health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
+            else {
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message ([string]$recovery.nextAction) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            }
         }
     }
     $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; preservationCommit=$preservationCommit; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null }; push=if ($recoveryWasValidated -and $recoveryPush) { $recoveryPush } else { $null } }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $targetedResume = $null
-    if ([string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
+    if (-not $SuppressTargetedResume -and [string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
         $targetedParameters = @{
             TaskId = $TaskId
             FailurePath = $FailurePath
@@ -331,6 +380,8 @@ try {
             ConfigPath = $ConfigPath
             CodexHome = $CodexHome
         }
+        if ($ExecutionRunId) { $targetedParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $targetedParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
@@ -339,6 +390,8 @@ try {
         $taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $repositoryIds = if ($taskSnapshot.PSObject.Properties['repositoryIds']) { @($taskSnapshot.repositoryIds) } elseif ($taskSnapshot.PSObject.Properties['repositoryId']) { @([string]$taskSnapshot.repositoryId) } else { @() }
         $routeParameters = @{ Mode=[string]$taskSnapshot.mode; TaskSelector=[string]$taskSnapshot.selector; TaskId=$TaskId; RepositoryIds=@($repositoryIds); UserInstruction="Health Check routed this repair to '$routedAgentId'. Read $routingPath and the bounded evidence it references. Fix only the assigned scope, preserve completed agents and artifacts, and stop for user input when authority or facts are missing."; Resume=$true; TargetAgentId=$routedAgentId; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $routeParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $routeParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $routeParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @routeParameters
     }
@@ -354,7 +407,11 @@ try {
         if ($followupFailurePath) {
             & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary "The targeted '$([string]$failure.agentId)' retry returned failed; Health Check accepted its new bounded failure envelope." -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $followupFailurePath" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $followupParameters = @{ TaskId=$TaskId; FailurePath=$followupFailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-            if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
+            if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+            if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
+            if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
+        if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
             return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
         }
     }
@@ -369,6 +426,8 @@ catch {
         $followup = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId ([string]$failure.agentId) -Stage health_targeted_resume -Summary $followupSummary -Diagnostic $_.Exception.ToString() -Evidence $followupEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level progress -Stage health_recovery_followup -Summary 'A validated repair exposed a different ecosystem failure during targeted resume; Health Check accepted the new bounded failure envelope.' -Details "Recovery depth $($RecoveryDepth + 1) of 2; failure: $([string]$followup.FailurePath)" -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         $followupParameters = @{ TaskId=$TaskId; FailurePath=[string]$followup.FailurePath; RecoveryDepth=($RecoveryDepth + 1); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+        if ($ExecutionRunId) { $followupParameters.ExecutionRunId = $ExecutionRunId }
+        if ($WorkspaceLeaseId) { $followupParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
         if ($ElevatedApproved) { $followupParameters.ElevatedApproved = $true }
         return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
     }

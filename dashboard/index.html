@@ -29,13 +29,19 @@
         </div>
       </div>
 
+      <label>
+        Project
+        <select id="projectPicker" aria-describedby="projectHint"></select>
+      </label>
+      <p class="hint" id="projectHint">Domain knowledge is shared only by repositories in the selected project.</p>
+
       <div class="repository-field">
         <span class="field-label" id="repositoryLabel">Repositories</span>
         <details class="multi-select" id="repositoryPicker">
           <summary id="repositorySummary" aria-labelledby="repositoryLabel repositorySummary">Select repositories</summary>
           <div class="multi-select-options" id="repositoryOptions" role="group" aria-labelledby="repositoryLabel"></div>
         </details>
-        <p class="hint">Select every repository that the agents may inspect or modify for this task. The first selected repository is the primary workspace.</p>
+        <p class="hint">Only repositories belonging to the selected project are available. The first selected repository is the primary workspace.</p>
       </div>
 
       <div id="manualFields">
@@ -70,6 +76,7 @@
           <p class="step">02 - LIVE WORKFLOWS</p>
           <h2>Task status and intervention</h2>
           <p class="muted">Task history survives page reloads. Status is refreshed automatically at the configured interval.</p>
+          <div class="capacity-status" id="capacityStatus">Scheduler capacity is loading...</div>
         </div>
         <div class="monitor-controls">
           <div class="segmented" role="tablist" aria-label="Review workspace">
@@ -99,6 +106,16 @@
             </div>
             <p class="task-meta" id="selectedTaskMeta"></p>
             <p class="task-message" id="selectedTaskMessage"></p>
+            <section class="task-workspace-summary" aria-labelledby="taskWorkspaceTitle">
+              <div class="task-workspace-heading">
+                <div>
+                  <p class="detail-kicker">EXECUTION ISOLATION</p>
+                  <h4 id="taskWorkspaceTitle">Task clones and lease</h4>
+                </div>
+                <span id="taskLeaseSummary"></span>
+              </div>
+              <div class="task-workspace-list" id="taskWorkspaceInfo"></div>
+            </section>
 
             <section class="input-required hidden" id="inputRequiredPanel" aria-live="polite">
               <h4>Input required</h4>
@@ -152,6 +169,20 @@
                   </div>
                   <p id="reviewFeedbackSummary">Loading Reviewer outcome...</p>
                 </div>
+                <section class="review-coverage" aria-labelledby="reviewCoverageTitle">
+                  <div class="review-coverage-heading">
+                    <h6 id="reviewCoverageTitle">Review Coverage Matrix</h6>
+                    <p id="reviewCoverageSummary">Loading coverage verification...</p>
+                  </div>
+                  <div class="review-coverage-matrix" id="reviewCoverageMatrix"></div>
+                </section>
+                <section class="finding-lifecycle" aria-labelledby="findingLifecycleTitle">
+                  <div class="finding-lifecycle-heading">
+                    <h6 id="findingLifecycleTitle">Finding Lifecycle</h6>
+                    <p id="findingLifecycleSummary">Loading lifecycle verification...</p>
+                  </div>
+                  <div class="finding-lifecycle-list" id="findingLifecycleList"></div>
+                </section>
                 <div class="review-feedback-list" id="reviewFeedbackList"></div>
                 <section class="review-question-threads" aria-labelledby="reviewQuestionThreadsTitle">
                   <div class="review-question-threads-heading">
@@ -251,7 +282,7 @@
               </label>
               <p class="hint">A running agent reads new comments after finishing its current work block, applies one batch, and decides the next coherent block without restart. For a stopped task, save the comment and select Resume workflow.</p>
               <div class="policy-notice hidden" id="executionPolicyNotice" role="status">
-                Windows policy blocked the Codex sandbox for this task. Use the normal resume only after the policy is fixed, or use the elevated workflow action for one explicitly confirmed task session.
+                Windows policy blocked the Claude Code permission sandbox for this task. Use the normal resume only after the policy is fixed, or use the elevated workflow action for one explicitly confirmed task session.
               </div>
               <div class="actions">
                 <button class="button primary" id="sendTaskComment" aria-describedby="sendTaskCommentHelp">Send comment</button>
@@ -264,7 +295,7 @@
                 <div><dt id="sendTaskCommentHelp">Send comment</dt><dd>Queues an instruction for the active agent's next end-of-block checkpoint, or resolves the selected Reply target. A running agent continues without restart; a stopped task stays stopped.</dd></div>
                 <div><dt id="resumeTaskHelp">Resume workflow</dt><dd>Continues from the persisted checkpoint and starts only unfinished agents. Completed agents and artifacts are preserved.</dd></div>
                 <div><dt id="stopWorkflowHelp">Stop workflow</dt><dd>Stops this task's active process tree or runspace, preserves history and completed work, and marks running agents as waiting.</dd></div>
-                <div><dt id="resumeElevatedWorkflowHelp">Resume workflow elevated</dt><dd>Continues only unfinished agents in an in-process host runspace without a nested PowerShell or Codex OS sandbox. Use for policy error 1260; all delivery gates still apply.</dd></div>
+                <div><dt id="resumeElevatedWorkflowHelp">Resume workflow elevated</dt><dd>Continues only unfinished agents in an in-process host runspace without a nested PowerShell or Claude Code permission sandbox. Use for policy error 1260; all delivery gates still apply.</dd></div>
                 <div><dt id="approveElevatedRecoveryHelp">Approve elevated repair</dt><dd>Allows one elevated ecosystem repair. After validation, Health Check restarts only the failed agent once; it does not restart other agents, authorize product-code changes, or bypass review and external-write gates.</dd></div>
               </dl>
               </div>

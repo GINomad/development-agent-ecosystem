@@ -3,21 +3,33 @@
   "title": "Automatic agent health recovery result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "failureSignature", "rootCause", "repairOwner", "routeAgentId", "requiresUserInput", "changes", "validation", "nextAction"],
+  "required": ["status", "failureSignature", "rootCause", "repairOwner", "routeAgentId", "requiresUserInput", "changes", "validation", "nextAction", "humanIntervention"],
   "properties": {
     "status": { "enum": ["repaired", "not-repairable", "needs-user-input", "blocked"] },
     "failureSignature": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "rootCause": { "type": "string", "minLength": 1 },
     "repairOwner": {
-      "enum": ["ecosystem_recovery", "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor", "human"]
+      "enum": ["ecosystem_recovery", "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "review_verifier", "pipeline_monitor", "human"]
     },
     "routeAgentId": {
       "type": ["string", "null"],
-      "enum": [null, "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "pipeline_monitor"]
+      "enum": [null, "orchestrator", "knowledge_keeper", "requirements_analyst", "developer", "reviewer", "review_verifier", "pipeline_monitor"]
     },
     "requiresUserInput": { "type": "boolean" },
     "changes": { "type": "array", "items": { "type": "string" } },
     "validation": { "type": "array", "items": { "type": "string" } },
-    "nextAction": { "type": "string", "minLength": 1 }
+    "nextAction": { "type": "string", "minLength": 1 },
+    "humanIntervention": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["request", "reason", "options", "recommendedOption", "recommendationRationale"],
+      "properties": {
+        "request": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "options": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "recommendedOption": { "type": "string", "minLength": 1 },
+        "recommendationRationale": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

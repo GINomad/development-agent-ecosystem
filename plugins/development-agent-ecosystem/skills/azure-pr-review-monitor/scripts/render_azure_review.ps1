@@ -120,7 +120,7 @@ $dashboardUrl = "http://127.0.0.1:$DashboardPort/review/$([Uri]::EscapeDataStrin
 </style>
 '@)
 [void]$html.AppendLine('</head>')
-[void]$html.AppendLine("<body data-review='$(Encode-Html $reviewName)' data-dashboard-url='$(Encode-Html $dashboardUrl)' data-csrf='__CODEX_REVIEW_CSRF__'>")
+[void]$html.AppendLine("<body data-review='$(Encode-Html $reviewName)' data-dashboard-url='$(Encode-Html $dashboardUrl)' data-csrf='__CLAUDE_REVIEW_CSRF__'>")
 [void]$html.AppendLine("<header class='top'><h1>$(Encode-Html $Title)</h1><div class='change-nav'><button type='button' id='prev-change' title='Previous change' aria-label='Previous change'>&larr;</button><span class='change-count' id='change-count'>0 / 0</span><button type='button' id='next-change' title='Next change' aria-label='Next change'>&rarr;</button></div><a class='dashboard-link' href='$(Encode-Html $dashboardUrl)'>Interactive review</a></header><div class='layout'><nav><h2>Changed files</h2>")
 for ($i = 0; $i -lt $files.Count; $i++) { [void]$html.AppendLine("<a href='#file-$i'>$(Encode-Html $files[$i].Path)</a>") }
 [void]$html.AppendLine('</nav><main>')
@@ -221,7 +221,7 @@ if ($unplaced.Count) {
     box.querySelector('.state-reason').textContent = finding.DispositionReason || '';
   }
   async function sendAction(payload) {
-    const response = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Codex-Review-Token': token }, body: JSON.stringify({ review, ...payload }) });
+    const response = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Claude-Review-Token': token }, body: JSON.stringify({ review, ...payload }) });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Action failed.');
     applyState(result.finding);
