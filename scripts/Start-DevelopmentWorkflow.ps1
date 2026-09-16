@@ -59,6 +59,28 @@ foreach ($id in @($RepositoryIds) + @($RepositoryId)) {
     if ([string]::IsNullOrWhiteSpace($value) -or $requestedRepositoryIds.Contains($value)) { continue }
     $requestedRepositoryIds.Add($value)
 }
+if ($Resume -and -not $requestedRepositoryIds.Count) {
+    $persistedTaskPath = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId\task.json"
+    if (Test-Path -LiteralPath $persistedTaskPath -PathType Leaf) {
+        $persistedTask = Get-Content -LiteralPath $persistedTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $persistedRepositoryIds = @(if ($persistedTask.PSObject.Properties['repositoryIds']) {
+            @($persistedTask.repositoryIds)
+        }
+        elseif ($persistedTask.PSObject.Properties['repositoryId'] -and $persistedTask.repositoryId) {
+            @([string]$persistedTask.repositoryId)
+        }
+        else {
+            @()
+        })
+        foreach ($id in $persistedRepositoryIds) {
+            $value = [string]$id
+            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $requestedRepositoryIds.Contains($value)) { $requestedRepositoryIds.Add($value) }
+        }
+        if (-not $ProjectId -and $persistedTask.PSObject.Properties['projectId'] -and -not [string]::IsNullOrWhiteSpace([string]$persistedTask.projectId)) {
+            $ProjectId = [string]$persistedTask.projectId
+        }
+    }
+}
 if (-not $requestedRepositoryIds.Count) {
     $defaultRepository = @($config.repositories | Where-Object { $_.enabled }) | Select-Object -First 1
     if ($defaultRepository) { $requestedRepositoryIds.Add([string]$defaultRepository.id) }

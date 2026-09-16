@@ -829,6 +829,29 @@ $leaseBReopened = & (Join-Path $root 'scripts\Switch-TaskWorkspace.ps1') -TaskId
 if ([int]$reopenedB.Revision -ne 2 -or [string]$leaseBReopened.Status -ne 'active' -or -not (Test-Path -LiteralPath (Join-Path ([string]$leaseBReopened.Workspaces[0].Path) '.git') -PathType Container) -or [string]$leaseBReopened.Workspaces[0].Lifecycle -eq 'cleaned') { throw 'A reopened task did not reprovision its previously cleaned workspace.' }
 Add-Check -Name 'completed-task-workspace-cleanup' -Detail 'Only finally closed, summarized, released clones are deleted; review gates are retained, preview is non-mutating, manifests remain auditable, and reopened tasks reprovision'
 Add-Check -Name 'parallel-clone-workspace-scheduler' -Detail 'Two tasks can run in distinct full clones of one repository; FIFO capacity, one controller per task, live continuation handoff, task-local failure, resolver/heartbeat ownership, clone reuse, failed/task-crash lease recovery, and failed-provisioning rollback are enforced'
+$resumeScopeRoot = Join-Path $OutputRoot ('resume-repository-scope-' + [guid]::NewGuid().ToString('N'))
+$resumeScopeConfigPath = Join-Path $resumeScopeRoot 'agents.json'
+$resumeScopeConfig = Get-Content -LiteralPath $schedulerConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$resumeScopeConfig.runtime.stateRoot = Join-Path $resumeScopeRoot 'state'
+$resumeScopeConfig.workflow.workspaceScheduling.coordinatorStatePath = Join-Path $resumeScopeRoot 'state\workspace-coordinator.json'
+$resumeScopeConfig.workflow.workspaceScheduling.workspaceRoot = Join-Path $resumeScopeRoot 'state\workspaces'
+$resumeScopeConfig.workflow.workspaceScheduling.maxActiveTasks = 4
+foreach ($resumeScopeRepositoryId in @('planning-space-excel-variable-poc','azure-planningspace-ps-excel-agent','azure-planningspace-ps-bicep')) {
+    $resumeScopeRepository = @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -eq $resumeScopeRepositoryId }) | Select-Object -First 1
+    $resumeScopeRepository.url = $schedulerRemote
+    $resumeScopeRepository.localWorkspace = $schedulerSource
+}
+$resumeScopeConfig.repositories = @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -eq 'planning-space-excel-variable-poc' }) + @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -ne 'planning-space-excel-variable-poc' })
+New-Item -ItemType Directory -Path $resumeScopeRoot -Force | Out-Null
+Write-Utf8NoBom -Path $resumeScopeConfigPath -Content (($resumeScopeConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
+$resumeScopeTaskId = 'resume-repository-scope-' + [guid]::NewGuid().ToString('N')
+$originalResumeRepositoryIds = @('azure-planningspace-ps-excel-agent','azure-planningspace-ps-bicep')
+$null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $resumeScopeTaskId -TaskSelector 'synthetic resume repository scope' -Mode manual -RepositoryIds $originalResumeRepositoryIds -ConfigPath $resumeScopeConfigPath
+$resumeScopePlan = & (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Mode manual -TaskId $resumeScopeTaskId -TaskSelector 'synthetic resume repository scope' -Resume -TargetAgentId developer -PrepareOnly -ConfigPath $resumeScopeConfigPath -CodexHome $CodexHome
+$resumeScopeTask = Get-Content -LiteralPath (Join-Path $resumeScopeConfig.runtime.stateRoot "tasks\$resumeScopeTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if ((@($resumeScopePlan.RepositoryIds) -join '|') -ne ($originalResumeRepositoryIds -join '|') -or (@($resumeScopeTask.repositoryIds) -join '|') -ne ($originalResumeRepositoryIds -join '|') -or [string]$resumeScopeTask.projectId -ne 'planning-space' -or @($resumeScopePlan.WorkspaceLease.Workspaces).Count -ne 2 -or @($resumeScopePlan.WorkspaceLease.Workspaces | Where-Object { [string]$_.RepositoryId -notin $originalResumeRepositoryIds }).Count -ne 0) { throw 'Resume without explicit repository arguments replaced persisted multi-repository scope or project association with the first enabled configuration repository.' }
+& (Join-Path $root 'scripts\Release-TaskWorkspaceLease.ps1') -TaskId $resumeScopeTaskId -LeaseId ([string]$resumeScopePlan.LeaseId) -Reason 'synthetic-resume-scope-test' -ConfigPath $resumeScopeConfigPath | Out-Null
+Add-Check -Name 'resume-preserves-persisted-repository-scope' -Detail 'Resume without repository arguments preserves persisted multi-repository task scope, project association, and workspace selection even when another enabled repository is first in configuration'
 
 $requirementsPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
 foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist','coverage')) {
