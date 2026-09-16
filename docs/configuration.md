@@ -161,6 +161,8 @@ An independently verified finding moved into linked open bypass debt is removed 
 
 `mcp` is deny-by-default. `ecosystem-read` is a local stdio server constrained to the current task root and public artifacts. External entries are registered runtime names only; canonical configuration never stores a URL, command, token, or secret. An external server is disabled unless a setup-confirmed role allowlist contains its registered name.
 
+The canonical `defaultMode` is `allowlist`. Consequently, subsequent runs use MCP only for roles with an explicit `rolePolicies` entry: Knowledge Keeper, Requirements Analyst, Reviewer, and Review Verifier currently receive `ecosystem-read`; Orchestrator, Developer, Pipeline Monitor, and Health Check remain in classic mode. Setting `defaultMode` to `disabled` is the global rollback switch.
+
 The local server exposes only task-state, public-artifact summary/evidence, and bounded role-filtered comments. It cannot enumerate another task or private checkpoints. The Azure mapping, relation limits, provenance contract, prompt-injection handling, and fallback rules are specified in [Azure DevOps MCP adapter contract](mcp-azure-adapter-contract.md).
 
 For each role run the host resolves `classic`, `mcp`, or `classic-after-mcp-failure`. A circuit opens on transport, protocol, schema, or repeated timeout failures; new runs then start directly in classic mode. Health recovery is explicitly MCP-disabled, uses bounded deterministic probes, and returns through half-open state only after the configured number of successful read-only probes. Existing runs never change mode halfway through a role block.

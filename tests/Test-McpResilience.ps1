@@ -5,6 +5,11 @@ $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $root 'scripts\AgentEcosystem.psm1') -Force
 function Assert-That { param([bool]$Condition,[string]$Message); if(-not $Condition){throw $Message} }
+$canonicalConfig=Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+Assert-That ([string]$canonicalConfig.mcp.defaultMode -eq 'allowlist') 'Canonical MCP mode must enable only role-allowlisted servers.'
+$mcpEnabledRoles=@('knowledge_keeper','requirements_analyst','reviewer','review_verifier')
+foreach($role in $mcpEnabledRoles){Assert-That (@($canonicalConfig.mcp.rolePolicies.$role).Count -gt 0) "MCP-enabled role '$role' has no allowlisted server policy."}
+foreach($role in @('orchestrator','developer','pipeline_monitor','health_check')){Assert-That (@($canonicalConfig.mcp.rolePolicies.$role).Count -eq 0) "Classic-only role '$role' unexpectedly has an MCP server policy."}
 $workflowSource=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw
 Assert-That ($workflowSource -match 'Expand-EcosystemValue -Value \$value.+-StateRoot \$mcpStateRoot') 'Workflow does not expand MCP command arguments before passing them to Codex.'
 Assert-That ($workflowSource -notmatch '@\(\$mcpServer\.arguments \| ForEach-Object \{ \[string\]\$_ \}\) \| ConvertTo-Json') 'Workflow still passes unresolved MCP command arguments to Codex.'

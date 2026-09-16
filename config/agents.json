@@ -370,7 +370,7 @@
   },
   "mcp": {
     "enabled": true,
-    "defaultMode": "disabled",
+    "defaultMode": "allowlist",
     "localServer": {
       "name": "ecosystem-read",
       "command": "powershell",
