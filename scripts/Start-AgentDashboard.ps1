@@ -516,7 +516,9 @@ try {
                     $targetAgentId = [string](Get-ObjectPropertyValue -Source $body -Name 'targetAgentId')
                     $commentKind = [string](Get-ObjectPropertyValue -Source $body -Name 'commentKind')
                     $parentReviewQuestionId = [string](Get-ObjectPropertyValue -Source $body -Name 'parentReviewQuestionId')
+                    $requestId = [string](Get-ObjectPropertyValue -Source $body -Name 'requestId')
                     $commentParameters = @{ TaskId=$requestedTaskId; Text=$commentText; Author='user'; ConfigPath=$ConfigPath }
+                    if (-not [string]::IsNullOrWhiteSpace($requestId)) { $commentParameters.RequestId = $requestId }
                     if (-not [string]::IsNullOrWhiteSpace($questionId)) { $commentParameters.QuestionId = $questionId }
                     if (-not [string]::IsNullOrWhiteSpace($reviewFindingId)) { $commentParameters.ReviewFindingId = $reviewFindingId }
                     if (-not [string]::IsNullOrWhiteSpace($targetAgentId)) { $commentParameters.TargetAgentId = $targetAgentId }

@@ -2,6 +2,7 @@
 param(
     [ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [switch] $Repair,
+    [switch] $InjectFailureAfterRunning,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -33,11 +34,13 @@ function Add-Repair {
     $repairs.Add([pscustomobject][ordered]@{ id=$Id; status=$Status; summary=$Summary })
 }
 
-if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
-    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_check -Message 'Health Check Agent is diagnosing the workflow failure.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-}
 
 try {
+    if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_check -Message 'Health Check Agent is diagnosing the workflow failure.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        if ($InjectFailureAfterRunning) { throw 'Injected health failure after running transition.' }
+    }
+
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
 
     $codexCliPath = Resolve-CodexCliPath
@@ -292,8 +295,12 @@ try {
     [pscustomobject]@{ ResultPath=$resultPath; Result=[pscustomobject]$result }
 }
 catch {
-    if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
-        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus failed -Stage health_check -Message $_.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $originalError = $_
+    if ($TaskId -and (Test-Path -LiteralPath $taskRoot -PathType Container)) {
+        $terminalResult = [ordered]@{ checkedAtUtc=[DateTime]::UtcNow.ToString('o'); taskId=$TaskId; status='unhealthy'; failureSignature=$null; checks=@([ordered]@{ id='health-check-exception'; status='failed'; summary=$originalError.Exception.Message; evidence=@() }); repairs=@(); summary='Health check failed before completion: ' + $originalError.Exception.Message }
+        $terminalJson = ($terminalResult | ConvertTo-Json -Depth 20) + [Environment]::NewLine
+        try { Write-Utf8NoBom -Path (Join-Path $taskRoot 'health-check-result.json') -Content $terminalJson } catch { }
+        try { & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus failed -Stage health_check -Message $originalError.Exception.Message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null } catch { }
     }
-    throw
+    throw $originalError
 }

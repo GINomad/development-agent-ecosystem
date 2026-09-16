@@ -8,6 +8,7 @@ param(
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $TargetAgentId,
     [ValidateSet('instruction','review-question')][string] $CommentKind = 'instruction',
     [ValidatePattern('^[a-fA-F0-9]{32}$')][string] $ParentReviewQuestionId,
+    [ValidatePattern('^[A-Za-z0-9._:-]{8,200}$')][string] $RequestId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -21,6 +22,24 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+
+$ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+$existingEvents = if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) { @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } }) } else { @() }
+if ($RequestId) {
+    $requestEvidence = "comment-request:$RequestId"
+    $existingComment = @($existingEvents | Where-Object { $_.type -eq 'user-comment' -and @($_.evidence) -contains $requestEvidence } | Select-Object -First 1)
+    if ($existingComment.Count) {
+        $taskLockPath = Join-Path $taskRoot 'task-state.lock'
+        $null = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action {
+            $document = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $document | Add-Member -NotePropertyName hasUnreadUserComments -NotePropertyValue $true -Force
+            Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+        }
+        [pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$existingComment[0].eventId; TargetAgentId=[string]$existingComment[0].targetAgentId; RoutingStatus=if ([string]$existingComment[0].targetAgentId -eq [string]$config.workflow.orchestration.agentId) { 'pending-orchestrator' } else { 'direct' }; TimestampUtc=[string]$existingComment[0].timestampUtc; Text=[string]$existingComment[0].summary; AlreadyRecorded=$true }
+        return
+    }
+}
+
 
 $question = $null
 if ($QuestionId) {
@@ -60,6 +79,7 @@ $commentEvidence = [Collections.Generic.List[string]]::new()
 if ($QuestionId) { $commentEvidence.Add($QuestionId) }
 if ($ReviewFindingId) { $commentEvidence.Add("review-finding:$ReviewFindingId") }
 if ($ParentReviewQuestionId) { $commentEvidence.Add("parent-review-question:$ParentReviewQuestionId") }
+if ($RequestId) { $commentEvidence.Add("comment-request:$RequestId") }
 if ($commentEvidence.Count) { $eventParameters.Evidence = @($commentEvidence) }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') @eventParameters
 $reviewQuestionEvent = $null
@@ -95,4 +115,4 @@ $null = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Act
     Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 }
 
-[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; CommentKind=$CommentKind; ReviewQuestionId=if ($reviewQuestionEvent) { [string]$reviewQuestionEvent.eventId } else { $null }; ParentReviewQuestionId=if ($ParentReviewQuestionId) { $ParentReviewQuestionId } else { $null }; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText }
+[pscustomobject]@{ TaskId=$TaskId; CommentId=[string]$event.eventId; CommentKind=$CommentKind; ReviewQuestionId=if ($reviewQuestionEvent) { [string]$reviewQuestionEvent.eventId } else { $null }; ParentReviewQuestionId=if ($ParentReviewQuestionId) { $ParentReviewQuestionId } else { $null }; QuestionId=if ($QuestionId) { $QuestionId } else { $null }; ReviewFindingId=if ($ReviewFindingId) { $ReviewFindingId } else { $null }; TargetAgentId=if ($TargetAgentId) { $TargetAgentId } else { $null }; RoutingStatus=if ($TargetAgentId -eq [string]$config.workflow.orchestration.agentId -and -not $QuestionId) { 'pending-orchestrator' } else { 'direct' }; ResolvedEventId=if ($resolvedEvent) { [string]$resolvedEvent.eventId } else { $null }; TimestampUtc=[string]$event.timestampUtc; Text=$commentText; AlreadyRecorded=$false }

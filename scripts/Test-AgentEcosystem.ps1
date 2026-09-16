@@ -1740,6 +1740,32 @@ if ($commentCollector -notmatch 'ChangedPullRequestKeys' -or $commentCollector -
 Add-Check -Name 'review-monitor-config' -Detail $reviewConfig.ConfigPath
 Add-Check -Name 'per-pr-review-invalidation' -Detail 'Only the changed PR is forced; unprocessed and failed AI review state remains visible'
 
+$controlPlaneRoot = Join-Path $OutputRoot ('control-plane-request-' + [guid]::NewGuid().ToString('N'))
+$controlPlaneConfigPath = Join-Path $controlPlaneRoot 'agents.json'
+New-Item -ItemType Directory -Path $controlPlaneRoot -Force | Out-Null
+$controlPlaneConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$controlPlaneConfig.runtime.stateRoot = Join-Path $controlPlaneRoot 'state'
+Write-Utf8NoBom -Path $controlPlaneConfigPath -Content (($controlPlaneConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$controlPlaneTaskId = 'control-plane-' + [guid]::NewGuid().ToString('N')
+$controlPlaneTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $controlPlaneTaskId -TaskSelector synthetic-control-plane -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $controlPlaneConfigPath
+$controlPlaneRequestId = 'control-plane-request-001'
+$controlPlaneFirst = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $controlPlaneTaskId -Text 'Durable request test.' -RequestId $controlPlaneRequestId -ConfigPath $controlPlaneConfigPath
+$controlPlaneTaskPath = Join-Path $controlPlaneTask.TaskRoot 'task.json'
+$controlPlaneDocument = Get-Content -LiteralPath $controlPlaneTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$controlPlaneDocument.hasUnreadUserComments = $false
+Write-Utf8NoBom -Path $controlPlaneTaskPath -Content (($controlPlaneDocument | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$controlPlaneReplay = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $controlPlaneTaskId -Text 'Durable request test.' -RequestId $controlPlaneRequestId -ConfigPath $controlPlaneConfigPath
+$controlPlaneEvents = @(Get-Content -LiteralPath (Join-Path $controlPlaneTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.type -eq 'user-comment' -and @($_.evidence) -contains ('comment-request:' + $controlPlaneRequestId) })
+$controlPlaneRestored = [bool](Get-Content -LiteralPath $controlPlaneTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json).hasUnreadUserComments
+if ($controlPlaneEvents.Count -ne 1 -or [string]$controlPlaneReplay.CommentId -ne [string]$controlPlaneFirst.CommentId -or -not [bool]$controlPlaneReplay.AlreadyRecorded -or -not $controlPlaneRestored) { throw 'Durable comment request idempotency did not append once and restore the unread projection.' }
+Add-Check -Name 'durable-comment-request-idempotency' -Detail 'Ledger-backed RequestId replay preserves the original event and restores hasUnreadUserComments'
+$healthFailureThrown = $false
+try { & (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -TaskId $controlPlaneTaskId -InjectFailureAfterRunning -ConfigPath $controlPlaneConfigPath | Out-Null } catch { $healthFailureThrown = $true }
+$healthFailureArtifact = Get-Content -LiteralPath (Join-Path $controlPlaneTask.TaskRoot 'health-check-result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$healthFailureTask = Get-Content -LiteralPath $controlPlaneTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not $healthFailureThrown -or [string]$healthFailureArtifact.status -ne 'unhealthy' -or [string]$healthFailureTask.agentStatuses.health_check.status -ne 'failed') { throw 'Health failure after running did not leave a terminal artifact and failed health-check status.' }
+Add-Check -Name 'health-running-terminal-failure' -Detail 'Injected post-running failure leaves health-check-result.json and health_check=failed'
+
 & (Join-Path $root 'tests\Test-McpResilience.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 Add-Check -Name 'mcp-resilience' -Detail 'Session integrity, task isolation, quotas, metrics, and circuit canary behavior'
 
