@@ -1,4 +1,4 @@
-﻿# Pull Request Review Checklist
+# Pull Request Review Checklist
 
 Apply this checklist with engineering judgment. Report only evidence-backed defects, risks, regressions, or meaningful maintainability problems. Do not manufacture findings merely to cover every question.
 

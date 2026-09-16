@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent review verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "reviewedRevision", "reviewArtifactSha256", "verificationStatus", "coverageVerification", "findingVerifications", "lifecycleVerifications", "summary"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "reviewedRevision": { "type": "string", "minLength": 1 },
+    "reviewArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "verificationStatus": { "enum": ["passed", "review-rework-required"] },
+    "coverageVerification": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/coverageVerification" }
+    },
+    "findingVerifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/findingVerification" }
+    },
+    "lifecycleVerifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lifecycleVerification" }
+    },
+    "summary": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "reviewDimension": {
+      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation"]
+    },
+    "verificationEvidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "coverageVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "claimedStatus", "verdict", "evidence", "falsificationAttempts", "notes"],
+      "properties": {
+        "dimension": { "$ref": "#/$defs/reviewDimension" },
+        "claimedStatus": { "enum": ["covered", "not-applicable", "blocked"] },
+        "verdict": { "enum": ["confirmed", "rejected"] },
+        "evidence": { "$ref": "#/$defs/verificationEvidence" },
+        "falsificationAttempts": { "$ref": "#/$defs/verificationEvidence" },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "findingVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "findingKind", "verdict", "evidence", "falsificationAttempts", "notes"],
+      "properties": {
+        "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+        "findingKind": { "enum": ["product", "agent-process"] },
+        "verdict": { "enum": ["confirmed", "rejected", "needs-human"] },
+        "evidence": { "$ref": "#/$defs/verificationEvidence" },
+        "falsificationAttempts": { "$ref": "#/$defs/verificationEvidence" },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "lifecycleVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "claimedStatus", "verdict", "evidence", "notes"],
+      "properties": {
+        "findingId": { "type": "string", "pattern": "^REV-[0-9]{3,}$" },
+        "claimedStatus": { "enum": ["new", "unchanged", "resolved", "regressed"] },
+        "verdict": { "enum": ["confirmed", "rejected"] },
+        "evidence": { "$ref": "#/$defs/verificationEvidence" },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][string] $FailurePath,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [Parameter(Mandatory)][string] $RecoveryEvidencePath,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
@@ -124,6 +126,24 @@ if ([string]$task.status -eq 'running' -and $task.PSObject.Properties['workflowP
         return Write-TargetedResult -Status 'busy' -Message "Task '$TaskId' already has a live workflow process." -AttemptCount $attemptCount
     }
 }
+$activeExecutionRunId = $ExecutionRunId
+$activeWorkspaceLeaseId = $WorkspaceLeaseId
+$activeRecoveryLease = $null
+if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
+    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+    if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
+        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $activeRecoveryLease = @($coordinator.leases | Where-Object {
+            [string]$_.taskId -eq $TaskId -and
+            [string]$_.runId -eq $activeExecutionRunId -and
+            [string]$_.leaseId -eq $activeWorkspaceLeaseId
+        }) | Select-Object -First 1
+    }
+}
+if (-not $activeRecoveryLease) {
+    $activeExecutionRunId = $null
+    $activeWorkspaceLeaseId = $null
+}
 $repositoryIds = @(if ($task.PSObject.Properties['repositoryIds']) {
     @($task.repositoryIds | ForEach-Object { [string]$_ })
 }
@@ -170,6 +190,8 @@ $workflowParameters = @{
     ConfigPath = $ConfigPath
     CodexHome = $CodexHome
 }
+if ($activeExecutionRunId) { $workflowParameters.ExecutionRunId = $activeExecutionRunId }
+if ($activeWorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $activeWorkspaceLeaseId }
 if ($ElevatedApproved) { $workflowParameters.ElevatedApproved = $true }
 
 try {

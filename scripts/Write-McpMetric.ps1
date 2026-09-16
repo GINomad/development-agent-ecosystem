@@ -1,0 +1,6 @@
+[CmdletBinding()]
+param([Parameter(Mandatory)][string] $TaskRoot,[Parameter(Mandatory)][string] $TaskId,[Parameter(Mandatory)][string] $AgentId,[Parameter(Mandatory)][string] $Server,[Parameter(Mandatory)][string] $Status,[int] $DurationMs,[string] $Tool,[string] $ErrorClass,[string] $RunId,[string] $LeaseId,[int] $RequestBytes,[int] $ResponseBytes,[string] $CacheStatus='not-applicable',[string] $CircuitState,[string] $SourceRevision,[switch] $FallbackUsed)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$record=[ordered]@{schemaVersion=1;timestampUtc=[DateTime]::UtcNow.ToString('o');taskId=$TaskId;runId=$RunId;leaseId=$LeaseId;agentId=$AgentId;server=$Server;tool=$Tool;status=$Status;durationMs=$DurationMs;requestBytes=$RequestBytes;responseBytes=$ResponseBytes;cacheStatus=$CacheStatus;circuitState=$CircuitState;sourceRevision=$SourceRevision;fallbackUsed=[bool]$FallbackUsed;errorClass=$ErrorClass}
+$path=Join-Path $TaskRoot 'mcp-metrics.jsonl';$lock=$path+'.lock';$stream=[IO.File]::Open($lock,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);try{[IO.File]::AppendAllText($path,(($record|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))}finally{$stream.Dispose()};[pscustomobject]$record

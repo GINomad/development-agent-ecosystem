@@ -22,8 +22,25 @@ $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Jso
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
-    if (-not $manualClosure) {
-        foreach ($deliveryAgentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+    $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -in @('knowledge-update-pending','completed')
+    if ($completedPrClosure) {
+        $pullRequestStatusPath = Join-Path $taskRoot 'pull-request-status.json'
+        if (-not (Test-Path -LiteralPath $pullRequestStatusPath -PathType Leaf)) { throw 'Knowledge Keeper cannot publish a completed-PR closure without persisted pull-request-status.json evidence.' }
+        $pullRequestStatus = Get-Content -LiteralPath $pullRequestStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$pullRequestStatus.status -ne 'completed') { throw "Knowledge Keeper cannot publish a completed-PR closure while the persisted pull request status is '$([string]$pullRequestStatus.status)'." }
+    }
+    if (-not $manualClosure -and -not $completedPrClosure) {
+        $deliveryAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')
+        $requiredDeliveryAgentIds = @($deliveryAgentIds)
+        $routingArtifact = [string]$config.workflow.orchestration.routingArtifact
+        $routingPath = Join-Path $taskRoot $routingArtifact
+        if (Test-Path -LiteralPath $routingPath -PathType Leaf) {
+            $latestExecutionRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
+            if ($latestExecutionRoute) {
+                $requiredDeliveryAgentIds = @($latestExecutionRoute.agentSequence | ForEach-Object { [string]$_ } | Where-Object { $_ -in $deliveryAgentIds })
+            }
+        }
+        foreach ($deliveryAgentId in $requiredDeliveryAgentIds) {
             $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
             if ($deliveryState -ne 'completed') { throw "Knowledge Keeper cannot publish task-summary.json before '$deliveryAgentId' has a successful or validated no-op outcome." }
         }
@@ -36,6 +53,7 @@ if ($AgentId -eq 'knowledge_keeper') {
 }
 $required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
 $validated = [Collections.Generic.List[string]]::new()
+$publicationEvidence = [Collections.Generic.List[string]]::new()
 foreach ($name in $required) {
     if ([IO.Path]::GetFileName($name) -ne $name) { throw "Outcome artifact must be a direct task artifact: $name" }
     $path = Join-Path $taskRoot $name
@@ -62,16 +80,22 @@ foreach ($name in $required) {
     $validated.Add($path)
 }
 
+if ($AgentId -eq 'reviewer') {
+    $snapshot = & (Join-Path $PSScriptRoot 'Save-ReviewArtifactSnapshot.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $publicationEvidence.Add([string]$snapshot.IndexPath)
+    $publicationEvidence.Add([string]$snapshot.SnapshotPath)
+}
+
 $primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
 $continuationRequest = $null
-if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','pipeline_monitor','health_check')) {
+if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check')) {
     $requestId = [guid]::NewGuid().ToString('N')
     $continuationRequest = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type continuation-requested -Summary "Successful '$AgentId' outcome is returned to Orchestrator for the next deterministic decision." -Artifact $primaryArtifact -Evidence @("continuation-request:$requestId", "completed-agent:$AgentId") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
 
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $continuationEvidence = if ($continuationRequest) { @("continuation-event:$([string]$continuationRequest.eventId)") } else { @() }
-$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($Evidence) + $continuationEvidence) -ConfigPath $ConfigPath -CodexHome $CodexHome
+$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($publicationEvidence) + @($Evidence) + $continuationEvidence) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
 if (Test-Path -LiteralPath $checkpointPath -PathType Leaf) {
     $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw -Encoding UTF8 | ConvertFrom-Json

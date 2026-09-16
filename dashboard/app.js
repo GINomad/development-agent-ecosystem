@@ -2,12 +2,16 @@ const token = document.documentElement.dataset.sessionToken;
 const activity = document.querySelector('#activity');
 const repositoryOptions = document.querySelector('#repositoryOptions');
 const repositorySummary = document.querySelector('#repositorySummary');
+const projectPicker = document.querySelector('#projectPicker');
+let configuredProjects = [];
+let configuredRepositories = [];
 const agentLabels = {
   orchestrator: 'Workflow Orchestrator',
   knowledge_keeper: 'Knowledge Keeper',
   requirements_analyst: 'Requirements Analyst',
   developer: 'Developer',
   reviewer: 'Reviewer',
+  review_verifier: 'Review Verifier',
   pipeline_monitor: 'Pipeline Monitor',
   health_check: 'Health Check'
 };
@@ -16,6 +20,7 @@ let mode = 'manual';
 let taskFilter = 'active';
 let selectedTaskId = null;
 let selectedTask = null;
+let selectedInboxTask = null;
 let selectedArtifactName = null;
 let selectedAgentId = null;
 let selectedOutcomeAgentId = null;
@@ -24,6 +29,7 @@ let agentLogRequestInFlight = false;
 let agentLogRefreshSeconds = 30;
 let taskRefreshInFlight = false;
 let taskStateRevision = 0;
+let schedulerState = { capacity: 0, activeTaskCount: 0, queuedTaskCount: 0 };
 let reviewDiffIndex = null;
 let selectedDiffRepositoryId = null;
 let selectedDiffFilePath = null;
@@ -32,6 +38,9 @@ let reviewDiffScope = 'reviewed-commit';
 let reviewDiffRequestInFlight = false;
 let reviewDiffReloadPending = false;
 let reviewerFeedback = null;
+let reviewVerification = null;
+let reviewArtifactSha256 = '';
+let reviewVerificationStale = false;
 let reviewerDecisions = [];
 let reviewerTechDebtItems = [];
 let reviewerFeedbackRequestInFlight = false;
@@ -69,13 +78,27 @@ function updateRepositorySummary() {
 
 function payloadBase() {
   const repositoryIds = selectedRepositoryIds();
+  const taskSelector = document.querySelector('#taskSelector').value.trim();
+  const inboxMetadata = selectedInboxTask && selectedInboxTask.url === taskSelector ? selectedInboxTask : null;
   return {
     mode,
+    projectId: projectPicker.value,
     repositoryIds,
     repositoryId: repositoryIds[0] || '',
-    taskSelector: document.querySelector('#taskSelector').value.trim(),
+    taskSelector,
+    taskName: inboxMetadata ? inboxMetadata.title : '',
+    taskType: inboxMetadata ? inboxMetadata.type : '',
     taskId: document.querySelector('#taskId').value.trim(),
     instruction: document.querySelector('#instruction').value.trim()
+  };
+}
+
+function taskViewGuard(task = selectedTask) {
+  if (!task) throw new Error('Select a current task view first.');
+  return {
+    expectedRevision: task.revision ?? null,
+    runId: task.executionRunId || '',
+    leaseId: task.workspaceLeaseId || ''
   };
 }
 
@@ -190,10 +213,12 @@ function renderTaskList(tasks) {
     heading.append(id, badge);
     const selector = document.createElement('span');
     selector.className = 'tracked-task-selector';
-    selector.textContent = item.selector;
+    selector.textContent = `[${item.projectId || 'legacy project'}] ${item.selector}`;
     const meta = document.createElement('span');
     meta.className = 'tracked-task-meta';
-    meta.textContent = `${item.currentStage || 'no stage'} - ${formatDate(item.updatedAtUtc)}`;
+    const scheduling = item.scheduler || {};
+    const slotText = item.status === 'queued' && scheduling.queuePosition ? `queue #${scheduling.queuePosition}` : scheduling.lease ? `lease ${scheduling.lease.lifecycle || 'active'}` : 'no active lease';
+    meta.textContent = `${item.currentStage || 'no stage'} · ${slotText} · ${formatDate(item.updatedAtUtc)}`;
     button.append(heading, selector, meta);
     button.addEventListener('click', async () => {
       if (selectedTaskId !== item.taskId) {
@@ -201,8 +226,18 @@ function renderTaskList(tasks) {
         closeAgentOutcome();
         closeReviewDiff();
       }
+      // Task polling can already be in flight. Loading the selected detail
+      // directly keeps a user selection responsive instead of dropping it
+      // behind the polling guard in loadTaskList.
       selectedTaskId = item.taskId;
-      await loadTaskList({ silent: true });
+      const selectedRevision = ++taskStateRevision;
+      try {
+        await loadTaskDetail(item.taskId, selectedRevision);
+      } catch (error) {
+        log(`Error: ${error.message}`);
+      } finally {
+        void loadTaskList({ silent: true });
+      }
     });
     list.append(button);
   });
@@ -228,8 +263,39 @@ function renderTaskDetail(task) {
   status.className = `task-status ${statusClass(task.status)}`;
   status.textContent = task.status;
   const taskRepositoryIds = Array.isArray(task.repositoryIds) && task.repositoryIds.length ? task.repositoryIds : [task.repositoryId].filter(Boolean);
-  document.querySelector('#selectedTaskMeta').textContent = `${taskRepositoryIds.join(', ') || 'repositories not recorded'} - stage: ${task.currentStage || 'not reported'} - updated ${formatDate(task.updatedAtUtc)}`;
+  const scheduling = task.scheduler || {};
+  const queueText = task.status === 'queued' && scheduling.queuePosition ? ` · queue #${scheduling.queuePosition}` : '';
+  document.querySelector('#selectedTaskMeta').textContent = `${taskRepositoryIds.join(', ') || 'repositories not recorded'} · stage: ${task.currentStage || 'not reported'}${queueText} · updated ${formatDate(task.updatedAtUtc)}`;
   document.querySelector('#selectedTaskMessage').textContent = task.lastMessage || 'No status message has been recorded.';
+  const lease = scheduling.lease;
+  const controllerText = lease?.controllerProcessId ? ` · controller PID ${lease.controllerProcessId}` : '';
+  const heartbeatText = lease?.heartbeatAtUtc ? ` · heartbeat ${formatDate(lease.heartbeatAtUtc)}` : '';
+  document.querySelector('#taskLeaseSummary').textContent = lease ? `run ${lease.runId || task.executionRunId || 'unknown'} · lease ${lease.leaseId || task.workspaceLeaseId || 'unknown'} · ${lease.lifecycle || 'active'}${controllerText}${heartbeatText}` : (task.status === 'queued' ? `waiting for slot ${scheduling.queuePosition || '?'}` : 'no active lease');
+  const workspaceList = document.querySelector('#taskWorkspaceInfo');
+  workspaceList.replaceChildren();
+  const taskWorkspaces = Array.isArray(task.workspaces) ? task.workspaces : [];
+  if (!taskWorkspaces.length) {
+    const emptyWorkspace = document.createElement('p');
+    emptyWorkspace.className = 'hint';
+    emptyWorkspace.textContent = task.status === 'queued' ? 'Clones will be provisioned after scheduler admission.' : 'No task clone manifest has been recorded yet.';
+    workspaceList.append(emptyWorkspace);
+  } else {
+    taskWorkspaces.forEach(workspace => {
+      const card = document.createElement('article');
+      card.className = 'task-workspace-card';
+      const title = document.createElement('strong');
+      title.textContent = workspace.repositoryId || 'repository';
+      const lifecycle = document.createElement('span');
+      lifecycle.className = `mini-status ${statusClass(workspace.lifecycle)}`;
+      lifecycle.textContent = workspace.lifecycle || 'unknown';
+      const path = document.createElement('code');
+      path.textContent = workspace.path || 'path not recorded';
+      const branch = document.createElement('small');
+      branch.textContent = `${workspace.branch || 'branch not recorded'} · base ${(workspace.baseSha || '').slice(0, 12) || 'unknown'}`;
+      card.append(title, lifecycle, path, branch);
+      workspaceList.append(card);
+    });
+  }
 
   const openQuestions = Array.isArray(task.openQuestions) ? task.openQuestions : [];
   const inputPanel = document.querySelector('#inputRequiredPanel');
@@ -555,6 +621,169 @@ function renderRequirementsOutcome(rawContent) {
   return true;
 }
 
+function documentedKnowledgeUpdate(entry) {
+  return {
+    knowledgeId: entry?.id || 'legacy-entry',
+    title: entry?.id || 'Knowledge update',
+    description: entry?.statement || 'No description was published.',
+    applicability: entry?.scope || entry?.targetPath || 'See the persisted knowledge target for applicability.',
+    status: entry?.status || 'verified'
+  };
+}
+
+function knowledgeUpdatePresentation(result) {
+  if (result?.humanReadable) return result.humanReadable;
+  const eligible = (Array.isArray(result?.entries) ? result.entries : [])
+    .filter(entry => ['verified', 'superseded'].includes(entry?.status))
+    .map(documentedKnowledgeUpdate);
+  return {
+    title: `Knowledge update for ${result?.taskId || 'task'}`,
+    overview: eligible.length
+      ? `${eligible.length} verified or superseded knowledge update${eligible.length === 1 ? '' : 's'} were published.`
+      : 'No durable knowledge update was published for this task.',
+    audience: 'Maintainers and users of the affected repositories',
+    updates: eligible,
+    legacyDerived: true
+  };
+}
+
+function taskSummaryPresentation(result) {
+  if (result?.humanReadable) return result.humanReadable;
+  const delivered = (Array.isArray(result?.outcomes) ? result.outcomes : []).map(outcome =>
+    typeof outcome === 'string' ? outcome : outcome?.summary
+  ).filter(Boolean);
+  return {
+    title: `Completed task ${result?.taskId || ''}`.trim(),
+    overview: delivered[0] || 'The task was completed and its machine-readable outcome was published.',
+    delivered,
+    decisions: Array.isArray(result?.decisions) ? result.decisions : [],
+    verification: Array.isArray(result?.verification) ? result.verification : [],
+    knowledgeUpdates: (Array.isArray(result?.knowledgeUpdates) ? result.knowledgeUpdates : []).map(id => ({
+      knowledgeId: id,
+      title: id,
+      description: 'See knowledge-update.json for the persisted statement and evidence.',
+      applicability: 'See the persisted knowledge target for applicability.',
+      status: 'verified'
+    })),
+    residualItems: Array.isArray(result?.residualItems) ? result.residualItems : [],
+    legacyDerived: true
+  };
+}
+
+function appendKnowledgeDocumentation(parent, updates, emptyText) {
+  const items = Array.isArray(updates) ? updates : [];
+  if (!items.length) {
+    appendOutcomeList(parent, [], emptyText);
+    return;
+  }
+  items.forEach(update => {
+    const card = document.createElement('article');
+    card.className = 'knowledge-update-card';
+    const heading = document.createElement('div');
+    heading.className = 'knowledge-update-heading';
+    const title = document.createElement('strong');
+    title.textContent = update.title || update.knowledgeId || 'Knowledge update';
+    const status = document.createElement('span');
+    status.className = `requirements-status knowledge-status ${statusClass(update.status)}`;
+    status.textContent = update.status || 'unknown';
+    heading.append(title, status);
+    const identifier = document.createElement('p');
+    identifier.className = 'knowledge-identifier';
+    identifier.textContent = `Knowledge ID: ${update.knowledgeId || 'not published'}`;
+    const description = document.createElement('p');
+    description.textContent = update.description || '';
+    const applicability = document.createElement('p');
+    applicability.className = 'knowledge-applicability';
+    applicability.textContent = `Applies to: ${update.applicability || 'not published'}`;
+    card.append(heading, identifier, description, applicability);
+    parent.append(card);
+  });
+}
+
+function appendKnowledgeSection(parent, titleText, values, emptyText) {
+  const section = document.createElement('section');
+  const title = document.createElement('h6');
+  title.textContent = titleText;
+  section.append(title);
+  appendOutcomeList(section, values, emptyText);
+  parent.append(section);
+}
+
+function renderKnowledgeUpdateOutcome(rawContent) {
+  let result;
+  try {
+    result = JSON.parse(rawContent);
+  } catch {
+    return false;
+  }
+  const presentation = knowledgeUpdatePresentation(result);
+  if (!presentation || !Array.isArray(presentation.updates)) return false;
+  const documentView = document.createElement('article');
+  documentView.className = 'knowledge-outcome';
+  const heading = document.createElement('header');
+  const title = document.createElement('h5');
+  title.textContent = presentation.title || 'Knowledge update';
+  const overview = document.createElement('p');
+  overview.textContent = presentation.overview || '';
+  const audience = document.createElement('p');
+  audience.className = 'knowledge-audience';
+  audience.textContent = `For: ${presentation.audience || 'users and maintainers'}`;
+  heading.append(title, overview, audience);
+  if (presentation.legacyDerived) {
+    const legacy = document.createElement('p');
+    legacy.className = 'requirements-legacy-note';
+    legacy.textContent = 'Legacy outcome: this documentation view was derived from persisted machine fields.';
+    heading.append(legacy);
+  }
+  documentView.append(heading);
+  const updates = document.createElement('section');
+  const updatesTitle = document.createElement('h6');
+  updatesTitle.textContent = 'Documented knowledge';
+  updates.append(updatesTitle);
+  appendKnowledgeDocumentation(updates, presentation.updates, 'No durable knowledge changes were recorded.');
+  documentView.append(updates);
+  document.querySelector('#agentOutcomeContent').replaceChildren(documentView);
+  return true;
+}
+
+function renderTaskSummaryOutcome(rawContent) {
+  let result;
+  try {
+    result = JSON.parse(rawContent);
+  } catch {
+    return false;
+  }
+  const presentation = taskSummaryPresentation(result);
+  if (!presentation || !Array.isArray(presentation.knowledgeUpdates)) return false;
+  const documentView = document.createElement('article');
+  documentView.className = 'knowledge-outcome';
+  const heading = document.createElement('header');
+  const title = document.createElement('h5');
+  title.textContent = presentation.title || 'Task outcome';
+  const overview = document.createElement('p');
+  overview.textContent = presentation.overview || '';
+  heading.append(title, overview);
+  if (presentation.legacyDerived) {
+    const legacy = document.createElement('p');
+    legacy.className = 'requirements-legacy-note';
+    legacy.textContent = 'Legacy outcome: this documentation view was derived from persisted machine fields.';
+    heading.append(legacy);
+  }
+  documentView.append(heading);
+  appendKnowledgeSection(documentView, 'What was delivered', presentation.delivered, 'No delivery summary was published.');
+  appendKnowledgeSection(documentView, 'Decisions', presentation.decisions, 'No durable decisions were recorded.');
+  appendKnowledgeSection(documentView, 'Verification', presentation.verification, 'No verification summary was published.');
+  const updates = document.createElement('section');
+  const updatesTitle = document.createElement('h6');
+  updatesTitle.textContent = 'Knowledge for users';
+  updates.append(updatesTitle);
+  appendKnowledgeDocumentation(updates, presentation.knowledgeUpdates, 'No durable knowledge changes were recorded.');
+  documentView.append(updates);
+  appendKnowledgeSection(documentView, 'Residual items', presentation.residualItems, 'No residual items were reported.');
+  document.querySelector('#agentOutcomeContent').replaceChildren(documentView);
+  return true;
+}
+
 function renderRawAgentOutcome(rawContent) {
   const content = document.querySelector('#agentOutcomeContent');
   const pre = document.createElement('pre');
@@ -575,9 +804,14 @@ async function loadAgentOutcomeArtifact(name) {
     if (selectedTaskId !== taskId || selectedOutcomeAgentId !== agentId || selectedOutcomeArtifactName !== name) return;
     const artifact = result.artifact;
     document.querySelector('#agentOutcomeArtifactMeta').textContent = `${artifact.name} - ${artifact.length} bytes - updated ${formatDate(artifact.lastWriteTimeUtc)}${artifact.truncated ? ' - preview limited to 1 MiB' : ''}`;
-    const rendered = agentId === 'requirements_analyst' && name === 'requirements-analysis.json'
-      ? renderRequirementsOutcome(artifact.content || '')
-      : false;
+    let rendered = false;
+    if (agentId === 'requirements_analyst' && name === 'requirements-analysis.json') {
+      rendered = renderRequirementsOutcome(artifact.content || '');
+    } else if (agentId === 'knowledge_keeper' && name === 'knowledge-update.json') {
+      rendered = renderKnowledgeUpdateOutcome(artifact.content || '');
+    } else if (agentId === 'knowledge_keeper' && name === 'task-summary.json') {
+      rendered = renderTaskSummaryOutcome(artifact.content || '');
+    }
     if (!rendered) renderRawAgentOutcome(artifact.content || '');
     document.querySelectorAll('.agent-outcome-artifact').forEach(button => button.classList.toggle('selected', button.dataset.name === name));
   } catch (error) {
@@ -651,6 +885,9 @@ function closeReviewDiff() {
   selectedDiffFilePath = null;
   selectedDiffLine = null;
   reviewerFeedback = null;
+  reviewVerification = null;
+  reviewArtifactSha256 = '';
+  reviewVerificationStale = false;
   reviewerDecisions = [];
   reviewerTechDebtItems = [];
   const panel = document.querySelector('#reviewDiffPanel');
@@ -680,6 +917,8 @@ function latestReviewerDecision(findingId) {
   let latest = null;
   reviewerDecisions.forEach(decision => {
     if (String(decision?.findingId || '').toLowerCase() !== normalizedId) return;
+    if (String(decision?.reviewedRevision || '') !== String(reviewerFeedback?.reviewedRevision || '')) return;
+    if (String(decision?.reviewArtifactSha256 || '') !== reviewArtifactSha256) return;
     const currentTimestamp = Date.parse(latest?.decidedAtUtc || latest?.decidedAt || '') || 0;
     const candidateTimestamp = Date.parse(decision?.decidedAtUtc || decision?.decidedAt || '') || 0;
     if (!latest || candidateTimestamp >= currentTimestamp) latest = decision;
@@ -694,14 +933,25 @@ function isReviewerItemBypassedAsDebt(item) {
   return reviewerTechDebtItems.some(debt =>
     String(debt?.sourceFindingId || '').toLowerCase() === findingId.toLowerCase()
       && String(debt?.status || '').toLowerCase() === 'open'
+      && String(debt?.reviewArtifactSha256 || '') === reviewArtifactSha256
   );
+}
+
+function reviewVerificationFor(findingId) {
+  return (reviewVerification?.findingVerifications || [])
+    .find(item => String(item?.findingId || '').toLowerCase() === String(findingId || '').toLowerCase()) || null;
+}
+
+function findingLifecycleFor(findingId) {
+  return (reviewerFeedback?.findingLifecycle || [])
+    .find(item => String(item?.findingId || '').toLowerCase() === String(findingId || '').toLowerCase()) || null;
 }
 
 function activeReviewerSummary(result) {
   const summary = String(result?.summary || '').trim();
   if (!summary) return '';
   const hiddenFindingIds = [...(result?.findings || []), ...(result?.agentProcessFindings || [])]
-    .filter(isReviewerItemBypassedAsDebt)
+    .filter(item => isReviewerItemBypassedAsDebt(item) || String(reviewVerificationFor(item?.id)?.verdict || '') === 'rejected')
     .map(item => String(item?.id || '').toLowerCase())
     .filter(Boolean);
   if (!hiddenFindingIds.length) return summary;
@@ -727,7 +977,17 @@ function reviewerFeedbackItems(result) {
     if (!Array.isArray(values)) return;
     values.forEach((value, index) => {
       const item = value && typeof value === 'object' ? value : { summary: String(value) };
-      const normalizedItem = { ...item, id: String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`), kind };
+      const itemId = String(item.id || `${kind.toUpperCase().replaceAll(' ', '-')}-${index + 1}`);
+      const verification = reviewVerificationFor(itemId);
+      const lifecycle = findingLifecycleFor(itemId);
+      const normalizedItem = {
+        ...item,
+        id: itemId,
+        kind,
+        verificationVerdict: verification?.verdict || '',
+        verificationNotes: verification?.notes || '',
+        lifecycleStatus: lifecycle?.status || ''
+      };
       if (!isReviewerItemBypassedAsDebt(normalizedItem)) items.push(normalizedItem);
     });
   });
@@ -781,7 +1041,7 @@ function createInlineReviewerComment(item) {
   const identity = document.createElement('span');
   identity.textContent = item.id + ' · ' + item.kind;
   const severity = document.createElement('span');
-  severity.textContent = [item.severity, item.category].filter(Boolean).join(' · ') || 'recorded';
+  severity.textContent = [item.severity, item.category, item.lifecycleStatus, item.verificationVerdict || 'awaiting verification'].filter(Boolean).join(' · ') || 'recorded';
   header.append(identity, severity);
   card.append(header);
   const message = item.title || item.summary || item.evidence || item.message;
@@ -896,7 +1156,7 @@ async function sendReviewQuestionFollowUp(thread, textarea, buttons, restart) {
     if (restart) {
       restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/reviewer/resume', {
         method: 'POST',
-        body: JSON.stringify({ elevated: true })
+        body: JSON.stringify({ elevated: true, ...taskViewGuard() })
       });
     }
     textarea.value = '';
@@ -1143,6 +1403,88 @@ function appendReviewerFeedbackField(container, label, value) {
   container.append(row);
 }
 
+function renderReviewCoverage() {
+  const title = document.querySelector('#reviewCoverageTitle');
+  const matrix = document.querySelector('#reviewCoverageMatrix');
+  const summary = document.querySelector('#reviewCoverageSummary');
+  title.textContent = 'Review Coverage Matrix';
+  matrix.replaceChildren();
+  const coverage = Array.isArray(reviewerFeedback?.reviewCoverage) ? reviewerFeedback.reviewCoverage : [];
+  const verificationEntries = Array.isArray(reviewVerification?.coverageVerification) ? reviewVerification.coverageVerification : [];
+  const rejected = verificationEntries.filter(item => item?.verdict === 'rejected').length;
+  const blocked = coverage.filter(item => item?.status === 'blocked').length;
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
+  summary.textContent = coverage.length
+    ? `${coverage.length} dimension(s); ${rejected} rejected by verifier; ${blocked} blocked; ${verificationState}.`
+    : `Review coverage matrix is not available; ${verificationState}.`;
+  if (!coverage.length) {
+    const empty = document.createElement('p');
+    empty.className = 'agent-log-empty';
+    empty.textContent = 'Reviewer must publish all configured reviewCoverage dimensions.';
+    matrix.append(empty);
+    return;
+  }
+  coverage.forEach(entry => {
+    const verification = verificationEntries.find(item => item?.dimension === entry?.dimension);
+    const card = document.createElement('article');
+    card.className = `review-coverage-card status-${String(entry?.status || 'unknown')} verdict-${String(verification?.verdict || 'pending')}`;
+    const header = document.createElement('div');
+    header.className = 'review-coverage-card-header';
+    const dimension = document.createElement('strong');
+    dimension.textContent = String(entry?.dimension || 'unknown').replaceAll('-', ' ');
+    const badges = document.createElement('span');
+    badges.textContent = [entry?.status, verification?.verdict || 'awaiting verifier'].filter(Boolean).join(' · ');
+    header.append(dimension, badges);
+    card.append(header);
+    appendReviewerFeedbackField(card, 'Reviewer evidence', entry?.evidence);
+    appendReviewerFeedbackField(card, 'Reviewer notes', entry?.notes);
+    appendReviewerFeedbackField(card, 'Verifier evidence', verification?.evidence);
+    appendReviewerFeedbackField(card, 'Falsification', verification?.falsificationAttempts);
+    appendReviewerFeedbackField(card, 'Verifier notes', verification?.notes);
+    matrix.append(card);
+  });
+}
+
+function renderFindingLifecycle() {
+  const title = document.querySelector('#findingLifecycleTitle');
+  const list = document.querySelector('#findingLifecycleList');
+  const summary = document.querySelector('#findingLifecycleSummary');
+  title.textContent = 'Finding Lifecycle';
+  list.replaceChildren();
+  const lifecycle = Array.isArray(reviewerFeedback?.findingLifecycle) ? reviewerFeedback.findingLifecycle : [];
+  const lifecycleVerifications = Array.isArray(reviewVerification?.lifecycleVerifications) ? reviewVerification.lifecycleVerifications : [];
+  const counts = lifecycle.reduce((result, item) => {
+    const key = String(item?.status || 'unknown');
+    result[key] = (result[key] || 0) + 1;
+    return result;
+  }, {});
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
+  summary.textContent = lifecycle.length
+    ? `${Object.entries(counts).map(([status, count]) => `${status}: ${count}`).join(' · ')} · ${verificationState}`
+    : `No finding lifecycle records · ${verificationState}`;
+  lifecycle.forEach(entry => {
+    const verification = lifecycleVerifications.find(item => String(item?.findingId || '') === String(entry?.findingId || ''));
+    const card = document.createElement('article');
+    card.className = `finding-lifecycle-card lifecycle-${String(entry?.status || 'unknown')} verdict-${String(verification?.verdict || 'pending')}`;
+    const header = document.createElement('div');
+    header.className = 'finding-lifecycle-card-header';
+    const findingId = document.createElement('strong');
+    findingId.textContent = String(entry?.findingId || 'Finding');
+    const badges = document.createElement('span');
+    badges.textContent = [entry?.status, verification?.verdict || 'awaiting verifier'].filter(Boolean).join(' · ');
+    header.append(findingId, badges);
+    card.append(header);
+    appendReviewerFeedbackField(card, 'First seen', entry?.firstSeenRevision);
+    appendReviewerFeedbackField(card, 'Last observed', entry?.lastObservedRevision);
+    appendReviewerFeedbackField(card, 'Resolved', entry?.resolvedRevision);
+    appendReviewerFeedbackField(card, 'Previous resolution', entry?.previousResolutionRevision);
+    appendReviewerFeedbackField(card, 'Lifecycle evidence', entry?.evidence);
+    appendReviewerFeedbackField(card, 'Verifier evidence', verification?.evidence);
+    appendReviewerFeedbackField(card, 'Verifier notes', verification?.notes);
+    list.append(card);
+  });
+}
+
 async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons) {
   if (!selectedTaskId) throw new Error('Select a task first.');
   const reply = textarea.value.trim();
@@ -1171,6 +1513,7 @@ async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons)
     log(saved);
   } finally {
     buttons.forEach(button => { button.disabled = false; });
+    if (item.verificationVerdict === 'rejected' && buttons[1]) buttons[1].disabled = true;
   }
 }
 
@@ -1179,10 +1522,18 @@ function renderReviewerFeedback() {
   const summary = document.querySelector('#reviewFeedbackSummary');
   list.replaceChildren();
   renderReviewQuestionThreads();
+  renderReviewCoverage();
+  renderFindingLifecycle();
   const items = reviewerFeedbackItems(reviewerFeedback);
   const findings = items.filter(item => item.kind !== 'summary');
+  const verificationCounts = findings.reduce((result, item) => {
+    const key = item.verificationVerdict || 'awaiting';
+    result[key] = (result[key] || 0) + 1;
+    return result;
+  }, {});
+  const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
   summary.textContent = reviewerFeedback
-    ? `${findings.length} finding(s) or suggestion(s); ${items.length ? 'Reviewer summary is included.' : 'no persisted Reviewer text.'}`
+    ? `${findings.length} item(s); confirmed ${verificationCounts.confirmed || 0}, rejected ${verificationCounts.rejected || 0}, needs human ${verificationCounts['needs-human'] || 0}, awaiting ${verificationCounts.awaiting || 0}; ${verificationState}.`
     : 'Reviewer outcome is not available.';
   if (!items.length) {
     const empty = document.createElement('p');
@@ -1190,6 +1541,8 @@ function renderReviewerFeedback() {
     empty.textContent = 'No Reviewer outcome, finding, suggestion, or held-scope violation was persisted.';
     list.append(empty);
     renderRequirementTraceability();
+    renderReviewCoverage();
+    renderFindingLifecycle();
     renderInlineReviewerComments();
     return;
   }
@@ -1201,7 +1554,7 @@ function renderReviewerFeedback() {
     const identity = document.createElement('strong');
     identity.textContent = `${item.id} · ${item.kind}`;
     const badges = document.createElement('span');
-    badges.textContent = [item.severity, item.category, item.decisionStatus].filter(Boolean).join(' · ') || 'recorded';
+    badges.textContent = [item.severity, item.category, item.lifecycleStatus, item.verificationVerdict || (item.kind === 'summary' ? '' : 'awaiting verification'), item.decisionStatus].filter(Boolean).join(' · ') || 'recorded';
     header.append(identity, badges);
     card.append(header);
     appendReviewerFeedbackField(card, 'Summary', item.title || item.summary || item.message);
@@ -1209,6 +1562,7 @@ function renderReviewerFeedback() {
     appendReviewerFeedbackField(card, 'Evidence', item.evidence);
     appendReviewerFeedbackField(card, 'Impact', item.impact);
     appendReviewerFeedbackField(card, 'Suggested correction', item.correctionDirection || item.recommendation || item.suggestion);
+    appendReviewerFeedbackField(card, 'Verifier', item.verificationNotes);
     const replies = reviewerFeedbackReplies(item.id);
     if (replies.length) {
       const thread = document.createElement('div');
@@ -1236,6 +1590,10 @@ function renderReviewerFeedback() {
     developerButton.type = 'button';
     developerButton.className = 'button primary compact-button';
     developerButton.textContent = 'Send to Developer';
+    if (item.verificationVerdict === 'rejected') {
+      developerButton.disabled = true;
+      developerButton.title = 'Review Verifier rejected this candidate finding.';
+    }
     const buttons = [reviewerButton, developerButton];
     reviewerButton.addEventListener('click', async () => {
       try { await sendReviewerFeedbackReply(item, 'reviewer', textarea, buttons); }
@@ -1260,18 +1618,30 @@ async function loadReviewerFeedback() {
   document.querySelector('#reviewFeedbackSummary').textContent = 'Loading Reviewer outcome...';
   try {
     const artifactUrl = name => '/api/tasks/' + encodeURIComponent(taskId) + '/artifacts/' + encodeURIComponent(name);
-    const [result, decisionsResult, debtResult] = await Promise.all([
+    const [result, verificationResult, decisionsResult, debtResult] = await Promise.all([
       api(artifactUrl('review-result.json')),
+      api(artifactUrl('review-verification.json')).catch(() => null),
       api(artifactUrl('review-decisions.json')).catch(() => null),
       api(artifactUrl('tech-debt-items.json')).catch(() => null)
     ]);
     if (selectedTaskId !== taskId) return;
     reviewerFeedback = JSON.parse(result.artifact.content);
+    reviewArtifactSha256 = String(result.artifact.sha256 || '').toLowerCase();
+    const verificationCandidate = verificationResult ? JSON.parse(verificationResult.artifact.content) : null;
+    reviewVerificationStale = Boolean(verificationCandidate) && (
+      !reviewArtifactSha256
+      || String(verificationCandidate.reviewArtifactSha256 || '').toLowerCase() !== reviewArtifactSha256
+      || String(verificationCandidate.reviewedRevision || '') !== String(reviewerFeedback.reviewedRevision || '')
+    );
+    reviewVerification = reviewVerificationStale ? null : verificationCandidate;
     reviewerDecisions = decisionsResult ? (JSON.parse(decisionsResult.artifact.content).decisions || []) : [];
     reviewerTechDebtItems = debtResult ? (JSON.parse(debtResult.artifact.content).items || []) : [];
     renderReviewerFeedback();
   } catch (error) {
     reviewerFeedback = null;
+    reviewVerification = null;
+    reviewArtifactSha256 = '';
+    reviewVerificationStale = false;
     reviewerDecisions = [];
     reviewerTechDebtItems = [];
     renderReviewerFeedback();
@@ -1587,7 +1957,7 @@ async function sendReviewDiffComment({ restart = false } = {}) {
   if (restart) {
     restarted = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/agents/' + encodeURIComponent(targetAgentId) + '/resume', {
       method: 'POST',
-      body: JSON.stringify({ elevated: true })
+      body: JSON.stringify({ elevated: true, ...taskViewGuard() })
     });
   }
   setReviewDiffCommentStatus(
@@ -1735,7 +2105,7 @@ async function confirmIdleAgentDispatch(taskId, result) {
   }
   const restart = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
     method: 'POST',
-    body: JSON.stringify({ elevated: true })
+    body: JSON.stringify({ elevated: true, ...taskViewGuard() })
   });
   result.dispatch.status = 'started';
   result.dispatch.reason = `${label} was idle and started immediately for the pending comment batch.`;
@@ -1791,6 +2161,11 @@ async function loadTaskList({ silent = false } = {}) {
     const suffix = taskFilter === 'all' ? '?includeCompleted=true' : '';
     const result = await api(`/api/tasks${suffix}`);
     if (expectedRevision !== taskStateRevision) return;
+    schedulerState = result.scheduler || schedulerState;
+    const capacity = Number(schedulerState.capacity || 0);
+    const active = Number(schedulerState.activeTaskCount || 0);
+    const queued = Number(schedulerState.queuedTaskCount || 0);
+    document.querySelector('#capacityStatus').textContent = capacity ? `${active} of ${capacity} task slots active · ${queued} queued` : 'Scheduler capacity is unavailable.';
     renderTaskList(Array.isArray(result.tasks) ? result.tasks : []);
     if (selectedTaskId) await loadTaskDetail(selectedTaskId, expectedRevision);
   } catch (error) {
@@ -1913,7 +2288,7 @@ document.querySelector('#restartAgentWithComment').addEventListener('click', asy
     const comment = await sendSelectedAgentComment({ required: false, refresh: false, autoStartIdle: false });
     const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/resume`, {
       method: 'POST',
-      body: JSON.stringify({ elevated: true })
+      body: JSON.stringify({ elevated: true, ...taskViewGuard() })
     });
     restartStarted = true;
     taskStateRevision += 1;
@@ -1939,6 +2314,9 @@ document.querySelector('#resumeTask').addEventListener('click', async () => {
       repositoryId: selectedTask.repositoryId,
       taskSelector: selectedTask.selector,
       taskId: selectedTask.taskId,
+      expectedRevision: selectedTask.revision ?? null,
+      runId: selectedTask.executionRunId || '',
+      leaseId: selectedTask.workspaceLeaseId || '',
       instruction: 'Resume from the persisted checkpoint. Run only unfinished agents and preserve every completed agent and artifact.'
     };
     const result = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify(payload) });
@@ -1954,7 +2332,11 @@ document.querySelector('#stopWorkflow').addEventListener('click', async () => {
     if (!window.confirm('Stop this workflow now? Completed results and task history will be preserved for checkpoint resume.')) return;
     button.disabled = true;
     button.textContent = 'Stopping...';
-    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/workflow/stop`, { method: 'POST', body: '{}' });
+    const stopTarget = selectedTask;
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTaskId)}/workflow/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ runId: stopTarget?.executionRunId || '', leaseId: stopTarget?.workspaceLeaseId || '', revision: stopTarget?.revision ?? null })
+    });
     taskStateRevision += 1;
     log(result);
     await loadTaskDetail(selectedTaskId, taskStateRevision);
@@ -2013,7 +2395,7 @@ document.querySelector('#reopenTask').addEventListener('click', async () => {
     button.textContent = 'Reopening...';
     status.dataset.state = 'working';
     status.textContent = 'Archiving the current revision and starting the selected agent...';
-    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/reopen', { method: 'POST', body: JSON.stringify({ reason, resumeFrom }) });
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/reopen', { method: 'POST', body: JSON.stringify({ reason, resumeFrom, ...taskViewGuard() }) });
     reasonField.value = '';
     document.querySelector('#reopenTaskPanel').open = false;
     status.dataset.state = 'success';
@@ -2038,7 +2420,7 @@ document.querySelector('#resumeElevatedWorkflow').addEventListener('click', asyn
     if (!selectedTask) throw new Error('Select a task first.');
     const approved = window.confirm('Resume only unfinished agents without the OS sandbox? Completed agents and artifacts remain unchanged. Requirement, review, credential, and external-write gates still apply.');
     if (!approved) return;
-    const result = await api(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/workflow/elevated`, { method: 'POST', body: '{}' });
+    const result = await api(`/api/tasks/${encodeURIComponent(selectedTask.taskId)}/workflow/elevated`, { method: 'POST', body: JSON.stringify(taskViewGuard()) });
     log(result);
     window.setTimeout(() => loadTaskList({ silent: true }), 700);
   } catch (error) { log(`Error: ${error.message}`); }
@@ -2066,6 +2448,7 @@ document.querySelector('#loadTasks').addEventListener('click', async () => {
       meta.textContent = `${item.type} - ${item.state}`;
       button.append(title, meta);
       button.addEventListener('click', () => {
+        selectedInboxTask = item;
         document.querySelector('[data-mode="manual"]').click();
         document.querySelector('#taskSelector').value = item.url;
         document.querySelector('#taskId').value = `task-${item.id}`;
@@ -2179,9 +2562,20 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
       if (!agentLabels[agent.id]) agentLabels[agent.id] = agent.name || agent.id;
       agentRequiredArtifacts[agent.id] = Array.isArray(agent.requiredArtifacts) ? agent.requiredArtifacts : [];
     });
-    repositoryOptions.replaceChildren();
-    const repositories = Array.isArray(config.repositories) ? config.repositories : [];
-    repositories.forEach((item, index) => {
+    configuredProjects = Array.isArray(config.projects) ? config.projects : [];
+    configuredRepositories = Array.isArray(config.repositories) ? config.repositories : [];
+    projectPicker.replaceChildren();
+    configuredProjects.forEach(project => {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      projectPicker.append(option);
+    });
+    const renderProjectRepositories = () => {
+      repositoryOptions.replaceChildren();
+      const project = configuredProjects.find(item => item.id === projectPicker.value);
+      const allowedIds = new Set(project?.repositoryIds || []);
+      configuredRepositories.filter(item => allowedIds.has(item.id)).forEach((item, index) => {
       const option = document.createElement('label');
       option.className = 'multi-select-option';
       const checkbox = document.createElement('input');
@@ -2194,8 +2588,11 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
       label.textContent = checkbox.dataset.label;
       option.append(checkbox, label);
       repositoryOptions.append(option);
-    });
-    updateRepositorySummary();
+      });
+      updateRepositorySummary();
+    };
+    projectPicker.addEventListener('change', renderProjectRepositories);
+    renderProjectRepositories();
     document.querySelector(`[data-mode="${config.mode}"]`).click();
     document.querySelector('#connectionStatus').textContent = 'Local - ready';
     document.querySelector('#connectionStatus').classList.add('online');

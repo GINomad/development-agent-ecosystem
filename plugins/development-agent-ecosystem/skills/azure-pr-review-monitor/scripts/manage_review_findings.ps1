@@ -6,7 +6,7 @@ param(
     [ValidateSet('repository','pull-request')][string] $Scope = 'repository',
     [string] $Reason,
     [string] $ExpiresAt,
-    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Codex\azure-pr-review-monitor'),
+    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Claude\azure-pr-review-monitor'),
     [switch] $ForcePublish
 )
 
@@ -102,7 +102,7 @@ $publishedPath = Join-Path $DataRoot 'published-comments.json'
 $published = if(Test-Path $publishedPath){Get-Content -Raw $publishedPath|ConvertFrom-Json}else{[pscustomobject]@{version=2;items=@()}}
 $duplicate = @($published.items | Where-Object { $_.provider -eq $sidecar.provider -and $_.repositoryConfigId -eq $repository.id -and $_.pullRequestId -eq $pullRequestId -and $_.findingId -eq $finding.FindingId -and $_.sourceCommit -eq $sidecar.sourceCommit })
 if($duplicate.Count -gt 0 -and -not $ForcePublish){throw "This finding was already published for the same source commit. Use -ForcePublish only when a duplicate comment is intentional."}
-$comment = "**Codex review [$($finding.Severity)] $($finding.Title)**`n`n$($finding.Comment)`n`n**Why it matters:** $($finding.Why)`n`n**Recommendation:** $($finding.Recommendation)`n`nFinding ID: ``$($finding.FindingId)``"
+$comment = "**Claude review [$($finding.Severity)] $($finding.Title)**`n`n$($finding.Comment)`n`n**Why it matters:** $($finding.Why)`n`n**Recommendation:** $($finding.Recommendation)`n`nFinding ID: ``$($finding.FindingId)``"
 if($PSCmdlet.ShouldProcess("$($sidecar.provider) PR $pullRequestId $($finding.File):$($finding.Line)","Publish finding $($finding.FindingId)")){
     $temporary=Join-Path $DataRoot "publish-$([Guid]::NewGuid().ToString('N')).json"
     try {

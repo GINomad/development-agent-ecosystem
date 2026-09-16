@@ -1,7 +1,7 @@
 $script:AgentConfigVersion = 2
 
 function Get-AgentDefaultDataRoot {
-    Join-Path $env:LOCALAPPDATA 'Codex\azure-pr-review-monitor'
+    Join-Path $env:LOCALAPPDATA 'Claude\azure-pr-review-monitor'
 }
 
 function ConvertTo-AgentSlug {

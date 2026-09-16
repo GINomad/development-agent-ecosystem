@@ -1,7 +1,7 @@
 {
-  "name": "planning-space-development",
+  "name": "development-agent-ecosystem",
   "owner": {
-    "name": "PlanningSpace Engineering"
+    "name": "Development Agent Ecosystem"
   },
   "plugins": [
     {

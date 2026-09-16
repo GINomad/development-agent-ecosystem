@@ -19,6 +19,6 @@ $agentState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentSta
 $agentStatus = if ($agentState) { [string]$agentState.status } else { 'pending' }
 $terminalStatuses = @('completed','waiting','failed','skipped')
 if ($agentStatus -notin $terminalStatuses) {
-    throw "Targeted agent '$AgentId' host run ended without a terminal agent status; current status is '$agentStatus'. No background agent remains after codex exec exits."
+    throw "Targeted agent '$AgentId' host run ended without a terminal agent status; current status is '$agentStatus'. No background agent remains after the Claude Code CLI exits."
 }
 [pscustomobject]@{ TaskId=$TaskId; AgentId=$AgentId; AgentStatus=$agentStatus; TaskStatus=[string]$task.status; Terminal=$true }

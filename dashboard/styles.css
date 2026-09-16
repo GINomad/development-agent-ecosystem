@@ -202,21 +202,25 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .agent-outcome-artifact.missing { color: var(--muted); opacity: .7; }
 .agent-outcome-artifact-meta { margin: 10px 16px 0; color: var(--muted); font-size: .69rem; }
 .agent-outcome-content > pre { margin: 10px 16px 16px; padding: 12px; max-height: 460px; overflow: auto; border-radius: 9px; background: #070b10; color: #cbd8e7; white-space: pre-wrap; word-break: break-word; font: .72rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.requirements-outcome { display: grid; gap: 16px; padding: 12px 16px 18px; color: #dce7f4; }
-.requirements-outcome > header { padding: 14px; border: 1px solid rgba(107, 156, 255, .28); border-radius: 10px; background: rgba(107, 156, 255, .06); }
-.requirements-outcome h5, .requirements-outcome h6 { margin: 0 0 8px; color: #f2f7ff; }
-.requirements-outcome h5 { font-size: 1rem; }
-.requirements-outcome h6 { font-size: .82rem; letter-spacing: .02em; }
-.requirements-outcome p { margin: 6px 0; line-height: 1.5; }
-.requirements-outcome section { display: grid; gap: 9px; min-width: 0; }
-.requirements-card, .requirements-step { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; overflow-wrap: anywhere; }
+:is(.requirements-outcome, .knowledge-outcome) { display: grid; gap: 16px; padding: 12px 16px 18px; color: #dce7f4; }
+:is(.requirements-outcome, .knowledge-outcome) > header { padding: 14px; border: 1px solid rgba(107, 156, 255, .28); border-radius: 10px; background: rgba(107, 156, 255, .06); }
+:is(.requirements-outcome, .knowledge-outcome) h5, :is(.requirements-outcome, .knowledge-outcome) h6 { margin: 0 0 8px; color: #f2f7ff; }
+:is(.requirements-outcome, .knowledge-outcome) h5 { font-size: 1rem; }
+:is(.requirements-outcome, .knowledge-outcome) h6 { font-size: .82rem; letter-spacing: .02em; }
+:is(.requirements-outcome, .knowledge-outcome) p { margin: 6px 0; line-height: 1.5; }
+:is(.requirements-outcome, .knowledge-outcome) section { display: grid; gap: 9px; min-width: 0; }
+.requirements-card, .requirements-step, .knowledge-update-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; overflow-wrap: anywhere; }
 .requirements-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .requirements-card b, .requirements-step b { display: block; margin-top: 9px; color: #b9cfff; font-size: .7rem; }
-.requirements-card ul, .requirements-step ul { margin: 7px 0 0; padding-left: 20px; color: #c5d3e3; line-height: 1.45; }
+.requirements-card ul, .requirements-step ul, .knowledge-outcome ul { margin: 7px 0 0; padding-left: 20px; color: #c5d3e3; line-height: 1.45; }
 .requirements-step > span { display: inline-block; margin: 4px 0 0 8px; color: var(--muted); font-size: .69rem; }
 .requirements-status { flex: 0 0 auto; padding: 3px 7px; border: 1px solid currentColor; border-radius: 999px; font-size: .63rem; font-weight: 800; text-transform: uppercase; }
 .requirements-gate { color: #9dbdff; font-size: .72rem; }
 .requirements-empty, .requirements-legacy-note { color: var(--muted); font-size: .7rem; }
+.knowledge-update-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.knowledge-identifier, .knowledge-audience { color: var(--muted); font-size: .7rem; }
+.knowledge-applicability { color: #9dbdff; font-size: .72rem; }
+.knowledge-status { margin-left: 12px; }
 .review-diff-panel { min-width: 0; max-width: 100%; margin-top: 12px; border: 1px solid rgba(107, 156, 255, .45); border-radius: 12px; background: #080d13; overflow: hidden; }
 .review-diff-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .review-diff-header h4 { margin: 3px 0 2px; }
@@ -238,6 +242,21 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .review-feedback-thread p { margin: 4px 0; color: #b9cfff; font-size: .68rem; overflow-wrap: anywhere; }
 .review-feedback-card textarea { width: 100%; min-height: 64px; margin-top: 9px; }
 .review-feedback-actions { margin-top: 8px; }
+.review-coverage, .finding-lifecycle { margin: 14px 0; padding: 12px; border: 1px solid rgba(107, 156, 255, .24); border-radius: 10px; background: rgba(107, 156, 255, .025); }
+.review-coverage-heading, .finding-lifecycle-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
+.review-coverage-heading h6, .finding-lifecycle-heading h6 { margin: 0; color: #dbe7f3; font-size: .78rem; }
+.review-coverage-heading p, .finding-lifecycle-heading p { margin: 0; color: var(--muted); font-size: .68rem; text-align: right; }
+.review-coverage-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; }
+.review-coverage-card, .finding-lifecycle-card { min-width: 0; padding: 10px 11px; border: 1px solid rgba(107, 156, 255, .22); border-radius: 9px; background: #0b1118; }
+.review-coverage-card-header, .finding-lifecycle-card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.review-coverage-card-header strong, .finding-lifecycle-card-header strong { color: #b9cfff; font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; }
+.review-coverage-card-header span, .finding-lifecycle-card-header span { color: var(--accent); font-size: .64rem; font-weight: 800; text-align: right; }
+.review-coverage-card.status-blocked, .review-coverage-card.verdict-rejected, .finding-lifecycle-card.verdict-rejected { border-color: rgba(255, 112, 126, .5); }
+.review-coverage-card.status-blocked .review-coverage-card-header span, .review-coverage-card.verdict-rejected .review-coverage-card-header span, .finding-lifecycle-card.verdict-rejected .finding-lifecycle-card-header span { color: #ff9da8; }
+.review-coverage-card.status-not-applicable { opacity: .82; }
+.finding-lifecycle-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 9px; }
+.finding-lifecycle-card.lifecycle-resolved { border-color: rgba(139, 240, 198, .34); }
+.finding-lifecycle-card.lifecycle-regressed { border-color: rgba(255, 190, 92, .52); }
 .review-question-threads { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(139, 240, 198, .16); }
 .review-question-threads-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .review-question-threads-heading h6 { margin: 0; font-size: .78rem; }
@@ -354,6 +373,18 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
   .review-question-threads-heading { display: block; }
   .review-question-threads-heading p { margin-top: 5px; }
   .review-question-thread-actions { align-items: stretch; flex-direction: column; }
+  .review-coverage-heading, .finding-lifecycle-heading { display: block; }
+  .review-coverage-heading p, .finding-lifecycle-heading p { margin-top: 5px; text-align: left; }
   .requirement-traceability-heading { display: block; }
   .requirement-traceability-heading p { margin-top: 5px; }
 }
+
+.capacity-status { display: inline-flex; margin-top: 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); font-size: .75rem; font-weight: 700; }
+.task-workspace-summary { margin: 14px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--panel) 86%, transparent); }
+.task-workspace-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 10px; }
+.task-workspace-heading h4 { margin: 2px 0 0; }
+.task-workspace-heading > span { color: var(--muted); font-size: .72rem; overflow-wrap: anywhere; text-align: right; }
+.task-workspace-list { display: grid; gap: 8px; }
+.task-workspace-card { display: grid; grid-template-columns: minmax(120px, auto) auto 1fr; align-items: center; gap: 8px 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.task-workspace-card code { grid-column: 1 / -1; color: var(--text); overflow-wrap: anywhere; white-space: normal; }
+.task-workspace-card small { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }

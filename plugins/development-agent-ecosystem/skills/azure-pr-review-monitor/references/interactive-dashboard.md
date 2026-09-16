@@ -3,7 +3,7 @@
 Open the latest report:
 
 ```powershell
-& "$HOME/.codex/skills/azure-pr-review-monitor/scripts/open_review_dashboard.ps1"
+& "$HOME/.claude/skills/azure-pr-review-monitor/scripts/open_review_dashboard.ps1"
 ```
 
 The dashboard listens only on `127.0.0.1:47831`. Its hidden server process remains available after the launching console closes.

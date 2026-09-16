@@ -2,7 +2,7 @@
 param(
     [string] $ReviewPath,
     [ValidateRange(1024, 65535)][int] $Port = 47831,
-    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Codex\azure-pr-review-monitor'),
+    [string] $DataRoot = (Join-Path $env:LOCALAPPDATA 'Claude\azure-pr-review-monitor'),
     [switch] $NoBrowser,
     [switch] $Server
 )
@@ -104,7 +104,7 @@ $initialReview = Resolve-ReviewPath $(if ($ReviewPath) { $ReviewPath } else { Ge
 $initialUrl = Get-ReviewUrl $initialReview
 try {
     $health = Invoke-RestMethod -Uri "$BaseUrl/health" -TimeoutSec 1
-    if ($health.status -eq 'ok' -and $health.service -eq 'codex-pr-review-dashboard') {
+    if ($health.status -eq 'ok' -and $health.service -eq 'claude-pr-review-dashboard') {
         if (-not $NoBrowser) { Start-Process $initialUrl }
         Write-Output "Dashboard is already running at $initialUrl"
         exit 0
@@ -125,7 +125,7 @@ if (-not $Server) {
         Start-Sleep -Milliseconds 100
         try {
             $health = Invoke-RestMethod -Uri "$BaseUrl/health" -TimeoutSec 1
-            if ($health.status -eq 'ok' -and $health.service -eq 'codex-pr-review-dashboard') { $ready = $true; break }
+            if ($health.status -eq 'ok' -and $health.service -eq 'claude-pr-review-dashboard') { $ready = $true; break }
         }
         catch { }
     }
@@ -153,7 +153,7 @@ try {
             $request = $context.Request
             $path = $request.Url.AbsolutePath
             if ($request.HttpMethod -eq 'GET' -and $path -eq '/health') {
-                Send-Json $context 200 @{ status = 'ok'; service = 'codex-pr-review-dashboard' }
+                Send-Json $context 200 @{ status = 'ok'; service = 'claude-pr-review-dashboard' }
                 continue
             }
             if ($request.HttpMethod -eq 'GET' -and $path -eq '/') {
@@ -169,7 +169,7 @@ try {
                 $htmlPath = [IO.Path]::GetFullPath((Join-Path $ReportsRoot $htmlName))
                 $root = [IO.Path]::GetFullPath($ReportsRoot).TrimEnd('\') + '\'
                 if (-not $htmlPath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path $htmlPath)) { throw 'Report not found.' }
-                $html = [IO.File]::ReadAllText($htmlPath, $Utf8).Replace('__CODEX_REVIEW_CSRF__', $csrfToken)
+                $html = [IO.File]::ReadAllText($htmlPath, $Utf8).Replace('__CLAUDE_REVIEW_CSRF__', $csrfToken)
                 Send-Text $context 200 'text/html; charset=utf-8' $html
                 continue
             }
@@ -181,7 +181,7 @@ try {
                 continue
             }
             if ($request.HttpMethod -eq 'POST' -and $path -eq '/api/action') {
-                if (-not [string]::Equals($request.Headers['X-Codex-Review-Token'], $csrfToken, [StringComparison]::Ordinal)) {
+                if (-not [string]::Equals($request.Headers['X-Claude-Review-Token'], $csrfToken, [StringComparison]::Ordinal)) {
                     Send-Json $context 403 @{ ok = $false; error = 'Invalid dashboard session token.' }
                     continue
                 }

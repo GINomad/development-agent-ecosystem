@@ -26,7 +26,7 @@ Validate and install the local plugin:
 cd C:\Repos\development-agent-ecosystem
 claude plugin validate .
 claude plugin marketplace add . --scope user
-claude plugin install development-agent-ecosystem@planning-space-development --scope user
+claude plugin install development-agent-ecosystem@development-agent-ecosystem --scope user
 .\scripts\Sync-AgentDefinitions.ps1 -Install
 .\scripts\Test-AgentEcosystem.ps1
 ```

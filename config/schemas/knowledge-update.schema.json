@@ -3,7 +3,7 @@
   "title": "Evidence-backed knowledge update",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "entries"],
+  "required": ["taskId", "entries", "humanReadable"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "entries": {
@@ -35,6 +35,35 @@
             "items": { "type": "string", "minLength": 1 }
           }
         }
+      }
+    },
+    "humanReadable": { "$ref": "#/$defs/humanReadable" }
+  },
+  "$defs": {
+    "humanReadable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "overview", "audience", "updates"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "overview": { "type": "string", "minLength": 1 },
+        "audience": { "type": "string", "minLength": 1 },
+        "updates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/documentationUpdate" }
+        }
+      }
+    },
+    "documentationUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["knowledgeId", "title", "description", "applicability", "status"],
+      "properties": {
+        "knowledgeId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "applicability": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["verified", "superseded"] }
       }
     }
   }

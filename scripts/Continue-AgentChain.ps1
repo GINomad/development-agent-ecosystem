@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $CompletedAgentId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
     [switch] $OrchestratorAuthorized,
@@ -53,11 +55,19 @@ function Stop-AutomaticChain {
 }
 
 function Get-LatestDecisions {
+    param(
+        [Parameter(Mandatory)][string] $ReviewedRevision,
+        [Parameter(Mandatory)][string] $ReviewArtifactSha256
+    )
     $result = @{}
     $path = Join-Path $taskRoot 'review-decisions.json'
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $result }
     $document = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($entry in @($document.decisions)) { $result[[string]$entry.findingId] = [string]$entry.decision }
+    foreach ($entry in @($document.decisions)) {
+        if (-not $entry.PSObject.Properties['reviewedRevision'] -or -not $entry.PSObject.Properties['reviewArtifactSha256']) { continue }
+        if ([string]$entry.reviewedRevision -ne $ReviewedRevision -or [string]$entry.reviewArtifactSha256 -ne $ReviewArtifactSha256) { continue }
+        $result[[string]$entry.findingId] = [string]$entry.decision
+    }
     return $result
 }
 
@@ -66,7 +76,9 @@ function Add-ApprovedFindingInput {
         [Parameter(Mandatory)][string] $FindingId,
         [Parameter(Mandatory)][string] $FindingSummary,
         [Parameter(Mandatory)][ValidateSet('developer','orchestrator')][string] $TargetAgentId,
-        [Parameter(Mandatory)][string] $ReviewPath
+        [Parameter(Mandatory)][string] $ReviewPath,
+        [Parameter(Mandatory)][string] $VerificationPath,
+        [Parameter(Mandatory)][string] $ReviewArtifactSha256
     )
 
     $evidenceKey = 'review-finding:' + $FindingId
@@ -75,11 +87,11 @@ function Add-ApprovedFindingInput {
         foreach ($line in @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8)) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             try { $event = $line | ConvertFrom-Json } catch { continue }
-            if ([string]$event.type -eq 'workflow-input-routed' -and [string]$event.targetAgentId -eq $TargetAgentId -and @($event.evidence) -contains $evidenceKey -and @($event.evidence) -contains 'decision:approved' -and ([string]$event.summary).Contains($FindingSummary)) { return $event }
+            if ([string]$event.type -eq 'workflow-input-routed' -and [string]$event.targetAgentId -eq $TargetAgentId -and @($event.evidence) -contains $evidenceKey -and @($event.evidence) -contains 'decision:approved' -and @($event.evidence) -contains "review-sha256:$ReviewArtifactSha256" -and ([string]$event.summary).Contains($FindingSummary)) { return $event }
         }
     }
-    $summary = 'Human-approved Reviewer finding ' + $FindingId + ': ' + $FindingSummary + ' The approval is already recorded; do not reopen the approval gate.'
-    return (& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor reviewer -Type workflow-input-routed -Summary $summary -Artifact (Join-Path $taskRoot 'review-decisions.json') -Evidence @($evidenceKey, 'decision:approved', $ReviewPath, (Join-Path $taskRoot 'review-decisions.json')) -TargetAgentId $TargetAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome)
+    $summary = 'Human-approved independently verified Reviewer finding ' + $FindingId + ': ' + $FindingSummary + ' The approval is already recorded; do not reopen the approval gate.'
+    return (& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor review_verifier -Type workflow-input-routed -Summary $summary -Artifact (Join-Path $taskRoot 'review-decisions.json') -Evidence @($evidenceKey, 'decision:approved', "review-sha256:$ReviewArtifactSha256", $ReviewPath, $VerificationPath, (Join-Path $taskRoot 'review-decisions.json')) -TargetAgentId $TargetAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome)
 }
 
 function Get-FindingRoutingSummary {
@@ -128,6 +140,18 @@ function Get-NextPolicyAgent {
     return [string]$sequence[$nextIndex]
 }
 
+function Get-PendingCommentOwner {
+    param([Parameter(Mandatory)][string] $ExcludeAgentId)
+
+    foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+        $candidateId = [string]$candidate
+        if ($candidateId -in @($ExcludeAgentId, 'orchestrator')) { continue }
+        $pendingInput = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $candidateId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        if ([int]$pendingInput.count -gt 0) { return $candidateId }
+    }
+    return $null
+}
+
 for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $executionPolicy = Get-ActiveExecutionPolicy
@@ -148,15 +172,20 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
     }
     # A successful Developer outcome intentionally leaves the task in
     # review_pending. That gate means run Reviewer next, not wait for a human
-    # decision; human review decisions are evaluated after Reviewer findings.
+    # decision; human review decisions are evaluated only after independent
+    # verification of the exact Reviewer artifact.
     $reevaluateDeveloperGate = $currentAgentId -eq 'developer' -and [string]$task.status -eq 'review_pending'
     $reevaluateReviewerGate = $currentAgentId -eq 'reviewer' -and [string]$task.status -eq 'review_pending'
+    $reevaluateVerifierGate = $currentAgentId -eq 'review_verifier' -and [string]$task.status -eq 'review_pending'
     $reevaluatePipelineGate = $currentAgentId -eq 'pipeline_monitor' -and [string]$task.status -in @('waiting_for_input','held')
     $reevaluateOrchestratorGate = $currentAgentId -eq 'orchestrator'
-    if (-not $authorityHandoffPending -and [string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateDeveloperGate -and -not $reevaluateReviewerGate -and -not $reevaluatePipelineGate -and -not $reevaluateOrchestratorGate) {
+    if (-not $authorityHandoffPending -and [string]$task.status -in @($chainConfig.stopStatuses) -and -not $reevaluateDeveloperGate -and -not $reevaluateReviewerGate -and -not $reevaluateVerifierGate -and -not $reevaluatePipelineGate -and -not $reevaluateOrchestratorGate) {
         return [pscustomobject]@{ Status='waiting'; Reason="Task gate '$([string]$task.status)' is active."; StartedAgents=@($started) }
     }
-    if (-not $authorityHandoffPending -and ($currentAgentId -eq 'orchestrator' -or [bool]$executionPolicy.ContinueAutomatically)) {
+    # Health Check recovery is a control-plane transition. It must be able to
+    # dispatch the first routed role even for intentionally single-role modes
+    # such as requirements-only, which do not auto-continue after that role.
+    if (-not $authorityHandoffPending -and ($currentAgentId -in @('orchestrator','health_check') -or [bool]$executionPolicy.ContinueAutomatically)) {
     switch ($currentAgentId) {
         'orchestrator' {
             foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
@@ -177,27 +206,50 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         'reviewer' {
             $reviewPath = Join-Path $taskRoot 'review-result.json'
             if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Reviewer completed without review-result.json.' }
+            $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy
+        }
+        'review_verifier' {
+            $reviewPath = Join-Path $taskRoot 'review-result.json'
+            $verificationPath = Join-Path $taskRoot 'review-verification.json'
+            if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf) -or -not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) { throw 'Review Verifier completed without review-result.json and review-verification.json.' }
             $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $productFindings = @($review.findings)
-            $processFindings = @($review.agentProcessFindings)
-            $decisions = Get-LatestDecisions
+            $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
+            if ([string]$verification.verificationStatus -eq 'review-rework-required') {
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_verification_rework -Message 'Reviewer must correct rejected reviewCoverage or finding lifecycle claims.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId review_verifier -AgentStatus pending -Stage verify_corrected_review -Message 'Review Verifier must independently verify the corrected Reviewer artifact.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                $nextAgentId = 'reviewer'
+                break
+            }
+            $blockedCoverage = @($review.reviewCoverage | Where-Object { [string]$_.status -eq 'blocked' })
+            if ($blockedCoverage.Count) {
+                $message = "Independent verification confirmed $($blockedCoverage.Count) blocked review coverage dimension(s). Supply the missing evidence and rerun Reviewer."
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_coverage_blocked -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
+            }
+            $reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
+            $verificationById = @{}
+            foreach ($entry in @($verification.findingVerifications)) { $verificationById[[string]$entry.findingId] = [string]$entry.verdict }
+            $productFindings = @($review.findings | Where-Object { $verificationById[[string]$_.id] -in @('confirmed','needs-human') })
+            $processFindings = @($review.agentProcessFindings | Where-Object { $verificationById[[string]$_.id] -in @('confirmed','needs-human') })
+            $decisions = Get-LatestDecisions -ReviewedRevision ([string]$review.reviewedRevision) -ReviewArtifactSha256 $reviewSha256
             $techDebtPath = Join-Path $taskRoot 'tech-debt-items.json'
             $techDebtItems = if (Test-Path -LiteralPath $techDebtPath -PathType Leaf) { @((Get-Content -LiteralPath $techDebtPath -Raw -Encoding UTF8 | ConvertFrom-Json).items) } else { @() }
             $approvedProcess = @($processFindings | Where-Object { $decisions[[string]$_.id] -eq 'approved' })
             foreach ($finding in $approvedProcess) {
                 $findingSummary = Get-FindingRoutingSummary -Finding $finding
-                $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId orchestrator -ReviewPath $reviewPath
+                $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId orchestrator -ReviewPath $reviewPath -VerificationPath $verificationPath -ReviewArtifactSha256 $reviewSha256
             }
             if ($productFindings.Count) {
                 $undecided = @($productFindings | Where-Object { -not $decisions.ContainsKey([string]$_.id) })
                 $deferred = @($productFindings | Where-Object { $decisions[[string]$_.id] -eq 'deferred' })
                 $invalidBypasses = @($productFindings | Where-Object {
                     $findingId = [string]$_.id
-                    $decisions[$findingId] -eq 'bypassed' -and -not @($techDebtItems | Where-Object { [string]$_.sourceFindingId -eq $findingId -and [string]$_.status -eq 'open' }).Count
+                    $decisions[$findingId] -eq 'bypassed' -and -not @($techDebtItems | Where-Object { [string]$_.sourceFindingId -eq $findingId -and [string]$_.status -eq 'open' -and $_.PSObject.Properties['reviewArtifactSha256'] -and [string]$_.reviewArtifactSha256 -eq $reviewSha256 }).Count
                 })
                 $blocked = @($undecided) + @($deferred) + @($invalidBypasses)
                 if ($blocked.Count) {
-                    $message = "Reviewer produced $($blocked.Count) product finding(s) that are undecided, deferred, or missing an open bypass tech-debt item."
+                    $message = "Review Verifier confirmed or escalated $($blocked.Count) product finding(s) that are undecided, deferred, or missing an open bypass tech-debt item."
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_decision_required -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
                 }
@@ -205,10 +257,11 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 if ($approvedProduct.Count) {
                     foreach ($finding in $approvedProduct) {
                         $findingSummary = Get-FindingRoutingSummary -Finding $finding
-                        $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId developer -ReviewPath $reviewPath
+                        $null = Add-ApprovedFindingInput -FindingId ([string]$finding.id) -FindingSummary $findingSummary -TargetAgentId developer -ReviewPath $reviewPath -VerificationPath $verificationPath -ReviewArtifactSha256 $reviewSha256
                     }
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId developer -AgentStatus pending -Stage approved_review_rework -Message 'Approved Reviewer findings require Developer rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_rework -Message 'Reviewer must validate the approved rework.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId review_verifier -AgentStatus pending -Stage verify_after_rework -Message 'Review Verifier must independently validate the rework review.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                     if ('developer' -notin $agentSequence -or -not [bool]$executionPolicy.CodeChangesAllowed) {
                         return [pscustomobject]@{ Status='review-pending'; Reason="Approved findings require Developer, but execution mode '$([string]$executionPolicy.ExecutionMode)' forbids that continuation."; StartedAgents=@($started) }
                     }
@@ -234,6 +287,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
             elseif ($pipeline.PSObject.Properties['remediation'] -and [string]$pipeline.remediation.targetAgentId -eq 'developer' -and [string]$pipeline.remediation.status -eq 'pending') {
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId reviewer -AgentStatus pending -Stage review_after_pipeline_fix -Message 'Reviewer must validate the pipeline remediation.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId review_verifier -AgentStatus pending -Stage verify_after_pipeline_fix -Message 'Review Verifier must independently validate the remediated review.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId pipeline_monitor -AgentStatus pending -Stage pipeline_after_remediation_review -Message 'Pipeline Monitor must validate the remediated exact commit after reviewed delivery.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 $nextAgentId = 'developer'
             }
@@ -262,12 +316,21 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'health_check' {
-            foreach ($candidate in $agentSequence) {
-                if ([string]$candidate -in @('orchestrator','health_check')) { continue }
-                $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
-                if ($candidateStatus -in @('pending','skipped')) {
-                    $nextAgentId = [string]$candidate
-                    break
+            $pendingCommentOwner = Get-PendingCommentOwner -ExcludeAgentId 'health_check'
+            if ($pendingCommentOwner) {
+                # The active execution mode may contain only Health Check. Return
+                # remaining explicit input to Orchestrator so it can select a new
+                # authority mode instead of silently ending the resume.
+                $nextAgentId = 'orchestrator'
+            }
+            else {
+                foreach ($candidate in $agentSequence) {
+                    if ([string]$candidate -in @('orchestrator','health_check')) { continue }
+                    $candidateStatus = if ($task.agentStatuses.PSObject.Properties[[string]$candidate]) { [string]$task.agentStatuses.([string]$candidate).status } else { 'pending' }
+                    if ($candidateStatus -in @('pending','skipped')) {
+                        $nextAgentId = [string]$candidate
+                        break
+                    }
                 }
             }
         }
@@ -298,6 +361,8 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         RepositoryIds=@($repositoryIds); UserInstruction="Automatic continuation after '$currentAgentId'. Run only '$nextAgentId' and stop at every human-input or approval gate."
         Resume=$true; TargetAgentId=$nextAgentId; SkipChainContinuation=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
     }
+    if ($ExecutionRunId) { $workflowParameters.ExecutionRunId = $ExecutionRunId }
+    if ($WorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $WorkspaceLeaseId }
     if ($ElevatedApproved -or [bool]$chainConfig.useElevatedExecution) { $workflowParameters.ElevatedApproved = $true }
     $started.Add($nextAgentId)
     & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null

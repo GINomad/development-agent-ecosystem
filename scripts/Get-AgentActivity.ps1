@@ -117,7 +117,7 @@ if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
 }
 
 if ($AgentId -eq [string]$config.workflow.orchestration.agentId) {
-    $workflowPath = Join-Path $taskRoot 'workflow-codex.jsonl'
+    $workflowPath = Join-Path $taskRoot 'workflow-claude.jsonl'
     if (Test-Path -LiteralPath $workflowPath -PathType Leaf) {
         $workflowSequence = 0
         foreach ($line in @(Get-Content -LiteralPath $workflowPath -Encoding UTF8)) {

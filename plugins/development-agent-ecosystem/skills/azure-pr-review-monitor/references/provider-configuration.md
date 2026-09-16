@@ -3,7 +3,7 @@
 Use the settings manager instead of hand-editing JSON:
 
 ```powershell
-$settings = "$HOME/.codex/skills/azure-pr-review-monitor/scripts/manage_agent_settings.ps1"
+$settings = "$HOME/.claude/skills/azure-pr-review-monitor/scripts/manage_agent_settings.ps1"
 & $settings -Action Show
 & $settings -Action Validate
 ```
@@ -39,14 +39,14 @@ Configure custom review instructions:
   -PromptPaths 'C:\review-policy\team-review.md'
 ```
 
-MCP is disabled by default. First configure servers in Codex with `codex mcp add`, then explicitly allow read-only servers for automated reviews:
+MCP is disabled by default. First configure servers in Claude with `claude mcp add`, then explicitly allow read-only servers for automated reviews:
 
 ```powershell
-codex mcp list --json
+claude mcp list --json
 & $settings -Action SetMcp -McpMode allowlist -McpServers 'company-docs'
 & $settings -Action Validate
 ```
 
 The runner passes per-invocation overrides that disable every configured MCP server except names in the allowlist. Keep write-capable or untrusted MCP servers disabled for automated review.
 
-Configuration schema: `config.schema.json`. Runtime configuration: `%LOCALAPPDATA%\Codex\azure-pr-review-monitor\config.json`.
+Configuration schema: `config.schema.json`. Runtime configuration: `%LOCALAPPDATA%\Claude\azure-pr-review-monitor\config.json`.

@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $CompletedAgentId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
     [switch] $ElevatedApproved,
     [switch] $PrepareOnly,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
@@ -24,6 +26,8 @@ $parameters = @{
     ConfigPath = $ConfigPath
     CodexHome = $CodexHome
 }
+if ($ExecutionRunId) { $parameters.ExecutionRunId = $ExecutionRunId }
+if ($WorkspaceLeaseId) { $parameters.WorkspaceLeaseId = $WorkspaceLeaseId }
 if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) {
     $parameters.ElevatedApproved = $true
 }

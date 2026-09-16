@@ -29,9 +29,9 @@ if ($TargetAgentId) {
     $unfinished.Add($TargetAgentId)
 }
 else {
-    foreach ($agentId in @('requirements_analyst','developer','reviewer','pipeline_monitor')) {
+    foreach ($agentId in @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')) {
         $status = [string]$statusMap[$agentId]
-        if ($status -eq 'completed') { continue }
+        if ($status -in @('completed','skipped')) { continue }
         $unfinished.Add($agentId)
     }
     $healthStatus = [string]$statusMap['health_check']
@@ -62,6 +62,15 @@ if (-not $TargetAgentId) {
 $applicableComments = if ($TargetAgentId) {
     @($unacknowledgedComments | Where-Object { -not $_.PSObject.Properties['targetAgentId'] -or [string]::IsNullOrWhiteSpace([string]$_.targetAgentId) -or [string]$_.targetAgentId -eq $TargetAgentId })
 } else { @($unacknowledgedComments) }
+if (-not $TargetAgentId -and [string]$task.status -ne 'completed' -and (-not $task.PSObject.Properties['closure'] -or [string]$task.closure.status -ne 'completed')) {
+    foreach ($candidate in @($config.workflow.orchestration.dispatchPriority)) {
+        $candidateId = [string]$candidate
+        if ($candidateId -eq $orchestratorId -or $candidateId -in @($unfinished)) { continue }
+        $hasDirectInput = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $candidateId }).Count -gt 0
+        if ($hasDirectInput) { $unfinished.Add($candidateId) }
+    }
+    $preserved = @($preserved | Where-Object { $_ -notin @($unfinished) })
+}
 
 $artifactIndexPath = Join-Path $taskRoot 'resume-artifact-index.json'
 $artifactConsumerAgentId = if ($TargetAgentId) { $TargetAgentId } else { $orchestratorId }
@@ -89,6 +98,7 @@ if (Test-Path -LiteralPath $artifactIndexPath -PathType Leaf) {
 $shareableArtifacts = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $null = $shareableArtifacts.Add('assigned-task-context.json')
 $null = $shareableArtifacts.Add('review-decisions.json')
+$null = $shareableArtifacts.Add('review-history-index.json')
 foreach ($agent in @($config.agents)) {
     $agentId = [string]$agent.id
     if ([string]$statusMap[$agentId] -ne 'completed') { continue }
@@ -100,7 +110,7 @@ $currentFingerprints = [ordered]@{}
 $changedArtifacts = [Collections.Generic.List[string]]::new()
 $unchangedArtifacts = [Collections.Generic.List[string]]::new()
 foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { $shareableArtifacts.Contains($_.Name) } | Sort-Object Name)) {
-    $fingerprint = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $fingerprint = Get-EcosystemFileSha256 -Path $file.FullName
     $currentFingerprints[$file.Name] = $fingerprint
     if ($previousFingerprints.ContainsKey($file.Name) -and $previousFingerprints[$file.Name] -eq $fingerprint) { $unchangedArtifacts.Add($file.Name) }
     else { $changedArtifacts.Add($file.Name) }

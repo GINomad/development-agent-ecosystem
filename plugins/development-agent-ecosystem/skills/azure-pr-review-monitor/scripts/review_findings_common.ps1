@@ -1,4 +1,4 @@
-﻿function Get-MarkdownField {
+function Get-MarkdownField {
     param([string] $Body, [string] $Name)
     $match = [regex]::Match($Body, "(?m)^\*\*$([regex]::Escape($Name)):\*\*\s*(?<value>.+?)\s*$")
     if ($match.Success) { return $match.Groups["value"].Value.Trim().Trim('`') }

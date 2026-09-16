@@ -24,7 +24,7 @@ function Invoke-RecoveryWatcherScenario {
     $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = $Scenario
     $env:ECOSYSTEM_MOCK_COMMIT = $commit
     try {
-        & $watcher -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $commit -DefinitionIds 17 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 0 -RunTimeoutMinutes 1 -AzCli $mockAz -TaskId "pipeline-$Scenario" -RepositoryId 'azure-palantirplugins-ps-app-delfi' -ResultPath $resultPath -ClassifierScript $classifier -PassThru
+        & $watcher -Organization 'https://dev.azure.com/example' -Project 'Example' -Branch 'feature/synthetic' -Commit $commit -DefinitionIds 17 -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -PollSeconds 0 -DiscoveryTimeoutMinutes 0 -RunTimeoutMinutes 1 -AzCli $mockAz -TaskId "pipeline-$Scenario" -RepositoryId 'azure-example-service' -ResultPath $resultPath -ClassifierScript $classifier -PassThru
     }
     finally {
         Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
@@ -75,21 +75,31 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not create the in-workspace exact remote
 $wrapperConfigPath = Join-Path $wrapperRoot 'agents.json'
 $wrapperConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $wrapperConfig.runtime.stateRoot = $wrapperStateRoot
-$wrapperRepository = @($wrapperConfig.repositories | Where-Object { [string]$_.id -eq 'azure-palantirplugins-ps-app-delfi' }) | Select-Object -First 1
+$wrapperRepository = @($wrapperConfig.repositories | Where-Object { [string]$_.id -eq 'azure-example-service' }) | Select-Object -First 1
 $wrapperRepository.localWorkspace = $wrapperWorkspace
 $wrapperRepository.organizationUrl = 'https://dev.azure.com/example'
 $wrapperRepository.project = 'Example'
-$wrapperPipeline = @($wrapperConfig.pipeline.repositories | Where-Object { [string]$_.repositoryId -eq 'azure-palantirplugins-ps-app-delfi' }) | Select-Object -First 1
+$wrapperPipeline = @($wrapperConfig.pipeline.repositories | Where-Object { [string]$_.repositoryId -eq 'azure-example-service' }) | Select-Object -First 1
 $wrapperPipeline.definitionIds = @(17)
 $wrapperPipeline.autoQueueDefinitionIds = @()
 Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 
+function New-WrapperWorkspaceManifest {
+    param([Parameter(Mandatory)][string]$TaskId)
+    $manifestRoot = Join-Path $wrapperStateRoot "tasks\$TaskId\workspaces"
+    New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
+    $manifestPath = Join-Path $manifestRoot 'azure-example-service.json'
+    $manifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId='azure-example-service'; clonePath=[IO.Path]::GetFullPath($wrapperWorkspace); canonicalOrigin='https://dev.azure.com/example/Example/_git/synthetic'; baseSha=$wrapperCommit; branch=$wrapperBranch; lifecycle='active'; runId=('3' * 32); leaseId=('4' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
+    Write-Utf8NoBom -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+}
+
 $wrapperTaskId = 'pipeline-wrapper-' + [guid]::NewGuid().ToString('N')
-& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $wrapperTaskId -TaskSelector 'synthetic post-push recovery' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $wrapperTaskId -TaskSelector 'synthetic post-push recovery' -Mode manual -RepositoryIds 'azure-example-service' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $wrapperTaskId
 $env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
 $env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
 try {
-    $wrapperResult = & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $wrapperTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -PushWasSuccessful -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+    $wrapperResult = & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $wrapperTaskId -RepositoryId 'azure-example-service' -PushWasSuccessful -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
 }
 finally {
     Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
@@ -99,11 +109,64 @@ if ([string]$wrapperResult.PipelineResult.overallResult -ne 'succeeded' -or @($w
     throw 'The production post-push wrapper did not consume exactly one passive PR-validation result without queueing.'
 }
 
+$wrapperPipeline.definitionIds = @(892)
+Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$remediationTaskId = 'pipeline-wrapper-remediation-' + [guid]::NewGuid().ToString('N')
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $remediationTaskId -TaskSelector 'synthetic post-push remediation' -Mode manual -RepositoryIds 'azure-example-service' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $remediationTaskId
+$env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
+try {
+    $remediationResult = & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $remediationTaskId -RepositoryId 'azure-example-service' -PushWasSuccessful -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$remediationTask = Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$remediationTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$remediationTerminal = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $remediationTaskId -AgentId pipeline_monitor -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+if (
+    [string]$remediationResult.PipelineResult.overallResult -ne 'non-success' -or
+    -not [bool]$remediationResult.Remediation.Requested -or
+    [string]$remediationTask.agentStatuses.pipeline_monitor.status -ne 'completed' -or
+    [string]$remediationTask.currentStage -ne 'pipeline_remediation_routed' -or
+    -not [bool]$remediationTerminal.Terminal
+) {
+    throw 'A post-push Developer remediation request left Pipeline Monitor non-terminal before host continuation.'
+}
+$wrapperPipeline.definitionIds = @(17)
+Write-Utf8NoBom -Path $wrapperConfigPath -Content (($wrapperConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+
+$refreshTaskId = 'pipeline-refresh-' + [guid]::NewGuid().ToString('N')
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $refreshTaskId -TaskSelector 'synthetic successful pipeline refresh' -Mode manual -RepositoryIds 'azure-example-service' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $refreshTaskId
+$env:ECOSYSTEM_MOCK_PIPELINE_SCENARIO = 'recovery-singleton-string'
+$env:ECOSYSTEM_MOCK_COMMIT = $wrapperCommit
+try {
+    $refreshResult = & (Join-Path $root 'scripts\Refresh-TaskPipelineResult.ps1') -TaskId $refreshTaskId -RepositoryId 'azure-example-service' -Branch $wrapperBranch -Commit $wrapperCommit -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -AzCli $mockAz -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+}
+finally {
+    Remove-Item Env:\ECOSYSTEM_MOCK_PIPELINE_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:\ECOSYSTEM_MOCK_COMMIT -ErrorAction SilentlyContinue
+}
+$refreshTask = Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$refreshTaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$refreshEvents = @(Get-Content -LiteralPath (Join-Path $wrapperStateRoot "tasks\$refreshTaskId\task-ledger.jsonl") -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+$refreshAgentResults = @($refreshEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'pipeline_monitor' })
+$refreshTerminal = & (Join-Path $root 'scripts\Assert-TargetAgentTerminalState.ps1') -TaskId $refreshTaskId -AgentId pipeline_monitor -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome
+if (
+    [string]$refreshResult.PipelineResult.overallResult -ne 'succeeded' -or
+    -not (Test-Path -LiteralPath ([string]$refreshResult.ResultPath) -PathType Leaf) -or
+    [string]$refreshTask.agentStatuses.pipeline_monitor.status -ne 'completed' -or
+    $refreshAgentResults.Count -ne 1 -or
+    -not [bool]$refreshTerminal.Terminal
+) {
+    throw 'A successful exact-SHA refresh did not publish one terminal Pipeline Monitor outcome accepted by the host lifecycle assertion.'
+}
+
 $mismatchTaskId = 'pipeline-wrapper-mismatch-' + [guid]::NewGuid().ToString('N')
-& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $mismatchTaskId -TaskSelector 'synthetic post-push mismatch' -Mode manual -RepositoryIds 'azure-palantirplugins-ps-app-delfi' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $mismatchTaskId -TaskSelector 'synthetic post-push mismatch' -Mode manual -RepositoryIds 'azure-example-service' -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+New-WrapperWorkspaceManifest -TaskId $mismatchTaskId
 $originGateRejected = $false
 try {
-    & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $mismatchTaskId -RepositoryId 'azure-palantirplugins-ps-app-delfi' -PushWasSuccessful -Branch $wrapperBranch -Commit 'ffffffffffffffffffffffffffffffffffffffff' -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
+    & (Join-Path $root 'scripts\Invoke-PostPushPipeline.ps1') -TaskId $mismatchTaskId -RepositoryId 'azure-example-service' -PushWasSuccessful -Branch $wrapperBranch -Commit 'ffffffffffffffffffffffffffffffffffffffff' -QueuedAfter ([DateTime]::UtcNow.AddMinutes(-1)) -ConfigPath $wrapperConfigPath -CodexHome $wrapperCodexHome | Out-Null
 }
 catch {
     $originGateRejected = $_.Exception.Message -like 'origin/* does not point to exact pushed commit*'
@@ -119,5 +182,7 @@ if (-not $originGateRejected) { throw 'The production post-push wrapper did not 
     passiveDefinitionId = 17
     queuedDefinitionCount = 0
     productionWrapper = 'passed'
+    postPushRemediationTerminal = 'passed'
+    refreshTerminalOutcome = 'passed'
     originCommitGate = 'passed'
 }
