@@ -18,9 +18,16 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $requestedIds = @(@($RepositoryIds) + @($RepositoryId) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+if ($Resume -and -not $requestedIds.Count) {
+    $persistedTaskPath = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId\task.json"
+    if (Test-Path -LiteralPath $persistedTaskPath -PathType Leaf) {
+        $persistedTask = Get-Content -LiteralPath $persistedTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $requestedIds = @(if ($persistedTask.PSObject.Properties['repositoryIds']) { @($persistedTask.repositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ }) } elseif ($persistedTask.PSObject.Properties['repositoryId'] -and $persistedTask.repositoryId) { @([string]$persistedTask.repositoryId) } else { @() })
+        if (-not $ProjectId -and $persistedTask.PSObject.Properties['projectId']) { $ProjectId = [string]$persistedTask.projectId }
+    }
+}
 if (-not $requestedIds.Count) {
-    $defaultRepository = @($config.repositories | Where-Object enabled) | Select-Object -First 1
-    if ($defaultRepository) { $requestedIds = @([string]$defaultRepository.id); $RepositoryIds = @($requestedIds) }
+    throw "Task '$TaskId' has no repository scope. Specify -RepositoryId or -RepositoryIds when creating a task; resume requires persisted repositoryIds (legacy repositoryId is accepted)."
 }
 if (-not $ProjectId) {
     $matchingProjects = @($config.projects | Where-Object {
@@ -33,7 +40,7 @@ if (-not $ProjectId) {
 $project = @($config.projects | Where-Object { $_.id -eq $ProjectId -and $_.enabled }) | Select-Object -First 1
 if (-not $project) { throw "Enabled project '$ProjectId' was not found." }
 $selectedRepositoryIds = [Collections.Generic.List[string]]::new()
-foreach ($id in @($RepositoryIds) + @($RepositoryId)) {
+foreach ($id in $requestedIds) {
     $value = [string]$id
     if ([string]::IsNullOrWhiteSpace($value) -or $selectedRepositoryIds.Contains($value)) { continue }
     if (-not @($config.repositories | Where-Object { $_.id -eq $value -and $_.enabled }).Count) { throw "Enabled repository '$value' was not found." }
@@ -89,6 +96,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
     if ($selectedRepositoryIds.Count) {
         $previousIds = if ($document.PSObject.Properties['repositoryIds']) { @($document.repositoryIds) } elseif ($document.PSObject.Properties['repositoryId'] -and $document.repositoryId) { @([string]$document.repositoryId) } else { @() }
         if (($previousIds -join '|') -ne (@($selectedRepositoryIds) -join '|')) {
+            if ([string]$document.status -in @('running','queued') -or ($document.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWhiteSpace([string]$document.workspaceLeaseId))) { throw "Task '$TaskId' has an active or queued workspace lease; stop or release it before changing repository scope." }
             $document | Add-Member -NotePropertyName repositoryId -NotePropertyValue $selectedRepositoryIds[0] -Force
             $document | Add-Member -NotePropertyName repositoryIds -NotePropertyValue @($selectedRepositoryIds) -Force
             $scopeChanged = $true

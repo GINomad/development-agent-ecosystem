@@ -84,6 +84,7 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         foreach ($workspaceManifestFile in @(Get-ChildItem -LiteralPath $workspaceManifestRoot -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
             try {
                 $workspaceManifest = Get-Content -LiteralPath $workspaceManifestFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ([string]$workspaceManifest.repositoryId -notin $repositoryIds) { continue }
                 $workspaceManifests.Add([pscustomobject][ordered]@{ repositoryId=[string]$workspaceManifest.repositoryId; path=[string]$workspaceManifest.clonePath; branch=[string]$workspaceManifest.branch; baseSha=[string]$workspaceManifest.baseSha; canonicalOrigin=[string]$workspaceManifest.canonicalOrigin; lifecycle=[string]$workspaceManifest.lifecycle; runId=[string]$workspaceManifest.runId; leaseId=[string]$workspaceManifest.leaseId; updatedAtUtc=[string]$workspaceManifest.updatedAtUtc })
             }
             catch { }

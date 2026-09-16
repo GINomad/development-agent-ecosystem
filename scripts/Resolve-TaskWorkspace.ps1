@@ -14,8 +14,12 @@ $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $taskRoot = Join-Path $stateRoot "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+$task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskRepositoryIds = @(if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique) } elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { @([string]$task.repositoryId) } else { @() })
+if (-not $taskRepositoryIds.Count) { throw "Task '$TaskId' has no persisted repository scope." }
+if ($RepositoryId -and $RepositoryId -notin $taskRepositoryIds) { throw "Repository '$RepositoryId' is outside task '$TaskId' repository scope." }
 $manifestDirectory = Join-Path $taskRoot 'workspaces'
-$manifestPaths = @(if ($RepositoryId) { Join-Path $manifestDirectory "$RepositoryId.json" } else { Get-ChildItem -LiteralPath $manifestDirectory -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object FullName })
+$manifestPaths = @(if ($RepositoryId) { Join-Path $manifestDirectory "$RepositoryId.json" } else { @($taskRepositoryIds | ForEach-Object { Join-Path $manifestDirectory ("$_" + '.json') }) })
 if (-not $manifestPaths.Count) { throw "Task '$TaskId' has no provisioned workspace manifest." }
 $results = [Collections.Generic.List[object]]::new()
 foreach ($manifestPath in $manifestPaths) {
