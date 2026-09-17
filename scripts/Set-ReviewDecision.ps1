@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory)][ValidateSet('approved','rejected','deferred','bypassed')][string] $Decision,
     [Parameter(Mandatory)][string] $DecidedBy,
     [string] $Note = '',
+    [string] $ExpectedReviewedRevision,
+    [string] $ExpectedReviewArtifactSha256,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -28,6 +30,7 @@ $findingVerification = @($verification.findingVerifications | Where-Object { [st
 if (-not $findingVerification) { throw "Finding '$FindingId' has no independent verifier verdict." }
 if ([string]$findingVerification.verdict -eq 'rejected') { throw "Finding '$FindingId' was rejected by Review Verifier and cannot enter the human decision gate." }
 $reviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
+if ((-not [string]::IsNullOrWhiteSpace($ExpectedReviewedRevision) -and [string]$review.reviewedRevision -ne $ExpectedReviewedRevision) -or (-not [string]::IsNullOrWhiteSpace($ExpectedReviewArtifactSha256) -and $reviewArtifactSha256 -ne $ExpectedReviewArtifactSha256)) { throw 'The review changed before the decision could be recorded. Refresh and retry.' }
 
 $techDebtItem = $null
 if ($Decision -eq 'bypassed') {

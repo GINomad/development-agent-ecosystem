@@ -1509,7 +1509,9 @@ async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons)
     await loadTaskDetail(selectedTaskId, taskStateRevision);
     renderReviewerFeedback();
     await loadTaskList({ silent: true });
-    setReviewerFeedbackStatus(`${item.id} reply queued for ${agentLabels[targetAgentId] || targetAgentId}.`, 'success');
+    const plainCommentSuffix = targetAgentId === 'developer' ? ' This is a comment only; it did not approve the finding or start Developer.' : '';
+    const dispatchMessage = saved?.dispatch?.reason || 'Comment saved.';
+    setReviewerFeedbackStatus(`${item.id}: ${dispatchMessage}${plainCommentSuffix}`, saved?.dispatch?.status === 'idle-awaiting-approval' ? 'error' : 'success');
     log(saved);
   } finally {
     buttons.forEach(button => { button.disabled = false; });
@@ -1517,7 +1519,52 @@ async function sendReviewerFeedbackReply(item, targetAgentId, textarea, buttons)
   }
 }
 
+async function approveReviewerFinding(item, textarea, buttons) {
+  if (!selectedTaskId) throw new Error('Select a task first.');
+  const note = textarea.value.trim();
+  buttons.forEach(button => { button.disabled = true; });
+  setReviewerFeedbackStatus(`Recording approval for ${item.id}...`, 'working');
+  try {
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/review-decisions', {
+      method: 'POST',
+      body: JSON.stringify({
+        findingId: item.id,
+        decision: 'approved',
+        note,
+        expectedReviewedRevision: String(reviewerFeedback?.reviewedRevision || ''),
+        expectedReviewArtifactSha256: reviewArtifactSha256,
+        ...taskViewGuard()
+      })
+    });
+    textarea.value = '';
+    taskStateRevision += 1;
+    await loadTaskDetail(selectedTaskId, taskStateRevision);
+    await loadTaskList({ silent: true });
+    const message = result?.dispatch?.status === 'scheduled'
+      ? `${item.id} was approved and Developer was scheduled.`
+      : (result?.dispatch?.reason || `${item.id} was approved.`);
+    setReviewerFeedbackStatus(message, ['approval-required', 'failed'].includes(result?.dispatch?.status) ? 'error' : 'success');
+    log(result);
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+async function resumeApprovedReviewerFinding(item, buttons) {
+  if (!selectedTaskId) throw new Error('Select a task first.');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const result = await api('/api/tasks/' + encodeURIComponent(selectedTaskId) + '/review-decisions', { method: 'POST', body: JSON.stringify({ findingId: item.id, decision: 'resume', expectedReviewedRevision: String(reviewerFeedback?.reviewedRevision || ''), expectedReviewArtifactSha256: reviewArtifactSha256, ...taskViewGuard() }) });
+    taskStateRevision += 1;
+    await loadTaskDetail(selectedTaskId, taskStateRevision);
+    await loadTaskList({ silent: true });
+    setReviewerFeedbackStatus(result?.dispatch?.reason || ('Developer retry for ' + item.id + ' was scheduled.'), ['approval-required', 'failed'].includes(result?.dispatch?.status) ? 'error' : 'success');
+    log(result);
+  } finally { buttons.forEach(button => { button.disabled = false; }); }
+}
+
 function renderReviewerFeedback() {
+
   const list = document.querySelector('#reviewFeedbackList');
   const summary = document.querySelector('#reviewFeedbackSummary');
   list.replaceChildren();
@@ -1604,6 +1651,28 @@ function renderReviewerFeedback() {
       catch (error) { setReviewerFeedbackStatus(error.message, 'error'); log('Error: ' + error.message); }
     });
     actions.append(reviewerButton, developerButton);
+    const currentDecision = latestReviewerDecision(item.id);
+    const canApprove = item.kind === 'finding'
+      && !reviewVerificationStale
+      && reviewVerification?.verificationStatus === 'passed'
+      && ['confirmed', 'needs-human'].includes(item.verificationVerdict)
+      && String(currentDecision?.decision || '').toLowerCase() !== 'approved';
+    const canResumeApproved = item.kind === 'finding'
+      && !reviewVerificationStale
+      && reviewVerification?.verificationStatus === 'passed'
+      && ['confirmed', 'needs-human'].includes(item.verificationVerdict)
+      && String(currentDecision?.decision || '').toLowerCase() === 'approved';
+    if (canApprove || canResumeApproved) {
+      const approveButton = document.createElement('button');
+      approveButton.type = 'button';
+      approveButton.className = 'button primary compact-button';
+      approveButton.textContent = canApprove ? 'Approve fix & start Developer' : 'Start Developer for approved fix';
+      approveButton.addEventListener('click', async () => {
+        try { if (canApprove) await approveReviewerFinding(item, textarea, [...buttons, approveButton]); else await resumeApprovedReviewerFinding(item, [...buttons, approveButton]); }
+        catch (error) { setReviewerFeedbackStatus(error.message, 'error'); log('Error: ' + error.message); }
+      });
+      actions.append(approveButton);
+    }
     card.append(textarea, actions);
     list.append(card);
   });
