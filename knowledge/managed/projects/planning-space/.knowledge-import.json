@@ -2,7 +2,7 @@
   "sourceId": "",
   "sourceRoot": "C:\\Repos\\AI Knowledge\\ps_excel_agent",
   "managedRoot": "C:\\Repos\\development-agent-ecosystem\\knowledge\\managed\\projects\\planning-space",
-  "importedAtUtc": "2026-09-16T15:48:42.1231143Z",
+  "importedAtUtc": "2026-09-17T15:12:44.4699621Z",
   "entries": [
     {
       "relativePath": "coding-knowledge.md",
@@ -88,7 +88,7 @@
       "relativePath": "docker-update.md",
       "sourcePath": "C:\\Repos\\AI Knowledge\\ps_excel_agent\\docker-update.md",
       "sourceHash": "bb1feca8bf7b5c964f47081dbcdc3817719b90e253f5f117e274a6128f2bfa80",
-      "importedHash": "6185f547d4493c67f4b0b1be04ac285a360f9a128815e520077409a16f50e6d4",
+      "importedHash": "af09e4db7e320ff1a966595aca8b142a59beba4d917f0d9eaf0955058277af5b",
       "sourceLastWriteUtc": "2026-07-30T14:30:45.8004592Z",
       "status": "skipped-managed-change"
     },

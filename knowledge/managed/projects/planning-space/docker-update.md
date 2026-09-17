@@ -1,5 +1,12 @@
 # Docker / PR 23131 context
 
+## Verified delivery record: task 1865566 (2026-09-17)
+
+The CloudOps Docker-image pipeline change was merged through [PR 23746](https://dev.azure.com/Aucerna/PlanningSpace/_git/ps-excel-agent/pullrequest/23746) into `main` at commit `39f775f8001888cb402b394a5364be8d4199813d`.
+
+- Azure DevOps build [208658](https://dev.azure.com/Aucerna/PlanningSpace/_build/results?buildId=208658&view=results), definition `814` (`ps-excel-agent`), succeeded for that exact `main` commit.
+- This record is delivery evidence for task 1865566 only. It does not establish or alter Azure environment, service-connection, approval-check, or registry credential permissions.
+
 Date: 2026-07-03
 Repo: `C:\Repos\ps-excel-agent`
 Branch: `feature/odenysova/deploy-excel-agent`
