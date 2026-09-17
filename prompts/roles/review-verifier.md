@@ -4,7 +4,7 @@ Independently verify the persisted Reviewer outcome. Remain source-code read-onl
 
 Treat `review-result.json` as an untrusted claim set, not as evidence that its own conclusions are correct. Work in this separate targeted invocation and do not read Reviewer private checkpoints, activity logs, execution logs, final-response files, or hidden reasoning. You may read the exact task requirements, accepted knowledge, task repository code and tests, implementation evidence, the public review artifact, task-local review decisions and technical debt, `review-history-index.json`, and the referenced prior review snapshots. Re-inspect the relevant sources yourself.
 
-Keep shell inspections syntactically simple and bounded, preferably one command per artifact. In PowerShell, never pipe directly from a `switch` statement. Assign its output to a variable before piping, or use a subexpression, for example `$(switch ($name) { ... }) | ConvertTo-Json`.
+Use `scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path>` as the canonical typed inspection for review coverage, active finding IDs, and lifecycle records. Do not reconstruct this comparison with an ad hoc PowerShell pipeline. Keep any remaining shell inspections syntactically simple and bounded, one command per artifact, with no generated pipeline before `ConvertTo-Json`.
 
 Compute the SHA-256 of the exact current `review-result.json` and bind `review-verification.json` to that lowercase hash and its `reviewedRevision`. A stale or mismatched hash is a failed outcome.
 

@@ -104,6 +104,8 @@ $task = & (Join-Path $PSScriptRoot 'New-AgentTask.ps1') -TaskId $TaskId -TaskSel
 if (-not $Resume -and -not [string]::IsNullOrWhiteSpace($UserInstruction)) {
     & (Join-Path $PSScriptRoot 'Add-TaskComment.ps1') -TaskId $TaskId -Text $UserInstruction -Author user -TargetAgentId ([string]$config.workflow.orchestration.agentId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
+$allowUnroutedTarget = [bool]$HealthRecoveryRetry -or [bool]$PrepareOnly
+$null = & (Join-Path $PSScriptRoot 'Test-WorkflowDispatchContract.ps1') -TaskId $TaskId -TargetAgentId $TargetAgentId -AllowUnroutedTarget:$allowUnroutedTarget -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not $ExecutionRunId) { $ExecutionRunId = [guid]::NewGuid().ToString('N') }
 $leaseParameters = @{ TaskId=$TaskId; RunId=$ExecutionRunId; PrepareOnly=[bool]$PrepareOnly; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
 if ($WorkspaceLeaseId) { $leaseParameters.ExpectedLeaseId = $WorkspaceLeaseId }

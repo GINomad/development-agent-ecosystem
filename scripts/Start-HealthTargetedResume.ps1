@@ -128,18 +128,7 @@ if ([string]$task.status -eq 'running' -and $task.PSObject.Properties['workflowP
 }
 $activeExecutionRunId = $ExecutionRunId
 $activeWorkspaceLeaseId = $WorkspaceLeaseId
-$activeRecoveryLease = $null
-if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
-    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
-    if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
-        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $activeRecoveryLease = @($coordinator.leases | Where-Object {
-            [string]$_.taskId -eq $TaskId -and
-            [string]$_.runId -eq $activeExecutionRunId -and
-            [string]$_.leaseId -eq $activeWorkspaceLeaseId
-        }) | Select-Object -First 1
-    }
-}
+$activeRecoveryLease = if ($activeExecutionRunId -and $activeWorkspaceLeaseId) { Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $config -ConfigPath $ConfigPath -CodexHome $CodexHome } else { $null }
 if (-not $activeRecoveryLease) {
     $activeExecutionRunId = $null
     $activeWorkspaceLeaseId = $null
@@ -196,7 +185,11 @@ if ($ElevatedApproved) { $workflowParameters.ElevatedApproved = $true }
 
 try {
     if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
-        & (Join-Path $PSScriptRoot 'Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $TaskId -RunId $activeExecutionRunId -LeaseId $activeWorkspaceLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        $refreshedLease = Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $config -ConfigPath $ConfigPath -CodexHome $CodexHome -RefreshHeartbeat
+        if (-not $refreshedLease) {
+            $workflowParameters.Remove('ExecutionRunId')
+            $workflowParameters.Remove('WorkspaceLeaseId')
+        }
     }
     & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
     $finalTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
