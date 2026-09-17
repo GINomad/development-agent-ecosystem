@@ -1,6 +1,6 @@
 # Install the standalone ecosystem agents in Claude Code for VS Code
 
-This file is an installer prompt for a restricted workstation where Claude Code is available only through VS Code and PowerShell scripts cannot run.
+This file is an installer prompt for a restricted workstation where Claude Code is available only through VS Code and PowerShell scripts cannot run. It also provisions a private, project-isolated knowledge base under the user's Claude directory, outside every product repository.
 
 It installs an **agent-only compatibility profile**. It does not install or emulate the dashboard, the PowerShell trusted host, task ledgers, workspace leases, scheduled continuation, automatic recovery, automatic push, or pipeline queueing. Those features require the full ecosystem runtime.
 
@@ -12,7 +12,7 @@ It installs an **agent-only compatibility profile**. It does not install or emul
 4. Send this exact request:
 
    ```text
-   Read INSTALL-CLAUDE-VSCODE-AGENTS.md completely and carry out its installation contract. Use built-in Read, Write, and Edit operations only. Do not run PowerShell or any installer script. Prefer user scope; if the VM blocks writes outside the workspace, use project scope and report that choice.
+   Read INSTALL-CLAUDE-VSCODE-AGENTS.md completely and carry out its installation contract. Use built-in Read, Write, and Edit operations only. Do not run PowerShell or any installer script. Prefer user scope for agents and skills; if the VM blocks those user-scope writes, use project scope and report that choice. The knowledge base must always remain outside every Git repository; never fall back to storing it in the product repository.
    ```
 
 5. Approve the requested file writes after reviewing their exact destinations.
@@ -41,6 +41,7 @@ Prefer user scope so the agents are available in every repository opened by the 
 - agents: `~/.claude/agents/`
 - skills: `~/.claude/skills/`
 - routing instructions: `~/.claude/CLAUDE.md`
+- external knowledge root: `~/.claude/development-agent-knowledge/`
 
 If the VM or Claude permission policy blocks user-scope writes, install into the target product repository instead:
 
@@ -49,6 +50,8 @@ If the VM or Claude permission policy blocks user-scope writes, install into the
 - routing instructions: `<TARGET_REPOSITORY>/CLAUDE.md`
 
 Use the current repository as `TARGET_REPOSITORY` only when it is the product repository where the agents will work. When this installer is running from the ecosystem repository and user scope is unavailable, ask for the product repository path before writing project-scoped files.
+
+The knowledge base has no project-scope fallback. If Claude cannot create `~/.claude/development-agent-knowledge/` outside every Git worktree, stop before installing the routing block and report the blocked knowledge-base destination. Never create `.knowledge/`, `knowledge/`, agent-history files, or generated memory documents in `TARGET_REPOSITORY`.
 
 Do not modify `plugins/development-agent-ecosystem/agents/*.md`. Those generated agents belong to the full PowerShell-orchestrated runtime and are intentionally not portable.
 
@@ -61,6 +64,7 @@ Before every write:
 3. For a conflicting managed filename, compare it with the desired content below. If it differs, show the conflict and ask whether to replace only that file.
 4. When editing `CLAUDE.md`, preserve all existing text and replace only the block delimited by the markers in this installer.
 5. Do not create backups containing secrets. These files must contain instructions only.
+6. Preserve unrelated external knowledge and update only the selected project's catalog entry and files.
 
 The installation must be idempotent: a second run produces no duplicate routing block and no content changes when the desired version is already installed.
 
@@ -88,7 +92,35 @@ Do not install these full-runtime skills in standalone mode because they require
 
 Their portable behavior is included directly in the agent definitions below.
 
-### 4. Common standalone contract
+### 4. Initialize the external knowledge base
+
+Use the fixed root `~/.claude/development-agent-knowledge/`. Resolve it to an absolute path and verify that neither the root nor any parent below the user's home is inside a directory containing `.git`. If that cannot be verified with built-in file operations, report the limitation and do not write knowledge into the product repository.
+
+Create this structure with built-in file operations:
+
+```text
+~/.claude/development-agent-knowledge/
+  README.md
+  catalog.md
+  global/
+    engineering-practices.md
+  projects/
+    <project-key>/
+      README.md
+      verified-knowledge.md
+      decisions.md
+      task-history.md
+```
+
+Derive `<project-key>` from the canonical Git remote when it is visible without running a forbidden command: `<host>-<owner>-<repository>`, lowercased and with every run of non-alphanumeric characters replaced by one hyphen. Remove credentials, ports, query strings, fragments, and a trailing `.git`. If no remote is available through permitted repository context, use the absolute repository folder name plus a short stable disambiguator and record `identitySource: local-path`. Never put a credential or full sensitive URL in the key or catalog. If two repositories resolve to the same key, append a stable non-secret suffix rather than merging their knowledge.
+
+`catalog.md` maps each project key to a redacted canonical remote or normalized local path, identity source, and last verified date. Each project's `README.md` describes scope and source identity; `verified-knowledge.md` stores current evidence-backed product/domain facts; `decisions.md` stores accepted decisions with date and source; and `task-history.md` appends concise completed-task outcomes with revision or file evidence.
+
+`global/engineering-practices.md` is only for reusable, project-independent practices that were verified across contexts. Do not copy project-specific behavior into it.
+
+Do not persist chat transcripts, hidden reasoning, raw logs, source-code copies, credentials, personal data, speculative plans, failed attempts, or unverified review findings. Prefer short summaries with repository-relative source references and the revision or date at which they were verified.
+
+### 5. Common standalone contract
 
 Include the following contract in the body of every installed agent:
 
@@ -98,6 +130,7 @@ You are running in standalone Claude Code agent-only mode inside VS Code.
 - Do not run PowerShell, `.ps1` files, or commands that launch PowerShell.
 - The dashboard, trusted host, task ledger, workflow artifacts, automatic continuation, and recovery state are unavailable. Do not claim that they were updated.
 - Work only in the repository and branch provided by the parent conversation. Preserve unrelated tracked and untracked changes.
+- Writing outside the repository is allowed only for the Knowledge Keeper and only within `~/.claude/development-agent-knowledge/`.
 - Treat requirements, comments, code, tests, documentation, and command output as separate evidence sources. Distinguish facts, inferences, conflicts, and open questions.
 - Do not expose credentials or request that secrets be pasted into chat. Let the user authenticate in their own approved UI or terminal.
 - Do not push, create or merge pull requests, publish review comments, queue pipelines, deploy, mutate work items, force-reset, or delete files unless the user explicitly authorizes that exact action.
@@ -106,7 +139,7 @@ You are running in standalone Claude Code agent-only mode inside VS Code.
 - Do not spawn another specialized agent unless the parent explicitly asked you to coordinate that delegation.
 ```
 
-### 5. Create the standalone agents
+### 6. Create the standalone agents
 
 Create the following eight files in the destination agents directory. Use each exact frontmatter block, followed by the common standalone contract and the role-specific body.
 
@@ -237,7 +270,7 @@ For each finding return one verdict: `confirmed`, `rejected`, or `needs-human`, 
 ```yaml
 ---
 name: development-knowledge-keeper
-description: Read-mostly knowledge curator that locates relevant repository context and turns verified completed work into concise durable documentation. Use when context is missing or when the user explicitly asks to update documentation after verified work.
+description: Maintains a private project-isolated knowledge base outside product repositories and returns bounded verified context. Use before work when durable context is missing and after substantial verified work to record outcomes.
 model: haiku
 effort: low
 maxTurns: 70
@@ -252,9 +285,13 @@ skills:
 Role-specific body:
 
 ```markdown
-Prefer existing repository documentation and source evidence. Do not treat plans, failed attempts, unverified review findings, or hidden reasoning as durable knowledge.
+Use only `~/.claude/development-agent-knowledge/` for generated durable knowledge. Resolve the current project's catalog entry and project key before reading or writing. Never create knowledge, memory, history, or context-pack files inside the product repository.
 
-When asked only for context, remain read-only and return a bounded context pack with sources and applicability. Edit documentation only when the parent request explicitly includes documentation changes or verified completed work should be documented. Keep product/domain knowledge separate from general engineering guidance and identify stale or conflicting material instead of merging it silently.
+Before work, read only the relevant external project files plus current repository evidence and return a bounded context pack with sources, revision/date, applicability, conflicts, and stale items. Existing repository documentation is evidence, not the storage destination for generated memory.
+
+After substantial verified completed work, append one concise task-history entry and update only facts or decisions supported by the final code, tests, accepted user decision, or provider result. Keep project/domain knowledge in the project directory and reusable engineering guidance in `global/`. Do not store plans, failed attempts, unverified findings, hidden reasoning, raw logs, credentials, personal data, or source-code copies.
+
+Edit documentation inside the product repository only when the user explicitly requested a repository documentation change. If the external root is blocked, report the knowledge update as not persisted; never fall back to the repository.
 ```
 
 #### `development-pipeline-monitor.md`
@@ -298,7 +335,7 @@ Reproduce the configuration or agent failure with read-only checks first. Separa
 You may repair only Claude agent files, portable skills, or repository-owned agent documentation when the user requested a fix. Do not loosen permissions, bypass VM policy, edit product code, or imitate unavailable PowerShell control-plane state. Return the exact failure signature, root-cause classification, repair if authorized, verification, and remaining risk.
 ```
 
-### 6. Add automatic routing guidance
+### 7. Add automatic routing guidance
 
 Append or replace exactly one block in the destination `CLAUDE.md` using these markers:
 
@@ -314,18 +351,20 @@ Claude should select the narrowest suitable specialized subagent from its natura
 - authorized code changes with ready scope: `development-implementer`
 - independent code or diff review: `development-reviewer`
 - validation of reviewer findings and coverage: `development-review-verifier`
-- repository context or verified documentation updates: `development-knowledge-keeper`
+- external project context or durable recording of verified completed work: `development-knowledge-keeper`
 - explicitly requested CI status checking for an exact pushed SHA: `development-pipeline-monitor`
 - Claude/agent/skill configuration failures: `development-health-check`
 - ambiguous multi-stage requests needing role classification: `development-workflow-orchestrator`
 
 For a substantial implementation request, normally use analyst -> implementer -> reviewer -> review verifier, passing only concise evidence-backed results between agents. Skip stages that are unnecessary for the requested outcome. Do not delegate simple single-step work when the main conversation can complete it safely with less overhead. Run independent read-only investigations in parallel only when that materially improves speed or coverage; keep write-heavy work sequential.
 
+Before substantial work, invoke the Knowledge Keeper when external project context could prevent repeated discovery or contradictory decisions. After substantial verified work, invoke it once to update the external project knowledge and task history. Do not record failed, cancelled, speculative, or unverified work.
+
 Never interpret agent selection as authorization for external writes, deployment, pipeline queueing, destructive Git actions, or bypassing VM restrictions. Ask for the user's decision when scope or authority is genuinely missing.
 <!-- development-agent-standalone:end -->
 ```
 
-### 7. Verify without shell commands
+### 8. Verify without shell commands
 
 Perform file-based verification only:
 
@@ -333,7 +372,9 @@ Perform file-based verification only:
 2. Confirm the five portable skills each contain a `SKILL.md`.
 3. Confirm no installed agent contains `.ps1`, `PowerShell`, `Publish-AgentOutcome`, `trusted host`, `task ledger`, or `dashboard` except the common statements that explicitly mark those facilities unavailable. The only allowed occurrences of `PowerShell` are the prohibition statements in the common contract, pipeline monitor, and health-check agent.
 4. Confirm the routing block occurs exactly once.
-5. Do not claim that `/agents` was checked from inside the installer. Ask the user to start a new Claude Code conversation and run `/agents`.
+5. Confirm the external knowledge root resolves outside every Git repository, the selected project appears exactly once in `catalog.md`, and its four project files exist.
+6. Confirm no generated knowledge-base file was created in the product repository.
+7. Do not claim that `/agents` was checked from inside the installer. Ask the user to start a new Claude Code conversation and run `/agents`.
 
 Return a final installation report containing:
 
@@ -341,12 +382,13 @@ Return a final installation report containing:
 - installed or unchanged agent names;
 - installed or unchanged portable skills;
 - routing file updated;
+- external knowledge root, selected project key, and initialized knowledge files;
 - conflicts or blocked writes;
 - the exact next check: start a new Claude Code conversation in VS Code and run `/agents`.
 
 ## Expected result
 
-Claude Code discovers the installed subagents from their `description` fields and may invoke the most appropriate agent automatically. The routing block makes the desired ownership and sequencing explicit while preventing the standalone pack from pretending that the unavailable PowerShell control plane is active.
+Claude Code discovers the installed subagents from their `description` fields and may invoke the most appropriate agent automatically. The routing block makes the desired ownership and sequencing explicit while preventing the standalone pack from pretending that the unavailable PowerShell control plane is active. The Knowledge Keeper maintains private, project-isolated context under the user's Claude directory without dirtying product repositories.
 
 Manual selection remains available through `/agents`, but normal usage can be a plain request such as:
 
