@@ -497,6 +497,19 @@
       "excludeAuthors": []
     },
     {
+      "id": "local-devextreme-grid-poc",
+      "enabled": true,
+      "provider": "local-git",
+      "repository": "devextreme-grid-poc",
+      "url": "C:/Users/okruk2/Documents/Codex/2026-09-17/g/outputs/devextreme-grid-poc",
+      "reviewer": "local-review",
+      "credentialProfile": "local-git",
+      "localWorkspace": "C:/Users/okruk2/Documents/Codex/2026-09-17/g/outputs/devextreme-grid-poc",
+      "allowedExecutionModes": ["local-poc-delivery", "research-only", "requirements-only", "review-only", "knowledge-only", "ecosystem-repair"],
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
       "id": "azure-planningspace-ps-excel-agent",
       "enabled": true,
       "provider": "azure-devops",
@@ -546,6 +559,7 @@
       "enabled": true,
       "repositoryIds": [
         "planning-space-excel-variable-poc",
+        "local-devextreme-grid-poc",
         "azure-planningspace-ps-excel-agent",
         "azure-planningspace-ps-bicep",
         "azure-palantirplugins-ps-app-delfi"
