@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][string] $Summary,
     [Nullable[int]] $ExitCode,
     [string] $Diagnostic,
+    [ValidatePattern('^[A-Za-z0-9._-]{8,128}$')][string] $CorrelationId,
     [string[]] $Evidence = @(),
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -24,10 +25,18 @@ $normalized = "$AgentId|$Stage|$($Summary.Trim())|$normalizedDiagnostic"
 $sha = [Security.Cryptography.SHA256]::Create()
 try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($normalized)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
 $failureId = [guid]::NewGuid().ToString('N')
+$occurrenceId = [guid]::NewGuid().ToString('N')
+$rootCauseText = (($Summary.Trim() + ' ' + $normalizedDiagnostic) -replace '(?i)Execution retry limit reached after \d+ identical failures:\s*','' -replace '(?i)Non-retryable command parse failure:\s*','' -replace '[0-9a-f]{32,64}','<id>' -replace '\b\d+\b','<n>' -replace '\s+',' ').Trim().ToLowerInvariant()
+$rootCauseSha = [Security.Cryptography.SHA256]::Create()
+try { $rootCauseFingerprint = ([BitConverter]::ToString($rootCauseSha.ComputeHash([Text.Encoding]::UTF8.GetBytes($rootCauseText)))).Replace('-','').ToLowerInvariant() } finally { $rootCauseSha.Dispose() }
+if (-not $CorrelationId) { $CorrelationId = "cause-$($rootCauseFingerprint.Substring(0,24))" }
 $occurredAtUtc = [DateTime]::UtcNow.ToString('o')
 $failure = [ordered]@{
     failureId = $failureId
+    occurrenceId = $occurrenceId
+    correlationId = $CorrelationId
     failureSignature = $signature
+    rootCauseFingerprint = $rootCauseFingerprint
     taskId = $TaskId
     agentId = $AgentId
     stage = $Stage

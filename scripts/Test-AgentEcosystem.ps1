@@ -10,6 +10,9 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
 $checks = [Collections.Generic.List[object]]::new()
+$null = New-Item -ItemType Directory -Path $OutputRoot -Force
+$null = & (Join-Path $PSScriptRoot 'Remove-StaleTestOutput.ps1') -OutputRoot (Split-Path -Parent $OutputRoot) -RetentionDays 14 -CurrentRunPath $OutputRoot
+Write-Utf8NoBom -Path (Join-Path $OutputRoot '.ecosystem-test-output.json') -Content (([ordered]@{ schemaVersion=1; kind='ecosystem-test-output'; createdAtUtc=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json -Compress) + [Environment]::NewLine)
 
 
 function Add-Check {
@@ -1520,7 +1523,7 @@ if ($continueChainScript -notmatch "PSObject\.Properties\['repositoryIds'\]" -or
 if ($healthPrompt -notmatch 'restart exactly the affected agentId' -or $taskProtocol -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Health Check prompt contract does not restrict post-repair execution to the affected agent.' }
 if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or $healthTargetedResumeScript -notmatch 'HealthRecoveryRetry = \$true' -or $healthTargetedResumeScript -notmatch 'maxAttemptsPerFailureSignature' -or $healthTargetedResumeScript -notmatch 'RecoveryEvidencePath') { throw 'Health Check targeted-resume launcher is missing its target, validation, or retry-loop guard.' }
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
-if ($healthRecoveryScript -notmatch 'Update-TaskWorkspaceLeaseHeartbeat\.ps1''.+-TaskId \$TaskId -RunId \$ExecutionRunId -LeaseId \$WorkspaceLeaseId' -or $healthRecoveryScript -notmatch '\$staleLease = \$_\.Exception\.Message -match ''Workspace coordinator state is missing\|is no longer owned by task\|state no longer matches workspace lease''' -or $healthRecoveryScript -notmatch 'if \(-not \$staleLease\) \{ throw \}') { throw 'Routed Health recovery can reuse a stale parent workspace lease instead of reacquiring the preserved task workspace.' }
+if ($healthRecoveryScript -notmatch 'Resolve-TaskWorkspaceLeaseContext.+-ExpectedRunId \$ExecutionRunId.+-ExpectedLeaseId \$WorkspaceLeaseId.+-RefreshHeartbeat' -or $healthRecoveryScript -match '\$staleLease = \$_\.Exception\.Message') { throw 'Routed Health recovery does not use the canonical atomic lease resolver before reusing a parent workspace lease.' }
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
 if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'agentFingerprints' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'" -or $workflowScript -notmatch 'Get-AgentResumePlan\.ps1.+-PreserveArtifactIndex') { throw 'Per-agent resume artifact fingerprinting, completed-outcome filtering, or non-consuming bookkeeping is incomplete.' }
 if ($publishOutcomeScript -notmatch 'Test-AgentOutcomeArtifact\.ps1' -or $developerPrompt -notmatch 'New-DeveloperPublicationEvidence\.ps1' -or $developerPrompt -notmatch 'publicationEvidenceId') { throw 'Developer final-command evidence generation or semantic outcome validation is not wired end to end.' }
@@ -1700,9 +1703,9 @@ Add-Check -Name 'health-dirty-baseline-preservation' -Detail "tracked and untrac
 $targetedResumeConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedResumeConfig.enabled -or -not [bool]$targetedResumeConfig.requireSuccessfulRepair -or [int]$targetedResumeConfig.maxAttemptsPerFailureSignature -ne 1) { throw 'Health Check targeted resume must require validated repair and permit exactly one attempt.' }
 $targetedResumeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-HealthTargetedResume.ps1') -Raw -Encoding UTF8
-if ($targetedResumeScript -notmatch 'activeRecoveryLease' -or $targetedResumeScript -notmatch '\$activeExecutionRunId = \$null' -or $targetedResumeScript -notmatch '\$activeWorkspaceLeaseId = \$null' -or $targetedResumeScript -notmatch "Update-TaskWorkspaceLeaseHeartbeat\.ps1'[\s\S]+Start-DevelopmentWorkflow\.ps1") { throw 'Health Check targeted resume does not reacquire a released workspace or refresh a retained lease immediately before dispatch.' }
+if ($targetedResumeScript -notmatch 'Resolve-TaskWorkspaceLeaseContext.+-ExpectedRunId \$activeExecutionRunId.+-ExpectedLeaseId \$activeWorkspaceLeaseId' -or $targetedResumeScript -notmatch '\$activeExecutionRunId = \$null' -or $targetedResumeScript -notmatch '\$activeWorkspaceLeaseId = \$null' -or $targetedResumeScript -notmatch 'Resolve-TaskWorkspaceLeaseContext.+-RefreshHeartbeat') { throw 'Health Check targeted resume does not use the canonical lease resolver to reacquire or refresh before dispatch.' }
 if (@($targetedResumeConfig.allowedAgentIds) -contains 'health_check' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'requirements_analyst' -or @($targetedResumeConfig.allowedAgentIds) -notcontains 'developer') { throw 'Health Check targeted resume allowlist is unsafe or incomplete.' }
-foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Save-EcosystemRecoveryBaseline.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1')) {
+foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailure.ps1','Save-EcosystemRecoveryBaseline.ps1','Start-AgentHealthRecovery.ps1','Start-HealthTargetedResume.ps1','Invoke-GuardedCodex.ps1','Get-ReviewVerificationInput.ps1','Test-WorkflowDispatchContract.ps1','Remove-StaleTestOutput.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$healthScript") -PathType Leaf)) { throw "Health recovery script is missing: $healthScript" }
 }
 Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); ecosystemWrites=$($config.health.automaticRecovery.allowEcosystemSourceChanges); preservationCommit=$($config.health.automaticRecovery.preserveDirtyWorktreeChanges); repairCommit=$($config.health.automaticRecovery.commitVerifiedRepairs); exactOriginPush=$($config.health.automaticRecovery.pushVerifiedRepairs); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; elevated=standing-default; productWrites=false; modelExternalWrites=false"
@@ -1853,6 +1856,9 @@ Add-Check -Name 'dashboard-review-decision-api' -Detail 'Isolated HTTP approval,
 & node --test (Join-Path $root 'tests\dashboard-review-decision.test.js') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Dashboard review decision UI regression tests failed.' }
 Add-Check -Name 'dashboard-review-decision-ui' -Detail 'Actual client action functions send exact approval identity and report dispatch results truthfully'
+
+& (Join-Path $root 'tests\Test-SystemicFailureHardening.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'systemic-failure-hardening') -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'systemic-failure-hardening' -Detail 'Typed review inspection, root-cause correlation, dispatch contracts, and marker-only test retention'
 
 & (Join-Path $root 'tests\Test-McpResilience.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 Add-Check -Name 'mcp-resilience' -Detail 'Session integrity, task isolation, quotas, metrics, and circuit canary behavior'

@@ -415,6 +415,39 @@ function New-WorkspaceLeaseHeartbeatAction {
     }.GetNewClosure()
 }
 
+function Resolve-TaskWorkspaceLeaseContext {
+    param(
+        [Parameter(Mandatory)][string] $TaskId,
+        [string] $ExpectedRunId,
+        [string] $ExpectedLeaseId,
+        [Parameter(Mandatory)] $Config,
+        [string] $ConfigPath = (Join-Path (Get-EcosystemRoot) 'config\agents.json'),
+        [string] $CodexHome,
+        [switch] $RefreshHeartbeat
+    )
+    if ([bool]$ExpectedRunId -xor [bool]$ExpectedLeaseId) { throw 'ExpectedRunId and ExpectedLeaseId must be supplied together.' }
+    $stateRoot = Get-EcosystemStateRoot -Config $Config -CodexHome $CodexHome
+    $taskPath = Join-Path $stateRoot "tasks\$TaskId\task.json"
+    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$Config.workflow.workspaceScheduling.coordinatorStatePath) -Config $Config -CodexHome $CodexHome
+    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf) -or -not (Test-Path -LiteralPath $coordinatorPath -PathType Leaf)) { return $null }
+    $lease = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$Config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+        $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $matches = @($coordinator.leases | Where-Object {
+            [string]$_.taskId -eq $TaskId -and [string]$_.lifecycle -eq 'active' -and
+            (-not $ExpectedRunId -or ([string]$_.runId -eq $ExpectedRunId -and [string]$_.leaseId -eq $ExpectedLeaseId))
+        })
+        if ($matches.Count -ne 1) { return $null }
+        $candidate = $matches[0]
+        if ([string]$task.executionRunId -ne [string]$candidate.runId -or [string]$task.workspaceLeaseId -ne [string]$candidate.leaseId) { return $null }
+        return $candidate
+    }
+    if ($lease -and $RefreshHeartbeat) {
+        & (Join-Path (Get-EcosystemRoot) 'scripts\Update-TaskWorkspaceLeaseHeartbeat.ps1') -TaskId $TaskId -RunId ([string]$lease.runId) -LeaseId ([string]$lease.leaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+    return $lease
+}
+
 function New-TaskBranchName {
     param(
         [Parameter(Mandatory)][string] $TaskName,
@@ -475,4 +508,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
