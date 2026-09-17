@@ -177,6 +177,28 @@ function Assert-TaskControllerIsIdle {
     $activeLease = @($coordinator.leases | Where-Object { [string]$_.taskId -eq [string]$Task.taskId } | Select-Object -First 1)
     if ($activeLease.Count) { throw "Task '$([string]$Task.taskId)' still has an active workspace lease. Stop or finish it before starting a different controller." }
 }
+function Start-TargetedAgentResume {
+    param(
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $AgentId,
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)][string] $Instruction
+    )
+
+    Assert-TaskControllerIsIdle -Task $Task
+    $repositoryIds = @(Get-RequestedRepositoryIds -Source $Task -Required)
+    $parameters = @{
+        Mode=[string]$Task.mode; TaskSelector=[string]$Task.selector; TaskId=$TaskId
+        RepositoryIds=$repositoryIds; TargetAgentId=$AgentId
+        UserInstruction=$Instruction
+        Resume=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+    }
+    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $TaskId -Parameters $parameters
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$AgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$AgentId'." -TargetAgentId $AgentId -Artifact (Join-Path $stateRoot "tasks\$TaskId\task.json") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    $executionMode = if ([bool]$config.runtime.elevatedFallback.useByDefault) { 'elevated-approved' } else { 'sandboxed' }
+    return [pscustomobject][ordered]@{ status='scheduled'; taskId=$TaskId; agentId=$AgentId; processId=$PID; runId=$run.runId; executionMode=$executionMode; pendingAgents=@($AgentId); message="Only '$AgentId' was scheduled; it will run when this task owns the workspace lease." }
+}
 function Stop-TaskScriptRunspaces {
     param([Parameter(Mandatory)][string] $TaskId)
     $stoppedRunIds = [Collections.Generic.List[string]]::new()
@@ -505,6 +527,62 @@ try {
                     $pendingAgents = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
                     $startMessage = if ($resume) { "Checkpoint resume started only for: $($pendingAgents -join ', ')." } else { 'Workflow started in a tracked in-process runspace.' }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$resolvedTaskId; resumed=$resume; processId=$processId; runId=$run.runId; executionMode=if ($elevatedRequested) { 'elevated-approved' } else { 'sandboxed' }; launchStrategy='in-process-runspace'; repositories=@($repositoryIds); pendingAgents=$pendingAgents; message=$startMessage }
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/review-decisions$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    $findingId = [string](Get-ObjectPropertyValue -Source $body -Name 'findingId')
+                    $decision = [string](Get-ObjectPropertyValue -Source $body -Name 'decision')
+                    $note = [string](Get-ObjectPropertyValue -Source $body -Name 'note')
+                    $expectedReviewedRevision = [string](Get-ObjectPropertyValue -Source $body -Name 'expectedReviewedRevision')
+                    $expectedReviewArtifactSha256 = [string](Get-ObjectPropertyValue -Source $body -Name 'expectedReviewArtifactSha256')
+                    if ($decision -notin @('approved','resume')) { throw 'Dashboard action is not supported.' }
+                    if ($findingId -notmatch '^REV-[0-9]{3,}$') { throw 'Reviewer finding ID is invalid.' }
+                    if ([string]::IsNullOrWhiteSpace($expectedReviewedRevision) -or $expectedReviewArtifactSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'The reviewed revision and exact review artifact SHA-256 are required. Refresh and retry.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
+                    $taskRoot = Join-Path $stateRoot "tasks\$requestedTaskId"
+                    $reviewPath = Join-Path $taskRoot 'review-result.json'
+                    if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Review artifact was not found.' }
+                    $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $actualReviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
+                    if ([string]$review.reviewedRevision -ne $expectedReviewedRevision -or $actualReviewArtifactSha256 -ne $expectedReviewArtifactSha256.ToLowerInvariant()) { throw 'The review changed after this dashboard view was loaded. Refresh and retry.' }
+                    if (-not @($review.findings | Where-Object { [string]$_.id -eq $findingId }).Count) { throw 'Only a current product review finding can be approved for Developer.' }
+                    $verificationPath = Join-Path $taskRoot 'review-verification.json'
+                    if (-not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) { throw 'Independent review verification is required.' }
+                    $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $requestedTaskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
+                    $findingVerification = @($verification.findingVerifications | Where-Object { [string]$_.findingId -eq $findingId } | Select-Object -First 1)
+                    if ([string]$verification.verificationStatus -ne 'passed' -or [string]$verification.reviewArtifactSha256 -ne $actualReviewArtifactSha256 -or -not $findingVerification -or [string]$findingVerification.verdict -notin @('confirmed','needs-human')) { throw 'The current verifier result does not permit Developer approval or retry.' }
+                    if ($decision -eq 'approved') {
+                        $recordedDecision = & (Join-Path $PSScriptRoot 'Set-ReviewDecision.ps1') -TaskId $requestedTaskId -FindingId $findingId -Decision approved -DecidedBy user -Note $note -ExpectedReviewedRevision $expectedReviewedRevision -ExpectedReviewArtifactSha256 $actualReviewArtifactSha256 -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    }
+                    else {
+                        $decisionsPath = Join-Path $taskRoot 'review-decisions.json'
+                        $decisions = if (Test-Path -LiteralPath $decisionsPath) { @((Get-Content -LiteralPath $decisionsPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } else { @() }
+                        $recordedDecision = @($decisions | Where-Object { [string]$_.findingId -eq $findingId -and [string]$_.reviewedRevision -eq $expectedReviewedRevision -and [string]$_.reviewArtifactSha256 -eq $actualReviewArtifactSha256 } | Select-Object -Last 1)
+                        if (-not $recordedDecision.Count -or [string]$recordedDecision[0].decision -ne 'approved') { throw 'A current formal approval is required before Developer can be restarted.' }
+                        $recordedDecision = $recordedDecision[0]
+                    }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    if (Test-TaskWorkflowActive -Task $persistedTask) {
+                        $dispatch = [pscustomobject][ordered]@{ status='queued-for-checkpoint'; agentId='developer'; reason='The approval was recorded for this exact review artifact. The active workflow will consume it at the next checkpoint; no duplicate restart was created.' }
+                    }
+                    elseif ([bool]$config.runtime.elevatedFallback.requiresDashboardApproval) {
+                        $dispatch = [pscustomobject][ordered]@{ status='approval-required'; agentId='developer'; reason='The approval was recorded, but this execution policy requires separate dashboard approval before Developer can start.' }
+                    }
+                    else {
+                        try {
+                            $dispatch = Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId developer -Task $persistedTask -Instruction "Process the explicit approved review finding '$findingId' bound to review revision '$expectedReviewedRevision' and artifact SHA-256 '$actualReviewArtifactSha256'."
+                        }
+                        catch {
+                            $dispatch = [pscustomobject][ordered]@{ status='failed'; agentId='developer'; reason="Approval is saved, but Developer could not be scheduled: $($_.Exception.Message) Refresh the task and retry Start Developer for approved fix." }
+                        }
+                    }
+                    Send-Json -Response $response -Value @{ status='approved'; taskId=$requestedTaskId; decision=$recordedDecision; dispatch=$dispatch; message='The formal decision was recorded against the exact current review artifact.' }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/comments$') {
