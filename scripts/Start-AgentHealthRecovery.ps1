@@ -272,9 +272,17 @@ $logPath = Join-Path $taskRoot 'health-recovery-codex.jsonl'
 $resultPath = Join-Path $taskRoot 'health-recovery-result.json'
 $guardArtifactPath = Join-Path $taskRoot 'health-recovery-execution-guard.json'
 $schemaPath = Join-Path (Get-EcosystemRoot) 'config\schemas\health-recovery-result.schema.json'
+$healthAgentDefinitions = @($config.agents | Where-Object { [string]$_.id -eq 'health_check' })
+if ($healthAgentDefinitions.Count -ne 1) { throw 'Exactly one Health Check agent definition is required.' }
+$healthAgentDefinition = $healthAgentDefinitions[0]
+if ([string]::IsNullOrWhiteSpace([string]$healthAgentDefinition.model) -or [string]::IsNullOrWhiteSpace([string]$healthAgentDefinition.reasoningEffort)) {
+    throw 'Health Check model and reasoning effort must be configured explicitly.'
+}
 $arguments = @(
     '-a', $recoveryApprovalPolicy,
     '--config', 'notify=[]',
+    '--model', [string]$healthAgentDefinition.model,
+    '--config', ('model_reasoning_effort="{0}"' -f [string]$healthAgentDefinition.reasoningEffort),
     'exec',
     '-C', $workspace,
     '-s', $recoverySandboxMode,
@@ -289,7 +297,12 @@ try {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     if ($SuppressExternalDelivery -or [string]$env:ECOSYSTEM_MCP_DISABLED -eq 'true') {
-        try { $inventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $inventory){throw 'empty inventory'};$inventory=$inventory|ConvertFrom-Json;$servers=if($inventory.PSObject.Properties['servers']){@($inventory.servers)}else{@($inventory)};foreach($entry in $servers){$name=if($entry -is [string]){[string]$entry}else{[string]$entry.name};if($name -notmatch '^[A-Za-z0-9_-]+$'){throw 'unsafe server name'};$arguments=@($arguments[0..3]+@('--config',('mcp_servers.{0}.enabled=false' -f $name))+$arguments[4..($arguments.Count-1)])}} catch { throw 'MCP inventory cannot be verified for disabled recovery; repair agent was not started.' }
+        # Ignore user configuration as a whole: dotted enabled=false overrides can
+        # replace a server transport table with an invalid partial table in the CLI.
+        # Preserve the configured Health Check model through explicit arguments above.
+        $execIndex = [Array]::IndexOf($arguments, 'exec')
+        if ($execIndex -lt 0) { throw 'Recovery arguments are missing the exec command.' }
+        $arguments = @($arguments[0..$execIndex] + @('--ignore-user-config') + $arguments[($execIndex + 1)..($arguments.Count - 1)])
     }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
