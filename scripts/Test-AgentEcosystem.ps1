@@ -351,6 +351,16 @@ foreach ($marker in @('Operation','Target','ProgressPercent','NextAction','Evide
 }
 if ($taskProtocol -notmatch 'before and after each material inspection group' -or $taskProtocol -notmatch 'Never expose hidden reasoning') { throw 'Every agent must publish bounded factual operational progress without hidden reasoning or secrets.' }
 Add-Check -Name 'detailed-agent-activity' -Detail 'Every role has a structured, redacted operational log contract and the dashboard renders it'
+$requirementsInterventionPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
+if (
+    $taskProtocol -notmatch 'Use the same language as the latest user request' -or
+    $taskProtocol -notmatch 'no more than three distinct choices' -or
+    $taskProtocol -notmatch 'Keep internal implementation evidence out of the main question' -or
+    $taskProtocol -notmatch 'what the agent will do after that choice' -or
+    $requirementsInterventionPrompt -notmatch 'describe the missing product decision before the repository or workflow evidence' -or
+    $requirementsInterventionPrompt -notmatch 'Put commit hashes, clone details, source revisions, agent names'
+) { throw 'Human-intervention guidance is not plain-language, action-oriented, or specialized for Requirements Analyst.' }
+Add-Check -Name 'plain-language-human-intervention' -Detail 'Every role shares a concise user-language intervention contract, with extra Requirements Analyst guidance that keeps diagnostics out of the decision text'
 $activityFixtureRoot = Join-Path $OutputRoot 'detailed-agent-activity'
 $activityFixtureConfigPath = Join-Path $activityFixtureRoot 'agents.json'
 $activityFixtureConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -465,7 +475,9 @@ if (
     [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.reason) -or
     [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.recommendedOption) -or
     [string]::IsNullOrWhiteSpace([string]$activeQuestionEvent.humanIntervention.recommendationRationale) -or
-    [string]$activeQuestionEvent.summary -notmatch 'Why human intervention is required:'
+    [string]$activeQuestionEvent.summary -notmatch 'Your decision:' -or
+    [string]$activeQuestionEvent.summary -notmatch 'Why work is paused:' -or
+    [string]$activeQuestionEvent.summary -notmatch 'Recommended choice:'
 ) { throw 'A waiting outcome did not expose a reason, options, recommendation, and recommendation rationale.' }
 Add-Check -Name 'stale-question-reconciliation' -Detail 'Successful targeted restart supersedes obsolete questions while an active waiting_for_input gate remains visible'
 

@@ -42,15 +42,15 @@ $humanIntervention = [pscustomobject][ordered]@{
     recommendationRationale = $recommendationRationaleText
 }
 $summaryLines = @(
-    ('Action required: {0}' -f $questionText)
-    ('Why human intervention is required: {0}' -f $reasonText)
-    'Options:'
+    ('Your decision: {0}' -f $questionText)
+    ('Why work is paused: {0}' -f $reasonText)
+    'Choices:'
 )
 for ($index = 0; $index -lt $optionTexts.Count; $index++) {
     $summaryLines += ('{0}. {1}' -f ($index + 1), $optionTexts[$index])
 }
-$summaryLines += ('Recommended option: {0}' -f $recommendedOptionText)
-$summaryLines += ('Why this option: {0}' -f $recommendationRationaleText)
+$summaryLines += ('Recommended choice: {0}' -f $recommendedOptionText)
+$summaryLines += ('Why I recommend it: {0}' -f $recommendationRationaleText)
 $summary = $summaryLines -join [Environment]::NewLine
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type 'question-opened' -Summary $summary -Evidence $Evidence -HumanIntervention $humanIntervention -ConfigPath $ConfigPath -CodexHome $CodexHome
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status waiting_for_input -AgentId $AgentId -AgentStatus waiting -Stage $Stage -Message $summary -Actor $AgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
