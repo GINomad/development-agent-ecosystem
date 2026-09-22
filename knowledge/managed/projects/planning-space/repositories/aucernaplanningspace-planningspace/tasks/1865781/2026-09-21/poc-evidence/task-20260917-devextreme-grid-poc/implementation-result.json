@@ -1,0 +1,157 @@
+{
+  "taskId": "task-20260917-devextreme-grid-poc",
+  "status": "implemented",
+  "repositoryId": "local-devextreme-grid-poc",
+  "branch": "features/devextreme-angular-grid-variable-drag-and-drop-poc",
+  "commit": "fa96ce6dd400893bf3c14d30f46951f283024f17",
+  "commitState": "clean worktree; branch is 8 local commits ahead and 0 behind origin/main",
+  "currentRunOutcome": "fact: approved REV-010 is implemented in local commit fa96ce6dd400893bf3c14d30f46951f283024f17 without a push. fact: the Variant B production work-session procedure now explicitly builds Release output before invoking the Release --no-build launch. fact: the exact documented Release build passed with 0 warnings and 0 errors, and the subsequent Release --no-build host started in Production and served /spreadsheet with HTTP 200. fact: the correction changes only variant-b-spreadsheet/README.md, preserving all product behavior, resolved REV-007 through REV-009, and bypassed TD-REV-002.",
+  "requirementIds": ["REQ-007", "REQ-009", "REQ-010", "REQ-015", "REQ-017", "REQ-019", "REQ-020", "REQ-021"],
+  "heldRequirementIds": [],
+  "approvedReviewFixes": [
+    {
+      "findingId": "REV-007",
+      "decision": "approved",
+      "reviewedRevision": "9d7b75146161d3c5c3c8d2384513dc00c1ca6ad9",
+      "reviewArtifactSha256": "f9281d84fa92df8af6a3f1fa179a03167e467f177bffeeda6a572052ce30d0ef",
+      "result": "implemented",
+      "evidence": "fact: variable-drop.js has no active-cell-relative search radius; the adapter captures the original selection, activates the actual drop surface, reads the resulting public active cell, and validates its public bounds. fact: the regression retains the original active cell near the origin while resolving row 250, column 40 and verifies the request keeps the original selection. fact: the production Edge work session exercised the surface activation against the genuine DevExpress client."
+    },
+    {
+      "findingId": "REV-008",
+      "decision": "approved",
+      "reviewedRevision": "9d7b75146161d3c5c3c8d2384513dc00c1ca6ad9",
+      "reviewArtifactSha256": "f9281d84fa92df8af6a3f1fa179a03167e467f177bffeeda6a572052ce30d0ef",
+      "result": "implemented",
+      "evidence": "fact: grid-import.ts inspects every populated cell after the row bound and rejects any column index above seven. fact: grid-import.spec.ts covers both an eighth header and an eighth data cell."
+    },
+    {
+      "findingId": "REV-009",
+      "decision": "approved",
+      "reviewedRevision": "9d7b75146161d3c5c3c8d2384513dc00c1ca6ad9",
+      "reviewArtifactSha256": "f9281d84fa92df8af6a3f1fa179a03167e467f177bffeeda6a572052ce30d0ef",
+      "result": "implemented",
+      "evidence": "fact: the Release host ran with ASPNETCORE_ENVIRONMENT Production and Edge 153 created a real DevExpress work session. fact: the browser downloaded the session workbook, uploaded it through /spreadsheet/upload, committed a native Spreadsheet B2 edit, posted a Batch size drop through the production adapter and /spreadsheet/drop, downloaded through /spreadsheet/download, and ExcelJS reopened the resulting package with B2='Native production edit' and numeric C3=42. fact: variant-b-spreadsheet/README.md documents the reproducible production-session procedure and explicitly distinguishes it from the lower-level package test."
+    },
+    {
+      "findingId": "REV-010",
+      "decision": "approved",
+      "reviewedRevision": "bf6c74b1958a60c49b3fdd85388e3f9dd9c8be51",
+      "reviewArtifactSha256": "2176dd4c5d06cdfcbd8d4e7a79a79311501c427a0d5513ee0106b7298253cd60",
+      "result": "implemented",
+      "evidence": "fact: variant-b-spreadsheet/README.md now makes the production work-session launch self-contained by explicitly running dotnet build DevExpressSpreadsheetPoc.csproj -c Release --no-restore before dotnet run -c Release --no-build. fact: the build passed with 0 warnings and 0 errors, and the no-build host started in Production and served /spreadsheet with HTTP 200."
+    }
+  ],
+  "bypassedReviewFindings": [
+    {
+      "findingId": "REV-002",
+      "decision": "bypassed",
+      "techDebtItemId": "TD-REV-002",
+      "result": "preserved",
+      "evidence": "fact: the task-local cosmetic member-ordering bypass remains unchanged; no standalone reordering cycle was performed."
+    }
+  ],
+  "changedFiles": [
+    "src/app/grid-import.spec.ts",
+    "src/app/grid-import.ts",
+    "variant-b-spreadsheet/DevExpressSpreadsheetPoc/wwwroot/js/variable-drop.js",
+    "variant-b-spreadsheet/DevExpressSpreadsheetPoc/wwwroot/js/variable-drop.spec.js",
+    "variant-b-spreadsheet/README.md"
+  ],
+  "behavior": [
+    "Spreadsheet pointer mapping has no fixed active-cell distance: it resolves the visible dropped-on cell through standard surface activation, public selection, and public page-relative bounds.",
+    "The original Spreadsheet selection is captured before pointer activation so an inside-selection drop still sends the original inclusive rectangle while an outside drop sends the pointer cell.",
+    "A drop that does not activate a cell whose public bounds contain the pointer remains ignored, preventing header, ribbon, or scrollbar drops from reusing a stale active cell.",
+    "DataGrid XLSX import rejects any populated header or data cell beyond column seven before replacing grid rows.",
+    "Variant B documentation now gives a reproducible production work-session roundtrip that covers upload, native synchronization, variable drop, live SaveCopy/download, and XLSX reopen.",
+    "The Variant B production roundtrip explicitly creates Release output before its Release --no-build launch, making the fresh-checkout procedure self-contained.",
+    "The prior Angular zone.js/development configuration and Spreadsheet dynamic OnInit import remain unchanged from reviewed revision 9d7b751."
+  ],
+  "tests": [
+    {
+      "command": "npm test",
+      "result": "passed 37/37",
+      "evidence": "fact: exact-commit execution at bf6c74b reported 5 passed files and 37/37 tests, including the far visible Spreadsheet pointer regression, original-selection preservation, and eighth-column header/data rejections."
+    },
+    {
+      "command": "dotnet test variant-b-spreadsheet\\DevExpressSpreadsheetPoc.Tests\\DevExpressSpreadsheetPoc.Tests.csproj -c Release --no-restore",
+      "result": "passed 17/17",
+      "evidence": "fact: exact-commit Release execution at bf6c74b reported 17/17 tests passing."
+    },
+    {
+      "command": "npm run build",
+      "result": "passed",
+      "evidence": "fact: the exact-commit Angular production build passed; the pre-existing initial-bundle budget and CommonJS dependency warnings remain disclosed."
+    },
+    {
+      "command": "dotnet build variant-b-spreadsheet\\DevExpressSpreadsheetPoc\\DevExpressSpreadsheetPoc.csproj -c Release --no-restore",
+      "result": "passed",
+      "evidence": "fact: the ASP.NET Core Release build succeeded with 0 warnings and 0 errors after the README correction, using the exact prerequisite now documented."
+    },
+    {
+      "command": "dotnet run -c Release --no-build --urls http://127.0.0.1:5099; GET /spreadsheet",
+      "result": "passed: Production host started and returned HTTP 200",
+      "evidence": "fact: after the documented Release build, the documented no-build command started the host in Production on 127.0.0.1:5099 and /spreadsheet returned HTTP 200 with Spreadsheet content."
+    },
+    {
+      "command": "dotnet format variant-b-spreadsheet\\DevExpressSpreadsheetPoc.Tests\\DevExpressSpreadsheetPoc.Tests.csproj --no-restore --verify-no-changes",
+      "result": "passed",
+      "evidence": "fact: exact-commit .NET formatting verification returned success without changes."
+    },
+    {
+      "command": "node .tmp-live-roundtrip.mjs (temporary bounded CDP verification driver removed after execution)",
+      "result": "passed real production-session XLSX roundtrip",
+      "evidence": "fact: Edge 153 against the Release/Production host downloaded and re-uploaded the live XLSX, committed a native B2 edit, applied a production-adapter drop to C3, downloaded the live session, and reopened the package with B2='Native production edit' and C3=42. The retained XLSX inputs/outputs are under the task-state live-roundtrip-downloads directory, outside the product repository."
+    },
+    {
+      "command": "git diff --check and bounded credential assignment scan",
+      "result": "passed",
+      "evidence": "fact: no whitespace error or assignment-like credential, license-key, or private-key material was found outside excluded dependencies and generated output on the exact commit."
+    },
+    {
+      "command": "git rev-list --left-right --count origin/main...HEAD",
+      "result": "passed: 0 behind and 8 ahead; clean worktree",
+      "evidence": "fact: developer-publication-evidence.json records a clean worktree at fa96ce6dd400893bf3c14d30f46951f283024f17 and branch divergence of 0 behind and 8 ahead of origin/main.",
+      "publicationEvidenceId": "git-branch-divergence"
+    }
+  ],
+  "engineeringSkillChecks": [
+    {
+      "skill": "implement-approved-plan",
+      "result": "passed",
+      "evidence": "fact: DEV-015 maps the README-only correction to ready REQ-009 and REQ-010 and applies only REV-010 after its confirmed verification and persisted approved decision."
+    },
+    {
+      "skill": "apply-engineering-principles",
+      "result": "passed",
+      "evidence": "fact: the correction adds one explicit prerequisite to the existing procedure, changes no product code or dependency, and introduces no abstraction or unrelated cleanup."
+    },
+    {
+      "skill": "develop-dotnet",
+      "result": "passed",
+      "evidence": "fact: no .NET product code required modification; the retained production session path passed 17/17 tests, formatting verification, a warning-free Release build, and the real work-session roundtrip."
+    },
+    {
+      "skill": "develop-javascript-typescript",
+      "result": "passed",
+      "evidence": "fact: asynchronous fetch ownership remains explicit, pointer activation is injected for focused testing, strict TypeScript import parsing remains intact, 37/37 tests passed, and the production build succeeded."
+    },
+    {
+      "skill": "develop-react",
+      "result": "not-applicable",
+      "evidence": "fact: the repository uses Angular, browser JavaScript, Razor, and C# and contains no React component or Hook."
+    },
+    {
+      "skill": "computer-use",
+      "result": "fallback-used",
+      "evidence": "fact: the skill-required node_repl/@oai/sky callable was unavailable in this execution context, so the same local Edge browser was driven through its bounded DevTools protocol for the authorized production-session verification; no third-party transmission occurred."
+    }
+  ],
+  "residualRisks": [
+    "fact: the Angular build retains the pre-existing initial-bundle budget and CommonJS dependency warnings.",
+    "inference: standard synthetic mouse activation is accepted by the tested DevExpress 24.2.5 client and succeeded in the production-session verification; a future DevExpress client that ignores untrusted surface events would require a vendor-supported point-to-cell API when one becomes available.",
+    "fact: the production-session verification used local Edge 153 in headless mode against the Release/Production host and did not test another browser engine.",
+    "fact: task-local bypassed cosmetic debt TD-REV-002 remains open by explicit human decision."
+  ],
+  "summary": "fact: approved REV-010 is corrected in README-only local commit fa96ce6dd400893bf3c14d30f46951f283024f17 on a clean branch 8 ahead and 0 behind origin/main. fact: the exact documented Release build passed with 0 warnings and 0 errors, and the Release --no-build host started in Production and served /spreadsheet with HTTP 200. fact: resolved REV-007 through REV-009 and bypassed TD-REV-002 remain preserved. fact: no push, PR, pipeline, PlanningSpace write, credential copy, or license-material copy occurred."
+}

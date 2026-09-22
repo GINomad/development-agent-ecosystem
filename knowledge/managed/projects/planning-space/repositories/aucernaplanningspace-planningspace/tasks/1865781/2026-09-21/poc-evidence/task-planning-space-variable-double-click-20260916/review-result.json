@@ -1,0 +1,362 @@
+{
+  "taskId": "task-planning-space-variable-double-click-20260916",
+  "reviewedRevision": "ceecc01cb0fc4a32542d817154c4693289c3cfdb",
+  "requirementsRevision": "9a1ff7f8e909bbf58a5acade26e07fc9563a543350800da8ca52d30ca848496a",
+  "requirementTraceability": [
+    {
+      "requirementId": "R1",
+      "requirementText": "[fact] A single left click on a task-pane variable must select and activate that variable without inserting any value into Excel.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 19,
+          "endLine": 26,
+          "symbol": "variable button event bindings",
+          "evidence": "[fact] The native variable button binds click only to activate(variable), while insertion is bound separately to dblclick."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.ts",
+          "startLine": 20,
+          "endLine": 28,
+          "symbol": "App.activate",
+          "evidence": "[fact] activate updates the shared active variable, aria-state signal, and status without calling ExcelInsertionService."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/app/app.spec.ts:32-48 clicks Variable-02 and asserts no insertion call, the active store identifier, aria-pressed=true, and activation feedback.",
+        "[fact] implementation-result.json records the focused App tests and the complete 17/17 unit suite as passed at ceecc01cb0fc4a32542d817154c4693289c3cfdb."
+      ],
+      "notes": "[fact] Static review confirms single-click activation is synchronous and insertion-free."
+    },
+    {
+      "requirementId": "R2",
+      "requirementText": "[fact] A double click on a task-pane variable must insert the active variable value into the current Excel selection exactly once.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 25,
+          "endLine": 26,
+          "symbol": "variable button event bindings",
+          "evidence": "[fact] A double-click invokes insertActive once through the single dblclick binding, after the browser click events activate the variable."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.ts",
+          "startLine": 30,
+          "endLine": 49,
+          "symbol": "App.insertActive",
+          "evidence": "[fact] insertActive snapshots mockVariableStore.active and makes one awaited insertionService.insert call with its value."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/app/app.spec.ts:50-65 activates Variable-02, dispatches dblclick, and asserts one insertion call with Variable-02's value plus success feedback.",
+        "[fact] implementation-result.json records the focused App tests and complete 17/17 unit suite as passed."
+      ],
+      "notes": "[fact] The busy guard prevents a second insertion while the first request is pending."
+    },
+    {
+      "requirementId": "R3",
+      "requirementText": "[fact] The Excel cell context-menu command must continue inserting the active variable value.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/office/commands.ts",
+          "startLine": 10,
+          "endLine": 20,
+          "symbol": "insertSelectedVariableCommand",
+          "evidence": "[fact] The unchanged command awaits insertion of mockVariableStore.active.value and completes the Office event in finally."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/office/commands.spec.ts:9-29 asserts the active value, exactly-one insertion, and exactly-one completion on success and failure.",
+        "[fact] implementation-result.json records the full 17/17 unit suite as passed."
+      ],
+      "notes": "[fact] git diff origin/main...ceecc01 shows no change to the command implementation or its tests."
+    },
+    {
+      "requirementId": "R4",
+      "requirementText": "[fact] Insertion must continue filling every cell in both contiguous and discontiguous selected Excel ranges.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/office/excel-insertion.service.ts",
+          "startLine": 17,
+          "endLine": 38,
+          "symbol": "insertIntoSelectedRanges",
+          "evidence": "[fact] The unchanged service loads all selected range areas, assigns a complete value matrix to each area, and reports area and cell totals."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/office/excel-insertion.service.spec.ts:38-80 covers contiguous, one-cell, and discontiguous selections and their reported counts.",
+        "[fact] implementation-result.json records the full 17/17 unit suite as passed."
+      ],
+      "notes": "[fact] The interaction change reuses the existing insertion service without modifying its multi-range behavior."
+    },
+    {
+      "requirementId": "R5",
+      "requirementText": "[fact] The changed interaction must preserve accessible task-pane controls, active-state announcement, status feedback, and a keyboard-accessible insertion alternative.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 19,
+          "endLine": 38,
+          "symbol": "variable controls and status region",
+          "evidence": "[fact] Controls remain native buttons with aria-pressed and disabled state, and feedback remains in a polite role=status live region."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 46,
+          "endLine": 51,
+          "symbol": "context-menu alternative guidance",
+          "evidence": "[fact] Visible guidance retains the Excel context-menu insertion alternative after single-click activation."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.ts",
+          "startLine": 13,
+          "endLine": 49,
+          "symbol": "App interaction state",
+          "evidence": "[fact] Signals continue to expose active, busy, and bounded status state across activation, insertion success, and insertion failure."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/app/app.spec.ts:20-48 verifies ten native buttons, visible alternative guidance, aria-pressed state, and activation status; lines 67-84 verify disabled state and bounded failure feedback.",
+        "[fact] src/office/commands.spec.ts:9-29 retains coverage of the context-menu alternative."
+      ],
+      "notes": "[fact] Keyboard-generated click remains selection-only; insertion remains available through Excel's keyboard-accessible context menu."
+    },
+    {
+      "requirementId": "R6",
+      "requirementText": "[fact] The shared mock store must continue exposing exactly 10 stable variables and tracking one active variable.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/variables/mock-variable-store.ts",
+          "startLine": 3,
+          "endLine": 41,
+          "symbol": "createMockVariableStore and mockVariableStore",
+          "evidence": "[fact] The unchanged module creates ten frozen variables once, retains one active reference, and exposes controlled lookup and activation."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/app/variables/mock-variable-store.spec.ts:4-24 verifies ten unique finite stable variables and active-variable changes.",
+        "[fact] implementation-result.json records the full 17/17 unit suite as passed."
+      ],
+      "notes": "[fact] The task diff does not modify the shared store."
+    },
+    {
+      "requirementId": "R7",
+      "requirementText": "[fact] Visible task-pane guidance and repository usage instructions must explain single-click activation, double-click insertion, and context-menu insertion.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 5,
+          "endLine": 7,
+          "symbol": "task-pane primary guidance",
+          "evidence": "[fact] The primary task-pane copy distinguishes single-click activation from double-click insertion."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.html",
+          "startLine": 46,
+          "endLine": 51,
+          "symbol": "task-pane alternative guidance",
+          "evidence": "[fact] The task pane explicitly describes context-menu insertion after activation."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "README.md",
+          "startLine": 55,
+          "endLine": 93,
+          "symbol": "Supported scenarios and Manual Excel smoke checks",
+          "evidence": "[fact] Repository guidance covers single-click activation, double-click insertion, contiguous and discontiguous ranges, and context-menu insertion."
+        }
+      ],
+      "testEvidence": [
+        "[fact] src/app/app.spec.ts:20-30 asserts rendered single-click, double-click, unsupported-drag, and context-menu guidance.",
+        "[fact] implementation-result.json records format checking and the full test suite as passed."
+      ],
+      "notes": "[fact] UI and repository wording are consistent with the implemented interaction."
+    },
+    {
+      "requirementId": "R8",
+      "requirementText": "[fact] Focused automated tests must distinguish selection-only single clicks from exactly-once double-click insertion and retain coverage for insertion success, failure, accessibility, multi-range behavior, context-menu insertion, and the 10-variable store.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/app.spec.ts",
+          "startLine": 20,
+          "endLine": 84,
+          "symbol": "App test suite",
+          "evidence": "[fact] Component tests separately cover guidance/accessibility, selection-only click, exactly-once double-click insertion, busy state, and failure feedback."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/office/excel-insertion.service.spec.ts",
+          "startLine": 30,
+          "endLine": 89,
+          "symbol": "insertIntoSelectedRanges test suite",
+          "evidence": "[fact] Existing tests cover matrix shape, one-cell, contiguous, discontiguous, invalid-value, and Office-failure behavior."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/office/commands.spec.ts",
+          "startLine": 4,
+          "endLine": 30,
+          "symbol": "insertSelectedVariableCommand test suite",
+          "evidence": "[fact] Existing tests cover the context-menu command success and failure paths."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "src/app/variables/mock-variable-store.spec.ts",
+          "startLine": 3,
+          "endLine": 25,
+          "symbol": "createMockVariableStore test suite",
+          "evidence": "[fact] Existing tests cover the ten stable variables and active-variable tracking."
+        }
+      ],
+      "testEvidence": [
+        "[fact] implementation-result.json records App tests 4/4 and the complete repository suite 17/17 as passed.",
+        "[fact] developer-publication-evidence.json binds the clean branch and one-commit divergence to reviewed HEAD ceecc01cb0fc4a32542d817154c4693289c3cfdb."
+      ],
+      "notes": "[fact] The tests assert both insertion call count and inserted active value, not only displayed text."
+    },
+    {
+      "requirementId": "R9",
+      "requirementText": "[fact] Delivery is local-only: run repository-local quality gates and do not perform remote repository, pull-request, or pipeline work.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "package.json",
+          "startLine": 4,
+          "endLine": 15,
+          "symbol": "scripts",
+          "evidence": "[fact] Repository-local scripts define formatting, linting, type checking, unit testing, production build, and manifest validation gates."
+        },
+        {
+          "repositoryId": "planning-space-excel-variable-poc",
+          "filePath": "README.md",
+          "startLine": 95,
+          "endLine": 105,
+          "symbol": "Automated validation",
+          "evidence": "[fact] Documentation lists the same six local quality gates."
+        }
+      ],
+      "testEvidence": [
+        "[fact] implementation-result.json reports all six local commands passed and remoteActions is empty.",
+        "[fact] developer-publication-evidence.json records a clean worktree at ceecc01 with branch divergence 0 behind and 1 ahead of origin/main; reviewer inspection observed the same local state."
+      ],
+      "notes": "[fact] No remote, pull-request, or pipeline action is claimed or required by this local-poc-delivery route."
+    }
+  ],
+  "reviewCoverage": [
+    {
+      "dimension": "requirements",
+      "status": "covered",
+      "evidence": [
+        "[fact] requirements-analysis.json defines R1-R9 with no questions or held scope.",
+        "[fact] This artifact contains exactly one traceability entry for each of R1-R9 against ceecc01."
+      ],
+      "notes": "[fact] Every analyzed requirement is verified with code and test evidence."
+    },
+    {
+      "dimension": "correctness",
+      "status": "covered",
+      "evidence": [
+        "[fact] src/app/app.html:25-26 separates click activation and dblclick insertion.",
+        "[fact] src/app/app.ts:20-49 keeps activation insertion-free and performs exactly one awaited insertion from insertActive."
+      ],
+      "notes": "[fact] The browser event sequence activates the clicked variable before dblclick insertion, while the busy guard prevents overlapping insertion."
+    },
+    {
+      "dimension": "security",
+      "status": "not-applicable",
+      "evidence": [
+        "[fact] The diff changes local DOM event routing, user-facing copy, tests, and README only; it adds no input trust boundary, credential handling, network access, or dependency."
+      ],
+      "notes": "[fact] No security-sensitive behavior is introduced or modified by this interaction-only change."
+    },
+    {
+      "dimension": "regression",
+      "status": "covered",
+      "evidence": [
+        "[fact] Context-menu, multi-range insertion, and mock-store production files are unchanged.",
+        "[fact] Existing command, range, and store specs remain in the 17/17 passing suite recorded by implementation-result.json."
+      ],
+      "notes": "[fact] Preserved behavior has direct unchanged implementation and regression-test evidence."
+    },
+    {
+      "dimension": "testing",
+      "status": "covered",
+      "evidence": [
+        "[fact] src/app/app.spec.ts:32-65 distinguishes single-click no-insert behavior from exactly-once dblclick insertion with the active value.",
+        "[fact] implementation-result.json reports format, lint, typecheck, 17/17 tests, build, and manifest validation passed."
+      ],
+      "notes": "[fact] Developer publication evidence binds validation claims to the clean reviewed HEAD; host-only Excel behavior remains explicitly covered by README manual smoke checks."
+    },
+    {
+      "dimension": "maintainability",
+      "status": "covered",
+      "evidence": [
+        "[fact] src/app/app.ts replaces one mixed-responsibility handler with focused activate and insertActive methods without adding a dependency or abstraction.",
+        "[fact] Changed conditional bodies retain braces and changed members preserve configured access/static ordering."
+      ],
+      "notes": "[fact] The separation follows existing component conventions and gives each interaction a directly testable responsibility."
+    },
+    {
+      "dimension": "performance",
+      "status": "not-applicable",
+      "evidence": [
+        "[fact] The diff adds only constant-time signal updates and one event binding; the Excel insertion algorithm and number of Office sync calls are unchanged."
+      ],
+      "notes": "[fact] No performance-sensitive loop, payload, rendering strategy, or Office operation changed."
+    },
+    {
+      "dimension": "concurrency",
+      "status": "covered",
+      "evidence": [
+        "[fact] src/app/app.ts:30-49 checks busy before insertion, sets busy before awaiting, and clears it in finally.",
+        "[fact] src/app/app.html:24 disables all variable buttons while busy."
+      ],
+      "notes": "[fact] The existing single-flight behavior is retained for asynchronous insertion success and failure."
+    },
+    {
+      "dimension": "configuration-deployment",
+      "status": "covered",
+      "evidence": [
+        "[fact] package.json, package-lock.json, angular.json, and manifest.xml are unchanged in the reviewed commit.",
+        "[fact] implementation-result.json records typecheck, production build, and manifest validation passed, and remoteActions is empty."
+      ],
+      "notes": "[fact] The configured local-only delivery boundary is respected; no pipeline or remote deployment applies."
+    },
+    {
+      "dimension": "documentation",
+      "status": "covered",
+      "evidence": [
+        "[fact] src/app/app.html:5-7 and 46-51 explains activation, double-click insertion, and the context-menu alternative.",
+        "[fact] README.md:55-93 updates supported scenarios and manual Excel smoke checks consistently."
+      ],
+      "notes": "[fact] Visible UI and repository instructions agree with the changed behavior and preserved alternatives."
+    }
+  ],
+  "findings": [],
+  "heldScopeViolations": [],
+  "agentProcessFindings": [],
+  "findingLifecycle": [],
+  "summary": "[fact] Clean review of ceecc01cb0fc4a32542d817154c4693289c3cfdb: all nine requirements are verified, all ten review dimensions are covered or evidence-backed not applicable, no held scope was implemented, and no product or agent-process candidate findings were identified. [fact] No review-history index or prior snapshots exist for this task, so there are no lifecycle records to carry forward."
+}

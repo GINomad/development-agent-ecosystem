@@ -1,0 +1,110 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<p>AC1: Selecting one existing link displays its current settings. Name, Prompt and Variable Type remain inherited/read-only. </p><p>AC2: An eligible link supports editing Working Interest, Real/Nominal, Type, Discount Rate selection and Show Header/Above/Left without recreating the link. </p><p>AC3: Enabled/disabled or visible states and accepted combinations match the verified desktop settings matrix. At the inspected baseline, WI excludes pseudo-links, Real/Nominal depends on currency units, and DiscountRate applies to supported periodic numeric modes; revalidate the complete matrix before coding. </p><p>AC4: Save/reopen preserves the edited settings and the association to the same variable/range. Existing generator output and header placement match the agreed desktop fixtures. </p><p>AC5: Settings disallowed by the domain rules cannot be persisted by bypassing the UI. </p>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-21T15:54:08.75Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 8.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-21T15:56:35.477Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-21T15:56:35.477Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-21T15:54:08.75Z",
+    "System.Description": "<p><b>As a</b> Report Author, <b>I want</b> to configure variable link attributes and headers, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope and estimate </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><p><b>Optimistic: 32 hours / 8 SP. Pessimistic: 32 hours / 8 SP.</b> These are provisional effort estimates including development, review, automated tests and QA; 1 SP = 4 hours and 2 SP = one assumed 8-hour person-day. Scenario labels describe desktop parity versus the initial requirements interpretation, not statistical bounds. </p><h3>Implementation plan </h3><p>1. Extract an attribute matrix from ReportVariableLinkSettingsViewModel and corresponding domain/generator code: eligibility, allowed values, defaults and interactions. Keep unresolved cells marked unknown. </p><p>2. Implement selection -&gt; link -&gt; properties-panel mapping, using one source of truth for displayed values and edit state. </p><p>3. Reuse domain validation in the save/update path; mirror relevant constraints in the UI for feedback. </p><p>4. Update existing link settings and header layout through the workbook adapter without rebuilding unrelated links. </p><p>5. Test representative variable-type/mode combinations, readonly fields, save/reopen and header layout. </p><h3>Open questions / held behavior </h3><p>Question 1: Does changing Type clear, preserve or reset incompatible settings? Determine exact desktop transitions before implementing them. </p><p>Question 2: How does changing header placement affect existing cell content or neighboring links? Hold destructive/collision cases until verified. </p><p>Question 3: Properties behavior when the selection contains multiple different links is unconfirmed; single-link AC does not decide bulk editing. </p><p>Risks: invalid combinations and overwritten headers. Depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links)/<a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877828\">1877828</a> (Link report metadata variables). Placeholder Run is <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877830\">1877830</a> (Configure run-specific links and comparison metadata); slot-value behavior is1869369. Shared ribbon styling is outside this story; link header placement is inside. </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are estimated separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+    "System.Id": 1877829,
+    "System.IterationId": 5731,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationPath": "Quorum",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 4,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Configure variable link attributes and headers",
+    "System.Watermark": 11245911,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1877829,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    }
+  ],
+  "rev": 4,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1877829"
+}

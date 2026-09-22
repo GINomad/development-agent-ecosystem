@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:41:37.2213647Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869369,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869369",
+      "revision": 3,
+      "type": "User Story",
+      "title": "[Report Designer] Support Discount Rate links",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+      "changedDate": "09/17/2026 18:25:31",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link one or more cells to a Discount Rate slot and have the entered value drive discounting calculations for the report </div><div><b>So that</b> I can set discount rate assumptions directly within the report template rather than configuring them elsewhere </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Discount Rates (Discount Settings &gt; Discount Rates) are not simple display/variable mappings � the linked cell is a live calculation input, not just a value pulled from an existing variable. This is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Fixed slot ceiling</b> </div><div>Discount Settings &gt; Discount Rates offers a fixed ceiling of 5 named slots (Rate 1�5). </div><div><br> </div><div><b>Many-or-few links per slot</b> </div><div>Author can create as many or as few links as needed against any of the 5 slots, including multiple links to the same slot within a template. </div><div><br> </div><div><b>Link value feeds calculation</b> </div><div>Whatever value the Author types into a linked cell is used as the actual discount rate for that Rate 1�5 slot during report generation/calculation � not just displayed. <b>Open question:</b> Marg believes this is how it works (link the slot to a cell, then type the assumption value directly into that cell) but this mechanic is not yet confirmed � verify with engineering/UAT before finalizing AC. </div>",
+      "acceptanceCriteria": "",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

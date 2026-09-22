@@ -1,0 +1,78 @@
+{
+  "savedAtUtc": "2026-09-21T15:08:54.5271679Z",
+  "featureId": 1865781,
+  "repository": "https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace",
+  "decision": "Desktop parity is implementation baseline; optimistic/pessimistic label scope scenarios",
+  "files": [
+    {
+      "name": "ado-snapshot.json",
+      "bytes": 107625,
+      "sha256": "149b0ad07c9eabe6ea71936ea71f88275795d928215df52f4fde4e7f4e59a180"
+    },
+    {
+      "name": "attachment-hashes.json",
+      "bytes": 763,
+      "sha256": "4045ff89c5f94278e68f132a4e659dce0e34f19a2041d66ab73f4729287a8e68"
+    },
+    {
+      "name": "attachments-review-1865781.ru.md",
+      "bytes": 12189,
+      "sha256": "d4168b0b06642d22fb8f12234526bf593adfbca9d814ec5e13a1c4ebe12dfc9d"
+    },
+    {
+      "name": "estimation-scenarios-1865781.ru.md",
+      "bytes": 3048,
+      "sha256": "6b935033c000673fbf50dd0906c50bff1ba390267959a8e726eb2ddb0ab5129b"
+    },
+    {
+      "name": "report-designer-web-mockup.png",
+      "bytes": 173983,
+      "sha256": "c0bc7c2defd3ad4a7f7349bd26916144ab4858456770686a9f4f42d36f220ad8"
+    },
+    {
+      "name": "report-designer-wpf-reference.png",
+      "bytes": 629402,
+      "sha256": "3b1948903da184f3a7c7cbdd2896ed877a82a02702ba55128218c7e6eb0748b5"
+    },
+    {
+      "name": "report-management-mockup.html",
+      "bytes": 47944,
+      "sha256": "90ace971c65a7fef07c4aa171b48e927a167d79e04939c542cbe435f45c516f7"
+    },
+    {
+      "name": "requirements-analysis.json",
+      "bytes": 12643,
+      "sha256": "a463b5abd42e3f4ad69165a1fa37eb0a19c89b0648500dca9c6c0ec4cca42e9b"
+    },
+    {
+      "name": "requirements-estimation-1865781.ru.md",
+      "bytes": 36988,
+      "sha256": "b4d30db50419e1dbdea6570a8c23db72a6c8b7c64ba59680f506bf0447532972"
+    },
+    {
+      "name": "task-1865781-brief.ru.md",
+      "bytes": 1502,
+      "sha256": "0b742cf0666e0bf8ff510004fc7215bded120b737f7f57ad7a5c494563fc885d"
+    },
+    {
+      "name": "task-1869322-brief.ru.md",
+      "bytes": 1492,
+      "sha256": "e5a06bda619b9d1d814a2e712be78cb8d785978f37ea8d13dab344ca057dcee3"
+    },
+    {
+      "name": "task-1869334-brief.ru.md",
+      "bytes": 1304,
+      "sha256": "2ee6c61f52dd12d6e25724a151e8bd9d1cef7d81c3d758998a89b89c5ebc04c7"
+    },
+    {
+      "name": "task-1869339-brief.ru.md",
+      "bytes": 1333,
+      "sha256": "35620a01f9ab08b166f012029bf2d1df54af659b77777c71076fc8639419e4e9"
+    },
+    {
+      "name": "task-1869369-brief.ru.md",
+      "bytes": 1626,
+      "sha256": "6b0a17fa2505542ee8d892aaaa4014b73abc1a48c975fa4dc317141441fc34ec"
+    }
+  ]
+}

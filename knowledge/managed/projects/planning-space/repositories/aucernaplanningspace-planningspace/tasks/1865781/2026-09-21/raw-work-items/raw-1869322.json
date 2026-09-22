@@ -1,0 +1,108 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "EngineeringCMMI.Module": "Economics",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T17:57:07.893Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.AuthorizedDate": "2026-09-17T18:22:36.453Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.ChangedDate": "2026-09-17T18:22:36.453Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.CreatedDate": "2026-09-03T17:57:07.893Z",
+    "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link report fields to variables in the web Report Designer </div><div><b>So that</b> my report templates pull live values from the correct regime and calculation run without manual re-entry </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Browse/filter variables</b> </div><div>Author selects a Regime from a dropdown to scope the variable tree to that regime's variable set. Author can toggle between &quot;All&quot; (every available variable) and &quot;Linked&quot; (only variables already linked somewhere in the current template) to filter the tree view. Author can also search/filter by text. </div><div><br> </div><div><b>Create a link</b> </div><div>Author can browse variables (scoped/filtered as above) and create a link from a variable to a cell or cell range in the template, as a web-appropriate equivalent of the WPF drag-to-link interaction. </div><div><br> </div><div><b>Variable categories</b> </div><div>Author can link both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments, Incremental Project Info) through the same linking mechanism � both categories appear in the same variable tree regardless of report type (Standard Report or One Line Summary Report). </div><div><br> </div><div><b>Flat metadata leaves</b> </div><div>Most pseudo-variables are flat, single-value leaves, for example: </div><ul><li>Project Settings: Project Name, Regime Currency, Regime Name, Revision Date, Revision Tag, Scenario, Was Linked to Dataflow </li><li>Project Dates: Duration, Economic Limit, End Year, Inflation Date, Start Year </li><li>Discount Settings: Discount Date, Discount Method (Discount Rates are a separate linking mechanism � see 1869369) </li><li>Comments: Comments (a specific linkable variable, not just a UI label) </li><li>Calculation Settings: Currency Deck, Last Calculated, Price Deck, Price Scenario, Results Set Name, Results Set Run, Run Project Scenario </li><li>Comparison Calculation Settings: mirrors Calculation Settings for a comparison run (Comparison Currency Deck, Comparison Last Calculated, Comparison Price Deck, Comparison Price Scenario, Comparison Results Set Name, Comparison Results Set Run, Comparison Run Project Scenario). <i>Dev note: these fields exist to support Variance and Multi-run report generation modes in Calculate &amp; Analyze (Result Sets) � the template holds placeholders for a second/comparison run's context; the actual variance/multi-run calculation and execution happens outside this Feature's scope (report execution, not template design).</i> </li><li>Report Options: Currency &amp; Discounting Preset Name, Do not apply discounting prior to Discount Date, Report Inflation Date, Reporting Currency Deck, Use Hierarchy Currency, Values prior to Inflation Date are Nominal </li><li>Incremental Project Info: Calculation Method, Group, Order, Tab, Type. <i>Dev note: an incremental calculation returns a project's value relative to the project ranked before it in a defined sequence; the sequencing/method settings themselves are configured at the hierarchy folder level, outside the Report Designer � these fields just expose that configuration's metadata for display in a report.</i> </li> </ul><div><br> </div><div><b>Related but separate stories</b> </div><div>Discount Rates (1869369) and Ranges � Date Range/Formula Range (1869339) behave differently from simple variable linking (live calculation inputs / injected structural content, respectively) and are scoped as their own stories rather than covered here. </div><div><br> </div><div><b>Read-only link attributes</b> </div><div>Variable Name, Variable Prompt, and Variable Type display read-only on a link, inherited from the variable definition � not editable from the link itself. </div><div><br> </div><div><b>Configurable link attributes</b> </div><div>Author can configure Working Interest, Real/Nominal, Type (Values), Discount Rate, and Placeholder Run on an existing link without recreating it. Placeholder Run lets a link target a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side. </div><div><br> </div><div><b>Unlink</b> </div><div>Author can remove a link from a cell/range, clearing the association. </div>",
+    "System.Id": 1869322,
+    "System.IterationId": 5754,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.3",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.3",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 95935292,
+    "System.Reason": "New",
+    "System.Rev": 18,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Link report fields to variables",
+    "System.Watermark": 11228962,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1869322,
+  "multilineFieldsFormat": {
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    }
+  ],
+  "rev": 18,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+}

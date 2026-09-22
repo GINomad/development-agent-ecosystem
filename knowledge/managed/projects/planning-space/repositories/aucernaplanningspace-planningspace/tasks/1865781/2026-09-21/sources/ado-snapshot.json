@@ -1,0 +1,1282 @@
+{
+  "asOfUtc": "2026-09-21T14:47:46.5734296Z",
+  "rawWorkItems": [
+    {
+      "fields": {
+        "Custom.BusinessOutcome": "<div>Report Authors can design report templates in the web client using the same spreadsheet-style experience they already rely on in WPF, removing a major dependency on the WPF desktop client without giving up the spreadsheet paradigm they're used to. </div>",
+        "Custom.EffortSize": "5",
+        "Custom.InScope": "<ul><li>Placing and arranging report fields within a web-based spreadsheet grid, emulating the existing SpreadsheetGear experience rather than moving away from the spreadsheet paradigm </li><li>Linking fields to variables � variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run � across both economic output variables and report metadata pseudo-variables, filterable by Regime and All/Linked </li><li>Configuring cell/section styling and headers (e.g. header position above/left) </li><li>Managing variable links within a template </li><li>Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots � see 1869369) </li><li>Migrating existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Range links � Date Range and Formula Range � for structural/computed content (see 1869339) </li><li>Standard spreadsheet capabilities from the current WPF ribbon (Insert, Formulas, Data, Review, View) via the underlying web-based spreadsheet component </li> </ul>",
+        "Custom.NonFunctionalRequirements": "<ul><li>The web-based spreadsheet component must integrate into the existing Angular web client � compatible with Angular, not requiring a separate framework shell </li><li>The web-based spreadsheet component must support the grid semantics needed for report template layout (cells, rows, columns, headers) </li><li>Existing WPF-authored (SpreadsheetGear-based) report templates must have a defined migration path into the new web-based spreadsheet format � no report lost in the transition </li> </ul>",
+        "Custom.Objective": "<div>Rebuild the Excel-based WPF Report Designer as a web-based spreadsheet editor with equivalent field placement and variable linking capability � including a migration path for existing report templates. </div><div><br> </div><div><b>Open question:</b> an earlier draft of this Objective referenced a &quot;preview capability&quot; against a selected regime. On investigation, no such preview feature was found � the Regime dropdown in the variable panel only scopes/filters which variables are browsable, and does not preview the report itself. Preview has been removed from this Objective; confirm with engineering whether any preview capability exists before reintroducing this language. </div>",
+        "Custom.ReleaseNoteApproved": false,
+        "Custom.TRAPCommitteeReview": "Feasibility Review Pending",
+        "Custom.TRAPState": "----",
+        "Custom.TargetRelease": "PS 20.4",
+        "Custom.TechWriterApproved": false,
+        "Custom.TopItem": false,
+        "Custom.WorkCategory": "Roadmap",
+        "EngineeringCMMI.Product": "PlanningSpace",
+        "EngineeringCMMI.ProductManagementApproval": "Awaiting Approval",
+        "EngineeringCMMI.ReleaseNoteIndicator": false,
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Place and Arrange Report Fields</b><br>Given an Author is building a report template in the web-based spreadsheet editor, when they place a field within the grid, then the field behaves as a spreadsheet cell/range consistent with the underlying web-based spreadsheet component. </li><li><b>AC2 � Browse and Filter Variables</b><br>Given the Author opens the variable panel, when they select a Regime from the dropdown, then the variable tree scopes to that regime's variable set; when they toggle All/Linked, then the tree filters to either every available variable or only variables already linked in the current template; when they enter search text, then the tree filters to matching variables. </li><li><b>AC3 � Link a Variable to a Cell or Range</b><br>Given the Author has browsed to a variable (economic output or report metadata pseudo-variable), when they link it to a cell or cell range, then the link is created and the variable's Name, Prompt, and Type display read-only on the link. </li><li><b>AC4 � Configure Link Attributes</b><br>Given an existing link, when the Author configures Working Interest, Real/Nominal, Type (Values), Discount Rate, or Placeholder Run on it, then the change is saved without requiring the link to be recreated. </li><li><b>AC5 � Unlink</b><br>Given a cell or range with a variable link, when the Author removes the link, then the association is cleared and the cell/range reverts to unlinked. </li><li><b>AC6 � Set Time-Series Orientation</b><br>Given a new template, when the Author sets time-series orientation (horizontal/vertical) early in creation, then all periodic variable links in the template follow that orientation as a template-wide setting. </li><li><b>AC7 � Destructive Orientation Change Warning</b><br>Given a template already has linked variables, when the Author changes its orientation, then a confirmation dialog warns that existing links will be cleared, and the change only proceeds on explicit confirmation. </li><li><b>AC8 � Date Range Link</b><br>Given the Author creates a Date Range link against a range (e.g. =Sheet1!$C$24:$C$26), then the range produces row/column labels tied to the report run period (e.g. Total/2020/2021), typed as &quot;Periodic Date,&quot; referenceable by other links in the template. </li><li><b>AC9 � Discount Rate Link (mechanic pending confirmation)</b><br>Given the Author links a cell to one of the 5 named Discount Rate slots (Rate 1�5), then multiple links against the same or different slots are supported. Open item: whether the typed cell value drives the actual discount calculation, or only displays it, is unconfirmed � verify with engineering before this criterion is finalized. </li><li><b>AC10 � Migrate Existing WPF Templates</b><br>Given an existing WPF-authored (SpreadsheetGear-based) report template, when it is opened in the web-based editor, then its layout, links, and styling are preserved without data loss. </li><li><b>AC11 � Standard Spreadsheet Capabilities</b><br>Given the Author is working in the web-based spreadsheet editor, when they use Insert, Formulas, Data, Review, or View capabilities, then the underlying web-based spreadsheet component provides equivalents consistent with the current WPF ribbon. </li> </ul><div><i>Not yet testable � excluded pending investigation:</i> Formula Range links (&lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt;) � the underlying mechanic is unconfirmed per 1869339; AC will be added once resolved with engineering. </div><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: Migration path must be validated against existing WPF-authored templates (AC10) </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: Web-based spreadsheet component must integrate with the existing Angular web client </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Common.StackRank": 1622360871.0,
+        "Microsoft.VSTS.Common.StateChangeDate": "2026-08-26T18:56:32.877Z",
+        "Microsoft.VSTS.Common.ValueArea": "Business",
+        "Microsoft.VSTS.Scheduling.StartDate": "2026-10-14T06:00:00Z",
+        "System.AreaId": 6062,
+        "System.AreaLevel1": "Quorum",
+        "System.AreaLevel2": "PEnR",
+        "System.AreaLevel3": "Planning Space",
+        "System.AreaLevel4": "Economics",
+        "System.AreaLevel5": "Veles Team",
+        "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+        "System.AssignedTo": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy"
+            }
+          },
+          "descriptor": "aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy",
+          "displayName": "Galina Lapushinskaya",
+          "id": "2f649891-b778-6b1e-b7d7-9910a54fed82",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy",
+          "uniqueName": "galina.lapushinskaya@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2f649891-b778-6b1e-b7d7-9910a54fed82"
+        },
+        "System.AuthorizedAs": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.AuthorizedDate": "2026-09-18T18:00:13.287Z",
+        "System.BoardColumn": "New",
+        "System.BoardColumnDone": false,
+        "System.ChangedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.ChangedDate": "2026-09-18T18:00:13.287Z",
+        "System.CommentCount": 3,
+        "System.CreatedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.CreatedDate": "2026-08-26T18:56:32.877Z",
+        "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>The Report Designer lets an Author lay out a report template by placing fields, linking them to variables, configuring cell/section styling, and organizing variables into groups. In the WPF client this is built using SpreadsheetGear, an embedded Excel-like spreadsheet component. The web equivalent emulates that same spreadsheet experience using a web-based spreadsheet component, rather than moving away from the spreadsheet paradigm. For now, the full Report Template tab experience carries forward into scope as a baseline. </div><ol><li>Place and arrange report fields within a web-based spreadsheet grid </li><li>Link fields to variables, including variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run (linking a variable to a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side). Linkable variables include both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments) � both are present in the same variable tree regardless of report type. Author browses/filters this tree by Regime (scopes to that regime's variable set) and All/Linked toggle (filter to only variables already linked in the template). </li><li>Configure cell/section styling and headers (e.g. header position above/left) </li><li>Manage variable links within a template </li><li>Support Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots; see 1869369) </li><li>Migrate existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Support Range links � Date Range and Formula Range � which inject structural/computed content rather than mapping a single variable (see 1869339) </li><li>Support standard spreadsheet capabilities available in the current WPF ribbon (Insert, Formulas, Data, Review, View) as provided by the underlying web-based spreadsheet component </li> </ol><div><br><b>Open question:</b> earlier scoping referenced &quot;Variable Groups&quot; as a distinct capability (possibly associating a single Date Range with a customer-defined set of related variables), but this was not found in the current UAT app on inspection. Confirm with engineering whether this exists in some form before treating it as a scope commitment, or drop the term. </div><div><br><b>Out of scope:</b>&nbsp;Non-spreadsheet-style reporting experiences (handled separately under AI agency); report execution/viewing experience (separate from template design); template list management, permissions, export/import, and Edit Using Excel (see 1869308) </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/da89635d-ad3a-49cc-b8f3-c74cc1fe2d20?fileName=image.png\" alt=Image><br> </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/32d32306-5a13-442b-bc3e-fdb1793a7bf0?fileName=image.png\" alt=Image><br> </div>",
+        "System.Id": 1865781,
+        "System.IterationId": 5755,
+        "System.IterationLevel1": "Quorum",
+        "System.IterationLevel2": "PI 26.3",
+        "System.IterationLevel3": "26.3.4",
+        "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+        "System.NodeName": "Veles Team",
+        "System.Parent": 1855446,
+        "System.PersonId": 95935292,
+        "System.Reason": "New",
+        "System.Rev": 59,
+        "System.RevisedDate": "9999-01-01T00:00:00Z",
+        "System.State": "New",
+        "System.Tags": "PI 26.3",
+        "System.TeamProject": "Quorum",
+        "System.Title": "[Report Designer] Webify an Excel based editor (PoC)",
+        "System.Watermark": 11239622,
+        "System.WorkItemType": "Feature",
+        "WEF_5B39AD25B77C48239A2A72207B462E11_Kanban.Column": "New",
+        "WEF_5B39AD25B77C48239A2A72207B462E11_Kanban.Column.Done": false,
+        "WEF_5B39AD25B77C48239A2A72207B462E11_System.ExtensionMarker": false,
+        "WEF_961B10A552D54878AB890F7FDB9345C0_Kanban.Column": "New",
+        "WEF_961B10A552D54878AB890F7FDB9345C0_Kanban.Column.Done": false,
+        "WEF_961B10A552D54878AB890F7FDB9345C0_System.ExtensionMarker": true,
+        "WEF_9866DF7B0BF94EE99C6C050102A797AF_Kanban.Column": "New",
+        "WEF_9866DF7B0BF94EE99C6C050102A797AF_Kanban.Column.Done": false,
+        "WEF_9866DF7B0BF94EE99C6C050102A797AF_System.ExtensionMarker": true,
+        "WEF_B61A550EB63F4B0795E889F2255707E5_Kanban.Column": "New",
+        "WEF_B61A550EB63F4B0795E889F2255707E5_Kanban.Column.Done": false,
+        "WEF_B61A550EB63F4B0795E889F2255707E5_System.ExtensionMarker": false,
+        "WEF_D9A7C542C49C410CAEEB68318B153816_Kanban.Column": "New",
+        "WEF_D9A7C542C49C410CAEEB68318B153816_Kanban.Column.Done": false,
+        "WEF_D9A7C542C49C410CAEEB68318B153816_System.ExtensionMarker": true
+      },
+      "id": 1865781,
+      "multilineFieldsFormat": {
+        "Custom.BusinessOutcome": "html",
+        "Custom.InScope": "html",
+        "Custom.NonFunctionalRequirements": "html",
+        "Custom.Objective": "html",
+        "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+        "System.Description": "html"
+      },
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869308"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1866883"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Predecessor"
+          },
+          "rel": "System.LinkTypes.Dependency-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+        },
+        {
+          "attributes": {
+            "authorizedDate": "2026-09-03T20:58:08.09Z",
+            "id": 32782676,
+            "name": "report-management-mockup.html",
+            "resourceCreatedDate": "2026-09-03T20:53:47.203Z",
+            "resourceModifiedDate": "2026-09-03T20:53:47.203Z",
+            "resourceSize": 47944,
+            "revisedDate": "9999-01-01T00:00:00Z"
+          },
+          "rel": "AttachedFile",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/d20c8d9d-c28e-4eee-9107-d7c7b37407dc"
+        }
+      ],
+      "rev": 59,
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    },
+    {
+      "fields": {
+        "Custom.ReleaseNotesNeeded": false,
+        "EngineeringCMMI.Module": "Economics",
+        "EngineeringCMMI.Product": "PlanningSpace",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T17:57:07.893Z",
+        "Microsoft.VSTS.Common.ValueArea": "Business",
+        "System.AreaId": 6062,
+        "System.AreaLevel1": "Quorum",
+        "System.AreaLevel2": "PEnR",
+        "System.AreaLevel3": "Planning Space",
+        "System.AreaLevel4": "Economics",
+        "System.AreaLevel5": "Veles Team",
+        "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+        "System.AuthorizedAs": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.AuthorizedDate": "2026-09-17T18:22:36.453Z",
+        "System.BoardColumn": "New",
+        "System.BoardColumnDone": false,
+        "System.ChangedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.ChangedDate": "2026-09-17T18:22:36.453Z",
+        "System.CommentCount": 0,
+        "System.CreatedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.CreatedDate": "2026-09-03T17:57:07.893Z",
+        "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link report fields to variables in the web Report Designer </div><div><b>So that</b> my report templates pull live values from the correct regime and calculation run without manual re-entry </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Browse/filter variables</b> </div><div>Author selects a Regime from a dropdown to scope the variable tree to that regime's variable set. Author can toggle between &quot;All&quot; (every available variable) and &quot;Linked&quot; (only variables already linked somewhere in the current template) to filter the tree view. Author can also search/filter by text. </div><div><br> </div><div><b>Create a link</b> </div><div>Author can browse variables (scoped/filtered as above) and create a link from a variable to a cell or cell range in the template, as a web-appropriate equivalent of the WPF drag-to-link interaction. </div><div><br> </div><div><b>Variable categories</b> </div><div>Author can link both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments, Incremental Project Info) through the same linking mechanism � both categories appear in the same variable tree regardless of report type (Standard Report or One Line Summary Report). </div><div><br> </div><div><b>Flat metadata leaves</b> </div><div>Most pseudo-variables are flat, single-value leaves, for example: </div><ul><li>Project Settings: Project Name, Regime Currency, Regime Name, Revision Date, Revision Tag, Scenario, Was Linked to Dataflow </li><li>Project Dates: Duration, Economic Limit, End Year, Inflation Date, Start Year </li><li>Discount Settings: Discount Date, Discount Method (Discount Rates are a separate linking mechanism � see 1869369) </li><li>Comments: Comments (a specific linkable variable, not just a UI label) </li><li>Calculation Settings: Currency Deck, Last Calculated, Price Deck, Price Scenario, Results Set Name, Results Set Run, Run Project Scenario </li><li>Comparison Calculation Settings: mirrors Calculation Settings for a comparison run (Comparison Currency Deck, Comparison Last Calculated, Comparison Price Deck, Comparison Price Scenario, Comparison Results Set Name, Comparison Results Set Run, Comparison Run Project Scenario). <i>Dev note: these fields exist to support Variance and Multi-run report generation modes in Calculate &amp; Analyze (Result Sets) � the template holds placeholders for a second/comparison run's context; the actual variance/multi-run calculation and execution happens outside this Feature's scope (report execution, not template design).</i> </li><li>Report Options: Currency &amp; Discounting Preset Name, Do not apply discounting prior to Discount Date, Report Inflation Date, Reporting Currency Deck, Use Hierarchy Currency, Values prior to Inflation Date are Nominal </li><li>Incremental Project Info: Calculation Method, Group, Order, Tab, Type. <i>Dev note: an incremental calculation returns a project's value relative to the project ranked before it in a defined sequence; the sequencing/method settings themselves are configured at the hierarchy folder level, outside the Report Designer � these fields just expose that configuration's metadata for display in a report.</i> </li> </ul><div><br> </div><div><b>Related but separate stories</b> </div><div>Discount Rates (1869369) and Ranges � Date Range/Formula Range (1869339) behave differently from simple variable linking (live calculation inputs / injected structural content, respectively) and are scoped as their own stories rather than covered here. </div><div><br> </div><div><b>Read-only link attributes</b> </div><div>Variable Name, Variable Prompt, and Variable Type display read-only on a link, inherited from the variable definition � not editable from the link itself. </div><div><br> </div><div><b>Configurable link attributes</b> </div><div>Author can configure Working Interest, Real/Nominal, Type (Values), Discount Rate, and Placeholder Run on an existing link without recreating it. Placeholder Run lets a link target a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side. </div><div><br> </div><div><b>Unlink</b> </div><div>Author can remove a link from a cell/range, clearing the association. </div>",
+        "System.Id": 1869322,
+        "System.IterationId": 5754,
+        "System.IterationLevel1": "Quorum",
+        "System.IterationLevel2": "PI 26.3",
+        "System.IterationLevel3": "26.3.3",
+        "System.IterationPath": "Quorum\\PI 26.3\\26.3.3",
+        "System.NodeName": "Veles Team",
+        "System.Parent": 1865781,
+        "System.PersonId": 95935292,
+        "System.Reason": "New",
+        "System.Rev": 18,
+        "System.RevisedDate": "9999-01-01T00:00:00Z",
+        "System.State": "New",
+        "System.TeamProject": "Quorum",
+        "System.Title": "[Report Designer] Link report fields to variables",
+        "System.Watermark": 11228962,
+        "System.WorkItemType": "User Story",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+      },
+      "id": 1869322,
+      "multilineFieldsFormat": {
+        "System.Description": "html"
+      },
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "rev": 18,
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+    },
+    {
+      "fields": {
+        "Custom.ReleaseNotesNeeded": false,
+        "EngineeringCMMI.Product": "PlanningSpace",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T18:08:40.577Z",
+        "Microsoft.VSTS.Common.ValueArea": "Business",
+        "System.AreaId": 6062,
+        "System.AreaLevel1": "Quorum",
+        "System.AreaLevel2": "PEnR",
+        "System.AreaLevel3": "Planning Space",
+        "System.AreaLevel4": "Economics",
+        "System.AreaLevel5": "Veles Team",
+        "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+        "System.AuthorizedAs": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.AuthorizedDate": "2026-09-17T18:25:07.897Z",
+        "System.BoardColumn": "New",
+        "System.BoardColumnDone": false,
+        "System.ChangedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.ChangedDate": "2026-09-17T18:25:07.897Z",
+        "System.CommentCount": 0,
+        "System.CreatedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.CreatedDate": "2026-09-03T18:08:40.577Z",
+        "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to set whether periodic data flows horizontally (across columns) or vertically (down rows) when I create a template </div><div><b>So that</b> the template's layout matches the report structure I need, before I begin linking variables </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> Logically precedes variable linking (1869322) � orientation should be set before an Author starts linking variables, since changing it later clears existing links. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Set orientation</b> </div><div>Author sets time-series orientation (horizontal/vertical) as a one-time setup decision, early in template creation. </div><div><br> </div><div><b>Destructive change warning</b> </div><div>Changing orientation after variables are already linked clears all existing links in the template. Author must be warned with a confirmation dialog and must confirm before this destructive action proceeds. </div><div><br> </div><div><b>Orientation applies template-wide</b> </div><div>Once set, all periodic variable links in the template follow the chosen orientation � this is a template-level structural setting, not a per-link property. </div>",
+        "System.Id": 1869334,
+        "System.IterationId": 5754,
+        "System.IterationLevel1": "Quorum",
+        "System.IterationLevel2": "PI 26.3",
+        "System.IterationLevel3": "26.3.3",
+        "System.IterationPath": "Quorum\\PI 26.3\\26.3.3",
+        "System.NodeName": "Veles Team",
+        "System.Parent": 1865781,
+        "System.PersonId": 95935292,
+        "System.Reason": "New",
+        "System.Rev": 3,
+        "System.RevisedDate": "9999-01-01T00:00:00Z",
+        "System.State": "New",
+        "System.TeamProject": "Quorum",
+        "System.Title": "[Report Designer] Configure template time-series orientation",
+        "System.Watermark": 11228982,
+        "System.WorkItemType": "User Story",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+      },
+      "id": 1869334,
+      "multilineFieldsFormat": {
+        "System.Description": "html"
+      },
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "rev": 3,
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+    },
+    {
+      "fields": {
+        "Custom.ReleaseNotesNeeded": false,
+        "EngineeringCMMI.Product": "PlanningSpace",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T18:15:53.61Z",
+        "Microsoft.VSTS.Common.ValueArea": "Business",
+        "System.AreaId": 6062,
+        "System.AreaLevel1": "Quorum",
+        "System.AreaLevel2": "PEnR",
+        "System.AreaLevel3": "Planning Space",
+        "System.AreaLevel4": "Economics",
+        "System.AreaLevel5": "Veles Team",
+        "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+        "System.AuthorizedAs": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.AuthorizedDate": "2026-09-17T18:25:21.353Z",
+        "System.BoardColumn": "New",
+        "System.BoardColumnDone": false,
+        "System.ChangedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.ChangedDate": "2026-09-17T18:25:21.353Z",
+        "System.CommentCount": 0,
+        "System.CreatedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.CreatedDate": "2026-09-03T18:15:53.61Z",
+        "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link Date Range and Formula Range content into my report template </div><div><b>So that</b> the report can display computed/structural content (like a date series or formula-derived summary) rather than a single variable's value </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation; Formula Range portion blocked pending investigation </div><div><b>Sequencing note:</b> None for Date Range. Formula Range is blocked � see open question below. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Ranges (Date Range, Formula Range) add content to the report rather than mapping a single variable's value into a cell � this is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Date Range link</b> </div><div>Author can create a Date Range link (WPF: Ranges &gt; Date Range &gt; Link), producing a range of row/column labels tied to the report run period (e.g. Total/2020/2021 rows generated from a linked range). Variable Type for a Date Range link is &quot;Periodic Date&quot;. Confirmed working example: Range =Sheet1!$C$24:$C$26 produces Total/2020/2021 labels referenced by Periodic Links elsewhere in the template. </div><div><br> </div><div><b>Formula Range link � open question, functionality not yet understood</b> </div><div>Web Report Designer must also support Formula Range links (WPF: Ranges &gt; Formula Range &gt; Link), producing &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, and &lt;SECOND VALUE&gt; placeholders. It is unclear whether Formula Range ties to a spreadsheet formula's output, an auto-derived calculation over a range (e.g. min/max or start/end of a series), or something else. Neither Marg nor Claude could determine this from UAT inspection. Needs investigation with engineering before AC can be written for this portion. </div>",
+        "System.Id": 1869339,
+        "System.IterationId": 5755,
+        "System.IterationLevel1": "Quorum",
+        "System.IterationLevel2": "PI 26.3",
+        "System.IterationLevel3": "26.3.4",
+        "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+        "System.NodeName": "Veles Team",
+        "System.Parent": 1865781,
+        "System.PersonId": 95935292,
+        "System.Reason": "New",
+        "System.Rev": 3,
+        "System.RevisedDate": "9999-01-01T00:00:00Z",
+        "System.State": "New",
+        "System.TeamProject": "Quorum",
+        "System.Title": "[Report Designer] Support Range links (Date Range, Formula Range)",
+        "System.Watermark": 11228986,
+        "System.WorkItemType": "User Story",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+      },
+      "id": 1869339,
+      "multilineFieldsFormat": {
+        "System.Description": "html"
+      },
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "rev": 3,
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+    },
+    {
+      "fields": {
+        "Custom.ReleaseNotesNeeded": false,
+        "EngineeringCMMI.Product": "PlanningSpace",
+        "Microsoft.VSTS.Common.Priority": 2,
+        "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T18:41:35.313Z",
+        "Microsoft.VSTS.Common.ValueArea": "Business",
+        "System.AreaId": 6062,
+        "System.AreaLevel1": "Quorum",
+        "System.AreaLevel2": "PEnR",
+        "System.AreaLevel3": "Planning Space",
+        "System.AreaLevel4": "Economics",
+        "System.AreaLevel5": "Veles Team",
+        "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+        "System.AuthorizedAs": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.AuthorizedDate": "2026-09-17T18:25:31.3Z",
+        "System.BoardColumn": "New",
+        "System.BoardColumnDone": false,
+        "System.ChangedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.ChangedDate": "2026-09-17T18:25:31.3Z",
+        "System.CommentCount": 0,
+        "System.CreatedBy": {
+          "_links": {
+            "avatar": {
+              "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+            }
+          },
+          "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "displayName": "Marg Brodie",
+          "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+          "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+          "uniqueName": "marg.brodie@quorumsoftware.com",
+          "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+        },
+        "System.CreatedDate": "2026-09-03T18:41:35.313Z",
+        "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link one or more cells to a Discount Rate slot and have the entered value drive discounting calculations for the report </div><div><b>So that</b> I can set discount rate assumptions directly within the report template rather than configuring them elsewhere </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Discount Rates (Discount Settings &gt; Discount Rates) are not simple display/variable mappings � the linked cell is a live calculation input, not just a value pulled from an existing variable. This is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Fixed slot ceiling</b> </div><div>Discount Settings &gt; Discount Rates offers a fixed ceiling of 5 named slots (Rate 1�5). </div><div><br> </div><div><b>Many-or-few links per slot</b> </div><div>Author can create as many or as few links as needed against any of the 5 slots, including multiple links to the same slot within a template. </div><div><br> </div><div><b>Link value feeds calculation</b> </div><div>Whatever value the Author types into a linked cell is used as the actual discount rate for that Rate 1�5 slot during report generation/calculation � not just displayed. <b>Open question:</b> Marg believes this is how it works (link the slot to a cell, then type the assumption value directly into that cell) but this mechanic is not yet confirmed � verify with engineering/UAT before finalizing AC. </div>",
+        "System.Id": 1869369,
+        "System.IterationId": 5755,
+        "System.IterationLevel1": "Quorum",
+        "System.IterationLevel2": "PI 26.3",
+        "System.IterationLevel3": "26.3.4",
+        "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+        "System.NodeName": "Veles Team",
+        "System.Parent": 1865781,
+        "System.PersonId": 95935292,
+        "System.Reason": "New",
+        "System.Rev": 3,
+        "System.RevisedDate": "9999-01-01T00:00:00Z",
+        "System.State": "New",
+        "System.TeamProject": "Quorum",
+        "System.Title": "[Report Designer] Support Discount Rate links",
+        "System.Watermark": 11228988,
+        "System.WorkItemType": "User Story",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+        "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+        "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+        "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+        "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+      },
+      "id": 1869369,
+      "multilineFieldsFormat": {
+        "System.Description": "html"
+      },
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "rev": 3,
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+    }
+  ],
+  "contexts": [
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:42:18.6425241Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1869322,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869322",
+          "revision": 18,
+          "type": "User Story",
+          "title": "[Report Designer] Link report fields to variables",
+          "state": "New",
+          "assignedTo": "",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.3",
+          "changedDate": "09/17/2026 18:22:36",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link report fields to variables in the web Report Designer </div><div><b>So that</b> my report templates pull live values from the correct regime and calculation run without manual re-entry </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Browse/filter variables</b> </div><div>Author selects a Regime from a dropdown to scope the variable tree to that regime's variable set. Author can toggle between &quot;All&quot; (every available variable) and &quot;Linked&quot; (only variables already linked somewhere in the current template) to filter the tree view. Author can also search/filter by text. </div><div><br> </div><div><b>Create a link</b> </div><div>Author can browse variables (scoped/filtered as above) and create a link from a variable to a cell or cell range in the template, as a web-appropriate equivalent of the WPF drag-to-link interaction. </div><div><br> </div><div><b>Variable categories</b> </div><div>Author can link both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments, Incremental Project Info) through the same linking mechanism � both categories appear in the same variable tree regardless of report type (Standard Report or One Line Summary Report). </div><div><br> </div><div><b>Flat metadata leaves</b> </div><div>Most pseudo-variables are flat, single-value leaves, for example: </div><ul><li>Project Settings: Project Name, Regime Currency, Regime Name, Revision Date, Revision Tag, Scenario, Was Linked to Dataflow </li><li>Project Dates: Duration, Economic Limit, End Year, Inflation Date, Start Year </li><li>Discount Settings: Discount Date, Discount Method (Discount Rates are a separate linking mechanism � see 1869369) </li><li>Comments: Comments (a specific linkable variable, not just a UI label) </li><li>Calculation Settings: Currency Deck, Last Calculated, Price Deck, Price Scenario, Results Set Name, Results Set Run, Run Project Scenario </li><li>Comparison Calculation Settings: mirrors Calculation Settings for a comparison run (Comparison Currency Deck, Comparison Last Calculated, Comparison Price Deck, Comparison Price Scenario, Comparison Results Set Name, Comparison Results Set Run, Comparison Run Project Scenario). <i>Dev note: these fields exist to support Variance and Multi-run report generation modes in Calculate &amp; Analyze (Result Sets) � the template holds placeholders for a second/comparison run's context; the actual variance/multi-run calculation and execution happens outside this Feature's scope (report execution, not template design).</i> </li><li>Report Options: Currency &amp; Discounting Preset Name, Do not apply discounting prior to Discount Date, Report Inflation Date, Reporting Currency Deck, Use Hierarchy Currency, Values prior to Inflation Date are Nominal </li><li>Incremental Project Info: Calculation Method, Group, Order, Tab, Type. <i>Dev note: an incremental calculation returns a project's value relative to the project ranked before it in a defined sequence; the sequencing/method settings themselves are configured at the hierarchy folder level, outside the Report Designer � these fields just expose that configuration's metadata for display in a report.</i> </li> </ul><div><br> </div><div><b>Related but separate stories</b> </div><div>Discount Rates (1869369) and Ranges � Date Range/Formula Range (1869339) behave differently from simple variable linking (live calculation inputs / injected structural content, respectively) and are scoped as their own stories rather than covered here. </div><div><br> </div><div><b>Read-only link attributes</b> </div><div>Variable Name, Variable Prompt, and Variable Type display read-only on a link, inherited from the variable definition � not editable from the link itself. </div><div><br> </div><div><b>Configurable link attributes</b> </div><div>Author can configure Working Interest, Real/Nominal, Type (Values), Discount Rate, and Placeholder Run on an existing link without recreating it. Placeholder Run lets a link target a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side. </div><div><br> </div><div><b>Unlink</b> </div><div>Author can remove a link from a cell/range, clearing the association. </div>",
+          "acceptanceCriteria": "",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            }
+          ],
+          "comments": [
+            {
+              "id": "",
+              "author": "",
+              "createdAt": "",
+              "updatedAt": "",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:41:18.3449697Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1869334,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869334",
+          "revision": 3,
+          "type": "User Story",
+          "title": "[Report Designer] Configure template time-series orientation",
+          "state": "New",
+          "assignedTo": "",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.3",
+          "changedDate": "09/17/2026 18:25:07",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to set whether periodic data flows horizontally (across columns) or vertically (down rows) when I create a template </div><div><b>So that</b> the template's layout matches the report structure I need, before I begin linking variables </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> Logically precedes variable linking (1869322) � orientation should be set before an Author starts linking variables, since changing it later clears existing links. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Set orientation</b> </div><div>Author sets time-series orientation (horizontal/vertical) as a one-time setup decision, early in template creation. </div><div><br> </div><div><b>Destructive change warning</b> </div><div>Changing orientation after variables are already linked clears all existing links in the template. Author must be warned with a confirmation dialog and must confirm before this destructive action proceeds. </div><div><br> </div><div><b>Orientation applies template-wide</b> </div><div>Once set, all periodic variable links in the template follow the chosen orientation � this is a template-level structural setting, not a per-link property. </div>",
+          "acceptanceCriteria": "",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            }
+          ],
+          "comments": [
+            {
+              "id": "",
+              "author": "",
+              "createdAt": "",
+              "updatedAt": "",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:42:01.2700278Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1869339,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869339",
+          "revision": 3,
+          "type": "User Story",
+          "title": "[Report Designer] Support Range links (Date Range, Formula Range)",
+          "state": "New",
+          "assignedTo": "",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+          "changedDate": "09/17/2026 18:25:21",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link Date Range and Formula Range content into my report template </div><div><b>So that</b> the report can display computed/structural content (like a date series or formula-derived summary) rather than a single variable's value </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation; Formula Range portion blocked pending investigation </div><div><b>Sequencing note:</b> None for Date Range. Formula Range is blocked � see open question below. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Ranges (Date Range, Formula Range) add content to the report rather than mapping a single variable's value into a cell � this is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Date Range link</b> </div><div>Author can create a Date Range link (WPF: Ranges &gt; Date Range &gt; Link), producing a range of row/column labels tied to the report run period (e.g. Total/2020/2021 rows generated from a linked range). Variable Type for a Date Range link is &quot;Periodic Date&quot;. Confirmed working example: Range =Sheet1!$C$24:$C$26 produces Total/2020/2021 labels referenced by Periodic Links elsewhere in the template. </div><div><br> </div><div><b>Formula Range link � open question, functionality not yet understood</b> </div><div>Web Report Designer must also support Formula Range links (WPF: Ranges &gt; Formula Range &gt; Link), producing &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, and &lt;SECOND VALUE&gt; placeholders. It is unclear whether Formula Range ties to a spreadsheet formula's output, an auto-derived calculation over a range (e.g. min/max or start/end of a series), or something else. Neither Marg nor Claude could determine this from UAT inspection. Needs investigation with engineering before AC can be written for this portion. </div>",
+          "acceptanceCriteria": "",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            }
+          ],
+          "comments": [
+            {
+              "id": "",
+              "author": "",
+              "createdAt": "",
+              "updatedAt": "",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:41:37.2213647Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1869369,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869369",
+          "revision": 3,
+          "type": "User Story",
+          "title": "[Report Designer] Support Discount Rate links",
+          "state": "New",
+          "assignedTo": "",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+          "changedDate": "09/17/2026 18:25:31",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link one or more cells to a Discount Rate slot and have the entered value drive discounting calculations for the report </div><div><b>So that</b> I can set discount rate assumptions directly within the report template rather than configuring them elsewhere </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Discount Rates (Discount Settings &gt; Discount Rates) are not simple display/variable mappings � the linked cell is a live calculation input, not just a value pulled from an existing variable. This is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Fixed slot ceiling</b> </div><div>Discount Settings &gt; Discount Rates offers a fixed ceiling of 5 named slots (Rate 1�5). </div><div><br> </div><div><b>Many-or-few links per slot</b> </div><div>Author can create as many or as few links as needed against any of the 5 slots, including multiple links to the same slot within a template. </div><div><br> </div><div><b>Link value feeds calculation</b> </div><div>Whatever value the Author types into a linked cell is used as the actual discount rate for that Rate 1�5 slot during report generation/calculation � not just displayed. <b>Open question:</b> Marg believes this is how it works (link the slot to a cell, then type the assumption value directly into that cell) but this mechanic is not yet confirmed � verify with engineering/UAT before finalizing AC. </div>",
+          "acceptanceCriteria": "",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            }
+          ],
+          "comments": [
+            {
+              "id": "",
+              "author": "",
+              "createdAt": "",
+              "updatedAt": "",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:42:05.791731Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1866883,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1866883",
+          "revision": 3,
+          "type": "PI Objective",
+          "title": "PS Econ - Webify all app components",
+          "state": "New",
+          "assignedTo": "aditya.thangirala@quorumsoftware.com",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics",
+          "iterationPath": "Quorum\\PI 26.3",
+          "changedDate": "08/27/2026 22:17:52",
+          "description": "<div>Webify webify webify. </div><div><br> </div><div>Move all remaining Economics components to web in anticipation of deprecating the WPF application. </div>",
+          "acceptanceCriteria": "",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865792"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865793"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1813024"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859213"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859212"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859208"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865785"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859215"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865791"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865790"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865789"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859206"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865783"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865787"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859211"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1813021"
+            }
+          ],
+          "comments": [
+            {
+              "id": "",
+              "author": "",
+              "createdAt": "",
+              "updatedAt": "",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:41:45.3445497Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1869308,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869308",
+          "revision": 28,
+          "type": "Feature",
+          "title": "[Report Designer] Web-based Report Management",
+          "state": "Backlog",
+          "assignedTo": "",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Phoenix Team",
+          "iterationPath": "Quorum\\PI 26.4",
+          "changedDate": "09/18/2026 17:00:54",
+          "description": "<div>Placeholder � scope and requirements to be refined. Covers web-based equivalents of WPF Report Designer's Reports tab (template list) actions: create/rename/delete/organize templates and folders, Master/Project/Regime report type management, Export/Import template (XML), Permissions (Read/Update/Delete/Assign, folder-inherited), and the Edit Using Excel live-edit round-trip (open question: relevance once reports live in a web-based spreadsheet component). Sibling to 1865781 [Report Designer] Webify the Excel based editor, which covers the Report Template tab (layout, variable linking, groups, preview, migration). </div><div><br> </div><div>Mockup is general - where there are inconsistencies with Econ UI patterns the implemented UI wins. Interactive html is attached - download and open. </div><div><br> </div><div><b>url</b>: .../planningspaceeconomics/#/configuration/managereports<br> </div><div><b>breadcrumb</b>: planning space &gt; Economics &gt; Configuration &gt; Manage Reports </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/8e6ef25c-9937-4a6c-8899-44928f0cf48a?fileName=image.png\" alt=Image><br> </div>",
+          "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>Template &amp; Folder List</b><ul><li>The Manage Reports screen must present two views of templates: an &quot;All Reports&quot; view listing every template (searchable by name substring), and a &quot;Master List&quot; view showing only templates currently designated as Master Reports � matching desktop Report Designer behavior. </li><li>Templates must be organizable into folders, including nested folders. </li> </ul> </li><li><b>Create, Rename, Delete</b><ul><li>A user must be able to create a new report template as either a Standard Report or a One Line Summary Report, or create a new folder, within a selected folder. </li><li>Creating a template must prompt for a name before it is added to the folder's list. </li><li>A user must be able to rename an existing template or folder. </li><li>A user must be able to delete an existing template or folder, subject to a confirmation step before the deletion is applied. This Feature does not need to define what happens to a template's existing usages elsewhere (Project/Regime links, scratchpad/result set reports); that is owned by the features that consume templates. </li> </ul> </li><li><b>Report Type Management</b><ul><li>Each template in the list must display its report type: Master Report, Project Report, Regime Report, or none. </li><li>A user must be able to add a template to, or remove it from, the Master Reports designation from this screen; a template designated as a Master Report must be visible on the Reports tab of every project in the hierarchy. </li><li>Creating or removing a Project Report link (via Manage Inputs) or a Regime Report link (via the Regime Library) is out of scope for this screen � this screen only reflects and lets a user filter/search by the resulting type, it does not create those links. </li> </ul> </li><li><b>Export / Import Template</b><ul><li>A user must be able to export a selected template to a local XML file. </li><li>A user must be able to import a template from an XML file into a selected folder. </li> </ul> </li><li><b>Permissions</b><ul><li>Permissions (Read, Update, Delete, Assign) must be assignable per template and per folder, to individual users or to workgroups. </li><li>Read grants viewing the template (and using it in reporting); Update grants modifying a template or folder; Delete grants deleting a template or folder; Assign grants changing permissions on it. </li><li>A new template or folder must inherit its parent folder's permissions by default. </li><li>Changing a folder's permissions must support applying the change to: this node only (default), this node and all child nodes, all child nodes only, this node and all parent nodes, or this node and all child and parent nodes. </li> </ul> </li> </ul><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: Permissions must be enforced consistently with the desktop Report Designer's Read/Update/Delete/Assign model, folder-inherited </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+          "tags": "",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876573"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876575"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876574"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876576"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876572"
+            }
+          ],
+          "comments": [
+            {
+              "id": "17768616",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/18/2026 17:00:54",
+              "updatedAt": "09/18/2026 17:00:54",
+              "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,3de9bb5f-30a9-48d4-928a-c314ce28a6cf\">@Binni Singh</a>&nbsp;<a href=\"#\" data-vss-mention=\"version:2.0,ea8470c6-61e0-6bc3-9533-4845e37e2d7c\">@Swapnil Wagharalkar</a>&nbsp;Removed from Phoenix 26.3 in favour of Currency Decks.</div><div>cc: <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a> </div>"
+            },
+            {
+              "id": "17764198",
+              "author": "binni.singh@quorumsoftware.com",
+              "createdAt": "09/18/2026 11:41:42",
+              "updatedAt": "09/18/2026 11:41:42",
+              "text": "<div>Dev - 20 days</div><div>QA - 5 days</div>"
+            },
+            {
+              "id": "17750630",
+              "author": "binni.singh@quorumsoftware.com",
+              "createdAt": "09/17/2026 11:59:38",
+              "updatedAt": "09/17/2026 11:59:38",
+              "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,ea8470c6-61e0-6bc3-9533-4845e37e2d7c\">@Swapnil Wagharalkar</a><a href=\"#\" data-vss-mention=\"version:2.0,fab00f11-ad9a-6a74-91a2-85593449b3be\">@Vaibhav Barhate</a>Updated the acceptance.</div>"
+            },
+            {
+              "id": "17643004",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/03/2026 20:51:00",
+              "updatedAt": "09/03/2026 20:51:00",
+              "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a>&nbsp; <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a>&nbsp;To be confirmed - The&nbsp;Report template in web can be split I think, so that a team familiar in Economics UI can create the Management UI, and Veles can do the template itself?</div><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,3de9bb5f-30a9-48d4-928a-c314ce28a6cf\">@Binni Singh</a> </div><div><br></div><div><br></div>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:42:22.6096184Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1874388,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1874388",
+          "revision": 13,
+          "type": "Feature",
+          "title": "[Report Designer] Tech Spike for web designer",
+          "state": "New",
+          "assignedTo": "nestor.piazuelo@quorumsoftware.com",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.1",
+          "changedDate": "09/17/2026 21:30:41",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>This feature captures the investigation activities required to decide on the tools and interaction model used to build report templates on the web. The current desktop experience is delivered through an Excel add-in task pane; because an add-in pane sits outside Excel's own event model, moving a variable from the pane into a spreadsheet cell (via drag-and-drop or right-click) cannot be assumed to carry over to a web equivalent. This spike determines the viable interaction model and web-compatible spreadsheet component before implementation work begins. </div><div><br> </div><ol><li>Investigate whether variables can be moved from the task pane into spreadsheet cells via drag-and-drop, right-click, or left-click in a web context. </li><li>Investigate Angular-compatible web packages capable of manipulating Excel-like spreadsheet data, and compare relative cost/effort. </li><li>Produce a recommended interaction model and component approach so implementation work can be estimated. </li> </ol><div><br> </div><div><b>Out of scope:</b> Implementation of the chosen approach � tracked under the web Report Designer delivery work. This Feature covers investigation and decision-making only. </div>",
+          "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Interaction Model Findings Documented</b><br>Given the investigation into moving variables from the task pane to Excel cells, when the spike concludes, then findings on the feasibility of drag-and-drop, right-click, and left-click interactions are documented, including any constraints imposed by the Excel add-in sandbox/event model. </li><li><b>AC2 � Web Package Options Evaluated</b><br>Given the investigation into Angular-compatible packages for manipulating Excel data, when the spike concludes, then a list of viable options is documented, including relative cost and effort for each. </li><li><b>AC3 � Recommended Approach Agreed</b><br>Given the findings from both investigation stories, when the team reconvenes, then a single recommended interaction model and component approach is agreed and documented, enabling implementation stories to be estimated. </li> </ul><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: Web Report Designer / Excel add-in task pane </li><li>What regression is required: None � investigation only, no code changes </li><li>Web APIs modified in this work item? No<ul><li>List new/changed endpoints here: N/A </li><li>Web API testing required (inform Automation Team): No </li> </ul> </li><li>Impact on automation: None </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: None at spike stage </li><li>DB Upgrade required?: No<ul><li>Do these require DBA review? No </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: Deferred to implementation feature once approach is selected </li><li>Security: Deferred to implementation feature once approach is selected </li><li>Concurrency: N/A at spike stage </li><li>Resilience: N/A at spike stage </li><li>Observability and Logging: N/A at spike stage </li><li>Compatibility and DPI: Chosen approach must work within the constraints of the Office web add-in platform </li><li>Network/latency: N/A at spike stage </li><li>Memory leak/mgt testing required: N/A at spike stage </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+          "tags": "PI 26.3",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874428"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Successor"
+              },
+              "rel": "System.LinkTypes.Dependency-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874423"
+            }
+          ],
+          "comments": [
+            {
+              "id": "17731178",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/15/2026 15:30:09",
+              "updatedAt": "09/15/2026 15:30:09",
+              "text": "<div>Description, Acceptance Criteria, and custom fields (Business Outcome, Objective, Non-Functional Requirements, In Scope, Key Metrics) populated by Claude Desktop, based on the tech spike discussion covering the Excel add-in architecture constraints, the right-click/drag-and-drop investigation, and the Angular-compatible web package investigation.</div>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "quorum-azure-boards",
+      "fetchedAtUtc": "2026-09-21T14:40:24.1185931Z",
+      "mode": "manual",
+      "workItems": [
+        {
+          "id": 1865781,
+          "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1865781",
+          "revision": 59,
+          "type": "Feature",
+          "title": "[Report Designer] Webify an Excel based editor (PoC)",
+          "state": "New",
+          "assignedTo": "galina.lapushinskaya@quorumsoftware.com",
+          "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+          "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+          "changedDate": "09/18/2026 18:00:13",
+          "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>The Report Designer lets an Author lay out a report template by placing fields, linking them to variables, configuring cell/section styling, and organizing variables into groups. In the WPF client this is built using SpreadsheetGear, an embedded Excel-like spreadsheet component. The web equivalent emulates that same spreadsheet experience using a web-based spreadsheet component, rather than moving away from the spreadsheet paradigm. For now, the full Report Template tab experience carries forward into scope as a baseline. </div><ol><li>Place and arrange report fields within a web-based spreadsheet grid </li><li>Link fields to variables, including variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run (linking a variable to a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side). Linkable variables include both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments) � both are present in the same variable tree regardless of report type. Author browses/filters this tree by Regime (scopes to that regime's variable set) and All/Linked toggle (filter to only variables already linked in the template). </li><li>Configure cell/section styling and headers (e.g. header position above/left) </li><li>Manage variable links within a template </li><li>Support Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots; see 1869369) </li><li>Migrate existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Support Range links � Date Range and Formula Range � which inject structural/computed content rather than mapping a single variable (see 1869339) </li><li>Support standard spreadsheet capabilities available in the current WPF ribbon (Insert, Formulas, Data, Review, View) as provided by the underlying web-based spreadsheet component </li> </ol><div><br><b>Open question:</b> earlier scoping referenced &quot;Variable Groups&quot; as a distinct capability (possibly associating a single Date Range with a customer-defined set of related variables), but this was not found in the current UAT app on inspection. Confirm with engineering whether this exists in some form before treating it as a scope commitment, or drop the term. </div><div><br><b>Out of scope:</b>&nbsp;Non-spreadsheet-style reporting experiences (handled separately under AI agency); report execution/viewing experience (separate from template design); template list management, permissions, export/import, and Edit Using Excel (see 1869308) </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/da89635d-ad3a-49cc-b8f3-c74cc1fe2d20?fileName=image.png\" alt=Image><br> </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/32d32306-5a13-442b-bc3e-fdb1793a7bf0?fileName=image.png\" alt=Image><br> </div>",
+          "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Place and Arrange Report Fields</b><br>Given an Author is building a report template in the web-based spreadsheet editor, when they place a field within the grid, then the field behaves as a spreadsheet cell/range consistent with the underlying web-based spreadsheet component. </li><li><b>AC2 � Browse and Filter Variables</b><br>Given the Author opens the variable panel, when they select a Regime from the dropdown, then the variable tree scopes to that regime's variable set; when they toggle All/Linked, then the tree filters to either every available variable or only variables already linked in the current template; when they enter search text, then the tree filters to matching variables. </li><li><b>AC3 � Link a Variable to a Cell or Range</b><br>Given the Author has browsed to a variable (economic output or report metadata pseudo-variable), when they link it to a cell or cell range, then the link is created and the variable's Name, Prompt, and Type display read-only on the link. </li><li><b>AC4 � Configure Link Attributes</b><br>Given an existing link, when the Author configures Working Interest, Real/Nominal, Type (Values), Discount Rate, or Placeholder Run on it, then the change is saved without requiring the link to be recreated. </li><li><b>AC5 � Unlink</b><br>Given a cell or range with a variable link, when the Author removes the link, then the association is cleared and the cell/range reverts to unlinked. </li><li><b>AC6 � Set Time-Series Orientation</b><br>Given a new template, when the Author sets time-series orientation (horizontal/vertical) early in creation, then all periodic variable links in the template follow that orientation as a template-wide setting. </li><li><b>AC7 � Destructive Orientation Change Warning</b><br>Given a template already has linked variables, when the Author changes its orientation, then a confirmation dialog warns that existing links will be cleared, and the change only proceeds on explicit confirmation. </li><li><b>AC8 � Date Range Link</b><br>Given the Author creates a Date Range link against a range (e.g. =Sheet1!$C$24:$C$26), then the range produces row/column labels tied to the report run period (e.g. Total/2020/2021), typed as &quot;Periodic Date,&quot; referenceable by other links in the template. </li><li><b>AC9 � Discount Rate Link (mechanic pending confirmation)</b><br>Given the Author links a cell to one of the 5 named Discount Rate slots (Rate 1�5), then multiple links against the same or different slots are supported. Open item: whether the typed cell value drives the actual discount calculation, or only displays it, is unconfirmed � verify with engineering before this criterion is finalized. </li><li><b>AC10 � Migrate Existing WPF Templates</b><br>Given an existing WPF-authored (SpreadsheetGear-based) report template, when it is opened in the web-based editor, then its layout, links, and styling are preserved without data loss. </li><li><b>AC11 � Standard Spreadsheet Capabilities</b><br>Given the Author is working in the web-based spreadsheet editor, when they use Insert, Formulas, Data, Review, or View capabilities, then the underlying web-based spreadsheet component provides equivalents consistent with the current WPF ribbon. </li> </ul><div><i>Not yet testable � excluded pending investigation:</i> Formula Range links (&lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt;) � the underlying mechanic is unconfirmed per 1869339; AC will be added once resolved with engineering. </div><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: Migration path must be validated against existing WPF-authored templates (AC10) </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: Web-based spreadsheet component must integrate with the existing Angular web client </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+          "tags": "PI 26.3",
+          "relations": [
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Parent"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869308"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Related"
+              },
+              "rel": "System.LinkTypes.Related",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1866883"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Child"
+              },
+              "rel": "System.LinkTypes.Hierarchy-Forward",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+            },
+            {
+              "attributes": {
+                "isLocked": false,
+                "name": "Predecessor"
+              },
+              "rel": "System.LinkTypes.Dependency-Reverse",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+            },
+            {
+              "attributes": {
+                "authorizedDate": "2026-09-03T20:58:08.09Z",
+                "id": 32782676,
+                "name": "report-management-mockup.html",
+                "resourceCreatedDate": "2026-09-03T20:53:47.203Z",
+                "resourceModifiedDate": "2026-09-03T20:53:47.203Z",
+                "resourceSize": 47944,
+                "revisedDate": "9999-01-01T00:00:00Z"
+              },
+              "rel": "AttachedFile",
+              "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/d20c8d9d-c28e-4eee-9107-d7c7b37407dc"
+            }
+          ],
+          "comments": [
+            {
+              "id": "17641323",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/03/2026 19:09:56",
+              "updatedAt": "09/03/2026 19:11:24",
+              "text": "<div>A few things came up during scoping that need engineering confirmation before AC can be finalized:</div><div><br></div><ol><li><b>Variable Groups</b> � earlier scoping referenced this as a distinct capability, but it wasn't found in the current UAT app. Does this exist in some form, or should the term be dropped?</li><li><b>Formula Range</b> (1869339) � produces &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt; placeholders, but we couldn't determine what drives them (a spreadsheet formula's output? an auto-derived calculation over a range?). Need a walkthrough of how this actually works.</li><li><b>Discount Rate link mechanic</b> (1869369) � believed to work as: link a Rate 1�5 slot to a cell, then type the assumption value directly into that cell, which feeds discounting at report-generation time. Can you confirm this is accurate?</li></ol><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a>, <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a></div>"
+            },
+            {
+              "id": "17641321",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/03/2026 19:09:48",
+              "updatedAt": "09/03/2026 19:09:48",
+              "text": "<div>This feature has been reworked following the pivot to keep the spreadsheet-based experience (web-based spreadsheet component) rather than moving away from it. Description, Objective, Business Outcome, and NFRs have all been updated accordingly, and AC has been cleared pending the component approach being confirmed.</div><div><br></div><div>Scope has also been split: template list management, permissions, export/import, and Edit Using Excel now live in a sibling Feature (1869308 � Web-based Report Management), so this Feature stays focused on the Report Template tab (layout, linking, variable browsing).</div><div><br></div><div>Four User Stories have been shelled out for estimation:</div><ul><li>Link report fields to variables (1869322)</li><li>Configure template time-series orientation (1869334)</li><li>Support Range links � Date Range, Formula Range (1869339)</li><li>Support Discount Rate links (1869369)</li></ul><div><br></div><div>A few open questions remain � flagging those separately.</div><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,2f649891-b778-6b1e-b7d7-9910a54fed82\">@Galina Lapushinskaya</a>, <a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a></div>"
+            },
+            {
+              "id": "17636745",
+              "author": "marg.brodie@quorumsoftware.com",
+              "createdAt": "09/03/2026 15:17:42",
+              "updatedAt": "09/03/2026 15:18:16",
+              "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,2f649891-b778-6b1e-b7d7-9910a54fed82\">@Galina Lapushinskaya</a>&nbsp;- This feature needs re-worked to a certain extent so ignore the acceptance for now. The agreed approach for this feature is to emulate the spreadsheet experience and leave non-spreadsheet reporting to AI agency.</div><div><br></div>"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

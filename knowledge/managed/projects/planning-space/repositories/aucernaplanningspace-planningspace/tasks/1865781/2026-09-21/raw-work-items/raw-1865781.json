@@ -1,0 +1,214 @@
+{
+  "fields": {
+    "Custom.BusinessOutcome": "<div>Report Authors can design report templates in the web client using the same spreadsheet-style experience they already rely on in WPF, removing a major dependency on the WPF desktop client without giving up the spreadsheet paradigm they're used to. </div>",
+    "Custom.EffortSize": "5",
+    "Custom.InScope": "<ul><li>Placing and arranging report fields within a web-based spreadsheet grid, emulating the existing SpreadsheetGear experience rather than moving away from the spreadsheet paradigm </li><li>Linking fields to variables � variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run � across both economic output variables and report metadata pseudo-variables, filterable by Regime and All/Linked </li><li>Configuring cell/section styling and headers (e.g. header position above/left) </li><li>Managing variable links within a template </li><li>Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots � see 1869369) </li><li>Migrating existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Range links � Date Range and Formula Range � for structural/computed content (see 1869339) </li><li>Standard spreadsheet capabilities from the current WPF ribbon (Insert, Formulas, Data, Review, View) via the underlying web-based spreadsheet component </li> </ul>",
+    "Custom.NonFunctionalRequirements": "<ul><li>The web-based spreadsheet component must integrate into the existing Angular web client � compatible with Angular, not requiring a separate framework shell </li><li>The web-based spreadsheet component must support the grid semantics needed for report template layout (cells, rows, columns, headers) </li><li>Existing WPF-authored (SpreadsheetGear-based) report templates must have a defined migration path into the new web-based spreadsheet format � no report lost in the transition </li> </ul>",
+    "Custom.Objective": "<div>Rebuild the Excel-based WPF Report Designer as a web-based spreadsheet editor with equivalent field placement and variable linking capability � including a migration path for existing report templates. </div><div><br> </div><div><b>Open question:</b> an earlier draft of this Objective referenced a &quot;preview capability&quot; against a selected regime. On investigation, no such preview feature was found � the Regime dropdown in the variable panel only scopes/filters which variables are browsable, and does not preview the report itself. Preview has been removed from this Objective; confirm with engineering whether any preview capability exists before reintroducing this language. </div>",
+    "Custom.ReleaseNoteApproved": false,
+    "Custom.TRAPCommitteeReview": "Feasibility Review Pending",
+    "Custom.TRAPState": "----",
+    "Custom.TargetRelease": "PS 20.4",
+    "Custom.TechWriterApproved": false,
+    "Custom.TopItem": false,
+    "Custom.WorkCategory": "Roadmap",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "EngineeringCMMI.ProductManagementApproval": "Awaiting Approval",
+    "EngineeringCMMI.ReleaseNoteIndicator": false,
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Place and Arrange Report Fields</b><br>Given an Author is building a report template in the web-based spreadsheet editor, when they place a field within the grid, then the field behaves as a spreadsheet cell/range consistent with the underlying web-based spreadsheet component. </li><li><b>AC2 � Browse and Filter Variables</b><br>Given the Author opens the variable panel, when they select a Regime from the dropdown, then the variable tree scopes to that regime's variable set; when they toggle All/Linked, then the tree filters to either every available variable or only variables already linked in the current template; when they enter search text, then the tree filters to matching variables. </li><li><b>AC3 � Link a Variable to a Cell or Range</b><br>Given the Author has browsed to a variable (economic output or report metadata pseudo-variable), when they link it to a cell or cell range, then the link is created and the variable's Name, Prompt, and Type display read-only on the link. </li><li><b>AC4 � Configure Link Attributes</b><br>Given an existing link, when the Author configures Working Interest, Real/Nominal, Type (Values), Discount Rate, or Placeholder Run on it, then the change is saved without requiring the link to be recreated. </li><li><b>AC5 � Unlink</b><br>Given a cell or range with a variable link, when the Author removes the link, then the association is cleared and the cell/range reverts to unlinked. </li><li><b>AC6 � Set Time-Series Orientation</b><br>Given a new template, when the Author sets time-series orientation (horizontal/vertical) early in creation, then all periodic variable links in the template follow that orientation as a template-wide setting. </li><li><b>AC7 � Destructive Orientation Change Warning</b><br>Given a template already has linked variables, when the Author changes its orientation, then a confirmation dialog warns that existing links will be cleared, and the change only proceeds on explicit confirmation. </li><li><b>AC8 � Date Range Link</b><br>Given the Author creates a Date Range link against a range (e.g. =Sheet1!$C$24:$C$26), then the range produces row/column labels tied to the report run period (e.g. Total/2020/2021), typed as &quot;Periodic Date,&quot; referenceable by other links in the template. </li><li><b>AC9 � Discount Rate Link (mechanic pending confirmation)</b><br>Given the Author links a cell to one of the 5 named Discount Rate slots (Rate 1�5), then multiple links against the same or different slots are supported. Open item: whether the typed cell value drives the actual discount calculation, or only displays it, is unconfirmed � verify with engineering before this criterion is finalized. </li><li><b>AC10 � Migrate Existing WPF Templates</b><br>Given an existing WPF-authored (SpreadsheetGear-based) report template, when it is opened in the web-based editor, then its layout, links, and styling are preserved without data loss. </li><li><b>AC11 � Standard Spreadsheet Capabilities</b><br>Given the Author is working in the web-based spreadsheet editor, when they use Insert, Formulas, Data, Review, or View capabilities, then the underlying web-based spreadsheet component provides equivalents consistent with the current WPF ribbon. </li> </ul><div><i>Not yet testable � excluded pending investigation:</i> Formula Range links (&lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt;) � the underlying mechanic is unconfirmed per 1869339; AC will be added once resolved with engineering. </div><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: Migration path must be validated against existing WPF-authored templates (AC10) </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: Web-based spreadsheet component must integrate with the existing Angular web client </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1622360871.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-08-26T18:56:32.877Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StartDate": "2026-10-14T06:00:00Z",
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AssignedTo": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy"
+        }
+      },
+      "descriptor": "aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy",
+      "displayName": "Galina Lapushinskaya",
+      "id": "2f649891-b778-6b1e-b7d7-9910a54fed82",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmY2NDk4OTEtYjc3OC03YjFlLWI3ZDctOTkxMGE1NGZlZDgy",
+      "uniqueName": "galina.lapushinskaya@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2f649891-b778-6b1e-b7d7-9910a54fed82"
+    },
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.AuthorizedDate": "2026-09-18T18:00:13.287Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.ChangedDate": "2026-09-18T18:00:13.287Z",
+    "System.CommentCount": 3,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.CreatedDate": "2026-08-26T18:56:32.877Z",
+    "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>The Report Designer lets an Author lay out a report template by placing fields, linking them to variables, configuring cell/section styling, and organizing variables into groups. In the WPF client this is built using SpreadsheetGear, an embedded Excel-like spreadsheet component. The web equivalent emulates that same spreadsheet experience using a web-based spreadsheet component, rather than moving away from the spreadsheet paradigm. For now, the full Report Template tab experience carries forward into scope as a baseline. </div><ol><li>Place and arrange report fields within a web-based spreadsheet grid </li><li>Link fields to variables, including variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run (linking a variable to a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side). Linkable variables include both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments) � both are present in the same variable tree regardless of report type. Author browses/filters this tree by Regime (scopes to that regime's variable set) and All/Linked toggle (filter to only variables already linked in the template). </li><li>Configure cell/section styling and headers (e.g. header position above/left) </li><li>Manage variable links within a template </li><li>Support Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots; see 1869369) </li><li>Migrate existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Support Range links � Date Range and Formula Range � which inject structural/computed content rather than mapping a single variable (see 1869339) </li><li>Support standard spreadsheet capabilities available in the current WPF ribbon (Insert, Formulas, Data, Review, View) as provided by the underlying web-based spreadsheet component </li> </ol><div><br><b>Open question:</b> earlier scoping referenced &quot;Variable Groups&quot; as a distinct capability (possibly associating a single Date Range with a customer-defined set of related variables), but this was not found in the current UAT app on inspection. Confirm with engineering whether this exists in some form before treating it as a scope commitment, or drop the term. </div><div><br><b>Out of scope:</b>&nbsp;Non-spreadsheet-style reporting experiences (handled separately under AI agency); report execution/viewing experience (separate from template design); template list management, permissions, export/import, and Edit Using Excel (see 1869308) </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/da89635d-ad3a-49cc-b8f3-c74cc1fe2d20?fileName=image.png\" alt=Image><br> </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/32d32306-5a13-442b-bc3e-fdb1793a7bf0?fileName=image.png\" alt=Image><br> </div>",
+    "System.Id": 1865781,
+    "System.IterationId": 5755,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.4",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1855446,
+    "System.PersonId": 95935292,
+    "System.Reason": "New",
+    "System.Rev": 59,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.Tags": "PI 26.3",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Webify an Excel based editor (PoC)",
+    "System.Watermark": 11239622,
+    "System.WorkItemType": "Feature",
+    "WEF_5B39AD25B77C48239A2A72207B462E11_Kanban.Column": "New",
+    "WEF_5B39AD25B77C48239A2A72207B462E11_Kanban.Column.Done": false,
+    "WEF_5B39AD25B77C48239A2A72207B462E11_System.ExtensionMarker": false,
+    "WEF_961B10A552D54878AB890F7FDB9345C0_Kanban.Column": "New",
+    "WEF_961B10A552D54878AB890F7FDB9345C0_Kanban.Column.Done": false,
+    "WEF_961B10A552D54878AB890F7FDB9345C0_System.ExtensionMarker": true,
+    "WEF_9866DF7B0BF94EE99C6C050102A797AF_Kanban.Column": "New",
+    "WEF_9866DF7B0BF94EE99C6C050102A797AF_Kanban.Column.Done": false,
+    "WEF_9866DF7B0BF94EE99C6C050102A797AF_System.ExtensionMarker": true,
+    "WEF_B61A550EB63F4B0795E889F2255707E5_Kanban.Column": "New",
+    "WEF_B61A550EB63F4B0795E889F2255707E5_Kanban.Column.Done": false,
+    "WEF_B61A550EB63F4B0795E889F2255707E5_System.ExtensionMarker": false,
+    "WEF_D9A7C542C49C410CAEEB68318B153816_Kanban.Column": "New",
+    "WEF_D9A7C542C49C410CAEEB68318B153816_Kanban.Column.Done": false,
+    "WEF_D9A7C542C49C410CAEEB68318B153816_System.ExtensionMarker": true
+  },
+  "id": 1865781,
+  "multilineFieldsFormat": {
+    "Custom.BusinessOutcome": "html",
+    "Custom.InScope": "html",
+    "Custom.NonFunctionalRequirements": "html",
+    "Custom.Objective": "html",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Related"
+      },
+      "rel": "System.LinkTypes.Related",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869308"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Related"
+      },
+      "rel": "System.LinkTypes.Related",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1866883"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Predecessor"
+      },
+      "rel": "System.LinkTypes.Dependency-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+    },
+    {
+      "attributes": {
+        "authorizedDate": "2026-09-03T20:58:08.09Z",
+        "id": 32782676,
+        "name": "report-management-mockup.html",
+        "resourceCreatedDate": "2026-09-03T20:53:47.203Z",
+        "resourceModifiedDate": "2026-09-03T20:53:47.203Z",
+        "resourceSize": 47944,
+        "revisedDate": "9999-01-01T00:00:00Z"
+      },
+      "rel": "AttachedFile",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/d20c8d9d-c28e-4eee-9107-d7c7b37407dc"
+    }
+  ],
+  "rev": 59,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+}

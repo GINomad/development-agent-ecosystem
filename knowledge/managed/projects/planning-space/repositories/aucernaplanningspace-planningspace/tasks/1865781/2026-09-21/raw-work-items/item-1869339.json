@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:42:01.2700278Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869339,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869339",
+      "revision": 3,
+      "type": "User Story",
+      "title": "[Report Designer] Support Range links (Date Range, Formula Range)",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+      "changedDate": "09/17/2026 18:25:21",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link Date Range and Formula Range content into my report template </div><div><b>So that</b> the report can display computed/structural content (like a date series or formula-derived summary) rather than a single variable's value </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation; Formula Range portion blocked pending investigation </div><div><b>Sequencing note:</b> None for Date Range. Formula Range is blocked � see open question below. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Ranges (Date Range, Formula Range) add content to the report rather than mapping a single variable's value into a cell � this is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Date Range link</b> </div><div>Author can create a Date Range link (WPF: Ranges &gt; Date Range &gt; Link), producing a range of row/column labels tied to the report run period (e.g. Total/2020/2021 rows generated from a linked range). Variable Type for a Date Range link is &quot;Periodic Date&quot;. Confirmed working example: Range =Sheet1!$C$24:$C$26 produces Total/2020/2021 labels referenced by Periodic Links elsewhere in the template. </div><div><br> </div><div><b>Formula Range link � open question, functionality not yet understood</b> </div><div>Web Report Designer must also support Formula Range links (WPF: Ranges &gt; Formula Range &gt; Link), producing &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, and &lt;SECOND VALUE&gt; placeholders. It is unclear whether Formula Range ties to a spreadsheet formula's output, an auto-derived calculation over a range (e.g. min/max or start/end of a series), or something else. Neither Marg nor Claude could determine this from UAT inspection. Needs investigation with engineering before AC can be written for this portion. </div>",
+      "acceptanceCriteria": "",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

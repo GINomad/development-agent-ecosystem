@@ -1,0 +1,596 @@
+{
+  "taskId": "task-20260917-devextreme-grid-poc",
+  "analyzedAtUtc": "2026-09-18T09:47:21.8229841Z",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "text": "Use only the provisioned local task clone and branch, keep PlanningSpace read-only, store or copy no credential or license material, and perform no remote push.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: routed inputs 31684bc69a4b4a8db9da3d9c3ecb9085, 692ccd3a55854731869d5ef1dcebfa39, and b3b6c0a6aee0407eb7fda1f24ae8b676 define the isolated-clone, read-only PlanningSpace, secret-safety, and no-remote boundaries.",
+        "fact: git status on 2026-09-18 reports the provisioned features/devextreme-angular-grid-variable-drag-and-drop-poc branch five commits ahead of origin/main with only two pre-existing uncommitted startup-fix files; no remote action was performed by Requirements Analyst.",
+        "fact: context-pack.json summary for implementation-result.json records no push or remote mutation and a clean reviewed local commit b3399c45c62d82553f12a631f70f96d383d53219."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-002",
+      "text": "Variant A remains a runnable Angular 20.3, TypeScript 5.8.3, DevExtreme 24.1.7, and devextreme-angular 24.1.7 application using a real DataGrid.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: package.json:13-17 and package.json:31 declare the required Angular, TypeScript, DevExtreme, and devextreme-angular versions.",
+        "fact: src/app/app.component.html:55-78 renders dx-data-grid with native cell editing and column resizing.",
+        "fact: context-pack.json summaries bind the previously reviewed implementation to b3399c45c62d82553f12a631f70f96d383d53219 with 31/31 frontend tests and both builds passing."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-003",
+      "text": "Variant A continues to show a persistent variable panel with typed value snapshots beside the DataGrid.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/app.component.html:8-27 renders the variable panel and src/app/app.component.ts:108-115 declares the typed values.",
+        "fact: src/app/app.component.spec.ts covers immutable drag-start snapshots while preserving the palette and selection."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-004",
+      "text": "Variant A continues to support a visible rectangular selection through mouse drag and Shift-click.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/app.component.ts:235-261 implements drag and stable-anchor Shift-click selection.",
+        "fact: src/app/app.component.spec.ts tests both mouse-drag rectangles and Shift-click extension."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-005",
+      "text": "Whole-row or whole-column shortcuts remain optional and must not replace the required rectangular selection.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: README.md states that whole-row and whole-column shortcuts are intentionally omitted while rectangular drag and Shift-click remain the required behavior.",
+        "fact: routed input 546bbb46c9874be3b19519216a619ca labels whole-row and whole-column selection as desirable rather than mandatory."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-006",
+      "text": "Both variants retain immutable drag-start value snapshots, preserve the variable palette, and do not introduce live binding.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/grid-domain.ts:47-60 clones Date snapshots for Variant A.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/wwwroot/js/variable-drop.js:1-8 freezes the Variant B payload and its focused JavaScript test verifies snapshot immutability.",
+        "fact: routed inputs 546bbb46c9874be3b19519216a619ca and 692ccd3a55854731869d5ef1dcebfa39 require retained palette sources and no live binding."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-007",
+      "text": "A drop inside the current selected rectangle targets that rectangle; a drop outside it targets only the cell under the pointer.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/grid-domain.ts:89-100 implements the Variant A target rule.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/VariableDropPolicy.cs:33-65 implements the same rectangle rule for Variant B.",
+        "fact: existing TypeScript, JavaScript, and C# focused tests cover inside and outside target resolution."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-008",
+      "text": "Variant A keeps its approved partial exact-type policy: update only editable targets with the declared type, skip read-only or incompatible cells without coercion, and report updated and skipped counts.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: user answer 90963c1ba3784606bb645c4534a64a96 selected partial exact-type application for the original DataGrid requirement.",
+        "fact: src/app/grid-domain.ts:102-127 enforces editable exact-type writes and returns updated/skipped counts.",
+        "fact: the new routed comment 7024115aef9548c59d489c5a9a1b6e6d removes fixture/type restrictions specifically for Spreadsheet, not for DataGrid."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-009",
+      "text": "Keep documented local start, test, and production-build paths for both variants.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: README.md documents npm start, npm test, and npm run build for Variant A.",
+        "fact: variant-b-spreadsheet/README.md documents restore, run, JavaScript test, .NET test, and .NET build commands for Variant B.",
+        "inference: these commands must be revalidated after the requested expansion because the current pass evidence predates the new requirements."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-010",
+      "text": "Complete the expanded local POC through current-revision review, independent verification, and knowledge publication without pipeline or remote delivery, then preserve the clone for the coordinating local export.",
+      "status": "ready",
+      "evidence": [
+        "fact: Orchestrator routing decision 8956cc7f01f845afb7a40566df211029 selects local-poc-delivery and explicitly excludes pipeline delivery.",
+        "fact: routed input b3b6c0a6aee0407eb7fda1f24ae8b676 requires the reviewed clone and exact verified commit to remain available for coordinating export.",
+        "fact: the new requirements are not implemented at reviewed revision b3399c45c62d82553f12a631f70f96d383d53219, so a new implementation/review/verification cycle is required."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-011",
+      "text": "Both variants retain representative number, date, percentage, currency, font, text-color, and background presentation.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/app.component.ts:68-105 declares Variant A formats and presentation metadata.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/XlsxDocumentFactory.cs creates the corresponding Spreadsheet number formats, fonts, fills, widths, and heights.",
+        "fact: existing frontend and .NET tests assert representative types and XLSX presentation metadata."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-012",
+      "text": "Variant A retains visible column-width and row-height adjustment and accurately distinguishes native DevExtreme behavior from manual POC behavior.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/app.component.html:41-64 exposes the row-height control and native column resizing.",
+        "fact: src/app/app.component.ts:118-128 and README.md:47-52 distinguish native and manual capabilities.",
+        "fact: src/app/app.component.spec.ts tests row-height behavior and the native-resizing configuration."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-013",
+      "text": "Variant A retains its reset action and genuine XLSX export using declared public dependencies.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: src/app/app.component.ts:188-210 implements reset and dynamically loaded export.",
+        "fact: src/app/grid-export.ts:9-34 uses the public DevExtreme exporter, ExcelJS, and file-saver.",
+        "fact: src/app/grid-export.spec.ts verifies a genuine XLSX ZIP payload."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-014",
+      "text": "Variant B remains a separately runnable genuine DevExpress ASP.NET Core Spreadsheet 24.2.5 application using the evidenced server-rendered architecture rather than claiming to be an Angular-native control.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/DevExpressSpreadsheetPoc.csproj declares DevExpress.AspNetCore.Spreadsheet 24.2.5 on net8.0.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Views/Spreadsheet/Index.cshtml:57-67 renders the genuine server Spreadsheet with a document request handler.",
+        "fact: context-pack.json summaries record clean review and independent verification of the combined implementation at b3399c45c62d82553f12a631f70f96d383d53219."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-015",
+      "text": "Variant B retains its variable palette, selected-range or single-cell drop interaction, counters, representative workbook presentation, dimensions, reset, and accurate native-versus-manual attribution while its drop semantics are expanded by REQ-017 and REQ-018.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Views/Spreadsheet/Index.cshtml renders the palette, reset, feedback, attribution, and Spreadsheet.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/SpreadsheetDocumentStore.cs:29-58 persists a live-session save copy and supplies reset feedback.",
+        "conflict: the exact-type and fixture-bound portion of the former REQ-015 is superseded for Spreadsheet by routed input 7024115aef9548c59d489c5a9a1b6e6d; CONFLICT-003 records the preserved evidence and scope impact."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-016",
+      "text": "Carry REV-002 as task-local bypassed cosmetic debt: do not start a standalone member-ordering rework cycle or block this POC, while preserving functional correctness and test quality.",
+      "status": "already-satisfied",
+      "evidence": [
+        "fact: user comment 97d5efd0ecfa4618811bec01d60ef660 formally bypasses standalone member-ordering work for this POC.",
+        "fact: context-pack.json summaries for review-result.json and review-verification.json preserve REV-002 as open TD-REV-002 while confirming no active finding.",
+        "fact: the global engineering standard remains applicable to newly added or materially changed members without authorizing unrelated reorder work."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "REQ-017",
+      "text": "Variant B Spreadsheet accepts a palette variable in any writable cell of the active worksheet and across the current selected range, without the original fixture row/column or declared cell-type restrictions; it must not disable or bypass worksheet/cell protection and must report updated and skipped targets.",
+      "status": "ready",
+      "evidence": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d explicitly requests any available active-sheet cell and selected-range writes without fixture/type restrictions while preserving sheet protection.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/VariableDropPolicy.cs:19-23 currently restricts writes to fixture rows, known columns, editable flags, and matching types.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/wwwroot/js/variable-drop.js:30-40 only hit-tests rows 1-4 and columns 0-6.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/SpreadsheetDocumentSession.cs:17-20 always writes worksheet index 0 and exposes no writable/protected-cell check.",
+        "inference: the latest Spreadsheet-specific instruction supersedes exact-type gating only for Variant B; Variant A retains its separately approved exact-type policy under REQ-008."
+      ],
+      "codeAlignment": "conflicting"
+    },
+    {
+      "id": "REQ-018",
+      "text": "Variant B bounds every range drop before enumerating or writing targets, rejects oversized or overflowed ranges safely, leaves protected or otherwise unavailable cells unchanged, and provides clear success or rejection feedback.",
+      "status": "ready",
+      "evidence": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d explicitly requires a safe bulk-operation limit and preserved protection.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/VariableDropPolicy.cs:42-55 uses checked range arithmetic and a 10,000-target ceiling before allocating the target list.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Controllers/SpreadsheetController.cs:44-51 maps argument and overflow failures to bounded client errors.",
+        "fact: current tests cover the target ceiling but do not prove protected-cell skips or active-sheet writes outside the fixture."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-019",
+      "text": "Variant B provides explicit XLSX upload and download for the live workbook, and verification proves that an uploaded workbook plus native Spreadsheet edits and variable drops survive the download/roundtrip path.",
+      "status": "ready",
+      "evidence": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d explicitly requests live-workbook XLSX upload/download and roundtrip/native-edit verification.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Services/SpreadsheetDocumentStore.cs:43 persists SaveCopy output after a variable drop, and SpreadsheetDocumentStoreTests proves a supplied live-session byte copy is retained.",
+        "fact: variant-b-spreadsheet/DevExpressSpreadsheetPoc/Controllers/SpreadsheetController.cs currently exposes document processing, drop, reset, and error routes but no explicit upload or download endpoint.",
+        "fact: variant-b-spreadsheet/README.md currently attributes native ribbon Open/Save commands but contains no verified explicit live-workbook upload/download roundtrip procedure.",
+        "inference: preserving native edits requires the explicit download path to snapshot the current Spreadsheet work session rather than serve stale store bytes."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-020",
+      "text": "Variant A provides a bounded DataGrid comparison for editing, rectangular selection, row and column behavior, and XLSX import/export: preserve working behavior, add a real XLSX import path for the demonstrated grid data, and state native, manual, limited, and unsupported behavior without claiming workbook parity.",
+      "status": "ready",
+      "evidence": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d requests a closer DataGrid evaluation covering editing, selection, rows, columns, and XLSX import/export with explicit limitations.",
+        "fact: src/app/app.component.html:55-78 already provides native cell editing and column resizing plus manual rectangular selection wiring.",
+        "fact: src/app/app.component.ts:118-128 and README.md:47-52 provide a partial capability attribution, but do not cover XLSX import or a complete editing/selection/row/column limitation matrix.",
+        "fact: src/app/grid-export.ts implements XLSX export; no first-party source file implements XLSX import.",
+        "inference: the smallest testable enhancement is a bounded import of the demonstrated tabular dataset plus an explicit comparison matrix; unsupported workbook features remain documented limitations rather than simulated capabilities."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-021",
+      "text": "Preserve and validate the pending Angular zone.js/development configuration and Spreadsheet OnInit dynamic-import fixes while implementing the new behavior.",
+      "status": "ready",
+      "evidence": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d explicitly requires preserving the Angular polyfills/development and Spreadsheet OnInit dynamic-import fixes.",
+        "fact: the current uncommitted angular.json diff adds zone.js polyfills and a development build configuration while keeping development as the serve default.",
+        "fact: the current uncommitted variant-b-spreadsheet/DevExpressSpreadsheetPoc/Views/Spreadsheet/Index.cshtml diff changes OnInit to dynamically import variable-drop.js and show bounded initialization failure feedback.",
+        "inference: these edits are code-aligned but not yet part of the reviewed commit, so Developer must preserve, test, and commit them with the expanded implementation."
+      ],
+      "codeAlignment": "aligned"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "CONFLICT-001",
+      "requirementId": "REQ-014",
+      "sources": [
+        "fact: an earlier requirements-analysis revision stated that the read-only reference contained no DevExpress ASP.NET Core Spreadsheet project or dependency.",
+        "fact: routed inputs ee67ff3f8d6e451f9713feaf076934d1 and b1880d51414147df8c966edb61a9618b plus the delivered Variant B identify the 24.2.5 server-rendered Spreadsheet architecture."
+      ],
+      "impact": "fact: the earlier absence claim remains superseded; Variant B is delivered as a genuine server-rendered ASP.NET Core Spreadsheet and must not be represented as Angular-native."
+    },
+    {
+      "id": "CONFLICT-002",
+      "requirementId": "REQ-014",
+      "sources": [
+        "fact: an earlier requirements-analysis revision treated absence from the standalone clone and prior local cache as a package-access hold.",
+        "fact: user comment 2b2bfe2aca854b898efa17b691d4763d and its isolated restore evidence established authorized restore access for DevExpress.AspNetCore.Spreadsheet 24.2.5."
+      ],
+      "impact": "fact: the prior package-access hold remains resolved; actual future build or runtime license failures must be reported as execution evidence rather than assumed."
+    },
+    {
+      "id": "CONFLICT-003",
+      "requirementId": "REQ-017",
+      "sources": [
+        "fact: user answer 90963c1ba3784606bb645c4534a64a96 and the former REQ-015 required exact-type partial writes for the original comparison behavior.",
+        "fact: later routed input 7024115aef9548c59d489c5a9a1b6e6d explicitly removes fixture/type restrictions for Spreadsheet while retaining protection and a safe bulk limit."
+      ],
+      "impact": "fact: the later instruction supersedes exact-type and fixture gating only in Variant B Spreadsheet; Variant A remains governed by REQ-008."
+    },
+    {
+      "id": "CONFLICT-004",
+      "requirementId": "REQ-017",
+      "sources": [
+        "fact: routed input 7024115aef9548c59d489c5a9a1b6e6d requires the active worksheet and any available cell.",
+        "fact: current code hit-tests only rows 1-4 and columns 0-6 in variable-drop.js:30-40 and writes Worksheets[0] in SpreadsheetDocumentSession.cs:17-20."
+      ],
+      "impact": "fact: current Variant B behavior is materially narrower than the requested scope and must be replaced with active-sheet, non-fixture-bound targeting before the requirement can pass."
+    }
+  ],
+  "questions": [],
+  "plan": [
+    {
+      "id": "PLAN-001",
+      "requirementIds": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-011", "REQ-012", "REQ-013", "REQ-014", "REQ-015", "REQ-016", "REQ-021"],
+      "action": "Preserve both runnable variants, the approved Variant A exact-type behavior, the task-local cosmetic waiver, and the two pending startup fixes. Incorporate the existing angular.json and Spreadsheet Index.cshtml edits without resetting or silently rewriting them, then add regression tests for the Angular development bootstrap and dynamic OnInit module-load contract where repository-native testing can observe them.",
+      "status": "ready",
+      "validation": [
+        "The pre-existing angular.json and Index.cshtml startup changes remain present in the implementation revision.",
+        "Variant A tests and production/development builds pass; Variant B JavaScript tests, .NET tests, restore/build, and a bounded local startup check pass.",
+        "No PlanningSpace, credential, license-material, remote, pipeline, or standalone cosmetic change occurs."
+      ]
+    },
+    {
+      "id": "PLAN-002",
+      "requirementIds": ["REQ-006", "REQ-007", "REQ-015", "REQ-017", "REQ-018"],
+      "action": "Refactor Variant B targeting and drop policy away from fixture coordinates and column types. Resolve the pointer and selection on the active worksheet through supported public Spreadsheet/document surfaces; validate the palette snapshot; write the snapshot to each writable target regardless of its prior type; skip protected, locked, unavailable, or invalid targets without disabling protection; preserve updated/skipped feedback; and keep a documented pre-enumeration bulk ceiling with checked arithmetic.",
+      "status": "ready",
+      "validation": [
+        "Focused tests cover a cell beyond the original 4x7 fixture, a multi-cell range, active-worksheet routing, mixed prior value types, and a pointer outside the selection.",
+        "Focused tests prove protected or unavailable cells are unchanged and counted as skipped while writable cells are updated.",
+        "Boundary tests prove the configured maximum is accepted, an oversized selection is rejected before enumeration/write, and arithmetic overflow returns bounded feedback.",
+        "A bounded real-control smoke check demonstrates the supported active-sheet selection/drop path or documents the exact automation limit without replacing unit evidence."
+      ]
+    },
+    {
+      "id": "PLAN-003",
+      "requirementIds": ["REQ-014", "REQ-019"],
+      "action": "Add explicit Variant B XLSX upload and download controls and server boundaries for the live workbook. Validate that uploads are XLSX inputs before replacing the current document, obtain downloads from the current Spreadsheet work session so native edits are included, preserve variable-drop changes, and keep failure feedback bounded and user-visible.",
+      "status": "ready",
+      "validation": [
+        "Controller/service tests cover valid upload, invalid or empty upload rejection, and download content type/file naming.",
+        "A roundtrip test starts from a non-fixture XLSX, applies a simulated native edit plus variable drop through the live-session abstraction, downloads the workbook, reopens it, and verifies the edits remain.",
+        "Documentation explains which upload/download behavior is native Spreadsheet UI and which synchronization endpoints or adapters are manual POC code."
+      ]
+    },
+    {
+      "id": "PLAN-004",
+      "requirementIds": ["REQ-002", "REQ-004", "REQ-008", "REQ-012", "REQ-013", "REQ-020"],
+      "action": "Extend Variant A with a bounded XLSX import for the demonstrated grid dataset using declared public dependencies, without claiming general workbook fidelity. Preserve native cell editing, manual rectangle selection, row-height control, column-width resizing, reset, and export; expand the UI/README comparison to state the actual support and limitations for editing, selection, row operations, column operations, formulas/styles, and XLSX import/export.",
+      "status": "ready",
+      "validation": [
+        "Focused tests verify a valid demonstrated table imports into typed grid rows and that malformed, unsupported, or out-of-bounds workbook data produces clear feedback without partial silent corruption.",
+        "Existing selection, drop, editing, resizing, reset, and export tests remain passing.",
+        "The rendered capability matrix and README classify each requested DataGrid area as native, manual, limited, or unsupported and do not describe DataGrid as a workbook control."
+      ]
+    },
+    {
+      "id": "PLAN-005",
+      "requirementIds": ["REQ-009", "REQ-010", "REQ-017", "REQ-018", "REQ-019", "REQ-020", "REQ-021"],
+      "action": "Run the complete local validation matrix on the final implementation revision, record exact command evidence, and update both READMEs with run paths, interaction steps, native/manual attribution, security and bulk limits, XLSX roundtrip steps, and residual browser-integration limitations.",
+      "status": "ready",
+      "validation": [
+        "Frontend tests, Angular development and production builds, Spreadsheet JavaScript tests, .NET tests, and Release build pass on the same recorded revision.",
+        "A bounded credential/license-material scan and git status/divergence check are recorded with no remote mutation.",
+        "The implementation result distinguishes automated evidence from any manual real-control smoke evidence."
+      ]
+    },
+    {
+      "id": "PLAN-006",
+      "requirementIds": ["REQ-010"],
+      "action": "Submit the new local revision to separate source review and independent exact-artifact verification, then publish updated task knowledge. Keep pipeline delivery skipped and preserve the verified clone and commit for the coordinating local export.",
+      "status": "ready",
+      "validation": [
+        "Reviewer maps every requirement to exact code and test evidence and records complete review coverage.",
+        "Review Verifier binds its verdict to the exact review artifact hash and reviewed commit and independently executes the required checks.",
+        "Knowledge publication records the final commit, commands, supported limitations, residual risks, and the preserved-clone handoff without push, PR, or pipeline."
+      ]
+    }
+  ],
+  "summary": "fact: routed comment 7024115aef9548c59d489c5a9a1b6e6d adds ready local-delivery scope for unrestricted active-sheet Spreadsheet drops, protection-aware bounded bulk writes, explicit live-workbook XLSX upload/download roundtrip verification, a bounded DataGrid XLSX-import and capability comparison, and preservation of two pending startup fixes. fact: current Variant B is still restricted to the original 4x7 typed fixture and worksheet 0, while Variant A exports XLSX but has no import path. fact: the existing 10,000-cell pre-allocation guard and live-session SaveCopy path are aligned foundations. inference: no new human product decision is required because the latest comment resolves the former Spreadsheet type-policy direction and asks for an explicit limitations-based DataGrid evaluation. conflict: the latest Spreadsheet-specific instruction supersedes the former exact-type rule only for Variant B; Variant A retains its approved exact-type partial-write behavior. open_question: none.",
+  "humanReadable": {
+    "title": "Expand the local DataGrid and Spreadsheet comparison POC",
+    "objective": "Make the real DevExpress Spreadsheet accept variable drops across the active worksheet while respecting protection and bulk limits, add live XLSX upload/download roundtrip coverage, and make the DevExtreme DataGrid comparison more complete with bounded XLSX import and honest capability limits. Preserve the pending startup fixes and keep all delivery local.",
+    "requirements": [
+      {
+        "id": "REQ-001",
+        "title": "Keep the work isolated and local",
+        "description": "Use only the task clone, keep PlanningSpace read-only, do not copy secrets or license material, and do not push remotely.",
+        "acceptanceCriteria": ["Only the provisioned task branch changes.", "No credential, license, push, PR, or pipeline action occurs."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-002",
+        "title": "Retain the real Angular DataGrid",
+        "description": "Keep Variant A runnable on the declared Angular, TypeScript, DevExtreme, and devextreme-angular versions.",
+        "acceptanceCriteria": ["The real dx-data-grid renders.", "Declared versions remain unchanged unless separately authorized."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-003",
+        "title": "Retain the DataGrid variable palette",
+        "description": "Keep the visible typed-variable palette beside Variant A.",
+        "acceptanceCriteria": ["Variables remain visible after drag.", "Displayed values and types remain clear."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-004",
+        "title": "Retain rectangular DataGrid selection",
+        "description": "Keep mouse-drag and Shift-click rectangle selection in Variant A.",
+        "acceptanceCriteria": ["Forward and reverse rectangles are visible.", "Shift-click extends from the stable anchor."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-005",
+        "title": "Keep row and column shortcuts optional",
+        "description": "Whole-row or whole-column selection must not replace the required rectangle behavior.",
+        "acceptanceCriteria": ["Rectangle selection remains the primary supported path.", "Any omitted shortcuts are identified as optional or unsupported."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-006",
+        "title": "Keep drag snapshots immutable",
+        "description": "Both variants capture the value at drag start, keep the source variable, and avoid live binding.",
+        "acceptanceCriteria": ["Changing a palette value after drag start does not change that drop.", "The palette source remains available."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-007",
+        "title": "Keep inside and outside drop targeting",
+        "description": "A drop inside a selection applies to the selection; a drop outside targets one pointer cell.",
+        "acceptanceCriteria": ["Inside-selection and outside-selection cases are tested in both variants."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-008",
+        "title": "Retain DataGrid type safety",
+        "description": "Variant A continues to update only editable cells with the matching declared type and reports skips.",
+        "acceptanceCriteria": ["No DataGrid coercion occurs.", "Read-only and type-incompatible targets are unchanged and counted as skipped."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-009",
+        "title": "Keep local run and verification instructions",
+        "description": "Document exact start, test, and build commands for both applications.",
+        "acceptanceCriteria": ["Commands are current and pass on the final revision."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-010",
+        "title": "Repeat the local quality gates",
+        "description": "Implement, review, independently verify, and publish the expanded POC locally, with no pipeline delivery.",
+        "acceptanceCriteria": ["A new exact revision has passing implementation evidence.", "Review and independent verification bind to that revision.", "The clone remains available for coordinating export."],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-011",
+        "title": "Retain comparable presentation",
+        "description": "Keep representative formats, font, text color, background, widths, and heights in both variants.",
+        "acceptanceCriteria": ["Representative presentation remains visible and tested."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-012",
+        "title": "Retain DataGrid dimensions and attribution",
+        "description": "Keep row-height and column-width controls and accurately state which parts are native or manual.",
+        "acceptanceCriteria": ["Column resizing and row-height adjustment still work.", "Attribution remains accurate."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-013",
+        "title": "Retain DataGrid reset and export",
+        "description": "Keep the reset action and genuine XLSX export in Variant A.",
+        "acceptanceCriteria": ["Reset restores the comparison data.", "Export produces a valid XLSX package."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-014",
+        "title": "Retain the genuine server Spreadsheet",
+        "description": "Keep Variant B as a separately runnable ASP.NET Core Spreadsheet 24.2.5 application.",
+        "acceptanceCriteria": ["The component remains genuine and editable.", "Documentation does not call it Angular-native."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-015",
+        "title": "Retain the Spreadsheet comparison features",
+        "description": "Keep its palette, selection interaction, counters, presentation, dimensions, reset, and honest attribution while broadening drop rules.",
+        "acceptanceCriteria": ["Existing comparison features remain usable after the refactor."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-016",
+        "title": "Preserve the cosmetic waiver",
+        "description": "Do not start a standalone member-ordering cleanup; keep functional and test quality high.",
+        "acceptanceCriteria": ["REV-002 remains task-local debt and does not block delivery.", "Newly changed code follows applicable standards."],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "REQ-017",
+        "title": "Drop into the active Spreadsheet sheet",
+        "description": "Allow a palette value in any writable active-sheet cell or selected range, independent of the original fixture and existing cell type, without bypassing protection.",
+        "acceptanceCriteria": ["Cells beyond the original 4x7 fixture can be targeted.", "The active sheet is used instead of worksheet 0.", "Mixed existing value types do not block writes.", "Protected or unavailable cells remain unchanged and are counted as skipped."],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-018",
+        "title": "Bound bulk Spreadsheet writes",
+        "description": "Reject oversized or overflowed selections before enumerating or writing them and show clear feedback.",
+        "acceptanceCriteria": ["The maximum target count is documented and boundary-tested.", "Oversized and overflow cases cause no partial writes.", "Success and rejection feedback is visible."],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-019",
+        "title": "Upload and download the live workbook",
+        "description": "Add explicit XLSX upload and download that preserve uploaded content, native Spreadsheet edits, and variable drops.",
+        "acceptanceCriteria": ["A valid XLSX can replace the current workbook.", "Invalid or empty input is rejected safely.", "Download uses the live Spreadsheet session.", "A roundtrip test reopens the result and verifies native and variable edits."],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-020",
+        "title": "Complete the DataGrid comparison",
+        "description": "Add bounded XLSX import for the demonstrated table and clearly compare DataGrid editing, selection, row, column, import, and export behavior with a workbook control.",
+        "acceptanceCriteria": ["A supported table imports into typed rows.", "Malformed or unsupported workbook input fails clearly.", "Export remains valid.", "The UI and README label each capability native, manual, limited, or unsupported without claiming workbook parity."],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-021",
+        "title": "Preserve startup fixes",
+        "description": "Keep the pending Angular zone.js/development configuration and Spreadsheet dynamic OnInit import changes.",
+        "acceptanceCriteria": ["Angular development serving uses the development target with zone.js loaded.", "Spreadsheet initialization loads the module before invoking its OnInit handler and shows failure feedback.", "Both edits are included in the final reviewed revision."],
+        "status": "ready"
+      }
+    ],
+    "workflow": [
+      {
+        "order": 1,
+        "title": "Finalize requirements",
+        "description": "Map the new request to current code, preserve the prior Variant A decision, and expose ready implementation scope.",
+        "owner": "Requirements Analyst",
+        "outputs": ["Updated requirements analysis", "Ready implementation plan", "No open product question"],
+        "gate": "The requirements artifact passes schema and semantic validation."
+      },
+      {
+        "order": 2,
+        "title": "Implement and validate locally",
+        "description": "Implement only the ready scope, preserve the existing startup edits, test both variants, and commit the result locally.",
+        "owner": "Developer",
+        "outputs": ["Product changes", "Focused tests", "Exact command and revision evidence"],
+        "gate": "All required local checks pass on a clean task revision; no remote action occurs."
+      },
+      {
+        "order": 3,
+        "title": "Review against requirements",
+        "description": "Inspect the exact implementation diff, test evidence, limitations, and every requirement mapping.",
+        "owner": "Reviewer",
+        "outputs": ["Review result", "Complete coverage matrix", "Stable finding lifecycle"],
+        "gate": "The review artifact is valid; any finding requires the configured decision process before rework."
+      },
+      {
+        "order": 4,
+        "title": "Verify the review independently",
+        "description": "Falsify review claims and independently run the required checks against the exact reviewed revision.",
+        "owner": "Review Verifier",
+        "outputs": ["Hash-bound verification", "Independent test/build evidence"],
+        "gate": "Verification passes for the exact review artifact and commit, with no unresolved confirmed finding."
+      },
+      {
+        "order": 5,
+        "title": "Publish the local outcome",
+        "description": "Record the verified behavior, limitations, residual risks, commands, and preserved-clone handoff for local export.",
+        "owner": "Knowledge Keeper",
+        "outputs": ["Task history", "Human-readable final summary", "Verified local handoff evidence"],
+        "gate": "Publication cites the exact verified revision; pipeline, PR, and push remain excluded."
+      }
+    ],
+    "implementationPlan": [
+      {
+        "order": 1,
+        "title": "Preserve baselines and startup fixes",
+        "description": "Keep both variants and incorporate the existing Angular and Spreadsheet initialization edits before adding features.",
+        "requirementIds": ["REQ-001", "REQ-002", "REQ-009", "REQ-014", "REQ-016", "REQ-021"],
+        "validation": ["Diff proves the two startup fixes remain.", "Baseline tests and builds remain green."],
+        "status": "ready"
+      },
+      {
+        "order": 2,
+        "title": "Generalize Spreadsheet variable drops",
+        "description": "Use the active sheet, remove fixture/type gating, respect protected or unavailable cells, preserve counters, and retain the bounded range guard.",
+        "requirementIds": ["REQ-006", "REQ-007", "REQ-015", "REQ-017", "REQ-018"],
+        "validation": ["Tests cover non-fixture cells, mixed existing types, active sheets, protected cells, and range boundaries."],
+        "status": "ready"
+      },
+      {
+        "order": 3,
+        "title": "Add live Spreadsheet XLSX roundtrip",
+        "description": "Add explicit upload/download controls and endpoints bound to the live Spreadsheet session so native edits and variable drops survive.",
+        "requirementIds": ["REQ-014", "REQ-019"],
+        "validation": ["Upload validation and download response tests pass.", "A reopened roundtrip workbook contains native and variable edits."],
+        "status": "ready"
+      },
+      {
+        "order": 4,
+        "title": "Expand the DataGrid comparison",
+        "description": "Add bounded XLSX import for the demonstrated data and complete the capability/limitation matrix while preserving current selection, editing, sizing, reset, and export.",
+        "requirementIds": ["REQ-004", "REQ-008", "REQ-012", "REQ-013", "REQ-020"],
+        "validation": ["Valid and invalid import tests pass.", "Existing interaction and export tests remain green.", "UI and README limitations match implemented behavior."],
+        "status": "ready"
+      },
+      {
+        "order": 5,
+        "title": "Run final local checks and document evidence",
+        "description": "Execute the complete frontend, Angular, JavaScript, .NET, build, git, and bounded secret-safety checks on one revision.",
+        "requirementIds": ["REQ-001", "REQ-009", "REQ-010", "REQ-017", "REQ-018", "REQ-019", "REQ-020", "REQ-021"],
+        "validation": ["Every required command has exact pass/fail evidence.", "No remote mutation or secret material is present."],
+        "status": "ready"
+      },
+      {
+        "order": 6,
+        "title": "Review, verify, and publish locally",
+        "description": "Run separate review and independent verification, then publish the final local outcome and preserve the clone for export.",
+        "requirementIds": ["REQ-010"],
+        "validation": ["Review coverage is complete.", "Verification is bound to the exact artifact hash and commit.", "No pipeline or push occurs."],
+        "status": "ready"
+      }
+    ]
+  }
+}

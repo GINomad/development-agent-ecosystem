@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1869322,
+    "title": "[Report Designer] Browse and filter report variables",
+    "revision": 21,
+    "storyPoints": 8,
+    "optimisticHours": 32,
+    "pessimisticHours": 32,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869322",
+    "verified": true
+  },
+  {
+    "id": 1877820,
+    "title": "[Report Designer] Create and persist economic variable links",
+    "revision": 8,
+    "storyPoints": 10,
+    "optimisticHours": 40,
+    "pessimisticHours": 40,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820",
+    "verified": true
+  },
+  {
+    "id": 1877828,
+    "title": "[Report Designer] Link report metadata variables",
+    "revision": 4,
+    "storyPoints": 8,
+    "optimisticHours": 32,
+    "pessimisticHours": 32,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877828",
+    "verified": true
+  },
+  {
+    "id": 1877829,
+    "title": "[Report Designer] Configure variable link attributes and headers",
+    "revision": 4,
+    "storyPoints": 8,
+    "optimisticHours": 32,
+    "pessimisticHours": 32,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877829",
+    "verified": true
+  },
+  {
+    "id": 1877830,
+    "title": "[Report Designer] Configure run-specific links and comparison metadata",
+    "revision": 4,
+    "storyPoints": 8,
+    "optimisticHours": 32,
+    "pessimisticHours": 32,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877830",
+    "verified": true
+  },
+  {
+    "id": 1877832,
+    "title": "[Report Designer] Manage links and preserve them during spreadsheet edits",
+    "revision": 3,
+    "storyPoints": 8,
+    "optimisticHours": 32,
+    "pessimisticHours": 32,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877832",
+    "verified": true
+  }
+]

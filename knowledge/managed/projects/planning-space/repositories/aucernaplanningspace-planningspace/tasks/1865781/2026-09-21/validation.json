@@ -1,0 +1,84 @@
+{
+  "validatedAtUtc": "2026-09-21T15:12:11.8527645Z",
+  "knowledgeSchema": "C:/Repos/development-agent-ecosystem/config/schemas/knowledge-update.schema.json",
+  "schemaSha256": "087206ECD3F7E57A930E970A1C6FEC0F3955B989E2F333E63706FCC9A37AFB6F",
+  "schemaValid": true,
+  "outputCopies": [
+    {
+      "name": "ado-snapshot.json",
+      "sha256": "149B0AD07C9EABE6EA71936EA71F88275795D928215DF52F4FDE4E7F4E59A180",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\ado-snapshot.json"
+    },
+    {
+      "name": "attachment-hashes.json",
+      "sha256": "4045FF89C5F94278E68F132A4E659DCE0E34F19A2041D66AB73F4729287A8E68",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\attachment-hashes.json"
+    },
+    {
+      "name": "attachments-review-1865781.ru.md",
+      "sha256": "D4168B0B06642D22FB8F12234526BF593ADFBCA9D814EC5E13A1C4EBE12DFC9D",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\attachments-review-1865781.ru.md"
+    },
+    {
+      "name": "deliverables-manifest.json",
+      "sha256": "EA3E45616B14973136DBC90FA246724869CE33C6940E7C30E16D6DD55D2FA87C",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\deliverables-manifest.json"
+    },
+    {
+      "name": "estimation-scenarios-1865781.ru.md",
+      "sha256": "6B935033C000673FBF50DD0906C50BFF1BA390267959A8E726EB2DDB0AB5129B",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\estimation-scenarios-1865781.ru.md"
+    },
+    {
+      "name": "report-designer-web-mockup.png",
+      "sha256": "C0BC7C2DEFD3AD4A7F7349BD26916144AB4858456770686A9F4F42D36F220AD8",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\report-designer-web-mockup.png"
+    },
+    {
+      "name": "report-designer-wpf-reference.png",
+      "sha256": "3B1948903DA184F3A7C7CBDD2896ED877A82A02702BA55128218C7E6EB0748B5",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\report-designer-wpf-reference.png"
+    },
+    {
+      "name": "report-management-mockup.html",
+      "sha256": "90ACE971C65A7FEF07C4AA171B48E927A167D79E04939C542CBE435F45C516F7",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\report-management-mockup.html"
+    },
+    {
+      "name": "requirements-analysis.json",
+      "sha256": "A463B5ABD42E3F4AD69165A1FA37EB0A19C89B0648500DCA9C6C0EC4CCA42E9B",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\requirements-analysis.json"
+    },
+    {
+      "name": "requirements-estimation-1865781.ru.md",
+      "sha256": "B4D30DB50419E1DBDEA6570A8C23DB72A6C8B7C64BA59680F506BF0447532972",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\requirements-estimation-1865781.ru.md"
+    },
+    {
+      "name": "task-1865781-brief.ru.md",
+      "sha256": "0B742CF0666E0BF8FF510004FC7215BDED120B737F7F57AD7A5C494563FC885D",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\task-1865781-brief.ru.md"
+    },
+    {
+      "name": "task-1869322-brief.ru.md",
+      "sha256": "E5A06BDA619B9D1D814A2E712BE78CB8D785978F37EA8D13DAB344CA057DCEE3",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\task-1869322-brief.ru.md"
+    },
+    {
+      "name": "task-1869334-brief.ru.md",
+      "sha256": "2EE6C61F52DD12D6E25724A151E8BD9D1CEF7D81C3D758998A89B89C5EBC04C7",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\task-1869334-brief.ru.md"
+    },
+    {
+      "name": "task-1869339-brief.ru.md",
+      "sha256": "35620A01F9AB08B166F012029BF2D1DF54AF659B77777C71076FC8639419E4E9",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\task-1869339-brief.ru.md"
+    },
+    {
+      "name": "task-1869369-brief.ru.md",
+      "sha256": "6B0A17FA2505542EE8D892AAAA4014B73ABC1A48C975FA4DC317141441FC34EC",
+      "source": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\task-1869369-brief.ru.md"
+    }
+  ],
+  "publication": "Local user-authorized task dossier only; no Publish-AgentOutcome workflow, development task completion, commit or push."
+}

@@ -1,0 +1,143 @@
+{
+  "taskId": "task-planning-space-excel-variable-poc-20260915",
+  "reviewedRevision": "git:3ec943a9a1fd658c05a9f41954244e208e676aa4",
+  "requirementsRevision": "sha256:ecb00c72787e46d917a7c5237b9d22ad6b5f2f9b0fdd7c72bbad642d6517341a",
+  "requirementTraceability": [
+    {
+      "requirementId": "REQ-001",
+      "requirementText": "Create a new local Excel task-pane add-in with the latest stable Angular release and a reproducible locked dependency set.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "package.json", "startLine": 1, "endLine": 46, "evidence": "[fact] Angular 22 dependencies, npm 11.13.0, and validation scripts are declared." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "package-lock.json", "startLine": 1, "evidence": "[fact] The committed lockfile reproducibly resolves the dependency graph, including @angular/core 22.1.6 and @angular/cli 22.1.8." }
+      ],
+      "testEvidence": ["[fact] Reviewer reran strict type checks and the production build successfully.", "[fact] Requirements analysis records npm latest endpoints returning @angular/core 22.1.6 and @angular/cli 22.1.8 at 2026-09-15T15:28:23.9407966Z."],
+      "notes": "[fact] The new strict Angular application has a committed npm lockfile."
+    },
+    {
+      "requirementId": "REQ-002",
+      "requirementText": "Expose exactly 10 mocked variables with distinct identifiers, display names, and finite randomly generated numeric values that remain stable for the lifetime of one add-in runtime.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/app/variables/mock-variable-store.ts", "startLine": 3, "endLine": 41, "symbol": "createMockVariableStore", "evidence": "[fact] One module-level store constructs ten frozen variables once, gives each a distinct ordinal identifier/display name, and retains the active variable." }
+      ],
+      "testEvidence": ["[fact] src/app/variables/mock-variable-store.spec.ts:3-25 verifies ten unique identifiers/display names, finite stable values, default/changed active state, and unknown lookup rejection.", "[fact] Reviewer reran npm test: 16/16 tests passed."],
+      "notes": "[fact] Values are generated from Math.random once per shared runtime and remain stable until reload."
+    },
+    {
+      "requirementId": "REQ-003",
+      "requirementText": "When a user selects one contiguous range or multiple discontiguous ranges and clicks a variable in the task pane, write that variable's numeric value into every selected cell.",
+      "implementationStatus": "partially-verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/app/app.ts", "startLine": 20, "endLine": 40, "symbol": "App.activateAndInsert", "evidence": "[fact] The button action activates the variable and awaits insertion with busy, success, and failure states." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/office/excel-insertion.service.ts", "startLine": 17, "endLine": 39, "symbol": "insertIntoSelectedRanges", "evidence": "[fact] The service loads every selected area, assigns a dimensioned numeric matrix, and synchronizes writes." }
+      ],
+      "testEvidence": ["[fact] src/office/excel-insertion.service.spec.ts:30-89 covers one cell, contiguous 2x3, discontiguous areas, synchronization, invalid input, and Office rejection.", "[fact] src/app/app.spec.ts:30-63 covers click delegation and UI success/failure states.", "[open_question] README.md:77-89 desktop smoke checks were not executed."],
+      "notes": "[fact] Unit boundaries pass; actual Excel selection/write integration remains pending the documented smoke checks."
+    },
+    {
+      "requirementId": "REQ-004",
+      "requirementText": "Add an Excel cell context-menu command named 'Insert selected variable' that writes the currently active mocked variable into every cell in one or multiple selected ranges.",
+      "implementationStatus": "partially-verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "manifest.xml", "startLine": 84, "endLine": 102, "evidence": "[fact] ContextMenuCell declares the named InsertSelectedVariable ExecuteFunction action." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/office/commands.ts", "startLine": 10, "endLine": 21, "symbol": "insertSelectedVariableCommand", "evidence": "[fact] The command awaits insertion of the active shared value and completes the Office event in finally." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/office/office-registration.ts", "startLine": 4, "endLine": 7, "symbol": "registerOfficeIntegration", "evidence": "[fact] Runtime registration associates the manifest action and handler." }
+      ],
+      "testEvidence": ["[fact] src/office/commands.spec.ts:4-30 verifies active-value insertion and exactly-once completion on success/failure.", "[fact] src/office/office-registration.spec.ts:5-20 verifies action association; Reviewer reran valid manifest validation.", "[open_question] README.md:85-86 context-menu smoke check was not executed."],
+      "notes": "[fact] Static wiring and handler behavior pass; Excel-host rendering/invocation remains partially verified."
+    },
+    {
+      "requirementId": "REQ-005",
+      "requirementText": "Support dragging a variable's DOM element directly from the task pane and dropping it onto a specific Excel worksheet cell or selected worksheet ranges.",
+      "implementationStatus": "not-applicable",
+      "codeReferences": [],
+      "testEvidence": ["[fact] src/app/app.spec.ts:20-28 verifies the visible unsupported-drop explanation and supported alternative."],
+      "notes": "[fact] Requirements analysis rejects implementation because Excel Office.js exposes no supported cross-webview worksheet drop-target contract; no approximation was added."
+    },
+    {
+      "requirementId": "REQ-006",
+      "requirementText": "Explain the unsupported native drag interaction in the POC and present supported UX alternatives without pretending that a task-pane drag identifies an Excel drop cell.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/app/app.html", "startLine": 39, "endLine": 52, "evidence": "[fact] The task pane explains the missing drop target and presents select-then-click and context-menu alternatives." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "README.md", "startLine": 55, "endLine": 75, "evidence": "[fact] The scenario matrix distinguishes supported flows from unsupported native drag without simulation." }
+      ],
+      "testEvidence": ["[fact] src/app/app.spec.ts:20-28 verifies the limitation and alternative are visible."],
+      "notes": "[fact] Both supported alternatives are presented in UI and documentation."
+    },
+    {
+      "requirementId": "REQ-007",
+      "requirementText": "Provide an add-in-only Excel manifest that targets the local Angular HTTPS origin, grants read/write workbook access, declares ExcelApi 1.9 and SharedRuntime 1.1, loads the task pane, exposes the context-menu action, and declares custom-function resources.",
+      "implementationStatus": "partially-verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "manifest.xml", "startLine": 1, "endLine": 129, "evidence": "[fact] The Workbook manifest uses ReadWriteDocument, ExcelApi 1.9, SharedRuntime 1.1 long lifetime, and binds all task-pane, command, function, metadata, icon, and namespace resources to HTTPS localhost." }
+      ],
+      "testEvidence": ["[fact] Reviewer reran office-addin-manifest validation successfully.", "[open_question] The manifest was not sideloaded in Excel during this non-interactive review."],
+      "notes": "[fact] Static manifest correctness passes; host sideload behavior remains pending."
+    },
+    {
+      "requirementId": "REQ-008",
+      "requirementText": "Reuse the verified public custom-function pattern by exposing a namespaced worksheet function that returns a mocked variable value by identifier, with matching TypeScript implementation and functions.json metadata.",
+      "implementationStatus": "partially-verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "src/functions/functions.ts", "startLine": 9, "endLine": 19, "symbol": "getVariable", "evidence": "[fact] GETVARIABLE returns the shared stable value or a clear host-visible #N/A error." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "public/functions.json", "startLine": 1, "endLine": 20, "evidence": "[fact] Metadata defines the matching function, string parameter, and numeric result." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "manifest.xml", "startLine": 41, "endLine": 52, "evidence": "[fact] The extension declares script, page, metadata, and namespace resources." }
+      ],
+      "testEvidence": ["[fact] src/functions/functions.spec.ts:5-39 verifies stable lookup, unknown-ID host error without state mutation, and metadata agreement.", "[fact] Reviewer reran all tests successfully.", "[open_question] README.md:87-89 Excel formula checks were not executed."],
+      "notes": "[fact] Local function and metadata behavior pass; Excel-host formula execution remains partially verified."
+    },
+    {
+      "requirementId": "REQ-009",
+      "requirementText": "Keep the POC self-contained: use no backend API, authentication, or external data service; use only the local static Angular HTTPS development host, and omit XLSM/VBA because no ready interaction requires a macro bridge.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "package.json", "startLine": 1, "endLine": 46, "evidence": "[fact] Scripts and packages provide only Angular HTTPS assets and Office client integration; no backend/auth/external-data package exists." },
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "README.md", "startLine": 3, "endLine": 9, "evidence": "[fact] Documentation states the boundary and the sole local HTTPS asset-host process." }
+      ],
+      "testEvidence": ["[fact] Repository inventory contains no server, authentication, external data client, XLSM, or VBA artifact.", "[fact] Strict type checks and production build pass."],
+      "notes": "[fact] The POC satisfies the recorded no-backend interpretation."
+    },
+    {
+      "requirementId": "REQ-010",
+      "requirementText": "Document setup, trusted HTTPS certificate creation, manifest sideloading, supported scenarios, the rejected drag scenario, and exact validation commands; provide focused automated tests and local build/manifest validation evidence.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        { "repositoryId": "planning-space-excel-variable-poc", "filePath": "README.md", "startLine": 11, "endLine": 107, "evidence": "[fact] README documents prerequisites, certificates, HTTPS start, validation, sideloading, scenario matrix, smoke checks, and exact automated commands." }
+      ],
+      "testEvidence": ["[fact] Reviewer passed format, lint, strict type checks, 16/16 tests in 6 files, production build, and manifest validation.", "[fact] Tests cover store, range write, UI, command, function, and Office-registration boundaries."],
+      "notes": "[fact] Required documentation and local automated evidence are complete; optional host smoke checks remain disclosed."
+    },
+    {
+      "requirementId": "REQ-011",
+      "requirementText": "Deliver locally through Requirements Analyst, Developer, Reviewer, Review Verifier, and Knowledge Keeper only; do not push, create a pull request, or run a pipeline.",
+      "implementationStatus": "verified",
+      "codeReferences": [],
+      "testEvidence": ["[fact] Git reports a clean local task branch three commits ahead and zero behind origin/main.", "[fact] developer-publication-evidence.json records clean HEAD 3ec943a9a1fd658c05a9f41954244e208e676aa4 and divergence 0 tab 3.", "[fact] implementation-result.json SHA-256 51954790625abcb35e582fdda7135226e9d216e4b5cddc0a6c0164b730cf233a now cites that same HEAD for REQ-011, resolving REV-004."],
+      "notes": "[fact] This is workflow/Git-state evidence, so no source reference applies; no push, PR, or pipeline evidence exists."
+    }
+  ],
+  "reviewCoverage": [
+    { "dimension": "requirements", "status": "covered", "evidence": ["[fact] All 11 stable requirements have exactly one traceability entry.", "[fact] Ready, rejected, and already-satisfied scope were compared with code, tests, docs, Git, and Developer artifacts."], "notes": "[fact] Four Office-host behaviors are partial solely because desktop smoke checks were not executed." },
+    { "dimension": "correctness", "status": "covered", "evidence": ["[fact] Shared state, task-pane insertion, multi-area writes, context-menu completion, custom-function errors, and registration were inspected.", "[fact] Reviewer reran 16/16 tests."], "notes": "[fact] No active correctness candidate was found; host behavior remains a disclosed evidence gap." },
+    { "dimension": "security", "status": "covered", "evidence": ["[fact] Source and dependency manifests contain no backend, auth, credential, external-data call, dynamic HTML injection, or macro.", "[fact] The manifest uses required ReadWriteDocument permission and HTTPS localhost resources."], "notes": "[fact] Developer reports zero production vulnerabilities; two moderate advisories remain in the development-only manifest validator chain." },
+    { "dimension": "regression", "status": "covered", "evidence": ["[fact] Prior snapshots and commits 96f8318, c454690, and 3ec943a were compared.", "[fact] REV-001 through REV-003 remain resolved and corrected Developer evidence resolves REV-004."], "notes": "[fact] The last commit moves one member without changing its body; all validation passes." },
+    { "dimension": "testing", "status": "covered", "evidence": ["[fact] Format, lint, strict type checks, 16 tests, production build, and manifest validation pass.", "[fact] Tests cover success/error paths across every integration boundary."], "notes": "[fact] Office desktop behavior remains documented for manual validation." },
+    { "dimension": "maintainability", "status": "covered", "evidence": ["[fact] State, insertion I/O, commands, function boundary, and UI are cohesive tested modules.", "[fact] src/app/app.ts:13-42 follows protected-before-private ordering and inspected conditionals use braces."], "notes": "[fact] No concrete coupling, duplication, or testability candidate remains." },
+    { "dimension": "performance", "status": "covered", "evidence": ["[fact] src/office/excel-insertion.service.ts:25-38 batches area assignments with one write synchronization.", "[fact] Production main.js is 118.93 kB raw."], "notes": "[inference] Matrix cost scales with selected cells as required; no measured defect exists." },
+    { "dimension": "concurrency", "status": "covered", "evidence": ["[fact] src/app/app.ts:20-39 prevents task-pane re-entry and clears busy in finally.", "[fact] src/office/commands.ts:14-20 captures the value before await and completes events in finally."], "notes": "[fact] No stale async update or unhandled promise was found." },
+    { "dimension": "configuration-deployment", "status": "covered", "evidence": ["[fact] Manifest, Angular config, scripts, launch URL, and README agree on https://localhost:4200.", "[fact] Manifest passes and the branch remains clean/local, ahead 3."], "notes": "[fact] Local-poc-delivery excludes push, PR, pipeline, and deployment." },
+    { "dimension": "documentation", "status": "covered", "evidence": ["[fact] README.md:11-107 covers setup, certificates, sideloading, scenarios, rejected drag, smoke checks, and validation.", "[fact] src/app/app.html:39-52 explains the limitation at point of use."], "notes": "[fact] Documentation matches implemented identifiers, URLs, and residual host-validation gap." }
+  ],
+  "findings": [],
+  "heldScopeViolations": [],
+  "agentProcessFindings": [],
+  "findingLifecycle": [
+    { "findingId": "REV-001", "status": "resolved", "firstSeenRevision": "git:96f8318751fde57f0da8aacca14f11bc9f9c1b2b", "lastObservedRevision": "git:96f8318751fde57f0da8aacca14f11bc9f9c1b2b", "resolvedRevision": "git:c454690c706aec7a2f3ad020ac8b115cea96ef02", "evidence": "[fact] src/functions/functions.ts:9-18 still returns a clear CustomFunctions #N/A error; its focused test passes." },
+    { "findingId": "REV-002", "status": "resolved", "firstSeenRevision": "git:96f8318751fde57f0da8aacca14f11bc9f9c1b2b", "lastObservedRevision": "git:96f8318751fde57f0da8aacca14f11bc9f9c1b2b", "resolvedRevision": "git:c454690c706aec7a2f3ad020ac8b115cea96ef02", "evidence": "[fact] .vscode/launch.json:10 still uses HTTPS and matches scripts, manifest, and README." },
+    { "findingId": "REV-003", "status": "resolved", "firstSeenRevision": "git:c454690c706aec7a2f3ad020ac8b115cea96ef02", "lastObservedRevision": "git:c454690c706aec7a2f3ad020ac8b115cea96ef02", "resolvedRevision": "git:3ec943a9a1fd658c05a9f41954244e208e676aa4", "evidence": "[fact] src/app/app.ts:13-42 keeps protected members before the private field; the fixing diff is a body-preserving move." },
+    { "findingId": "REV-004", "status": "resolved", "firstSeenRevision": "git:3ec943a9a1fd658c05a9f41954244e208e676aa4", "lastObservedRevision": "git:3ec943a9a1fd658c05a9f41954244e208e676aa4", "resolvedRevision": "git:3ec943a9a1fd658c05a9f41954244e208e676aa4", "evidence": "[fact] At the current reviewed revision, corrected implementation-result.json SHA-256 51954790625abcb35e582fdda7135226e9d216e4b5cddc0a6c0164b730cf233a binds top-level and REQ-011 evidence to clean local HEAD 3ec943a9a1fd658c05a9f41954244e208e676aa4, matching publication evidence; no product code changed." }
+  ],
+  "summary": "[fact] Reviewed clean local commit 3ec943a9a1fd658c05a9f41954244e208e676aa4 and corrected Developer artifact SHA-256 51954790625abcb35e582fdda7135226e9d216e4b5cddc0a6c0164b730cf233a against all 11 requirements and all 10 coverage dimensions. [fact] No active product or agent-process candidate remains; REV-001 through REV-003 remain resolved and approved REV-004 is resolved by exact-revision correction. [fact] Reviewer independently passed formatting, lint, strict type checks, 16/16 tests, production build, and manifest validation. [fact] REQ-003, REQ-004, REQ-007, and REQ-008 remain partially verified only because Excel desktop smoke checks were not executed; REQ-005 is not applicable because the capability was rejected. [fact] No held-scope violation exists, and Git evidence shows no push, PR, or pipeline."
+}

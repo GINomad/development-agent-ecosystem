@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:41:18.3449697Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869334,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869334",
+      "revision": 3,
+      "type": "User Story",
+      "title": "[Report Designer] Configure template time-series orientation",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.3",
+      "changedDate": "09/17/2026 18:25:07",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to set whether periodic data flows horizontally (across columns) or vertically (down rows) when I create a template </div><div><b>So that</b> the template's layout matches the report structure I need, before I begin linking variables </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> Logically precedes variable linking (1869322) � orientation should be set before an Author starts linking variables, since changing it later clears existing links. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Set orientation</b> </div><div>Author sets time-series orientation (horizontal/vertical) as a one-time setup decision, early in template creation. </div><div><br> </div><div><b>Destructive change warning</b> </div><div>Changing orientation after variables are already linked clears all existing links in the template. Author must be warned with a confirmation dialog and must confirm before this destructive action proceeds. </div><div><br> </div><div><b>Orientation applies template-wide</b> </div><div>Once set, all periodic variable links in the template follow the chosen orientation � this is a template-level structural setting, not a per-link property. </div>",
+      "acceptanceCriteria": "",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

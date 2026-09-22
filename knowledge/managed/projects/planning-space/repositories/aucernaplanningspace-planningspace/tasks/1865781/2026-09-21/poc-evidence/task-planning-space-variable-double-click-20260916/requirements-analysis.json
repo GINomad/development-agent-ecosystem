@@ -1,0 +1,415 @@
+{
+  "taskId": "task-planning-space-variable-double-click-20260916",
+  "analyzedAtUtc": "2026-09-16T11:46:24.2131050Z",
+  "requirements": [
+    {
+      "id": "R1",
+      "text": "[fact] A single left click on a task-pane variable must select and activate that variable without inserting any value into Excel.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 explicitly requires single-left-click activation without insertion.",
+        "[conflict][code] src/app/app.html:25 binds click to activateAndInsert, and src/app/app.ts:20-40 both activates the variable and calls ExcelInsertionService.insert.",
+        "[conflict][test] src/app/app.spec.ts:30-45 currently asserts that one button click inserts the selected variable.",
+        "[fact][knowledge] context-pack.json contains no accepted knowledge that changes this requirement."
+      ],
+      "codeAlignment": "conflicting"
+    },
+    {
+      "id": "R2",
+      "text": "[fact] A double click on a task-pane variable must insert the active variable value into the current Excel selection exactly once.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires insertion only on double click and identifies the inserted value as the active variable value.",
+        "[fact][code] src/app/app.html:19-32 has no dblclick binding; src/app/app.ts:20-40 exposes only the combined activateAndInsert path.",
+        "[inference][implementation] Browser double-click dispatch includes click events before dblclick, so separating click activation from dblclick insertion lets the clicked variable become active before one insertion handler runs; focused tests must verify the observable call count and value.",
+        "[fact][test] src/app/app.spec.ts has no double-click test."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "R3",
+      "text": "[fact] The Excel cell context-menu command must continue inserting the active variable value.",
+      "status": "already-satisfied",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires context-menu insertion to be preserved.",
+        "[fact][code] src/office/commands.ts:10-20 calls insert with mockVariableStore.active.value and always completes the Office command event.",
+        "[fact][test] src/office/commands.spec.ts:9-18 verifies insertion of mockVariableStore.active.value and single completion.",
+        "[fact][documentation] README.md:61 and README.md:85-86 document the active-variable context-menu flow."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "R4",
+      "text": "[fact] Insertion must continue filling every cell in both contiguous and discontiguous selected Excel ranges.",
+      "status": "already-satisfied",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires multi-range behavior to be preserved.",
+        "[fact][code] src/office/excel-insertion.service.ts:25-38 obtains Workbook.getSelectedRanges(), iterates every area, and assigns a value matrix to each range.",
+        "[fact][test] src/office/excel-insertion.service.spec.ts:38-80 verifies contiguous multi-cell, single-cell, and discontiguous multi-area writes.",
+        "[fact][documentation] README.md:59-60 documents contiguous and discontiguous selection support."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "R5",
+      "text": "[fact] The changed interaction must preserve accessible task-pane controls, active-state announcement, status feedback, and a keyboard-accessible insertion alternative.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires accessibility to be preserved.",
+        "[fact][code] src/app/app.html:19-32 uses native buttons and aria-pressed for active state; src/app/app.html:37 uses role=status with aria-live=polite.",
+        "[fact][code] src/app/app.html:46-50 exposes context-menu insertion as an alternative path, while src/office/commands.ts:10-20 implements that command.",
+        "[inference][acceptance] Because insertion is required only on double click, native button activation by keyboard must remain selection-only; the Excel context-menu command remains the non-double-click insertion path. The Developer and Reviewer must preserve the existing button, aria-pressed, and live-status semantics."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "R6",
+      "text": "[fact] The shared mock store must continue exposing exactly 10 stable variables and tracking one active variable.",
+      "status": "already-satisfied",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires the 10-variable mock store to be preserved.",
+        "[fact][code] src/app/variables/mock-variable-store.ts:3-16 creates exactly 10 variables once, and lines 22-37 expose and update the active variable.",
+        "[fact][test] src/app/variables/mock-variable-store.spec.ts:4-24 verifies ten unique finite runtime-stable variables and active-variable changes.",
+        "[fact][documentation] README.md:3-5 describes the same 10-value runtime lifetime."
+      ],
+      "codeAlignment": "aligned"
+    },
+    {
+      "id": "R7",
+      "text": "[fact] Visible task-pane guidance and repository usage instructions must explain single-click activation, double-click insertion, and context-menu insertion.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires visible instructions to be updated.",
+        "[conflict][ui] src/app/app.html:5-8 and 45-50 currently say to choose or activate a variable without distinguishing single click from double click.",
+        "[conflict][status] src/app/app.ts:15-17 currently instructs the user to choose a variable to insert its value.",
+        "[conflict][documentation] README.md:59-67 and 81-86 describe select-then-click behavior rather than double-click insertion."
+      ],
+      "codeAlignment": "conflicting"
+    },
+    {
+      "id": "R8",
+      "text": "[fact] Focused automated tests must distinguish selection-only single clicks from exactly-once double-click insertion and retain coverage for insertion success, failure, accessibility, multi-range behavior, context-menu insertion, and the 10-variable store.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 requires focused tests to be updated while preserving the named behaviors.",
+        "[conflict][test] src/app/app.spec.ts:30-45 currently expects one click to insert and has no selection-only or double-click case.",
+        "[fact][test] src/app/app.spec.ts:20-28 and 47-63 covers native controls, guidance, busy state, and bounded insertion errors.",
+        "[fact][test] src/office/commands.spec.ts, src/office/excel-insertion.service.spec.ts, and src/app/variables/mock-variable-store.spec.ts already cover the preserved command, range, and store behaviors."
+      ],
+      "codeAlignment": "conflicting"
+    },
+    {
+      "id": "R9",
+      "text": "[fact] Delivery is local-only: run repository-local quality gates and do not perform remote repository, pull-request, or pipeline work.",
+      "status": "ready",
+      "evidence": [
+        "[fact][task] User comment e81d9981c8b64aca902c00e1d98e2d78 selects local-poc-delivery and states that there is no remote repository, pull request, or pipeline.",
+        "[fact][workflow] Routing decisions ca522e86118a44dd9bd78a843ffdbd82 and 2eed8f05fb404034bbd7c721715e068d select local-poc-delivery; task.json records pipeline_monitor as skipped.",
+        "[fact][repository] package.json:4-15 defines format, lint, typecheck, test, build, and manifest-validation commands.",
+        "[fact][documentation] README.md:91-107 lists the same local validation suite."
+      ],
+      "codeAlignment": "aligned"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "C1",
+      "requirementId": "R1",
+      "sources": [
+        "[fact] User comment e81d9981c8b64aca902c00e1d98e2d78 requires selection-only single left click.",
+        "[fact] src/app/app.html:25 and src/app/app.ts:20-40 make single click activate and insert; src/app/app.spec.ts:30-45 locks in that old behavior."
+      ],
+      "impact": "[conflict] Current task-pane behavior inserts on a single click, so the component event handling and focused component tests must change."
+    },
+    {
+      "id": "C2",
+      "requirementId": "R2",
+      "sources": [
+        "[fact] User comment e81d9981c8b64aca902c00e1d98e2d78 requires double-click-only insertion of the active value.",
+        "[fact] src/app/app.html:19-32 contains no double-click binding and src/app/app.spec.ts contains no double-click assertion."
+      ],
+      "impact": "[conflict] The required insertion trigger does not exist and needs a separately testable handler."
+    },
+    {
+      "id": "C3",
+      "requirementId": "R7",
+      "sources": [
+        "[fact] User comment e81d9981c8b64aca902c00e1d98e2d78 requires updated visible instructions.",
+        "[fact] src/app/app.html:5-8 and 45-50, src/app/app.ts:15-17, and README.md:59-67 and 81-86 still describe choose/click-to-insert behavior."
+      ],
+      "impact": "[conflict] Existing guidance would instruct users to use the obsolete trigger and must be revised with the behavior."
+    },
+    {
+      "id": "C4",
+      "requirementId": "R8",
+      "sources": [
+        "[fact] User comment e81d9981c8b64aca902c00e1d98e2d78 requires focused tests for the changed interaction.",
+        "[fact] src/app/app.spec.ts:30-45 asserts single-click insertion and has no assertion that single click avoids insertion or that double click inserts once."
+      ],
+      "impact": "[conflict] The current suite would reject the requested behavior and does not prove the replacement behavior."
+    }
+  ],
+  "questions": [],
+  "plan": [
+    {
+      "id": "P1",
+      "requirementIds": ["R1", "R2", "R5"],
+      "action": "Split task-pane activation from insertion in src/app/app.ts. Keep click activation synchronous and insertion-free; have a dedicated double-click path insert mockVariableStore.active.value while retaining busy-state, success, and bounded-error status handling.",
+      "status": "ready",
+      "validation": [
+        "A single button click changes mockVariableStore.active and aria-pressed but leaves ExcelInsertionService.insert uncalled.",
+        "A double-click interaction calls ExcelInsertionService.insert exactly once with the active variable value.",
+        "Busy-state and error feedback remain bounded and controls return to enabled state after completion."
+      ]
+    },
+    {
+      "id": "P2",
+      "requirementIds": ["R1", "R2", "R5", "R7"],
+      "action": "Update src/app/app.html event bindings and visible copy so native variable buttons use click for activation and dblclick for insertion, while preserving aria-pressed, disabled state, the polite live status, and the context-menu alternative.",
+      "status": "ready",
+      "validation": [
+        "The rendered controls remain native buttons with aria-pressed reflecting the active variable.",
+        "Visible task-pane instructions explicitly distinguish single-click activation, double-click insertion, and context-menu insertion.",
+        "Keyboard activation remains selection-only and the documented Excel context-menu command remains the non-double-click insertion alternative."
+      ]
+    },
+    {
+      "id": "P3",
+      "requirementIds": ["R1", "R2", "R5", "R8"],
+      "action": "Replace the obsolete single-click insertion expectation in src/app/app.spec.ts with focused tests for selection-only click, exactly-once double-click insertion of the active value, active aria state, updated guidance, and preserved busy/error feedback.",
+      "status": "ready",
+      "validation": [
+        "Focused component tests fail against the old click-to-insert behavior and pass after the event handlers are separated.",
+        "Tests assert both insertion call count and inserted value rather than relying only on displayed copy.",
+        "Tests continue to assert native button count, accessible active state, live status output, and bounded failure messaging."
+      ]
+    },
+    {
+      "id": "P4",
+      "requirementIds": ["R3", "R4", "R6", "R8"],
+      "action": "Keep the context-menu command, selected-range insertion service, and mock store unchanged unless compilation requires a scoped adjustment; run their existing focused specs as regression gates.",
+      "status": "ready",
+      "validation": [
+        "commands.spec.ts continues to prove insertion of mockVariableStore.active.value and exactly-once command completion.",
+        "excel-insertion.service.spec.ts continues to prove contiguous and discontiguous range writes.",
+        "mock-variable-store.spec.ts continues to prove exactly ten stable variables and active selection."
+      ]
+    },
+    {
+      "id": "P5",
+      "requirementIds": ["R7"],
+      "action": "Update README.md supported-scenario and manual-smoke instructions from choose/click-to-insert wording to single-click activation and double-click insertion, while retaining context-menu and multi-range instructions.",
+      "status": "ready",
+      "validation": [
+        "README task-pane scenarios describe the new triggers consistently with the rendered UI.",
+        "Manual smoke checks cover a selection-only single click, double-click insertion, contiguous and discontiguous ranges, and context-menu insertion."
+      ]
+    },
+    {
+      "id": "P6",
+      "requirementIds": ["R8", "R9"],
+      "action": "Run the repository-local format check, lint, typecheck, unit tests, production build, and manifest validation; record exact results without pushing or starting pipeline work.",
+      "status": "ready",
+      "validation": [
+        "npm run format:check, npm run lint, npm run typecheck, npm test, npm run build, and npm run validate:manifest all pass locally.",
+        "The task branch remains local and no remote, pull-request, or pipeline action is attempted."
+      ]
+    }
+  ],
+  "summary": "[fact] All nine scoped requirements have sufficient first-party evidence for implementation, with no open question or held scope. Four conflicts identify the old single-click insertion behavior, missing double-click trigger, obsolete visible guidance, and obsolete component-test expectation. Context-menu insertion, multi-range writes, accessibility primitives, and the 10-variable store are already implemented and must remain regression-protected. Delivery is local-only and excludes pipeline work.",
+  "humanReadable": {
+    "title": "Select variables with one click and insert them with a double click",
+    "objective": "Change the Angular Excel task pane so one left click only makes a variable active, while double clicking inserts the active value into every currently selected Excel cell. Keep the existing context-menu route, multi-range support, accessible controls, and ten stable mock variables, and update the instructions and tests.",
+    "requirements": [
+      {
+        "id": "R1",
+        "title": "Single click selects only",
+        "description": "A single left click changes the active variable and must not write to Excel.",
+        "acceptanceCriteria": [
+          "Clicking a variable updates the shared active variable.",
+          "The clicked button exposes aria-pressed=true.",
+          "No insertion service call occurs from a single click."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "R2",
+        "title": "Double click inserts once",
+        "description": "Double clicking a variable inserts the active variable value into the current Excel selection exactly once.",
+        "acceptanceCriteria": [
+          "The double-clicked variable is active before insertion.",
+          "Exactly one insertion call is made with the active value.",
+          "Success and error status messages continue to describe the result."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "R3",
+        "title": "Context-menu insertion remains available",
+        "description": "The Excel cell context-menu command continues to insert whichever mock variable is active.",
+        "acceptanceCriteria": [
+          "The command passes mockVariableStore.active.value to the insertion operation.",
+          "The Office command completion callback still runs exactly once on success and failure."
+        ],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "R4",
+        "title": "All selected ranges are filled",
+        "description": "Insertion continues to fill one cell, a contiguous range, or every area in a discontiguous selection.",
+        "acceptanceCriteria": [
+          "Every cell in each selected range receives the active value.",
+          "Reported area and cell counts remain correct."
+        ],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "R5",
+        "title": "Accessible state and feedback are preserved",
+        "description": "Variable controls remain native buttons with an announced active state and live status feedback; keyboard activation selects without inserting, and Excel's context-menu command remains the insertion alternative.",
+        "acceptanceCriteria": [
+          "Variable controls remain keyboard-focusable native buttons.",
+          "aria-pressed tracks the active variable.",
+          "The polite live-status region reports activation and insertion outcomes.",
+          "The visible guidance includes the context-menu insertion alternative."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "R6",
+        "title": "Ten stable mock variables remain",
+        "description": "The shared runtime store continues to contain exactly ten finite, stable values and one active variable.",
+        "acceptanceCriteria": [
+          "Exactly ten unique variables are created.",
+          "Values remain stable for the runtime lifetime.",
+          "Changing the active variable does not recreate or alter values."
+        ],
+        "status": "already-satisfied"
+      },
+      {
+        "id": "R7",
+        "title": "Instructions match the new interaction",
+        "description": "Task-pane text and README usage guidance clearly explain activation, insertion, and the context-menu alternative.",
+        "acceptanceCriteria": [
+          "Visible task-pane copy says single click activates and double click inserts.",
+          "README scenarios and manual checks use the same terminology.",
+          "Multi-range and context-menu instructions remain present."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "R8",
+        "title": "Focused tests prove the change and regressions",
+        "description": "Automated tests distinguish single-click activation from double-click insertion and retain focused coverage of preserved behaviors.",
+        "acceptanceCriteria": [
+          "A component test proves one click does not insert.",
+          "A component test proves double click inserts the active value exactly once.",
+          "Accessibility, error, context-menu, multi-range, and ten-variable tests continue to pass."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "R9",
+        "title": "Keep delivery local",
+        "description": "Validate the task branch locally without remote repository, pull-request, or pipeline actions.",
+        "acceptanceCriteria": [
+          "All repository-defined local quality checks pass.",
+          "No push, pull request, or pipeline action occurs."
+        ],
+        "status": "ready"
+      }
+    ],
+    "workflow": [
+      {
+        "order": 1,
+        "title": "Confirm the implementation-ready scope",
+        "description": "Map the requested interaction and preserved behaviors to the current Angular component, tests, store, insertion service, commands, and documentation.",
+        "owner": "Requirements Analyst",
+        "outputs": ["Validated requirements analysis", "Ready implementation plan", "No held scope or open question"],
+        "gate": "The requirements-analysis artifact must validate against its schema before implementation starts."
+      },
+      {
+        "order": 2,
+        "title": "Implement and validate locally",
+        "description": "Separate click activation from double-click insertion, update instructions and focused tests, and run every repository-local quality gate.",
+        "owner": "Developer",
+        "outputs": ["Task-branch code and test changes", "Local validation evidence", "Implementation result"],
+        "gate": "All ready requirements must be implemented with passing local validation and no remote write."
+      },
+      {
+        "order": 3,
+        "title": "Review against every requirement",
+        "description": "Inspect the exact local diff, verify the preserved behaviors and test coverage, and publish requirement-to-code traceability.",
+        "owner": "Reviewer",
+        "outputs": ["Review result", "Coverage matrix", "Stable finding records if needed"],
+        "gate": "A clean review can proceed; any proposed finding requires independent verification before a human decision."
+      },
+      {
+        "order": 4,
+        "title": "Independently verify the review",
+        "description": "Falsify the review claims against the exact reviewed revision and bind the verdict to the review artifact.",
+        "owner": "Review Verifier",
+        "outputs": ["Exact-artifact review verification", "Confirmed, rejected, or needs-human verdicts"],
+        "gate": "Verification must pass. Confirmed or needs-human findings stop at the human decision gate before any rework."
+      },
+      {
+        "order": 5,
+        "title": "Publish the local delivery summary",
+        "description": "Record the verified implementation and test outcome as the final task history and user-facing summary.",
+        "owner": "Knowledge Keeper",
+        "outputs": ["Task history", "Final plain-language delivery summary"],
+        "gate": "Only successful, review-verified local delivery evidence may be published; pipeline work is excluded."
+      }
+    ],
+    "implementationPlan": [
+      {
+        "order": 1,
+        "title": "Separate activation from insertion",
+        "description": "Refactor the task-pane component so click only activates and a dedicated double-click handler inserts the store's active value while retaining busy and status behavior.",
+        "requirementIds": ["R1", "R2", "R5"],
+        "validation": ["Single-click no-insert assertion", "Exactly-once double-click insertion assertion", "Busy/error state assertions"],
+        "status": "ready"
+      },
+      {
+        "order": 2,
+        "title": "Bind the new events and update visible guidance",
+        "description": "Use the native buttons' click and double-click bindings, preserve active and live-region attributes, and explain both triggers plus context-menu insertion in the task pane.",
+        "requirementIds": ["R1", "R2", "R5", "R7"],
+        "validation": ["Rendered native buttons retain aria-pressed", "Visible copy names all supported interaction paths"],
+        "status": "ready"
+      },
+      {
+        "order": 3,
+        "title": "Update focused component tests",
+        "description": "Replace the obsolete click-to-insert expectation and add explicit selection, double-click, accessible-state, success, and failure checks.",
+        "requirementIds": ["R1", "R2", "R5", "R8"],
+        "validation": ["Tests assert insertion call count and value", "Tests assert active UI state and bounded status text"],
+        "status": "ready"
+      },
+      {
+        "order": 4,
+        "title": "Protect existing insertion paths and store behavior",
+        "description": "Avoid unnecessary changes to commands, range writing, and the mock store, and run their existing focused specs as regression checks.",
+        "requirementIds": ["R3", "R4", "R6", "R8"],
+        "validation": ["Context-menu command specs pass", "Multi-range insertion specs pass", "Ten-variable store specs pass"],
+        "status": "ready"
+      },
+      {
+        "order": 5,
+        "title": "Update README usage and smoke checks",
+        "description": "Make the documented supported scenarios and manual Excel checks match the new activation and insertion triggers.",
+        "requirementIds": ["R7"],
+        "validation": ["README consistently distinguishes one click from double click", "Context-menu and multi-range checks remain documented"],
+        "status": "ready"
+      },
+      {
+        "order": 6,
+        "title": "Run all local quality gates",
+        "description": "Run formatting, linting, type checking, unit tests, build, and manifest validation on the local task branch without remote delivery actions.",
+        "requirementIds": ["R8", "R9"],
+        "validation": ["All six package-script checks pass", "No push, pull request, or pipeline action is performed"],
+        "status": "ready"
+      }
+    ]
+  }
+}

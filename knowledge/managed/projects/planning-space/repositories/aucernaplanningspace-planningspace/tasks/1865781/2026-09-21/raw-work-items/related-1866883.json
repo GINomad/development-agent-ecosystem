@@ -1,0 +1,169 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:42:05.7917310Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1866883,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1866883",
+      "revision": 3,
+      "type": "PI Objective",
+      "title": "PS Econ - Webify all app components",
+      "state": "New",
+      "assignedTo": "aditya.thangirala@quorumsoftware.com",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics",
+      "iterationPath": "Quorum\\PI 26.3",
+      "changedDate": "08/27/2026 22:17:52",
+      "description": "<div>Webify webify webify. </div><div><br> </div><div>Move all remaining Economics components to web in anticipation of deprecating the WPF application. </div>",
+      "acceptanceCriteria": "",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865792"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865793"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1813024"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859213"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859212"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859208"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865785"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859215"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865791"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865790"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865789"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859206"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865783"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865787"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1859211"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1813021"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

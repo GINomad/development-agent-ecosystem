@@ -1,0 +1,107 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T18:15:53.61Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.AuthorizedDate": "2026-09-17T18:25:21.353Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.ChangedDate": "2026-09-17T18:25:21.353Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.CreatedDate": "2026-09-03T18:15:53.61Z",
+    "System.Description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link Date Range and Formula Range content into my report template </div><div><b>So that</b> the report can display computed/structural content (like a date series or formula-derived summary) rather than a single variable's value </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation; Formula Range portion blocked pending investigation </div><div><b>Sequencing note:</b> None for Date Range. Formula Range is blocked � see open question below. </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Ranges (Date Range, Formula Range) add content to the report rather than mapping a single variable's value into a cell � this is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Date Range link</b> </div><div>Author can create a Date Range link (WPF: Ranges &gt; Date Range &gt; Link), producing a range of row/column labels tied to the report run period (e.g. Total/2020/2021 rows generated from a linked range). Variable Type for a Date Range link is &quot;Periodic Date&quot;. Confirmed working example: Range =Sheet1!$C$24:$C$26 produces Total/2020/2021 labels referenced by Periodic Links elsewhere in the template. </div><div><br> </div><div><b>Formula Range link � open question, functionality not yet understood</b> </div><div>Web Report Designer must also support Formula Range links (WPF: Ranges &gt; Formula Range &gt; Link), producing &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, and &lt;SECOND VALUE&gt; placeholders. It is unclear whether Formula Range ties to a spreadsheet formula's output, an auto-derived calculation over a range (e.g. min/max or start/end of a series), or something else. Neither Marg nor Claude could determine this from UAT inspection. Needs investigation with engineering before AC can be written for this portion. </div>",
+    "System.Id": 1869339,
+    "System.IterationId": 5755,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.4",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 95935292,
+    "System.Reason": "New",
+    "System.Rev": 3,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Support Range links (Date Range, Formula Range)",
+    "System.Watermark": 11228986,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1869339,
+  "multilineFieldsFormat": {
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    }
+  ],
+  "rev": 3,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+}

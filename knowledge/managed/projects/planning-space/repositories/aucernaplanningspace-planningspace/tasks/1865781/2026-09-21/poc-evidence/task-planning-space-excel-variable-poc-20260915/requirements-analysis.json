@@ -1,0 +1,457 @@
+{
+  "taskId": "task-planning-space-excel-variable-poc-20260915",
+  "analyzedAtUtc": "2026-09-15T15:31:00.0000000Z",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "text": "Create a new local Excel task-pane add-in with the latest stable Angular release and a reproducible locked dependency set.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f requests an Angular latest-version Excel add-in POC.",
+        "[fact] The npm registry latest endpoints returned @angular/core 22.1.6 and @angular/cli 22.1.8 at 2026-09-15T15:28:23.9407966Z: https://registry.npmjs.org/@angular/core/latest and https://registry.npmjs.org/@angular/cli/latest.",
+        "[fact] Target repository commit cc3cc10e0bef9cebb7fea946709ac9aa9b26354d is clean and has no tracked product files, so there is no existing scaffold or repository convention to preserve."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-002",
+      "text": "Expose exactly 10 mocked variables with distinct identifiers, display names, and finite randomly generated numeric values that remain stable for the lifetime of one add-in runtime.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f requests 10 mocked variables and random values.",
+        "[inference] Generating values once when the shared runtime initializes makes the POC observable and prevents one variable from changing between task-pane, command, and custom-function reads; a page/runtime reload may generate a new set. This implementation choice can be verified with focused store tests."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-003",
+      "text": "When a user selects one contiguous range or multiple discontiguous ranges and clicks a variable in the task pane, write that variable's numeric value into every selected cell.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f explicitly requests click-to-insert for one or multiple selected cells.",
+        "[fact] Microsoft documents Workbook.getSelectedRanges() as returning all selected ranges through RangeAreas in ExcelApi 1.9: https://learn.microsoft.com/en-us/javascript/api/excel/excel.workbook?view=excel-js-preview#getselectedranges.",
+        "[fact] Microsoft documents RangeAreas.areas as a RangeCollection whose loaded items are Excel.Range objects; each range exposes rowCount, columnCount, and values: https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangeareas?view=excel-js-preview and https://learn.microsoft.com/en-us/javascript/api/excel/excel.rangecollection?view=excel-js-preview.",
+        "[inference] A single insertion service can load the selected areas and their dimensions, assign a value matrix to each member range, and synchronize once; tests with mocked Office.js objects can verify single-area, multi-area, and rejected-operation paths."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-004",
+      "text": "Add an Excel cell context-menu command named 'Insert selected variable' that writes the currently active mocked variable into every cell in one or multiple selected ranges.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f requests a custom right-click Insert variable command for one or multiple selected cells.",
+        "[fact] Microsoft documents an add-in-only manifest ContextMenu extension with OfficeMenu id ContextMenuCell and an ExecuteFunction action: https://learn.microsoft.com/en-us/javascript/api/manifest/extensionpoint?view=excel-js-preview#contextmenu.",
+        "[fact] Microsoft documents that a shared runtime lets Excel task panes, function commands, and custom functions share data in one runtime: https://learn.microsoft.com/en-us/office/dev/add-ins/testing/runtimes.",
+        "[inference] The task pane should keep one active variable, defaulting to the first mock variable, in a shared state module so the manifest command always has a defined value; the command handler must always complete its Office event and surface failures without leaving an unhandled promise."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-005",
+      "text": "Support dragging a variable's DOM element directly from the task pane and dropping it onto a specific Excel worksheet cell or selected worksheet ranges.",
+      "status": "rejected",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f asks to research and implement task-pane-to-cell drag where feasible and to explain impossible scenarios.",
+        "[fact] Microsoft documents that task-pane code runs inside a sandboxed browser/webview surface: https://learn.microsoft.com/en-us/office/dev/add-ins/overview/office-add-ins and https://learn.microsoft.com/en-us/office/dev/add-ins/concepts/browsers-used-by-office-web-add-ins.",
+        "[fact] The documented Office DragAndDropEvent and pointer-coordinate payload are Outlook-only and describe messages or attachments dropped into an Outlook task pane, not task-pane objects dropped onto an Excel grid: https://learn.microsoft.com/en-us/javascript/api/outlook/office.draganddropeventargs?view=outlook-js-preview.",
+        "[inference] The published Excel Office.js surface exposes selection and workbook events but no supported cross-webview worksheet drop target, target-cell coordinates, or Excel drag payload for a DOM element. A native task-pane-to-grid drop cannot therefore be implemented reliably as an Office.js POC; an Office/Office.js product capability would be needed to verify otherwise."
+      ],
+      "codeAlignment": "unknown"
+    },
+    {
+      "id": "REQ-006",
+      "text": "Explain the unsupported native drag interaction in the POC and present supported UX alternatives without pretending that a task-pane drag identifies an Excel drop cell.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f requires explanations and UX alternatives for impossible scenarios.",
+        "[fact] REQ-003 and REQ-004 identify two supported alternatives: select cells then click a variable, or select an active variable then invoke the Excel cell context-menu command.",
+        "[inference] A short in-app note plus README feasibility table is sufficient for the POC; a task-pane-only drag target would add a third interaction but would not satisfy native worksheet drop semantics and is not required."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-007",
+      "text": "Provide an add-in-only Excel manifest that targets the local Angular HTTPS origin, grants read/write workbook access, declares ExcelApi 1.9 and SharedRuntime 1.1, loads the task pane, exposes the context-menu action, and declares custom-function resources.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f requires a manifest targeting a local Angular HTTPS app and reuse of the ps-excel-agent manifest pattern.",
+        "[fact] ps-excel-agent origin/main c4900f696aeb1af3f78f377a6f61f35e28e1e59f file planningspace.integration.excel.ui/manifest.xml lines 32-104 demonstrates ExcelApi and SharedRuntime requirements, ReadWriteDocument, a long-lived shared runtime, CustomFunctions resources, FunctionFile, and https://localhost:3000 task-pane/function URLs.",
+        "[fact] Microsoft recommends HTTPS during Office add-in development and allows trusted development certificates: https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/excel-tutorial.",
+        "[inference] The POC should adapt the verified XML structure to Angular's local HTTPS origin (planned as https://localhost:4200) and use ExcelApi 1.9 because discontiguous selection depends on getSelectedRanges()."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-008",
+      "text": "Reuse the verified public custom-function pattern by exposing a namespaced worksheet function that returns a mocked variable value by identifier, with matching TypeScript implementation and functions.json metadata.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f explicitly requires reuse of verified ps-excel-agent public-functions patterns.",
+        "[fact] ps-excel-agent origin/main c4900f696aeb1af3f78f377a6f61f35e28e1e59f files planningspace.integration.excel.ui/src/functions/functions.ts and functions.json contain matching exported public function implementations and metadata, including PSECANCELCALCULATIONS, ACCESS_TOKEN, AGENT_URL, TENANT, and CLIENT_ID.",
+        "[fact] Microsoft recommends a shared runtime for custom functions and documents manifest namespace, script, page, and metadata resources: https://learn.microsoft.com/en-us/office/dev/add-ins/excel/custom-functions-overview.",
+        "[inference] A minimal function such as VARIABLEPOC.GETVARIABLE(identifier) demonstrates the requested pattern without coupling the supported task-pane/context-menu insertion flows to formula insertion. Unknown identifiers should return a clear Excel error or documented message."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-009",
+      "text": "Keep the POC self-contained: use no backend API, authentication, or external data service; use only the local static Angular HTTPS development host, and omit XLSM/VBA because no ready interaction requires a macro bridge.",
+      "status": "ready",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f says 'Use xlsm where helpful, no server or auth' and separately requires a local Angular HTTPS manifest target.",
+        "[conflict] A literal zero-server interpretation is incompatible with an Office task pane loading a local HTTPS web application; Microsoft states that add-in web files must be hosted: https://learn.microsoft.com/en-us/office/dev/add-ins/outlook/add-in-requirements.",
+        "[inference] The coherent bounded interpretation is no backend/application server and no authentication, while the Angular development server serves static local assets over HTTPS. Office.js directly supports the ready interactions, so XLSM/VBA adds no necessary capability and should be omitted under YAGNI."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-010",
+      "text": "Document setup, trusted HTTPS certificate creation, manifest sideloading, supported scenarios, the rejected drag scenario, and exact validation commands; provide focused automated tests and local build/manifest validation evidence.",
+      "status": "ready",
+      "evidence": [
+        "[fact] The task is a runnable POC and user comment d5301b23c46949a0a1203adee1cef21f requires research findings and impossible-scenario explanations.",
+        "[fact] Microsoft documents office-addin-dev-certs for a trusted localhost certificate and local manifest sideloading: https://learn.microsoft.com/en-us/samples/officedev/office-add-in-samples/office-add-in-save-custom-settings/.",
+        "[fact] Global standard C:/Repos/development-agent-ecosystem/knowledge/managed/global/engineering-code-standards.md requires braces for all conditional bodies; TypeScript planning guidance requires type checking, linting, focused tests, and the actual build.",
+        "[inference] Because the target repository has no tests, the Developer must establish the test runner and cover store generation, range matrix creation, single/multi-area insertion, command completion/error handling, UI selection, and public-function lookup."
+      ],
+      "codeAlignment": "missing"
+    },
+    {
+      "id": "REQ-011",
+      "text": "Deliver locally through Requirements Analyst, Developer, Reviewer, Review Verifier, and Knowledge Keeper only; do not push, create a pull request, or run a pipeline.",
+      "status": "already-satisfied",
+      "evidence": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f explicitly selects local-poc-delivery and excludes pipeline and PR work.",
+        "[fact] Routing decisions f24b4e6121ef4f2dbab0b25459294bfb and a23b34f4d4cb481b9caeddeb6b7638f9 persist executionMode local-poc-delivery with sequence requirements_analyst, developer, reviewer, review_verifier, knowledge_keeper; pipeline_monitor is excluded.",
+        "[fact] context-pack.json issued at 2026-09-15T15:23:53.8374106Z binds workflow-routing.jsonl to SHA-256 16e07f08fc0310aff53f6faf1e6fe4d15331b2bf1115c02ee4c2bbf82e9f1edc."
+      ],
+      "codeAlignment": "aligned"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "CONFLICT-001",
+      "requirementId": "REQ-009",
+      "sources": [
+        "[fact] User comment d5301b23c46949a0a1203adee1cef21f clause: 'no server or auth'.",
+        "[fact] The same comment requires the manifest to target a local Angular HTTPS app; Microsoft hosting requirements state that the add-in webpage files must be served from a web server or hosting service: https://learn.microsoft.com/en-us/office/dev/add-ins/outlook/add-in-requirements."
+      ],
+      "impact": "[inference] Treat 'no server' as no backend/API service, not as a ban on the local Angular HTTPS development host. This preserves both the explicit local-manifest requirement and the no-backend intent without holding implementation."
+    }
+  ],
+  "questions": [],
+  "plan": [
+    {
+      "id": "PLAN-001",
+      "requirementIds": ["REQ-001", "REQ-009"],
+      "action": "Scaffold a minimal standalone Angular application using the npm latest stable Angular CLI at implementation time, commit the generated lockfile, enable strict TypeScript, and add only the Office.js/testing/build dependencies required by the POC.",
+      "status": "ready",
+      "validation": [
+        "Record the resolved @angular/core and @angular/cli versions and confirm they came from non-prerelease npm latest tags.",
+        "Run the Angular production build and TypeScript checks from a clean checkout.",
+        "Verify no backend endpoint, authentication library, secret, or XLSM binary is introduced."
+      ]
+    },
+    {
+      "id": "PLAN-002",
+      "requirementIds": ["REQ-002", "REQ-004", "REQ-008"],
+      "action": "Create a small framework-independent mock-variable store shared by the Angular UI, Office command handler, and public custom function. Initialize exactly 10 named variables with finite random numeric values once per runtime and track one active variable, defaulting to the first.",
+      "status": "ready",
+      "validation": [
+        "Unit tests assert exactly 10 unique identifiers and names, finite numeric values, stable reads during one store lifetime, active-variable changes, and unknown-identifier behavior.",
+        "The shared module has no Angular DOM dependency so command/function tests can run in isolation."
+      ]
+    },
+    {
+      "id": "PLAN-003",
+      "requirementIds": ["REQ-003", "REQ-004"],
+      "action": "Implement one asynchronous Excel insertion service that calls Workbook.getSelectedRanges(), loads each area and its dimensions, assigns a correctly sized value matrix to every selected range, synchronizes once, and exposes bounded errors to both UI and command callers.",
+      "status": "ready",
+      "validation": [
+        "Office.js mock tests verify a one-cell selection, a multi-cell contiguous selection, two discontiguous ranges, matrix dimensions, one context.sync call after writes, and a rejected Office operation.",
+        "Type checks contain no any-based escape hatch for Office request context, range collection, or error handling."
+      ]
+    },
+    {
+      "id": "PLAN-004",
+      "requirementIds": ["REQ-002", "REQ-003", "REQ-006"],
+      "action": "Build an accessible task pane that lists the 10 variables and values, visibly marks the active variable, inserts on click into the current Excel selection, reports success/failure, and explains that direct grid drag is unsupported while pointing to the click and context-menu alternatives.",
+      "status": "ready",
+      "validation": [
+        "Component tests verify rendering of 10 variables, active selection, click delegation, keyboard activation, busy/error state, and the native-drag limitation message.",
+        "A local Excel smoke test confirms click insertion fills one contiguous range and multiple discontiguous ranges."
+      ]
+    },
+    {
+      "id": "PLAN-005",
+      "requirementIds": ["REQ-004", "REQ-007"],
+      "action": "Adapt the ps-excel-agent add-in-only XML manifest pattern for https://localhost:4200, SharedRuntime 1.1, ExcelApi 1.9, ReadWriteDocument, task-pane resources, and a ContextMenuCell ExecuteFunction action. Register the action in the shared runtime and ensure the handler awaits insertion, reports errors, and completes the command event exactly once.",
+      "status": "ready",
+      "validation": [
+        "Run the Office manifest validator and assert every SourceLocation/resource URL uses the same local HTTPS origin.",
+        "Handler tests verify selected-variable insertion, rejected insertion handling, and event.completed exactly once.",
+        "A local Excel smoke test verifies the context-menu item inserts into one contiguous range and multiple discontiguous ranges."
+      ]
+    },
+    {
+      "id": "PLAN-006",
+      "requirementIds": ["REQ-007", "REQ-008"],
+      "action": "Add a namespaced GETVARIABLE custom function, matching functions.json metadata, and the build outputs/resource URLs required by the manifest. Reuse shared runtime state but keep worksheet-function lookup separate from cell mutation.",
+      "status": "ready",
+      "validation": [
+        "Unit tests verify valid and unknown identifiers without mutating workbook cells.",
+        "Manifest validation and production build confirm the function script/page/metadata URLs exist.",
+        "A local Excel smoke test verifies =VARIABLEPOC.GETVARIABLE(\"Variable-01\") returns the same value shown in the task pane for the current runtime."
+      ]
+    },
+    {
+      "id": "PLAN-007",
+      "requirementIds": ["REQ-005", "REQ-006", "REQ-009", "REQ-010"],
+      "action": "Document local certificate setup, HTTPS start, manifest validation and sideloading, the supported scenario matrix, the evidence-based rejection of native task-pane-to-grid drag, click/context-menu alternatives, the no-backend interpretation, and why XLSM/VBA is unnecessary.",
+      "status": "ready",
+      "validation": [
+        "README commands match package scripts and local manifest URLs.",
+        "The scenario matrix distinguishes supported, unsupported, and not-attempted behavior and does not describe dragend or task-pane coordinates as an Excel cell drop target."
+      ]
+    },
+    {
+      "id": "PLAN-008",
+      "requirementIds": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-010"],
+      "action": "Run formatting/linting, strict type checking, all focused tests, the production build, and manifest validation; record exact commands and results for review without pushing or creating a PR.",
+      "status": "ready",
+      "validation": [
+        "All configured checks pass from the clean task branch.",
+        "Git diff contains only the POC, tests, manifest/assets, package metadata, and documentation.",
+        "No pipeline or PR command is run."
+      ]
+    }
+  ],
+  "summary": "[fact] The clean target branch is an empty POC repository, so all product behavior is missing. [fact] Current official contracts support local HTTPS Office add-ins, shared runtimes, ContextMenuCell ExecuteFunction commands, public custom functions, and one-or-many selected Excel ranges. [inference] Eight implementation areas are ready with no human-input dependency. [inference] Native drag of a task-pane DOM variable onto an Excel grid cell is rejected because Excel Office.js exposes no supported cross-surface drop target or target-cell contract; the POC will explain this and provide click and context-menu alternatives. [conflict] 'No server' is interpreted as no backend because a local HTTPS asset host is required by the same request. [fact] Local-poc-delivery excludes pipelines and pull requests.",
+  "humanReadable": {
+    "title": "Local Angular Excel variable-insertion proof of concept",
+    "objective": "Build a self-contained Angular Excel add-in that shows 10 mock variables, inserts a chosen value into every selected cell by task-pane click or Excel right-click command, demonstrates the verified shared-runtime/public-function manifest pattern, and clearly explains why direct dragging from the task pane onto the worksheet grid is not a supported Office.js interaction.",
+    "requirements": [
+      {
+        "id": "REQ-001",
+        "title": "Latest stable Angular foundation",
+        "description": "[Fact] Start a new strict Angular POC in the currently empty repository and lock the resolved stable versions.",
+        "acceptanceCriteria": [
+          "The installed Angular core and CLI versions resolve from the stable npm latest tags at implementation time.",
+          "The dependency lockfile is committed and a production build succeeds.",
+          "Only dependencies needed for Angular, Office.js, build, and tests are added."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-002",
+        "title": "Ten stable mock variables",
+        "description": "[Inference] Generate exactly 10 random numeric mock values once per add-in runtime so every UI and Office integration surface sees the same values until reload.",
+        "acceptanceCriteria": [
+          "Exactly 10 uniquely identified and named variables are visible.",
+          "Every value is a finite number and remains unchanged during one runtime.",
+          "The first variable is active by default and a user can activate another variable."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-003",
+        "title": "Click to fill selected cells",
+        "description": "[Fact] Clicking a variable must insert its number into all currently selected Excel cells, including discontiguous selections.",
+        "acceptanceCriteria": [
+          "A single cell and a contiguous range are filled with the clicked value.",
+          "Every area of a multi-area selection is filled with the clicked value.",
+          "The task pane reports success or a bounded actionable error."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-004",
+        "title": "Right-click insertion command",
+        "description": "[Fact] Add an Insert selected variable item to Excel's cell context menu; it uses the active task-pane variable and the same insertion service.",
+        "acceptanceCriteria": [
+          "The command appears in the Excel cell context menu after sideloading.",
+          "It fills one contiguous or multiple discontiguous selected ranges.",
+          "The Office command event completes exactly once on success or failure."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-005",
+        "title": "Native task-pane-to-grid drag",
+        "description": "[Inference] Do not simulate a native drop: Excel Office.js has no supported API that maps a DOM drag leaving the sandboxed task pane to a worksheet drop cell or range.",
+        "acceptanceCriteria": [
+          "No dragend approximation is presented as a real Excel cell drop.",
+          "Documentation cites the webview boundary and the absence of an Excel drag/drop target contract.",
+          "The UI directs users to supported click and context-menu flows."
+        ],
+        "status": "rejected"
+      },
+      {
+        "id": "REQ-006",
+        "title": "Honest UX alternatives",
+        "description": "[Fact] Explain the unsupported drag request and guide users to the two supported insertion interactions.",
+        "acceptanceCriteria": [
+          "The task pane and README say direct worksheet drop is unsupported.",
+          "Alternative 1 is select cells then click a variable.",
+          "Alternative 2 is activate a variable then use the cell right-click command."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-007",
+        "title": "Local HTTPS shared-runtime manifest",
+        "description": "[Fact] Adapt the verified ps-excel-agent XML manifest shape to the Angular HTTPS origin and APIs required by the POC.",
+        "acceptanceCriteria": [
+          "All task-pane, command, function, metadata, and icon URLs use https://localhost:4200.",
+          "The manifest declares Workbook, ReadWriteDocument, SharedRuntime 1.1, and ExcelApi 1.9.",
+          "The manifest includes the task-pane entry, ContextMenuCell action, and custom-function resources and passes validation."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-008",
+        "title": "Public mock-variable worksheet function",
+        "description": "[Inference] A small namespaced GETVARIABLE function is the least speculative way to demonstrate the explicitly requested public-functions pattern.",
+        "acceptanceCriteria": [
+          "The TypeScript function and functions.json metadata agree on namespace, identifier, parameter, and result type.",
+          "A valid variable identifier returns the same runtime value shown by the task pane.",
+          "An unknown identifier produces a clear documented result without changing other cells."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-009",
+        "title": "No backend, auth, or unnecessary macros",
+        "description": "[Conflict resolved by inference] The local HTTPS process serves static Angular assets only; there is no backend/API or authentication. Office.js covers the supported scenarios, so XLSM/VBA is unnecessary.",
+        "acceptanceCriteria": [
+          "The project contains no backend endpoint, authentication flow, credential, or external data call.",
+          "Only the local HTTPS Angular development host is required.",
+          "No XLSM/VBA artifact is added unless a later explicit requirement supplies a macro-only use case."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-010",
+        "title": "Runnable, tested, and documented POC",
+        "description": "[Fact] Provide repeatable local setup and validation plus focused tests for the new Office integration boundaries.",
+        "acceptanceCriteria": [
+          "README covers certificate setup, HTTPS start, manifest validation, sideloading, supported scenarios, and drag limitations.",
+          "Automated tests cover variable state, selection-area writes, task-pane interaction, command completion/error handling, and function lookup.",
+          "Lint/format, strict type checking, tests, production build, and manifest validation pass."
+        ],
+        "status": "ready"
+      },
+      {
+        "id": "REQ-011",
+        "title": "Local-only delivery",
+        "description": "[Fact] The persisted workflow excludes Pipeline Monitor, pushes, pipelines, and pull requests.",
+        "acceptanceCriteria": [
+          "Developer, Reviewer, Review Verifier, and Knowledge Keeper operate on the local task branch only.",
+          "No remote push, pipeline queue, or pull request is created."
+        ],
+        "status": "already-satisfied"
+      }
+    ],
+    "workflow": [
+      {
+        "order": 1,
+        "title": "Confirm requirements and feasibility",
+        "description": "Trace the request against the empty target repository, verified ps-excel-agent main patterns, and current Angular and Office contracts; separate supported work from the unsupported drag interaction.",
+        "owner": "Requirements Analyst",
+        "outputs": ["Validated requirements-analysis.json", "Ready/rejected scope", "Evidence-linked implementation plan"],
+        "gate": "The analysis schema validates, all routed comments are acknowledged, and no material ambiguity remains."
+      },
+      {
+        "order": 2,
+        "title": "Build and validate the local POC",
+        "description": "Implement only the ready requirements on the task branch and run the focused tests, build, type, lint, and manifest checks.",
+        "owner": "Developer",
+        "outputs": ["Angular/Office.js source and tests", "Local HTTPS manifest and documentation", "Exact local validation evidence"],
+        "gate": "The clean local task branch contains only ready scope and every recorded required check passes."
+      },
+      {
+        "order": 3,
+        "title": "Review against the evidence",
+        "description": "Review the local diff and validation evidence against every ready, rejected, and already-satisfied requirement without changing code.",
+        "owner": "Reviewer",
+        "outputs": ["Requirement-to-code traceability", "Review coverage matrix", "Stable candidate findings or a clean review"],
+        "gate": "The review artifact is complete; any candidate finding proceeds to independent verification rather than directly authorizing a fix."
+      },
+      {
+        "order": 4,
+        "title": "Independently verify the review",
+        "description": "Falsify each candidate finding and validate the review coverage against the exact reviewed revision.",
+        "owner": "Review Verifier",
+        "outputs": ["Exact-artifact-bound verification verdicts", "Confirmed, rejected, or needs-human finding lifecycle"],
+        "gate": "A passing exact-SHA verification is required; confirmed or needs-human findings stop at the configured human decision gate."
+      },
+      {
+        "order": 5,
+        "title": "Publish the local POC outcome",
+        "description": "Record the verified result and present concise local setup, supported scenarios, unsupported drag behavior, and residual risks.",
+        "owner": "Knowledge Keeper",
+        "outputs": ["Task history", "Verified knowledge updates if warranted", "Human-readable final local delivery summary"],
+        "gate": "Publication occurs only after clean review and passing independent verification; there is no pipeline, push, or PR stage."
+      }
+    ],
+    "implementationPlan": [
+      {
+        "order": 1,
+        "title": "Scaffold the strict Angular POC",
+        "description": "Create the smallest standalone Angular project, lock current stable versions, and add only required Office.js and test tooling.",
+        "requirementIds": ["REQ-001", "REQ-009"],
+        "validation": ["Resolved stable versions recorded", "Strict type check and production build pass", "No backend/auth/XLSM dependency"],
+        "status": "ready"
+      },
+      {
+        "order": 2,
+        "title": "Create shared mock-variable state",
+        "description": "Generate and hold 10 runtime-stable variable values and one active variable in a framework-independent module shared by all Office surfaces.",
+        "requirementIds": ["REQ-002", "REQ-004", "REQ-008"],
+        "validation": ["Exactly 10 unique variables", "Finite and runtime-stable values", "Active/unknown lookup tests pass"],
+        "status": "ready"
+      },
+      {
+        "order": 3,
+        "title": "Implement one selection insertion boundary",
+        "description": "Use getSelectedRanges and fill every member range through one testable service used by task-pane and context-menu callers.",
+        "requirementIds": ["REQ-003", "REQ-004"],
+        "validation": ["Single cell, contiguous range, and discontiguous range tests", "Correct value matrix dimensions", "Bounded rejection behavior"],
+        "status": "ready"
+      },
+      {
+        "order": 4,
+        "title": "Build the task-pane interaction",
+        "description": "Render and activate variables, insert on click, show status, and explain the supported alternatives to native worksheet drag.",
+        "requirementIds": ["REQ-002", "REQ-003", "REQ-006"],
+        "validation": ["Accessible list and keyboard behavior", "Click delegates once", "Limitation and alternatives are visible"],
+        "status": "ready"
+      },
+      {
+        "order": 5,
+        "title": "Wire manifest and right-click command",
+        "description": "Adapt the verified shared-runtime XML manifest for the Angular HTTPS host and register a ContextMenuCell action that calls the insertion service.",
+        "requirementIds": ["REQ-004", "REQ-007"],
+        "validation": ["Manifest validator passes", "All URLs use one HTTPS origin", "Command completion and multi-selection smoke tests pass"],
+        "status": "ready"
+      },
+      {
+        "order": 6,
+        "title": "Add the public worksheet function",
+        "description": "Expose namespaced GETVARIABLE implementation and metadata using shared runtime state without using the custom function to mutate other cells.",
+        "requirementIds": ["REQ-007", "REQ-008"],
+        "validation": ["Implementation/metadata contract tests", "Built function resources exist", "Excel formula smoke test matches the task-pane value"],
+        "status": "ready"
+      },
+      {
+        "order": 7,
+        "title": "Document and verify the complete POC",
+        "description": "Document certificate, HTTPS, sideloading, scenario support, drag limitations, no-backend scope, and run all local quality gates.",
+        "requirementIds": ["REQ-005", "REQ-006", "REQ-009", "REQ-010"],
+        "validation": ["README commands match package scripts", "Scenario matrix is honest about drag", "Lint/type/test/build/manifest validation all pass"],
+        "status": "ready"
+      }
+    ]
+  }
+}

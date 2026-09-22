@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Planning Space Economics — Manage Reports (mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+  :root {
+    --pse-primary: #147cc0;
+    --pse-primary-hover: #0f6299;
+    --pse-accent: #F7921E;
+    --pse-toolbar-bg: #333333;
+    --pse-toolbar-fg: #ffffff;
+    --pse-surface: #ffffff;
+    --pse-text-primary: rgba(0, 0, 0, 0.87);
+    --pse-text-secondary: rgba(0, 0, 0, 0.6);
+    --pse-text-disabled: rgba(0, 0, 0, 0.38);
+    --pse-divider: rgba(0, 0, 0, 0.12);
+    --pse-outline: rgba(0, 0, 0, 0.38);
+    --pse-hover-overlay: rgba(0, 0, 0, 0.04);
+    --pse-selected-overlay: rgba(20, 124, 192, 0.08);
+    --pse-error: #f44336;
+
+    --pse-font-family: Roboto, "Helvetica Neue", sans-serif;
+    --pse-font-size-base: 13px;
+    --pse-font-size-toolbar-title: 18px;
+    --pse-font-weight-regular: 400;
+    --pse-font-weight-medium: 500;
+    --pse-font-weight-bold: 700;
+
+    --pse-radius-standard: 4px;
+    --pse-radius-round: 50%;
+
+    --pse-elevation-1: 0px 2px 1px -1px rgba(0,0,0,.2), 0px 1px 1px 0px rgba(0,0,0,.14), 0px 1px 3px 0px rgba(0,0,0,.12);
+    --pse-elevation-2: 0px 2px 4px -1px rgba(0,0,0,.2), 0px 4px 5px 0px rgba(0,0,0,.14), 0px 1px 10px 0px rgba(0,0,0,.12);
+
+    --pse-toolbar-height: 56px;
+    --pse-module-rail-width: 48px;
+    --pse-panel-width: 320px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: var(--pse-font-family); font-size: var(--pse-font-size-base); color: var(--pse-text-primary); }
+
+  .pse-app { display: flex; flex-direction: column; height: 100vh; background: var(--pse-surface); }
+
+  /* Toolbar */
+  .pse-toolbar { height: var(--pse-toolbar-height); background: var(--pse-toolbar-bg); color: var(--pse-toolbar-fg);
+    display: flex; align-items: center; gap: 12px; padding: 0 12px; flex-shrink: 0; }
+  .pse-toolbar .pse-icon-btn { width: 40px; height: 40px; border-radius: var(--pse-radius-round);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .pse-toolbar .pse-icon-btn:hover { background: rgba(255,255,255,.1); }
+  .pse-toolbar .pse-logo { font-size: var(--pse-font-size-toolbar-title); font-weight: 400; font-style: italic; opacity: .95; }
+  .pse-breadcrumb { display: flex; align-items: center; gap: 4px; font-size: var(--pse-font-size-base); opacity: .9; }
+  .pse-breadcrumb .material-icons { font-size: 16px; }
+  .pse-breadcrumb .current { font-weight: var(--pse-font-weight-medium); }
+  .pse-toolbar-spacer { flex: 1; }
+  .pse-badge { position: relative; }
+  .pse-badge .pse-badge-count { position: absolute; top: 2px; right: 2px; background: var(--pse-primary); color: #fff;
+    font-size: 10px; font-weight: 600; border-radius: 8px; min-width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+  .pse-user { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: var(--pse-font-size-base); }
+  .pse-user .material-icons.arrow { font-size: 18px; }
+
+  /* Body: rail + panel + content */
+  .pse-body { display: flex; flex: 1; min-height: 0; }
+
+  .pse-module-rail { width: var(--pse-module-rail-width); background: var(--pse-surface); border-right: 1px solid var(--pse-divider);
+    display: flex; flex-direction: column; align-items: center; padding-top: 8px; gap: 4px; }
+  .pse-module-rail .pse-rail-btn { width: 36px; height: 36px; border-radius: var(--pse-radius-standard);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--pse-text-secondary); }
+  .pse-module-rail .pse-rail-btn:hover { background: var(--pse-hover-overlay); }
+  .pse-module-rail .pse-rail-btn.active { color: var(--pse-primary); background: var(--pse-selected-overlay); }
+
+  .pse-panel { width: var(--pse-panel-width); border-right: 1px solid var(--pse-divider);
+    display: flex; flex-direction: column; flex-shrink: 0; }
+
+  .pse-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 8px; }
+  .pse-panel-header h1 { font-size: 20px; font-weight: 400; color: var(--pse-text-primary); }
+  .pse-panel-header .pse-icon-btn-sm { width: 32px; height: 32px; border-radius: var(--pse-radius-round);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--pse-text-secondary); }
+  .pse-panel-header .pse-icon-btn-sm:hover { background: var(--pse-hover-overlay); }
+
+  /* Action toolbar for the report list */
+  .pse-action-bar { display: flex; align-items: center; gap: 2px; padding: 0 8px 8px; }
+  .pse-action-bar .divider { width: 1px; height: 20px; background: var(--pse-divider); margin: 0 4px; }
+  .pse-icon-action { width: 32px; height: 32px; border-radius: var(--pse-radius-standard);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--pse-text-secondary); position: relative; }
+  .pse-icon-action:hover { background: var(--pse-hover-overlay); color: var(--pse-text-primary); }
+  .pse-icon-action.disabled { color: var(--pse-text-disabled); cursor: default; pointer-events: none; }
+  .pse-icon-action .material-icons { font-size: 20px; }
+
+  .pse-add-split { display: flex; align-items: center; border: 1px solid var(--pse-primary); border-radius: var(--pse-radius-standard);
+    color: var(--pse-primary); position: relative; }
+  .pse-add-split .pse-add-main { display: flex; align-items: center; gap: 4px; padding: 0 10px; height: 32px; cursor: pointer; font-weight: var(--pse-font-weight-medium); font-size: 13px; }
+  .pse-add-split .pse-add-main:hover { background: var(--pse-selected-overlay); }
+  .pse-add-split .pse-add-caret { display: flex; align-items: center; justify-content: center; width: 26px; height: 32px;
+    border-left: 1px solid var(--pse-primary); cursor: pointer; }
+  .pse-add-split .pse-add-caret:hover { background: var(--pse-selected-overlay); }
+  .pse-add-split .material-icons { font-size: 18px; }
+
+  .pse-add-menu { position: absolute; top: 34px; left: 0; background: #fff; border-radius: var(--pse-radius-standard);
+    box-shadow: var(--pse-elevation-2); min-width: 210px; z-index: 20; display: none; overflow: hidden; }
+  .pse-add-menu.open { display: block; }
+  .pse-add-menu .item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; color: var(--pse-text-primary); }
+  .pse-add-menu .item:hover { background: var(--pse-hover-overlay); }
+  .pse-add-menu .item .material-icons { font-size: 18px; color: var(--pse-text-secondary); }
+  .pse-add-menu .item .label { display: flex; flex-direction: column; }
+  .pse-add-menu .item .label .sub { font-size: 11px; color: var(--pse-text-secondary); }
+
+  /* Tabs (All Reports / Master List) */
+  .pse-tabs { display: flex; border-bottom: 1px solid var(--pse-divider); }
+  .pse-tab { flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: var(--pse-font-weight-medium);
+    color: var(--pse-text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+  .pse-tab.active { color: var(--pse-primary); border-bottom-color: var(--pse-primary); }
+  .pse-tab:hover:not(.active) { background: var(--pse-hover-overlay); }
+
+  .pse-search { margin: 8px; display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+    border: 1px solid var(--pse-divider); border-radius: var(--pse-radius-standard); color: var(--pse-text-secondary); }
+  .pse-search .material-icons { font-size: 18px; }
+  .pse-search input { border: none; outline: none; font-family: inherit; font-size: inherit; flex: 1; }
+
+  .pse-tree { overflow-y: auto; flex: 1; }
+  .pse-tree-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; user-select: none; }
+  .pse-tree-row:hover { background: var(--pse-hover-overlay); }
+  .pse-tree-row.selected { background: var(--pse-selected-overlay); color: var(--pse-primary); }
+  .pse-tree-row.selected .material-icons.type-icon { color: var(--pse-primary); }
+  .pse-tree-row .material-icons.chevron { font-size: 18px; color: var(--pse-text-secondary); width: 18px; flex-shrink: 0; }
+  .pse-tree-row .material-icons.chevron.hidden { visibility: hidden; }
+  .pse-tree-row .material-icons.type-icon { font-size: 18px; color: var(--pse-text-secondary); flex-shrink: 0; }
+  .pse-tree-row .type-icon.folder { color: #f0a83a; }
+  .pse-tree-row .row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pse-tree-row .row-badge { font-size: 10px; font-weight: var(--pse-font-weight-medium); padding: 1px 6px;
+    border-radius: 8px; background: var(--pse-selected-overlay); color: var(--pse-primary); flex-shrink: 0; }
+  .pse-tree-row .row-badge.master { background: rgba(247, 146, 30, .12); color: #b96b0f; }
+  .pse-tree-row .row-caret { width: 20px; height: 20px; border-radius: var(--pse-radius-round); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; color: var(--pse-text-secondary); opacity: 0; }
+  .pse-tree-row:hover .row-caret { opacity: 1; }
+  .pse-tree-row .row-caret:hover { background: rgba(0,0,0,.08); }
+  .pse-tree-row .row-caret .material-icons { font-size: 18px; }
+  .pse-tree-children { display: block; }
+  .pse-tree-children.collapsed { display: none; }
+  .indent-1 { padding-left: 12px; }
+  .indent-2 { padding-left: 30px; }
+
+  /* Context menu */
+  .pse-context-menu { position: fixed; background: #fff; border-radius: var(--pse-radius-standard);
+    box-shadow: var(--pse-elevation-2); min-width: 200px; z-index: 100; display: none; overflow: hidden; padding: 4px 0; }
+  .pse-context-menu.open { display: block; }
+  .pse-context-menu .item { display: flex; align-items: center; gap: 12px; padding: 9px 16px; cursor: pointer;
+    color: var(--pse-text-primary); font-size: 13px; }
+  .pse-context-menu .item:hover { background: var(--pse-hover-overlay); }
+  .pse-context-menu .item.danger { color: #c0392b; }
+  .pse-context-menu .item .material-icons { font-size: 18px; color: var(--pse-text-secondary); width: 18px; }
+  .pse-context-menu .item.danger .material-icons { color: #c0392b; }
+  .pse-context-menu .item.disabled { color: var(--pse-text-disabled); pointer-events: none; }
+  .pse-context-menu .item.disabled .material-icons { color: var(--pse-text-disabled); }
+  .pse-context-menu .sep { height: 1px; background: var(--pse-divider); margin: 4px 0; }
+
+  /* Main content */
+  .pse-content { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; position: relative; background: #fafafa; }
+  .pse-empty-state { text-align: center; color: var(--pse-text-secondary); }
+  .pse-empty-illustration { margin: 0 auto 20px; width: 96px; height: 80px; }
+  .pse-empty-title { font-size: 15px; font-weight: var(--pse-font-weight-medium); color: var(--pse-text-primary); margin-bottom: 4px; }
+
+  /* Detail panel (shown when a report is selected) */
+  .pse-detail { width: 100%; max-width: 720px; padding: 32px; display: none; }
+  .pse-detail.visible { display: block; }
+  .pse-detail-card { background: #fff; border-radius: var(--pse-radius-standard); box-shadow: var(--pse-elevation-1); padding: 24px; }
+  .pse-detail-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .pse-detail-title-row { display: flex; align-items: center; gap: 10px; }
+  .pse-detail-title-row .material-icons { font-size: 26px; color: var(--pse-primary); }
+  .pse-detail-title { font-size: 18px; font-weight: var(--pse-font-weight-medium); }
+  .pse-detail-subtitle { font-size: 12px; color: var(--pse-text-secondary); margin-top: 2px; }
+  .pse-detail-actions { display: flex; gap: 8px; }
+
+  .pse-btn { border-radius: var(--pse-radius-standard); padding: 0 16px; height: 32px; font-family: inherit;
+    font-size: var(--pse-font-size-base); font-weight: var(--pse-font-weight-medium); border: none; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .pse-btn .material-icons { font-size: 18px; }
+  .pse-btn-primary { background: var(--pse-primary); color: #fff; }
+  .pse-btn-primary:hover { background: var(--pse-primary-hover); }
+  .pse-btn-outlined { background: transparent; color: var(--pse-primary); border: 1px solid var(--pse-primary); }
+  .pse-btn-outlined:hover { background: var(--pse-selected-overlay); }
+  .pse-btn-text { background: transparent; color: var(--pse-text-secondary); }
+  .pse-btn-text:hover { background: var(--pse-hover-overlay); color: var(--pse-text-primary); }
+
+  .pse-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; padding: 16px 0; border-top: 1px solid var(--pse-divider); border-bottom: 1px solid var(--pse-divider); margin-bottom: 20px; }
+  .pse-meta-item .k { font-size: 11px; color: var(--pse-text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+  .pse-meta-item .v { font-size: 14px; color: var(--pse-text-primary); display: flex; align-items: center; gap: 6px; }
+  .pse-chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: var(--pse-font-weight-medium);
+    padding: 2px 8px; border-radius: 10px; background: var(--pse-selected-overlay); color: var(--pse-primary); }
+  .pse-chip.master { background: rgba(247, 146, 30, .12); color: #b96b0f; }
+
+  .pse-section-label { font-size: 12px; font-weight: var(--pse-font-weight-medium); color: var(--pse-text-secondary);
+    text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
+
+  .pse-perm-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--pse-divider); }
+  .pse-perm-row:last-child { border-bottom: none; }
+  .pse-perm-name { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .pse-perm-name .material-icons { font-size: 18px; color: var(--pse-text-secondary); }
+  .pse-perm-badges { display: flex; gap: 6px; }
+  .pse-perm-badge { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: var(--pse-hover-overlay); color: var(--pse-text-secondary); }
+  .pse-perm-badge.on { background: var(--pse-selected-overlay); color: var(--pse-primary); }
+
+  .pse-footer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+  /* Embedded report template editor (shown when a report is selected) */
+  .pse-editor { width: 100%; height: 100%; display: none; flex-direction: column; background: #fff; }
+  .pse-editor.visible { display: flex; }
+
+  .pse-editor-topbar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--pse-divider); flex-shrink: 0; }
+  .pse-editor-topbar .pse-icon-btn-sm { width: 32px; height: 32px; border-radius: var(--pse-radius-round);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--pse-text-secondary); }
+  .pse-editor-topbar .pse-icon-btn-sm:hover { background: var(--pse-hover-overlay); }
+  .pse-editor-name { font-size: 14px; font-weight: var(--pse-font-weight-medium); }
+  .pse-editor-path { font-size: 12px; color: var(--pse-text-secondary); }
+
+  .pse-editor-tabs { display: flex; border-bottom: 1px solid var(--pse-divider); padding: 0 12px; flex-shrink: 0; background: #fafafa; }
+  .pse-editor-tab { padding: 8px 14px; font-size: 12px; font-weight: var(--pse-font-weight-medium);
+    color: var(--pse-text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+  .pse-editor-tab.active { color: var(--pse-primary); border-bottom-color: var(--pse-primary); background: #fff; }
+  .pse-editor-tab:hover:not(.active) { background: var(--pse-hover-overlay); }
+
+  .pse-editor-body { flex: 1; display: flex; min-height: 0; }
+
+  .pse-editor-main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .pse-editor-varrail { width: 24px; background: #fafafa; border-right: 1px solid var(--pse-divider);
+    display: flex; align-items: flex-start; justify-content: center; padding-top: 12px; cursor: pointer; }
+  .pse-editor-varrail-label { writing-mode: vertical-rl; font-size: 11px; font-weight: var(--pse-font-weight-medium);
+    color: var(--pse-text-secondary); letter-spacing: .03em; }
+
+  .pse-editor-varpanel { width: 230px; border-right: 1px solid var(--pse-divider); display: flex; flex-direction: column; flex-shrink: 0; }
+  .pse-editor-varpanel .pse-search { margin: 8px; }
+  .pse-editor-var-regime { margin: 0 8px 6px; padding: 6px 8px; border: 1px solid var(--pse-outline); border-radius: var(--pse-radius-standard);
+    font-size: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .pse-editor-var-toggle { display: flex; gap: 12px; margin: 0 8px 8px; font-size: 12px; color: var(--pse-text-secondary); }
+  .pse-editor-var-toggle label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .pse-editor-var-toggle input { accent-color: var(--pse-primary); }
+  .pse-editor-vartree { overflow-y: auto; flex: 1; font-size: 12px; }
+  .pse-editor-vartree .pse-tree-row { padding: 4px 8px; gap: 4px; }
+  .pse-editor-vartree .material-icons { font-size: 16px; }
+
+  .pse-editor-grid-wrap { flex: 1; overflow: auto; padding: 12px; background: #fafafa; min-height: 0; }
+  .pse-editor-grid { background: #fff; border: 1px solid var(--pse-divider); border-collapse: collapse; font-size: 12px; min-width: 640px; }
+  .pse-editor-grid td { border: 1px solid #eee; padding: 4px 8px; height: 22px; white-space: nowrap; }
+  .pse-editor-grid td.section-title { background: var(--pse-primary); color: #fff; font-weight: var(--pse-font-weight-medium); text-align: center; }
+  .pse-editor-grid td.subhead { background: var(--pse-selected-overlay); font-weight: var(--pse-font-weight-medium); text-align: center; }
+  .pse-editor-grid td.linked { background: rgba(20,124,192,.06); color: var(--pse-text-secondary); }
+  .pse-editor-grid td.summarylink { background: rgba(247,146,30,.14); font-weight: var(--pse-font-weight-medium); text-align: center; }
+  .pse-editor-grid td.right { text-align: right; }
+  .pse-editor-grid td.selected-cell { outline: 2px solid var(--pse-primary); outline-offset: -1px; background: var(--pse-selected-overlay); }
+
+  .pse-editor-varbar { border-top: 1px solid var(--pse-divider); padding: 10px 16px; display: grid;
+    grid-template-columns: repeat(4, 1fr); gap: 10px 20px; flex-shrink: 0; background: #fff; }
+  .pse-editor-varbar .field label { display: block; font-size: 10px; color: var(--pse-text-secondary); text-transform: uppercase;
+    letter-spacing: .03em; margin-bottom: 3px; }
+  .pse-editor-varbar .field .value { font-size: 12px; padding: 5px 8px; border: 1px solid var(--pse-divider); border-radius: var(--pse-radius-standard);
+    background: #fafafa; color: var(--pse-text-secondary); }
+  .pse-editor-varbar .field .value.editable { background: #fff; border-color: var(--pse-outline); color: var(--pse-text-primary); }
+
+  /* Permissions blade */
+  .pse-blade-scrim { position: fixed; inset: 0; background: transparent; z-index: 40; display: none; }
+  .pse-blade-scrim.open { display: block; }
+  .pse-blade { position: fixed; top: 0; left: calc(var(--pse-module-rail-width) + var(--pse-panel-width)); bottom: 0;
+    width: 380px; background: #fff; box-shadow: var(--pse-elevation-4); z-index: 50; display: flex; flex-direction: column;
+    transform: translateX(-16px); opacity: 0; pointer-events: none; transition: transform .15s ease, opacity .15s ease; }
+  .pse-blade.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+  .pse-blade-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px; }
+  .pse-blade-header h2 { font-size: 18px; font-weight: 400; }
+  .pse-blade-header .pse-icon-btn-sm { width: 32px; height: 32px; border-radius: var(--pse-radius-round);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--pse-text-secondary); }
+  .pse-blade-header .pse-icon-btn-sm:hover { background: var(--pse-hover-overlay); }
+
+  .pse-blade-subtitle { display: flex; align-items: center; justify-content: space-between; padding: 0 16px 12px; }
+  .pse-blade-subtitle .name { font-size: 15px; font-weight: var(--pse-font-weight-medium); }
+  .pse-blade-apply { display: flex; align-items: center; gap: 4px; color: var(--pse-text-disabled); font-size: 13px; cursor: default; }
+  .pse-blade-apply.enabled { color: var(--pse-primary); cursor: pointer; }
+  .pse-blade-apply .material-icons { font-size: 16px; }
+
+  .pse-blade-tabs { display: flex; border-bottom: 1px solid var(--pse-divider); padding: 0 16px; }
+  .pse-blade-tab { padding: 10px 12px; font-size: 13px; font-weight: var(--pse-font-weight-medium);
+    color: var(--pse-text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+  .pse-blade-tab.active { color: var(--pse-primary); border-bottom-color: var(--pse-primary); }
+
+  .pse-blade-search { margin: 12px 16px; display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border: 1px solid var(--pse-divider); border-radius: var(--pse-radius-standard); color: var(--pse-text-secondary); }
+  .pse-blade-search input { border: none; outline: none; font-family: inherit; font-size: inherit; flex: 1; }
+  .pse-blade-search .material-icons { font-size: 18px; }
+  .pse-blade-search .pse-icon-btn-sm { width: 28px; height: 28px; margin: -4px -4px -4px 0; }
+
+  .pse-identity-table { padding: 0 16px; }
+  .pse-identity-head { display: grid; grid-template-columns: 1fr 100px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--pse-text-secondary); padding: 6px 8px; border-bottom: 1px solid var(--pse-divider); }
+  .pse-identity-row { display: grid; grid-template-columns: 1fr 100px; align-items: center; padding: 8px 8px;
+    cursor: pointer; font-size: 13px; border-radius: var(--pse-radius-standard); }
+  .pse-identity-row:hover { background: var(--pse-hover-overlay); }
+  .pse-identity-row.selected { background: var(--pse-selected-overlay); }
+  .pse-identity-row .name { display: flex; align-items: center; gap: 8px; }
+  .pse-identity-row .material-icons { font-size: 18px; color: var(--pse-text-secondary); }
+
+  .pse-blade-divider { height: 1px; background: var(--pse-divider); margin: 12px 0; }
+
+  .pse-perm-matrix-title { padding: 0 16px 8px; font-size: 13px; color: var(--pse-text-secondary); }
+  .pse-perm-matrix-title b { color: var(--pse-text-primary); }
+  .pse-perm-matrix { padding: 0 16px; }
+  .pse-perm-matrix-head { display: grid; grid-template-columns: 1fr 70px 70px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--pse-text-secondary); padding: 6px 4px; border-bottom: 1px solid var(--pse-divider); }
+  .pse-perm-matrix-row { display: grid; grid-template-columns: 1fr 70px 70px; align-items: center; padding: 8px 4px;
+    font-size: 13px; border-bottom: 1px solid var(--pse-divider); }
+  .pse-perm-matrix-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--pse-primary); cursor: pointer; }
+
+  .pse-blade-footer { margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--pse-divider);
+    display: flex; flex-direction: column; gap: 10px; }
+  .pse-blade-footer-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .pse-blade-footer-row select { font-family: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--pse-outline);
+    border-radius: var(--pse-radius-standard); background: #fff; }
+  .pse-blade-footer-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--pse-text-secondary); }
+  .pse-blade-footer-check input { width: 16px; height: 16px; accent-color: var(--pse-primary); }
+  .pse-blade-footer-check .material-icons { font-size: 16px; color: var(--pse-text-disabled); }
+</style>
+</head>
+<body>
+
+<div class="pse-app">
+  <!-- Toolbar -->
+  <div class="pse-toolbar">
+    <div class="pse-icon-btn"><span class="material-icons">apps</span></div>
+    <div class="pse-logo">planning space</div>
+    <div class="pse-breadcrumb">
+      <span class="material-icons">chevron_right</span><span>Economics</span>
+      <span class="material-icons">chevron_right</span><span class="current">Manage Reports</span>
+    </div>
+    <div class="pse-toolbar-spacer"></div>
+    <div class="pse-icon-btn pse-badge"><span class="material-icons">notifications</span></div>
+    <div class="pse-icon-btn"><span class="material-icons">help_outline</span></div>
+    <div class="pse-user">
+      <span class="material-icons">account_circle</span>
+      <span class="material-icons arrow">arrow_drop_down</span>
+      <span>Administrator</span>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="pse-body">
+    <!-- Module rail -->
+    <div class="pse-module-rail">
+      <div class="pse-rail-btn"><span class="material-icons">widgets</span></div>
+      <div class="pse-rail-btn"><span class="material-icons">calculate</span></div>
+      <div class="pse-rail-btn active"><span class="material-icons">build</span></div>
+    </div>
+
+    <!-- List panel -->
+    <div class="pse-panel">
+      <div class="pse-panel-header">
+        <h1>Reports</h1>
+        <div class="pse-icon-btn-sm"><span class="material-icons">refresh</span></div>
+      </div>
+
+      <div class="pse-action-bar">
+        <div class="pse-add-split" id="addSplit">
+          <div class="pse-add-main" onclick="toggleAddMenu(event)">
+            <span class="material-icons">add</span><span>Add</span>
+          </div>
+          <div class="pse-add-caret" onclick="toggleAddMenu(event)"><span class="material-icons">arrow_drop_down</span></div>
+          <div class="pse-add-menu" id="addMenu">
+            <div class="item"><span class="material-icons">description</span>
+              <div class="label"><span>Standard Report</span></div></div>
+            <div class="item"><span class="material-icons">notes</span>
+              <div class="label"><span>One Line Summary Report</span></div></div>
+            <div class="item"><span class="material-icons">folder</span>
+              <div class="label"><span>Folder</span></div></div>
+          </div>
+        </div>
+        <div class="pse-toolbar-spacer" style="flex:1"></div>
+        <div class="pse-icon-action" title="Import"><span class="material-icons">file_upload</span></div>
+      </div>
+
+      <div class="pse-tabs">
+        <div class="pse-tab active">All Reports</div>
+        <div class="pse-tab">Master List</div>
+      </div>
+
+      <div class="pse-search">
+        <span class="material-icons">search</span>
+        <input placeholder="Search reports...">
+      </div>
+
+      <div class="pse-tree" id="tree">
+        <div class="pse-tree-row" onclick="toggleFolder(this)">
+          <span class="material-icons chevron">expand_more</span>
+          <span class="material-icons type-icon folder">folder</span>
+          <span class="row-label">Corporate Rollup</span>
+          <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'folder', this)"><span class="material-icons">arrow_drop_down</span></div>
+        </div>
+        <div class="pse-tree-children">
+          <div class="pse-tree-row indent-1" onclick="selectReport(this,'Summary Report','Standard Report','Corporate Rollup')">
+            <span class="material-icons chevron hidden">expand_more</span>
+            <span class="material-icons type-icon">description</span>
+            <span class="row-label">Summary Report</span>
+            <span class="row-badge master">Master</span>
+            <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'report', this)"><span class="material-icons">arrow_drop_down</span></div>
+          </div>
+          <div class="pse-tree-row indent-1" onclick="toggleFolder(this)">
+            <span class="material-icons chevron">expand_more</span>
+            <span class="material-icons type-icon folder">folder</span>
+            <span class="row-label">MKB</span>
+            <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'folder', this)"><span class="material-icons">arrow_drop_down</span></div>
+          </div>
+          <div class="pse-tree-children">
+            <div class="pse-tree-row indent-2 selected" onclick="selectReport(this,'MIRR template','Standard Report','Corporate Rollup / MKB')">
+              <span class="material-icons chevron hidden">expand_more</span>
+              <span class="material-icons type-icon">description</span>
+              <span class="row-label">MIRR template</span>
+              <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'report', this)"><span class="material-icons">arrow_drop_down</span></div>
+            </div>
+            <div class="pse-tree-row indent-2" onclick="selectReport(this,'MKB Test OLS','One Line Summary Report','Corporate Rollup / MKB')">
+              <span class="material-icons chevron hidden">expand_more</span>
+              <span class="material-icons type-icon">notes</span>
+              <span class="row-label">MKB Test OLS</span>
+              <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'report', this)"><span class="material-icons">arrow_drop_down</span></div>
+            </div>
+          </div>
+          <div class="pse-tree-row indent-1" onclick="selectReport(this,'PGNiG Summary Report','One Line Summary Report','Corporate Rollup')">
+            <span class="material-icons chevron hidden">expand_more</span>
+            <span class="material-icons type-icon">notes</span>
+            <span class="row-label">PGNiG Summary Report</span>
+            <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'report', this)"><span class="material-icons">arrow_drop_down</span></div>
+          </div>
+          <div class="pse-tree-row indent-1" onclick="toggleFolder(this)">
+            <span class="material-icons chevron">expand_more</span>
+            <span class="material-icons type-icon folder">folder</span>
+            <span class="row-label">Royalty</span>
+            <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'folder', this)"><span class="material-icons">arrow_drop_down</span></div>
+          </div>
+          <div class="pse-tree-children">
+            <div class="pse-tree-row indent-2" onclick="selectReport(this,'Royalty Detail','Standard Report','Corporate Rollup / Royalty')">
+              <span class="material-icons chevron hidden">expand_more</span>
+              <span class="material-icons type-icon">description</span>
+              <span class="row-label">Royalty Detail</span>
+              <div class="row-caret" onclick="showContextMenu(event, this.parentElement, 'report', this)"><span class="material-icons">arrow_drop_down</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Context menu: report row -->
+      <div class="pse-context-menu" id="ctxReport">
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">open_in_new</span>Open in new tab</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">edit</span>Rename</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">arrow_upward</span>Move Up</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">arrow_downward</span>Move Down</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">content_cut</span>Cut</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">content_copy</span>Copy</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">file_download</span>Export</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">file_upload</span>Import</div>
+        <div class="item" id="masterToggleItem" onclick="closeContextMenu()"><span class="material-icons">star_outline</span>Add to Master List</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">table_chart</span>Edit Using Excel</div>
+        <div class="item" onclick="openPermBlade(ctxItemName)"><span class="material-icons">lock_outline</span>Permissions</div>
+        <div class="sep"></div>
+        <div class="item danger" onclick="closeContextMenu()"><span class="material-icons">delete_outline</span>Delete</div>
+      </div>
+
+      <!-- Context menu: folder row -->
+      <div class="pse-context-menu" id="ctxFolder">
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">edit</span>Rename</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">unfold_more</span>Expand</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">unfold_less</span>Collapse</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">content_cut</span>Cut</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">content_copy</span>Copy</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">content_paste</span>Paste</div>
+        <div class="sep"></div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">file_download</span>Export</div>
+        <div class="item" onclick="closeContextMenu()"><span class="material-icons">file_upload</span>Import here</div>
+        <div class="item" onclick="openPermBlade(ctxItemName)"><span class="material-icons">lock_outline</span>Permissions</div>
+        <div class="sep"></div>
+        <div class="item danger" onclick="closeContextMenu()"><span class="material-icons">delete_outline</span>Delete</div>
+      </div>
+
+      <!-- Permissions blade -->
+      <div class="pse-blade-scrim" id="permScrim" onclick="closePermBlade()"></div>
+      <div class="pse-blade" id="permBlade">
+        <div class="pse-blade-header">
+          <h2>Permissions</h2>
+          <div class="pse-icon-btn-sm" onclick="closePermBlade()"><span class="material-icons">close</span></div>
+        </div>
+        <div class="pse-blade-subtitle">
+          <div class="name" id="permItemName">MIRR template</div>
+          <div class="pse-blade-apply"><span class="material-icons">check</span>Apply</div>
+        </div>
+        <div class="pse-blade-tabs">
+          <div class="pse-blade-tab active">Assign</div>
+          <div class="pse-blade-tab">View Effective Permissions</div>
+        </div>
+        <div class="pse-blade-search">
+          <span class="material-icons">search</span>
+          <input placeholder="Search users/workgroups">
+          <div class="pse-icon-btn-sm"><span class="material-icons">person_add</span></div>
+        </div>
+        <div class="pse-identity-table">
+          <div class="pse-identity-head"><span>Name</span><span>Type</span></div>
+          <div class="pse-identity-row selected" onclick="selectIdentity(this,'Marg Brodie')">
+            <span class="name"><span class="material-icons">person</span>Marg Brodie</span><span>User</span>
+          </div>
+          <div class="pse-identity-row" onclick="selectIdentity(this,'Economics Analysts')">
+            <span class="name"><span class="material-icons">groups</span>Economics Analysts</span><span>Workgroup</span>
+          </div>
+          <div class="pse-identity-row" onclick="selectIdentity(this,'Everyone')">
+            <span class="name"><span class="material-icons">public</span>Everyone</span><span>Workgroup</span>
+          </div>
+        </div>
+        <div class="pse-blade-divider"></div>
+        <div class="pse-perm-matrix-title">Permissions for: <b id="permForName">Marg Brodie</b></div>
+        <div class="pse-perm-matrix">
+          <div class="pse-perm-matrix-head"><span>Name</span><span>Allow</span><span>Deny</span></div>
+          <div class="pse-perm-matrix-row"><span>Full Access</span>
+            <input type="checkbox" checked><input type="checkbox"></div>
+          <div class="pse-perm-matrix-row"><span>Assign</span>
+            <input type="checkbox" checked><input type="checkbox"></div>
+          <div class="pse-perm-matrix-row"><span>Read</span>
+            <input type="checkbox" checked><input type="checkbox"></div>
+          <div class="pse-perm-matrix-row"><span>Update</span>
+            <input type="checkbox" checked><input type="checkbox"></div>
+          <div class="pse-perm-matrix-row"><span>Delete</span>
+            <input type="checkbox" checked><input type="checkbox"></div>
+        </div>
+        <div class="pse-blade-footer">
+          <div class="pse-blade-footer-row">
+            <span>Apply changes to:</span>
+            <select>
+              <option>This report only</option>
+              <option>This node and all child nodes</option>
+              <option>All child nodes</option>
+              <option>This node and all parent nodes</option>
+              <option>This node and all child and parent nodes</option>
+            </select>
+          </div>
+          <div class="pse-blade-footer-check">
+            <input type="checkbox">
+            <span>Remove all existing permissions</span>
+            <span class="material-icons">help_outline</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="pse-content">
+      <!-- Empty state -->
+      <div class="pse-empty-state" id="emptyState" style="display:none;">
+        <svg class="pse-empty-illustration" viewBox="0 0 96 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="72" height="52" rx="4" stroke="#B9DCEF" stroke-width="3" fill="#EAF5FC"/>
+          <rect x="4" y="4" width="72" height="12" rx="4" stroke="#B9DCEF" stroke-width="3" fill="#D7ECF9"/>
+          <circle cx="12" cy="10" r="1.6" fill="#8FC3E3"/>
+          <circle cx="18" cy="10" r="1.6" fill="#8FC3E3"/>
+          <circle cx="24" cy="10" r="1.6" fill="#8FC3E3"/>
+          <circle cx="58" cy="46" r="16" fill="#ffffff" stroke="#147cc0" stroke-width="3"/>
+          <line x1="69" y1="57" x2="80" y2="68" stroke="#147cc0" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+        <div class="pse-empty-title">Template will appear here.</div>
+        <div>To get started, select a report on the left.</div>
+      </div>
+
+      <!-- Editor workspace: report selected (Report Template tab, from 1865781) -->
+      <div class="pse-editor visible" id="editorWorkspace">
+        <div class="pse-editor-topbar">
+          <div class="pse-icon-btn-sm" title="Save"><span class="material-icons">save</span></div>
+          <div class="pse-editor-name" id="editorReportName">MIRR template</div>
+          <div class="pse-editor-path" id="editorReportPath">Corporate Rollup / MKB</div>
+          <div class="pse-toolbar-spacer"></div>
+        </div>
+
+        <div class="pse-editor-tabs">
+          <div class="pse-editor-tab active">Report Template</div>
+          <div class="pse-editor-tab">Spreadsheet Home</div>
+          <div class="pse-editor-tab">Insert</div>
+          <div class="pse-editor-tab">Formulas</div>
+          <div class="pse-editor-tab">Data</div>
+          <div class="pse-editor-tab">Review</div>
+          <div class="pse-editor-tab">View</div>
+        </div>
+
+        <div class="pse-editor-body">
+          <div class="pse-editor-varrail" title="Variables">
+            <span class="pse-editor-varrail-label">Variables</span>
+          </div>
+          <div class="pse-editor-varpanel">
+            <div class="pse-search"><span class="material-icons">search</span><input placeholder="Search..."></div>
+            <div class="pse-editor-var-regime"><span>_Standard Modules</span><span class="material-icons">expand_more</span></div>
+            <div class="pse-editor-var-toggle">
+              <label><input type="radio" name="varfilter" checked> All</label>
+              <label><input type="radio" name="varfilter"> Linked</label>
+            </div>
+            <div class="pse-editor-vartree pse-tree">
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Periodic Links</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Summary Links</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Ranges</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Project Settings</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Discount Settings</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Comments</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Calculation Settings</span></div>
+              <div class="pse-tree-row"><span class="material-icons chevron">chevron_right</span><span class="material-icons type-icon folder">folder</span><span class="row-label">Report Options</span></div>
+            </div>
+          </div>
+          <div class="pse-editor-main-col">
+            <div class="pse-editor-grid-wrap">
+              <table class="pse-editor-grid">
+                <tr><td colspan="2"></td><td colspan="3" class="section-title">MIRR</td><td></td><td colspan="2" class="section-title">Rates</td></tr>
+                <tr><td colspan="2"></td><td></td><td></td><td></td><td></td><td class="right">Rate 1</td><td class="linked">0</td></tr>
+                <tr><td colspan="2"></td><td></td><td></td><td></td><td></td><td class="right">Rate 2</td><td class="linked">10</td></tr>
+                <tr><td colspan="2"></td><td></td><td></td><td></td><td></td><td class="right">Rate 3</td><td class="linked">15</td></tr>
+                <tr><td colspan="2"></td><td colspan="3" class="section-title">IRR</td><td></td><td class="right">Rate 4</td><td class="linked">18</td></tr>
+                <tr><td></td><td class="summarylink">Summary Link</td><td class="subhead">Cash Flow Before Tax</td><td class="subhead" colspan="2">Cash Flow After Tax</td><td></td><td class="right">Rate 5</td><td class="linked">20</td></tr>
+                <tr><td></td><td></td><td class="right">M USD</td><td colspan="2" class="right">M USD</td></tr>
+                <tr><td></td><td></td><td class="linked selected-cell">&lt;VALUE&gt;</td><td colspan="2" class="linked">&lt;VALUE&gt;</td></tr>
+                <tr><td colspan="8"></td></tr>
+                <tr><td></td><td class="summarylink">Periodic Link</td><td class="subhead">Cash Flow Before Tax</td><td class="subhead" colspan="2">Cash Flow After Tax</td></tr>
+                <tr><td></td><td class="right">Total</td><td class="linked">3</td><td colspan="2" class="linked">5</td></tr>
+                <tr><td></td><td class="right">2020</td><td class="linked">1</td><td colspan="2" class="linked">2</td></tr>
+                <tr><td></td><td class="right">2021</td><td class="linked">2</td><td colspan="2" class="linked">3</td></tr>
+              </table>
+            </div>
+
+            <div class="pse-editor-varbar">
+              <div class="field"><label>Variable Name</label><div class="value">Cash Flow.Cash Flow Before Tax</div></div>
+              <div class="field"><label>Variable Prompt</label><div class="value">Cash Flow Before Tax</div></div>
+              <div class="field"><label>Variable Type</label><div class="value">Periodic Numeric</div></div>
+              <div class="field"><label>Range</label><div class="value">='Cash Flow'!$C$7:$C$9</div></div>
+              <div class="field"><label>Working Interest</label><div class="value editable">Default</div></div>
+              <div class="field"><label>Real / Nominal</label><div class="value editable">Real</div></div>
+              <div class="field"><label>Placeholder Run</label><div class="value editable">Run 1</div></div>
+              <div class="field"><label>Discount Rate</label><div class="value editable">N/A</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleAddMenu(e) {
+    e.stopPropagation();
+    document.getElementById('addMenu').classList.toggle('open');
+  }
+  document.addEventListener('click', function() {
+    document.getElementById('addMenu').classList.remove('open');
+  });
+
+  function closeContextMenu() {
+    document.getElementById('ctxReport').classList.remove('open');
+    document.getElementById('ctxFolder').classList.remove('open');
+  }
+
+  function openPermBlade(itemName) {
+    closeContextMenu();
+    document.getElementById('permItemName').textContent = itemName || 'MIRR template';
+    document.getElementById('permScrim').classList.add('open');
+    document.getElementById('permBlade').classList.add('open');
+  }
+  function closePermBlade() {
+    document.getElementById('permScrim').classList.remove('open');
+    document.getElementById('permBlade').classList.remove('open');
+  }
+  function selectIdentity(row, name) {
+    document.querySelectorAll('.pse-identity-row').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+    document.getElementById('permForName').textContent = name;
+  }
+
+  let ctxItemName = '';
+  function showContextMenu(e, row, kind, anchorEl) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeContextMenu();
+    const menu = kind === 'folder' ? document.getElementById('ctxFolder') : document.getElementById('ctxReport');
+
+    const r = anchorEl.getBoundingClientRect();
+    menu.style.left = (r.right - 200) + 'px';
+    menu.style.top = (r.bottom + 4) + 'px';
+    menu.classList.add('open');
+    ctxItemName = row.querySelector('.row-label').textContent;
+
+    if (kind === 'report') {
+      const isMaster = row.querySelector('.row-badge.master') !== null;
+      const item = document.getElementById('masterToggleItem');
+      item.innerHTML = isMaster
+        ? '<span class="material-icons">star</span>Remove from Master List'
+        : '<span class="material-icons">star_outline</span>Add to Master List';
+    }
+  }
+  document.addEventListener('click', closeContextMenu);
+  document.addEventListener('scroll', closeContextMenu, true);
+
+  function toggleFolder(row) {
+    const chevron = row.querySelector('.chevron');
+    const next = row.nextElementSibling;
+    if (!next || !next.classList.contains('pse-tree-children')) return;
+    const collapsed = next.classList.toggle('collapsed');
+    chevron.textContent = collapsed ? 'chevron_right' : 'expand_more';
+  }
+
+  function selectReport(row, name, type, path) {
+    document.querySelectorAll('.pse-tree-row').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('editorWorkspace').classList.add('visible');
+
+    document.getElementById('editorReportName').textContent = name;
+    document.getElementById('editorReportPath').textContent = path;
+  }
+</script>
+
+</body>
+</html>

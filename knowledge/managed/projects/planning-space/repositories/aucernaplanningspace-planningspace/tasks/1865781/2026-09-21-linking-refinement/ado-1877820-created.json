@@ -1,0 +1,110 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<ol><li><b>AC1 - Create a persistent economic link.</b> Given a valid writable target and an eligible economic variable in a supported fixture, when the author creates a Summary or Periodic link using the accepted web interaction, then the template contains a domain link and corresponding workbook range association. A snapshot value alone does not satisfy this criterion. Unconfirmed target/overlap cases remain subject to Q-L2-1/2. </li><li><b>AC2 - Inherited properties and defaults.</b> Given a newly created link, then Variable Name, Prompt and Type are displayed read-only, and the other initial link settings match the desktop defaults for that variable/link kind. </li><li><b>AC3 - Fresh reopen preserves the association.</b> Given a template containing a newly created link, when it is saved, closed and freshly reopened, then variable identity, link kind, worksheet/range association and required metadata are preserved. Workbook named ranges and VariableList identify the same link; verification must not rely only on the existing in-memory editor state. </li><li><b>AC4 - Existing generator compatibility.</b> Given the agreed representative Standard and One Line Summary fixtures with equivalent desktop and web-created Summary/Periodic links, when the reopened templates are processed by the existing report generator, then their link resolution and output match the desktop reference. No new report-execution UI is required. </li><li><b>AC5 - Failure consistency.</b> Given a validation failure or a rejected save, when the operation completes, then no successfully persisted template contains newly mismatched workbook/link metadata. Previously persisted template data remains intact and recoverable through the shared save contract. </li> </ol> <p><b>Refinement gate:</b> Record the accepted web interaction and supported target fixtures before end-to-end sign-off. Merged/protected/non-contiguous targets and overlaps are open questions, not implicitly approved behavior. </p>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-21T15:40:02.023Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 10.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-21T15:44:25.06Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-21T15:44:25.06Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-21T15:40:02.023Z",
+    "System.Description": "<p><b>As a</b> Report Author,<br><b>I want</b> to create and save economic variable links in the web Report Designer,<br><b>so that</b> my report templates resolve the correct economic values through the existing report generator after the template is reopened. </p> <h3>Scope and baseline </h3> <p>L2 split from <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869322\">1869322</a>, under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Existing PlanningSpace desktop behavior is the business-behavior reference. This story creates persistent Summary and Periodic economic variable links to a valid cell/range. Inserting a snapshot value is not sufficient. </p> <p>Creating a link uses desktop defaults and displays inherited Variable Name, Prompt and Type read-only. Scope includes domain mapping, named-range creation, link metadata persistence through the shared save service, and compatibility verification using the existing report generator. </p> <h3>Estimate </h3> <ul><li><b>Optimistic: 40 hours / 10 SP.</b> Desktop-parity scenario. </li><li><b>Pessimistic: 40 hours / 10 SP.</b> Original requirements interpretation for this slice; no separately supported scope increase was identified. </li><li>1 SP = 4 hours; 2 SP = one assumed 8-hour person-day. Includes development, code review, automated tests and QA. These are provisional effort estimates, not calendar duration or statistical best/worst-case bounds. </li><li>Shared editor hosting, general open/save infrastructure, migration, security/deployment and AIDLC are estimated separately at Feature level. Do not count them again here. </li> </ul> <h3>Implementation plan </h3> <ol><li><b>Trace the desktop contract.</b> Follow link creation in ReportTemplateEditorViewModel, ReportTemplateSpreadsheetHelper and StandardReportVariableLink. Record identifier construction, named-range conventions, Summary/Periodic distinction, defaults and the minimum persisted fields. Refresh source before implementation; inspected baseline was db7f87c7209b5897bba21df7d98a0e0081b58cef. </li><li><b>Map spreadsheet selection to the domain.</b> Implement an adapter from the selected worksheet/cell/range to the existing domain representation. Keep control-specific coordinates separate from domain objects. Confirm the component/host selection contract before choosing implementation APIs. </li><li><b>Create the association.</b> Reuse desktop/domain rules to validate variable eligibility and target, then create the link and its corresponding workbook named range. Implement confirmed target cases only; unresolved cases below remain held. </li><li><b>Persist consistently.</b> Integrate workbook Template bytes and VariableList metadata into the shared server-authorized, business-lock-aware save operation. Define the failure path so a rejected operation cannot persist mismatched components. Do not independently save workbook and metadata from unrelated UI requests; do not introduce public deserialization of arbitrary legacy binary payloads. </li><li><b>Verify the complete lifecycle.</b> Add create  then  save  then  close  then  fresh reopen  then  generate regression fixtures for Summary and Periodic links. Compare with equivalent desktop fixtures, covering representative Standard and One Line Summary behavior. Verify inherited fields, defaults, named ranges and metadata, plus validation/save failure cases. </li> </ol> <h3>Open questions / held behavior </h3> <ul><li><b>Q-L2-1 - Valid target matrix:</b> What does desktop support for merged/protected cells, non-contiguous selections, already linked cells and multi-cell Summary links? These cases are not assumed supported or rejected until verified. </li><li><b>Q-L2-2 - Overlap:</b> Does desktop replace, split, reject or combine overlapping links? Overlap mutation is held until source/tests or a reproducible desktop example establishes the behavior. </li><li><b>Q-L2-3 - Web interaction:</b> Is drop, selection + Link, or both the accepted interaction? Desktop semantics are the reference; this story does not silently decide the web gesture. </li> </ul> <p>Resolve implementation facts with source revision and reproducible test evidence. If desktop code, observed behavior and requirements disagree, retain the question for the owner. Do not convert an unresolved question into an assumed acceptance criterion. </p> <h3>Dependencies and exclusions </h3> <ul><li>Variable catalog/filtering supplied by L1 (planned narrowing of 1869322); this story consumes variable identifiers and does not rebuild the browser. </li><li>Accepted spreadsheet host/component, access to selection and persistent named ranges, and the shared authenticated open/save service with update permission and business locks. </li><li>Metadata pseudo-variable linking is L3. Attribute/header editing is L4. Placeholder Run/comparison metadata is L5. Unlink and subsequent structural edits are L6. Those are planned slices, not existing ADO IDs. </li><li>Date/Formula Range (1869339), Discount Rate slot links (1869369), report management and a new execution UI are excluded. Existing generator calls are used for compatibility testing. </li> </ul> <h3>Risks </h3> <ul><li>Orphaned named ranges or mismatched workbook/link metadata. </li><li>Component document reload losing unsaved edits. </li><li>Desktop and web spreadsheet engines handling ranges differently. </li><li>Additional target cases discovered during refinement may require re-estimation or another split. </li> </ul> <h3>Code references </h3> <p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Paths are relative to the repository root; inspect current source rather than assuming the historical baseline is unchanged. </p> <ul><li>Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs </li><li>Fusion/Components/Administration/ViewModels/Reports/ReportTemplateSpreadsheetHelper.cs </li><li>Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs </li><li>Fusion/Framework/Report.Entities/Entities/EditableStandardReportEntity.cs </li><li>Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs </li><li>Fusion/Framework/ReportGenerator/VariableLinkPopulator/Implementation/ </li> </ul>",
+    "System.Id": 1877820,
+    "System.IterationId": 5731,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationPath": "Quorum",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 5,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Create and persist economic variable links",
+    "System.Watermark": 11245814,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1877820,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    }
+  ],
+  "rev": 5,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1877820"
+}

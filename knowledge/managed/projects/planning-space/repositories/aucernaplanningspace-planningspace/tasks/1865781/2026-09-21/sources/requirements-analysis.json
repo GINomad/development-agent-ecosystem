@@ -1,0 +1,389 @@
+{
+  "taskId": "analysis-1865781",
+  "analyzedAtUtc": "2026-09-21T15:00:47.5055835Z",
+  "requirements": [
+    {
+      "status": "held",
+      "text": "Angular-hosted spreadsheet architecture",
+      "evidence": [
+        "ADO1865781 rev59 Custom.NonFunctionalRequirements",
+        "ADO1874388 rev13",
+        "PlanningSpace HEAD db7f87c report-view iframe; POC fa96ce6"
+      ],
+      "codeAlignment": "conflicting",
+      "blockingQuestionIds": [
+        "Q1"
+      ],
+      "id": "R1"
+    },
+    {
+      "status": "ready",
+      "codeAlignment": "missing",
+      "evidence": [
+        "ADO1869322 rev18",
+        "StandardReportVariableLink and ReportVariableLinkSettingsViewModel at db7f87c"
+      ],
+      "id": "R2",
+      "text": "Persistent economic/metadata links, conditional attributes and run placeholders"
+    },
+    {
+      "status": "ready",
+      "codeAlignment": "missing",
+      "evidence": [
+        "ADO1869334 rev3",
+        "ReportTemplateEditorViewModel.cs:198,356 at db7f87c"
+      ],
+      "id": "R3",
+      "text": "Template orientation with confirmed link clearing"
+    },
+    {
+      "status": "ready",
+      "codeAlignment": "missing",
+      "evidence": [
+        "ADO1869339 rev3",
+        "DateRangeVariableLinkPopulator.cs:23 at db7f87c"
+      ],
+      "id": "R4",
+      "text": "Date Range including fiscal and mixed periods"
+    },
+    {
+      "status": "ready",
+      "text": "Formula Range parity based on first-period formula FillRight/FillDown",
+      "evidence": [
+        "ADO1869339 rev3 excludes finalized Formula AC",
+        "FormulaRangeVariableLinkPopulator.cs:42 at db7f87c",
+        "User clarification 2026-09-21: desktop behavior is authoritative parity baseline"
+      ],
+      "codeAlignment": "missing",
+      "id": "R5"
+    },
+    {
+      "status": "ready",
+      "text": "Port desktop Discount Rate output slots and rate selector; no new cell-input mechanism",
+      "evidence": [
+        "ADO1869369 rev3",
+        "CommonPseudoVariableValueFactory.cs:16-20 at db7f87c",
+        "User clarification 2026-09-21: desktop behavior is authoritative parity baseline"
+      ],
+      "codeAlignment": "missing",
+      "id": "R6"
+    },
+    {
+      "status": "held",
+      "text": "Lossless migration workbook plus serialized links and named ranges",
+      "evidence": [
+        "ADO1865781 AC10",
+        "EditableStandardReportDBRepository.cs:53,86; StandardReportVariableLink.cs:411 at db7f87c"
+      ],
+      "codeAlignment": "missing",
+      "blockingQuestionIds": [
+        "Q4"
+      ],
+      "id": "R7"
+    },
+    {
+      "status": "held",
+      "text": "Ribbon parity and measurable non-functional criteria",
+      "evidence": [
+        "ADO1865781 AC11 and blank NFR metrics"
+      ],
+      "codeAlignment": "unknown",
+      "blockingQuestionIds": [
+        "Q5"
+      ],
+      "id": "R8"
+    },
+    {
+      "status": "held",
+      "text": "Variable Groups commitment",
+      "evidence": [
+        "ADO1865781 rev59 open question"
+      ],
+      "codeAlignment": "unknown",
+      "blockingQuestionIds": [
+        "Q6"
+      ],
+      "id": "R9"
+    },
+    {
+      "status": "held",
+      "text": "Editor open/save with business lock and update permission",
+      "evidence": [
+        "ReportTemplateEditorViewModel.cs:1570 at db7f87c",
+        "ADO1869308 rev28 removed from Phoenix26.3"
+      ],
+      "codeAlignment": "missing",
+      "blockingQuestionIds": [
+        "Q7"
+      ],
+      "id": "R10"
+    }
+  ],
+  "conflicts": [
+    {
+      "impact": "Resolved by user desktop-parity instruction: preserve output slots; ADO cell-input wording requires correction",
+      "sources": [
+        "ADO1869369 rev3 cell input",
+        "CommonPseudoVariableValueFactory.cs:16-20 outputs"
+      ],
+      "id": "C1",
+      "requirementId": "R6"
+    },
+    {
+      "impact": "Architecture approval required before commitment",
+      "sources": [
+        "ADO1865781 Angular NFR",
+        "ADO1874388 Office addin; POC server host"
+      ],
+      "id": "C2",
+      "requirementId": "R1"
+    }
+  ],
+  "questions": [
+    {
+      "question": "Accept embedded ASP.NET Core host/iframe and chosen version under Angular NFR?",
+      "blocksRequirementIds": [
+        "R1"
+      ],
+      "reason": "POC and platform constraints differ",
+      "status": "open",
+      "id": "Q1",
+      "owner": "Architecture + PO"
+    },
+    {
+      "question": "Approve code-backed Formula Range parity using representative examples?",
+      "blocksRequirementIds": [
+        "R5"
+      ],
+      "reason": "ADO AC remain excluded",
+      "status": "answered",
+      "id": "Q2",
+      "owner": "Economics + QA + PO"
+    },
+    {
+      "question": "Preserve output slots or introduce cell-driven calculation inputs?",
+      "blocksRequirementIds": [
+        "R6"
+      ],
+      "reason": "Requirement contradicts existing generator",
+      "status": "answered",
+      "id": "Q3",
+      "owner": "PO + Economics engine"
+    },
+    {
+      "question": "Agree migration corpus, unsupported features and no-loss criteria?",
+      "blocksRequirementIds": [
+        "R7"
+      ],
+      "reason": "Workbook alone omits link metadata",
+      "status": "open",
+      "id": "Q4",
+      "owner": "Domain experts + QA"
+    },
+    {
+      "question": "Agree ribbon commands, size/performance/browser targets?",
+      "blocksRequirementIds": [
+        "R8"
+      ],
+      "reason": "Unbounded equivalence is not testable",
+      "status": "open",
+      "id": "Q5",
+      "owner": "PO + QA + platform"
+    },
+    {
+      "question": "Does Variable Groups exist and belong in scope?",
+      "blocksRequirementIds": [
+        "R9"
+      ],
+      "reason": "Explicitly unconfirmed in ADO",
+      "status": "open",
+      "id": "Q6",
+      "owner": "PO + Economics"
+    },
+    {
+      "question": "Who supplies open/save/permission contract while Management moved from PI?",
+      "blocksRequirementIds": [
+        "R10"
+      ],
+      "reason": "Editor needs management integration and business locks",
+      "status": "open",
+      "id": "Q7",
+      "owner": "Veles + Report Management team"
+    }
+  ],
+  "plan": [
+    {
+      "action": "Resolve open decisions and finalize acceptance matrix",
+      "validation": [
+        "Decision records and accepted example templates"
+      ],
+      "requirementIds": [
+        "R1",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10"
+      ],
+      "id": "P1",
+      "status": "ready"
+    },
+    {
+      "action": "Proposed later delivery: host then orientation, links and date ranges after architecture prerequisite",
+      "validation": [
+        "Save/reopen; fiscal dates; conditional settings; lock enforcement"
+      ],
+      "requirementIds": [
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "id": "P2",
+      "status": "held"
+    }
+  ],
+  "summary": "User estimation scenarios: optimistic desktop parity376h94SP PBIs /768h192SP full feature; pessimistic original interpretation408h102SP /800h200SP. Scenario labels are scope cases, not uncertainty bounds. Desktop remains implementation baseline.",
+  "humanReadable": {
+    "requirements": [
+      {
+        "status": "held",
+        "description": "Angular-hosted spreadsheet architecture",
+        "id": "R1",
+        "title": "Angular-hosted spreadsheet architecture",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "ready",
+        "description": "Persistent economic/metadata links, conditional attributes and run placeholders",
+        "id": "R2",
+        "title": "Persistent economic/metadata links, conditional attributes and run placeholders",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "ready",
+        "description": "Template orientation with confirmed link clearing",
+        "id": "R3",
+        "title": "Template orientation with confirmed link clearing",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "ready",
+        "description": "Date Range including fiscal and mixed periods",
+        "id": "R4",
+        "title": "Date Range including fiscal and mixed periods",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "ready",
+        "description": "Formula Range parity based on first-period formula FillRight/FillDown",
+        "id": "R5",
+        "title": "Formula Range parity based on first-period formula FillRight/FillDown",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "ready",
+        "description": "Discount Rate cell-input versus existing report-options output",
+        "id": "R6",
+        "title": "Discount Rate cell-input versus existing report-options output",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "held",
+        "description": "Lossless migration workbook plus serialized links and named ranges",
+        "id": "R7",
+        "title": "Lossless migration workbook plus serialized links and named ranges",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "held",
+        "description": "Ribbon parity and measurable non-functional criteria",
+        "id": "R8",
+        "title": "Ribbon parity and measurable non-functional criteria",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "held",
+        "description": "Variable Groups commitment",
+        "id": "R9",
+        "title": "Variable Groups commitment",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      },
+      {
+        "status": "held",
+        "description": "Editor open/save with business lock and update permission",
+        "id": "R10",
+        "title": "Editor open/save with business lock and update permission",
+        "acceptanceCriteria": [
+          "Detailed proposed acceptance criteria and boundaries in requirements-estimation-1865781.ru.md"
+        ]
+      }
+    ],
+    "objective": "Analysis only; no implementation, ADO writes or workflow state changes",
+    "implementationPlan": [
+      {
+        "validation": [
+          "See report acceptance matrix and source provenance"
+        ],
+        "status": "held",
+        "description": "Not executed: decisions, host/locks, orientation, links/ranges, migration, verification and release gates",
+        "order": 1,
+        "title": "Future delivery plan",
+        "requirementIds": [
+          "R1",
+          "R2",
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R7",
+          "R8",
+          "R10"
+        ]
+      }
+    ],
+    "workflow": [
+      {
+        "gate": "No prototype counted as delivered",
+        "description": "Three agents examined POC history, verified knowledge and code",
+        "order": 1,
+        "outputs": [
+          "Source-backed findings"
+        ],
+        "title": "Evidence retrieval",
+        "owner": "Analyst agents"
+      },
+      {
+        "gate": "Analysis complete; delivery decisions remain open",
+        "description": "Synthesize conflicts, story slices and capacity model",
+        "order": 2,
+        "outputs": [
+          "Russian report",
+          "ADO snapshot",
+          "Schema-valid analysis"
+        ],
+        "title": "Requirements and estimation",
+        "owner": "Lead analyst"
+      }
+    ],
+    "title": "1865781 requirements and estimation"
+  }
+}

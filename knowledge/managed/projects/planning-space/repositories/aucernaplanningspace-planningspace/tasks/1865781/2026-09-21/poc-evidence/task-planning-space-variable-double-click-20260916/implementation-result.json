@@ -1,0 +1,51 @@
+{
+  "taskId": "task-planning-space-variable-double-click-20260916",
+  "status": "implemented",
+  "branch": "features/variable-insertion-on-double-click",
+  "commit": "ceecc01cb0fc4a32542d817154c4693289c3cfdb",
+  "commitState": "clean worktree; branch is 1 local commit ahead of origin/main",
+  "changedFiles": [
+    "README.md",
+    "src/app/app.html",
+    "src/app/app.spec.ts",
+    "src/app/app.ts"
+  ],
+  "behavior": [
+    "A single variable-button click synchronously updates the shared active variable, aria-pressed state, and live status without calling Excel insertion.",
+    "A variable-button double click invokes the existing insertion service exactly once with the active variable value while preserving busy, success, and bounded-error feedback.",
+    "Task-pane and README guidance now distinguish single-click activation, double-click insertion, and the Excel context-menu alternative.",
+    "The existing context-menu command, selected-range insertion service, and ten-variable mock store were left unchanged."
+  ],
+  "requirements": [
+    { "id": "R1", "status": "implemented", "evidence": "src/app/app.ts activate; src/app/app.html click binding; src/app/app.spec.ts single-click test" },
+    { "id": "R2", "status": "implemented", "evidence": "src/app/app.ts insertActive; src/app/app.html dblclick binding; src/app/app.spec.ts exactly-once double-click test" },
+    { "id": "R3", "status": "done", "evidence": "src/office/commands.ts unchanged; full unit suite passed" },
+    { "id": "R4", "status": "done", "evidence": "src/office/excel-insertion.service.ts unchanged; full unit suite passed" },
+    { "id": "R5", "status": "implemented", "evidence": "Native buttons, aria-pressed, disabled state, polite live status, and context-menu guidance preserved" },
+    { "id": "R6", "status": "done", "evidence": "src/app/variables/mock-variable-store.ts unchanged; full unit suite passed" },
+    { "id": "R7", "status": "implemented", "evidence": "src/app/app.html and README.md updated" },
+    { "id": "R8", "status": "implemented", "evidence": "Focused App tests passed 4/4; full suite passed 17/17" },
+    { "id": "R9", "status": "done", "evidence": "All six repository-local gates passed; no remote operation performed" }
+  ],
+  "tests": [
+    { "command": "npm run format:check", "result": "passed", "evidence": "All matched files use Prettier code style." },
+    { "command": "npm run lint", "result": "passed", "evidence": "All files pass linting." },
+    { "command": "npm run typecheck", "result": "passed", "evidence": "Both application and spec TypeScript projects completed with no errors." },
+    { "command": "npm test", "result": "passed 17/17", "evidence": "Passed 17/17 tests across six test files." },
+    { "command": "npm run build", "result": "passed", "evidence": "Angular production bundle completed within configured budgets." },
+    { "command": "npm run validate:manifest", "result": "passed", "evidence": "Office add-in manifest validation completed successfully." },
+    { "command": "git status --porcelain and git rev-list --left-right --count origin/main...HEAD", "result": "passed", "evidence": "Clean worktree; branch is 1 local commit ahead of origin/main.", "publicationEvidenceId": "git-branch-divergence" }
+  ],
+  "engineeringSkillChecks": [
+    "implement-approved-plan: every change maps to ready requirements R1-R9; no held scope was implemented.",
+    "apply-engineering-principles: separated the two existing interaction responsibilities without adding dependencies or speculative abstractions.",
+    "develop-javascript-typescript: preserved TypeScript strictness, explicit async error handling, browser event compatibility, linting, tests, and production build.",
+    "develop-react and develop-dotnet were read as selected context skills but were not applicable because repository inspection confirmed Angular TypeScript only.",
+    "Global standards: changed control flow uses braces and materially changed protected members remain before the private instance dependency."
+  ],
+  "residualRisks": [
+    "Automated DOM tests cannot reproduce the Excel host itself; the updated README retains manual host smoke checks.",
+    "npm ci reported two moderate dependency advisories; dependency remediation was outside this interaction-only scope."
+  ],
+  "remoteActions": []
+}

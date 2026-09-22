@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:42:18.6425241Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869322,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869322",
+      "revision": 18,
+      "type": "User Story",
+      "title": "[Report Designer] Link report fields to variables",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.3",
+      "changedDate": "09/17/2026 18:22:36",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to link report fields to variables in the web Report Designer </div><div><b>So that</b> my report templates pull live values from the correct regime and calculation run without manual re-entry </div><div><br> </div><div><b>Size estimate:</b> TBD � shell created for estimation </div><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Browse/filter variables</b> </div><div>Author selects a Regime from a dropdown to scope the variable tree to that regime's variable set. Author can toggle between &quot;All&quot; (every available variable) and &quot;Linked&quot; (only variables already linked somewhere in the current template) to filter the tree view. Author can also search/filter by text. </div><div><br> </div><div><b>Create a link</b> </div><div>Author can browse variables (scoped/filtered as above) and create a link from a variable to a cell or cell range in the template, as a web-appropriate equivalent of the WPF drag-to-link interaction. </div><div><br> </div><div><b>Variable categories</b> </div><div>Author can link both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments, Incremental Project Info) through the same linking mechanism � both categories appear in the same variable tree regardless of report type (Standard Report or One Line Summary Report). </div><div><br> </div><div><b>Flat metadata leaves</b> </div><div>Most pseudo-variables are flat, single-value leaves, for example: </div><ul><li>Project Settings: Project Name, Regime Currency, Regime Name, Revision Date, Revision Tag, Scenario, Was Linked to Dataflow </li><li>Project Dates: Duration, Economic Limit, End Year, Inflation Date, Start Year </li><li>Discount Settings: Discount Date, Discount Method (Discount Rates are a separate linking mechanism � see 1869369) </li><li>Comments: Comments (a specific linkable variable, not just a UI label) </li><li>Calculation Settings: Currency Deck, Last Calculated, Price Deck, Price Scenario, Results Set Name, Results Set Run, Run Project Scenario </li><li>Comparison Calculation Settings: mirrors Calculation Settings for a comparison run (Comparison Currency Deck, Comparison Last Calculated, Comparison Price Deck, Comparison Price Scenario, Comparison Results Set Name, Comparison Results Set Run, Comparison Run Project Scenario). <i>Dev note: these fields exist to support Variance and Multi-run report generation modes in Calculate &amp; Analyze (Result Sets) � the template holds placeholders for a second/comparison run's context; the actual variance/multi-run calculation and execution happens outside this Feature's scope (report execution, not template design).</i> </li><li>Report Options: Currency &amp; Discounting Preset Name, Do not apply discounting prior to Discount Date, Report Inflation Date, Reporting Currency Deck, Use Hierarchy Currency, Values prior to Inflation Date are Nominal </li><li>Incremental Project Info: Calculation Method, Group, Order, Tab, Type. <i>Dev note: an incremental calculation returns a project's value relative to the project ranked before it in a defined sequence; the sequencing/method settings themselves are configured at the hierarchy folder level, outside the Report Designer � these fields just expose that configuration's metadata for display in a report.</i> </li> </ul><div><br> </div><div><b>Related but separate stories</b> </div><div>Discount Rates (1869369) and Ranges � Date Range/Formula Range (1869339) behave differently from simple variable linking (live calculation inputs / injected structural content, respectively) and are scoped as their own stories rather than covered here. </div><div><br> </div><div><b>Read-only link attributes</b> </div><div>Variable Name, Variable Prompt, and Variable Type display read-only on a link, inherited from the variable definition � not editable from the link itself. </div><div><br> </div><div><b>Configurable link attributes</b> </div><div>Author can configure Working Interest, Real/Nominal, Type (Values), Discount Rate, and Placeholder Run on an existing link without recreating it. Placeholder Run lets a link target a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side. </div><div><br> </div><div><b>Unlink</b> </div><div>Author can remove a link from a cell/range, clearing the association. </div>",
+      "acceptanceCriteria": "",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

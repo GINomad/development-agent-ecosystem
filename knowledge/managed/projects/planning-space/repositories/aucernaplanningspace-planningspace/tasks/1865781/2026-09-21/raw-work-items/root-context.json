@@ -1,0 +1,124 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-21T14:40:24.1185931Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1865781,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1865781",
+      "revision": 59,
+      "type": "Feature",
+      "title": "[Report Designer] Webify an Excel based editor (PoC)",
+      "state": "New",
+      "assignedTo": "galina.lapushinskaya@quorumsoftware.com",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.4",
+      "changedDate": "09/18/2026 18:00:13",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>The Report Designer lets an Author lay out a report template by placing fields, linking them to variables, configuring cell/section styling, and organizing variables into groups. In the WPF client this is built using SpreadsheetGear, an embedded Excel-like spreadsheet component. The web equivalent emulates that same spreadsheet experience using a web-based spreadsheet component, rather than moving away from the spreadsheet paradigm. For now, the full Report Template tab experience carries forward into scope as a baseline. </div><ol><li>Place and arrange report fields within a web-based spreadsheet grid </li><li>Link fields to variables, including variable search, prompts, type, Working Interest/Discount Rate/Real-Nominal settings, and Placeholder Run (linking a variable to a specific calculation run, so a template can reference multiple runs/sensitivities side-by-side). Linkable variables include both economic output variables (e.g. Cash Flow, Royalty) and report metadata pseudo-variables (e.g. Calculation Settings, Comparison Calculation Settings, Report Options, Project Settings/Dates, Discount Settings, Comments) � both are present in the same variable tree regardless of report type. Author browses/filters this tree by Regime (scopes to that regime's variable set) and All/Linked toggle (filter to only variables already linked in the template). </li><li>Configure cell/section styling and headers (e.g. header position above/left) </li><li>Manage variable links within a template </li><li>Support Discount Rate links as live calculation inputs (fixed ceiling of 5 named slots; see 1869369) </li><li>Migrate existing WPF-authored (SpreadsheetGear-based) report templates into the new web-based spreadsheet format </li><li>Support Range links � Date Range and Formula Range � which inject structural/computed content rather than mapping a single variable (see 1869339) </li><li>Support standard spreadsheet capabilities available in the current WPF ribbon (Insert, Formulas, Data, Review, View) as provided by the underlying web-based spreadsheet component </li> </ol><div><br><b>Open question:</b> earlier scoping referenced &quot;Variable Groups&quot; as a distinct capability (possibly associating a single Date Range with a customer-defined set of related variables), but this was not found in the current UAT app on inspection. Confirm with engineering whether this exists in some form before treating it as a scope commitment, or drop the term. </div><div><br><b>Out of scope:</b>&nbsp;Non-spreadsheet-style reporting experiences (handled separately under AI agency); report execution/viewing experience (separate from template design); template list management, permissions, export/import, and Edit Using Excel (see 1869308) </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/da89635d-ad3a-49cc-b8f3-c74cc1fe2d20?fileName=image.png\" alt=Image><br> </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/32d32306-5a13-442b-bc3e-fdb1793a7bf0?fileName=image.png\" alt=Image><br> </div>",
+      "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Place and Arrange Report Fields</b><br>Given an Author is building a report template in the web-based spreadsheet editor, when they place a field within the grid, then the field behaves as a spreadsheet cell/range consistent with the underlying web-based spreadsheet component. </li><li><b>AC2 � Browse and Filter Variables</b><br>Given the Author opens the variable panel, when they select a Regime from the dropdown, then the variable tree scopes to that regime's variable set; when they toggle All/Linked, then the tree filters to either every available variable or only variables already linked in the current template; when they enter search text, then the tree filters to matching variables. </li><li><b>AC3 � Link a Variable to a Cell or Range</b><br>Given the Author has browsed to a variable (economic output or report metadata pseudo-variable), when they link it to a cell or cell range, then the link is created and the variable's Name, Prompt, and Type display read-only on the link. </li><li><b>AC4 � Configure Link Attributes</b><br>Given an existing link, when the Author configures Working Interest, Real/Nominal, Type (Values), Discount Rate, or Placeholder Run on it, then the change is saved without requiring the link to be recreated. </li><li><b>AC5 � Unlink</b><br>Given a cell or range with a variable link, when the Author removes the link, then the association is cleared and the cell/range reverts to unlinked. </li><li><b>AC6 � Set Time-Series Orientation</b><br>Given a new template, when the Author sets time-series orientation (horizontal/vertical) early in creation, then all periodic variable links in the template follow that orientation as a template-wide setting. </li><li><b>AC7 � Destructive Orientation Change Warning</b><br>Given a template already has linked variables, when the Author changes its orientation, then a confirmation dialog warns that existing links will be cleared, and the change only proceeds on explicit confirmation. </li><li><b>AC8 � Date Range Link</b><br>Given the Author creates a Date Range link against a range (e.g. =Sheet1!$C$24:$C$26), then the range produces row/column labels tied to the report run period (e.g. Total/2020/2021), typed as &quot;Periodic Date,&quot; referenceable by other links in the template. </li><li><b>AC9 � Discount Rate Link (mechanic pending confirmation)</b><br>Given the Author links a cell to one of the 5 named Discount Rate slots (Rate 1�5), then multiple links against the same or different slots are supported. Open item: whether the typed cell value drives the actual discount calculation, or only displays it, is unconfirmed � verify with engineering before this criterion is finalized. </li><li><b>AC10 � Migrate Existing WPF Templates</b><br>Given an existing WPF-authored (SpreadsheetGear-based) report template, when it is opened in the web-based editor, then its layout, links, and styling are preserved without data loss. </li><li><b>AC11 � Standard Spreadsheet Capabilities</b><br>Given the Author is working in the web-based spreadsheet editor, when they use Insert, Formulas, Data, Review, or View capabilities, then the underlying web-based spreadsheet component provides equivalents consistent with the current WPF ribbon. </li> </ul><div><i>Not yet testable � excluded pending investigation:</i> Formula Range links (&lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt;) � the underlying mechanic is unconfirmed per 1869339; AC will be added once resolved with engineering. </div><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: Migration path must be validated against existing WPF-authored templates (AC10) </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: Web-based spreadsheet component must integrate with the existing Angular web client </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+      "tags": "PI 26.3",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869339"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869308"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1866883"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869322"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Predecessor"
+          },
+          "rel": "System.LinkTypes.Dependency-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+        },
+        {
+          "attributes": {
+            "authorizedDate": "2026-09-03T20:58:08.09Z",
+            "id": 32782676,
+            "name": "report-management-mockup.html",
+            "resourceCreatedDate": "2026-09-03T20:53:47.203Z",
+            "resourceModifiedDate": "2026-09-03T20:53:47.203Z",
+            "resourceSize": 47944,
+            "revisedDate": "9999-01-01T00:00:00Z"
+          },
+          "rel": "AttachedFile",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/d20c8d9d-c28e-4eee-9107-d7c7b37407dc"
+        }
+      ],
+      "comments": [
+        {
+          "id": "17641323",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/03/2026 19:09:56",
+          "updatedAt": "09/03/2026 19:11:24",
+          "text": "<div>A few things came up during scoping that need engineering confirmation before AC can be finalized:</div><div><br></div><ol><li><b>Variable Groups</b> � earlier scoping referenced this as a distinct capability, but it wasn't found in the current UAT app. Does this exist in some form, or should the term be dropped?</li><li><b>Formula Range</b> (1869339) � produces &lt;SUMMARY&gt;, &lt;FIRST VALUE&gt;, &lt;SECOND VALUE&gt; placeholders, but we couldn't determine what drives them (a spreadsheet formula's output? an auto-derived calculation over a range?). Need a walkthrough of how this actually works.</li><li><b>Discount Rate link mechanic</b> (1869369) � believed to work as: link a Rate 1�5 slot to a cell, then type the assumption value directly into that cell, which feeds discounting at report-generation time. Can you confirm this is accurate?</li></ol><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a>, <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a></div>"
+        },
+        {
+          "id": "17641321",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/03/2026 19:09:48",
+          "updatedAt": "09/03/2026 19:09:48",
+          "text": "<div>This feature has been reworked following the pivot to keep the spreadsheet-based experience (web-based spreadsheet component) rather than moving away from it. Description, Objective, Business Outcome, and NFRs have all been updated accordingly, and AC has been cleared pending the component approach being confirmed.</div><div><br></div><div>Scope has also been split: template list management, permissions, export/import, and Edit Using Excel now live in a sibling Feature (1869308 � Web-based Report Management), so this Feature stays focused on the Report Template tab (layout, linking, variable browsing).</div><div><br></div><div>Four User Stories have been shelled out for estimation:</div><ul><li>Link report fields to variables (1869322)</li><li>Configure template time-series orientation (1869334)</li><li>Support Range links � Date Range, Formula Range (1869339)</li><li>Support Discount Rate links (1869369)</li></ul><div><br></div><div>A few open questions remain � flagging those separately.</div><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,2f649891-b778-6b1e-b7d7-9910a54fed82\">@Galina Lapushinskaya</a>, <a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a></div>"
+        },
+        {
+          "id": "17636745",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/03/2026 15:17:42",
+          "updatedAt": "09/03/2026 15:18:16",
+          "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,2f649891-b778-6b1e-b7d7-9910a54fed82\">@Galina Lapushinskaya</a>&nbsp;- This feature needs re-worked to a certain extent so ignore the acceptance for now. The agreed approach for this feature is to emulate the spreadsheet experience and leave non-spreadsheet reporting to AI agency.</div><div><br></div>"
+        }
+      ]
+    }
+  ]
+}
