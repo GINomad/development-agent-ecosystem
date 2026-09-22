@@ -14,6 +14,8 @@ Produce an evidence matrix that maps every requirement to code, tests, knowledge
 - Describe the intended workflow as ordered steps with the responsible role, expected outputs, and the gate that must pass before the next step. The workflow must reflect the Orchestrator execution mode; never describe implementation, review, or pipeline work when the selected mode excludes it.
 - Present the implementation plan as ordered, independently verifiable steps linked to requirement IDs. Use an empty implementation plan when the request is research-only and no implementation is authorized.
 - Keep facts, assumptions, open questions, and held scope visibly distinct. Prefer product language over internal agent jargon.
+- When a requirement needs human input, describe the missing product decision before the repository or workflow evidence. Ask one concrete question in the user's language, use short choices, recommend one choice, and say which held work will resume after the answer.
+- Put commit hashes, clone details, source revisions, agent names, and other diagnostic evidence in the structured evidence field. Include them in the visible question only when they change the choice the person must make.
 
 ## First-party analysis boundary
 
