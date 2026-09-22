@@ -181,7 +181,7 @@ if ($successfulAttempt.Count) {
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
-    return [pscustomobject]@{ Status='already-repaired'; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$successfulResultPath; TargetedResume=$targetedResume }
+    return [pscustomobject]@{ Status='already-repaired'; EcosystemRepairStatus='repaired'; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$successfulResultPath; TargetedResume=$targetedResume }
 }
 $attemptCount = @($attempts | Where-Object {
     $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
@@ -293,6 +293,7 @@ $arguments = @(
 )
 
 $recoveryWasValidated = $false
+$repairTerminalRecorded = $false
 try {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
@@ -391,6 +392,7 @@ try {
     }
     $completedAttempt = [ordered]@{ type='recovery-completed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); status=[string]$recovery.status; resultPath=$resultPath; preservationCommit=$preservationCommit; commit=if ($recoveryWasValidated -and $recoveryCommit) { $recoveryCommit } else { $null }; push=if ($recoveryWasValidated -and $recoveryPush) { $recoveryPush } else { $null } }
     [IO.File]::AppendAllText($attemptsPath, ($completedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+    $repairTerminalRecorded = $true
     $targetedResume = $null
     if (-not $SuppressTargetedResume -and [string]$recovery.status -eq 'repaired' -and [bool]$config.health.automaticRecovery.targetedResume.enabled) {
         $targetedParameters = @{
@@ -440,10 +442,10 @@ try {
             return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
         }
     }
-    [pscustomobject]@{ Status=[string]$recovery.status; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; PreservationCommit=$preservationCommit; RecoveryCommit=$recoveryCommit; RecoveryPush=$recoveryPush; TargetedResume=$targetedResume }
+    [pscustomobject]@{ Status=[string]$recovery.status; EcosystemRepairStatus=[string]$recovery.status; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; PreservationCommit=$preservationCommit; RecoveryCommit=$recoveryCommit; RecoveryPush=$recoveryPush; TargetedResume=$targetedResume }
 }
 catch {
-    $failedAttempt = [ordered]@{ type='recovery-failed'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); error=$_.Exception.Message }
+    $failedAttempt = [ordered]@{ type=if($repairTerminalRecorded){'recovery-followup-failed'}else{'recovery-failed'}; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); ecosystemRepairStatus=if($repairTerminalRecorded){[string]$recovery.status}else{$null}; error=$_.Exception.Message }
     [IO.File]::AppendAllText($attemptsPath, ($failedAttempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     if ($recoveryWasValidated -and $RecoveryDepth -lt 2) {
         $followupSummary = "Post-repair targeted resume failed before '$([string]$failure.agentId)' could complete: $($_.Exception.Message)"

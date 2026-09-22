@@ -71,7 +71,8 @@ function Write-TargetedResult {
         [Parameter(Mandatory)][string] $Status,
         [Parameter(Mandatory)][string] $Message,
         [int] $AttemptCount = 0,
-        [string] $FinalAgentStatus = ''
+        [string] $FinalAgentStatus = '',
+        [bool] $LeaseRenewed = $false
     )
     $result = [ordered]@{
         taskId = $TaskId
@@ -81,6 +82,8 @@ function Write-TargetedResult {
         executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
         attemptCount = $AttemptCount
         finalAgentStatus = if ($FinalAgentStatus) { $FinalAgentStatus } else { $null }
+        ecosystemRepairStatus = [string]$recoveryEvidence.status
+        leaseRenewed = $LeaseRenewed
         recoveryEvidencePath = $resolvedRecoveryEvidencePath
         updatedAtUtc = [DateTime]::UtcNow.ToString('o')
         message = $Message
@@ -182,6 +185,7 @@ $workflowParameters = @{
 if ($activeExecutionRunId) { $workflowParameters.ExecutionRunId = $activeExecutionRunId }
 if ($activeWorkspaceLeaseId) { $workflowParameters.WorkspaceLeaseId = $activeWorkspaceLeaseId }
 if ($ElevatedApproved) { $workflowParameters.ElevatedApproved = $true }
+$leaseRenewed = $false
 
 try {
     if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
@@ -191,7 +195,17 @@ try {
             $workflowParameters.Remove('WorkspaceLeaseId')
         }
     }
-    & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
+    try {
+        & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
+    }
+    catch {
+        $staleLease = $workflowParameters.ContainsKey('ExecutionRunId') -and $_.Exception.Message -match "Expected lease '.+' for task '.+' is no longer active"
+        if (-not $staleLease) { throw }
+        $workflowParameters.Remove('ExecutionRunId')
+        $workflowParameters.Remove('WorkspaceLeaseId')
+        $leaseRenewed = $true
+        & (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') @workflowParameters | Out-Null
+    }
     $finalTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $finalAgentStatus = [string]$finalTask.agentStatuses.$targetAgentId.status
     $resumeStatus = if ($finalAgentStatus -eq 'completed') { 'completed' } elseif ($finalAgentStatus -eq 'waiting') { 'waiting' } elseif ($finalAgentStatus -eq 'failed') { 'failed' } else { 'interrupted' }
@@ -203,11 +217,13 @@ try {
         targetAgentId = $targetAgentId
         status = $resumeStatus
         finalAgentStatus = $finalAgentStatus
+        ecosystemRepairStatus = [string]$recoveryEvidence.status
+        leaseRenewed = $leaseRenewed
         timestampUtc = [DateTime]::UtcNow.ToString('o')
     }
     [IO.File]::AppendAllText($attemptsPath, ($completed | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level $(if ($resumeStatus -eq 'completed') { 'success' } elseif ($resumeStatus -eq 'failed') { 'error' } else { 'waiting' }) -Stage health_targeted_resume -Summary $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    return Write-TargetedResult -Status $resumeStatus -Message $message -AttemptCount ($attemptCount + 1) -FinalAgentStatus $finalAgentStatus
+    return Write-TargetedResult -Status $resumeStatus -Message $message -AttemptCount ($attemptCount + 1) -FinalAgentStatus $finalAgentStatus -LeaseRenewed:$leaseRenewed
 }
 catch {
     $message = "Automatic targeted resume failed for '$targetAgentId': $($_.Exception.Message)"
@@ -218,9 +234,11 @@ catch {
         targetAgentId = $targetAgentId
         status = 'failed'
         error = $_.Exception.Message
+        ecosystemRepairStatus = [string]$recoveryEvidence.status
+        leaseRenewed = $leaseRenewed
         timestampUtc = [DateTime]::UtcNow.ToString('o')
     }
     [IO.File]::AppendAllText($attemptsPath, ($failed | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_targeted_resume_failed -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    return Write-TargetedResult -Status 'failed' -Message $message -AttemptCount ($attemptCount + 1) -FinalAgentStatus 'failed'
+    return Write-TargetedResult -Status 'failed' -Message $message -AttemptCount ($attemptCount + 1) -FinalAgentStatus 'failed' -LeaseRenewed:$leaseRenewed
 }

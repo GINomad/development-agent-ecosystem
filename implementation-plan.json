@@ -1,34 +1,34 @@
 {
-  "taskId": "mcp-resilient-context-integration",
-  "branch": "feature/mcp-resilient-context-integration",
-  "baseBranch": "main",
+  "taskId": "harness-metrics-and-recovery-hardening",
+  "branch": "fix/harness-metrics-and-recovery",
+  "baseBranch": "health-recovery/task-20260917-devextreme-grid-poc-1b3e141191cf",
   "steps": [
     {
-      "id": "mcp-policy-and-server",
-      "requirementIds": ["MCP-001", "MCP-002", "MCP-003"],
-      "files": ["config/agents.json", "config/schemas/agents.schema.json", "scripts/Start-EcosystemReadMcpServer.ps1"],
-      "change": "Add a task-scoped read-only local MCP server and strict role/server policy without storing credentials.",
-      "validation": ["Validate canonical configuration schema.", "Verify tools cannot escape the active task and role scope."]
+      "id": "attempt-and-continuation-metrics",
+      "requirementIds": ["HARNESS-001", "HARNESS-002"],
+      "files": ["scripts/Start-DevelopmentWorkflow.ps1", "scripts/Get-McpMigrationReport.ps1"],
+      "change": "Give each role attempt one terminal result, record continuation separately, and aggregate only comparable production role attempts.",
+      "validation": ["Verify one terminal role metric per attempt.", "Verify revisions, smoke tasks, and MCP tool-call metrics cannot enter role migration summaries."]
     },
     {
-      "id": "mcp-resilience-and-metrics",
-      "requirementIds": ["MCP-004", "MCP-005"],
-      "files": ["scripts/Start-DevelopmentWorkflow.ps1", "scripts/Invoke-EcosystemHealthCheck.ps1", "tests/Test-McpResilience.ps1"],
-      "change": "Add classic-mode fallback, a deduplicated asynchronous MCP recovery lane, circuit breaking, and redacted metrics.",
-      "validation": ["Exercise startup, tool, protocol, isolation, fallback, recovery, and half-open scenarios.", "Verify Health Check recovery runs with MCP disabled."]
+      "id": "effective-mcp-and-gates",
+      "requirementIds": ["HARNESS-003", "HARNESS-004"],
+      "files": ["scripts/Start-DevelopmentWorkflow.ps1", "scripts/Get-McpMigrationReport.ps1", "tests/Test-McpResilience.ps1"],
+      "change": "Distinguish configured MCP mode from observed tool use and report every migration gate independently.",
+      "validation": ["Verify zero MCP calls cannot be reported as effective MCP usage.", "Verify missing quality does not hide reliability or latency failures."]
     },
     {
-      "id": "mcp-setup-and-documentation",
-      "requirementIds": ["MCP-006", "MCP-007"],
-      "files": ["SETUP_WITH_LLM.md", "scripts/Install-AgentEcosystem.ps1", "README.md", "docs"],
-      "change": "Add installation interview and validation for the local server and user-selected registered external servers; update documentation and diagrams.",
-      "validation": ["Validate setup contracts and external-server allowlists.", "Run the complete ecosystem test suite and a no-push/no-pipeline closed-task smoke test."]
+      "id": "recovery-and-parser-hardening",
+      "requirementIds": ["HARNESS-005", "HARNESS-006"],
+      "files": ["scripts/Start-AgentHealthRecovery.ps1", "scripts/Start-HealthTargetedResume.ps1", "scripts/Invoke-GuardedCodex.ps1", "tests"],
+      "change": "Keep ecosystem repair and task resume outcomes distinct, renew execution ownership before resume, and reject deterministic PowerShell parser failures without retry.",
+      "validation": ["Exercise repaired-but-resume-failed and waiting outcomes.", "Run focused resilience tests, the complete ecosystem suite, and the health check."]
     }
   ],
   "heldScope": [
-    "The divergent Claude Code port remains outside this implementation.",
-    "No external MCP server is installed or authenticated without a separate user-confirmed setup action."
+    "Model pricing, billing calculations, and external MCP server rollout remain outside this implementation.",
+    "Historical metric files remain immutable; corrected aggregation applies when reports are regenerated."
   ],
-  "requirementsRevision": "user-approved:2026-09-08",
-  "knowledgeRevision": "3cf37873680857d6dad811780767373cd21c050e"
+  "requirementsRevision": "user-approved:2026-09-22",
+  "knowledgeRevision": "harness-assessment:2026-09-22"
 }
