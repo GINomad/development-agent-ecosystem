@@ -24,7 +24,11 @@ $modeProperty = $config.workflow.orchestration.executionModes.PSObject.Propertie
 if (-not $modeProperty) { throw "Persisted execution mode '$mode' is not configured." }
 $sequence = @($route.agentSequence | ForEach-Object { [string]$_ })
 if ((@($modeProperty.Value.agentSequence | ForEach-Object { [string]$_ }) -join '|') -ne ($sequence -join '|')) { throw "Persisted route '$mode' does not match the configured agent sequence." }
-if ($TargetAgentId -and $TargetAgentId -notin $sequence -and $TargetAgentId -notin @('orchestrator','health_check')) { throw "Target agent '$TargetAgentId' is outside execution mode '$mode'." }
+$manualClosureKnowledgeTarget = $TargetAgentId -eq 'knowledge_keeper' -and
+    $task.PSObject.Properties['closure'] -and
+    [string]$task.closure.kind -eq 'manual' -and
+    [string]$task.closure.status -eq 'knowledge-update-pending'
+if ($TargetAgentId -and $TargetAgentId -notin $sequence -and $TargetAgentId -notin @('orchestrator','health_check') -and -not $manualClosureKnowledgeTarget) { throw "Target agent '$TargetAgentId' is outside execution mode '$mode'." }
 $repositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } else { @([string]$task.repositoryId) }
 foreach ($repositoryId in $repositoryIds) {
     $repository = @($config.repositories | Where-Object { [string]$_.id -eq [string]$repositoryId }) | Select-Object -First 1
@@ -32,4 +36,4 @@ foreach ($repositoryId in $repositoryIds) {
     if ($repository.PSObject.Properties['allowedExecutionModes'] -and $mode -notin @($repository.allowedExecutionModes)) { throw "Execution mode '$mode' is not allowed for repository '$repositoryId'." }
 }
 if ($mode -eq 'local-poc-delivery' -and 'pipeline_monitor' -in $sequence) { throw 'Local POC delivery cannot require Pipeline Monitor.' }
-[pscustomobject]@{ Status='valid'; TaskId=$TaskId; ExecutionMode=$mode; AgentSequence=$sequence; RepositoryIds=$repositoryIds }
+[pscustomobject]@{ Status='valid'; TaskId=$TaskId; ExecutionMode=$mode; AgentSequence=$sequence; RepositoryIds=$repositoryIds; ManualClosureOverride=[bool]$manualClosureKnowledgeTarget }

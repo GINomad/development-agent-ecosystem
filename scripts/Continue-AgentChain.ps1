@@ -106,6 +106,19 @@ function Get-FindingRoutingSummary {
 }
 
 function Get-ActiveExecutionPolicy {
+    $currentTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $manualClosurePending = $currentTask.PSObject.Properties['closure'] -and
+        [string]$currentTask.closure.kind -eq 'manual' -and
+        [string]$currentTask.closure.status -eq 'knowledge-update-pending'
+    if ($manualClosurePending) {
+        $closureMode = $config.workflow.orchestration.executionModes.'knowledge-only'
+        return [pscustomobject][ordered]@{
+            ExecutionMode = 'knowledge-only'
+            AgentSequence = @($closureMode.agentSequence | ForEach-Object { [string]$_ })
+            CodeChangesAllowed = [bool]$closureMode.codeChangesAllowed
+            ContinueAutomatically = $true
+        }
+    }
     $defaultMode = $config.workflow.orchestration.executionModes.'full-delivery'
     $result = [ordered]@{
         ExecutionMode = 'full-delivery'
@@ -318,10 +331,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
         'health_check' {
             $pendingCommentOwner = Get-PendingCommentOwner -ExcludeAgentId 'health_check'
             if ($pendingCommentOwner) {
-                # The active execution mode may contain only Health Check. Return
-                # remaining explicit input to Orchestrator so it can select a new
-                # authority mode instead of silently ending the resume.
-                $nextAgentId = 'orchestrator'
+                # An explicit manual closure is an already-authorized terminal
+                # knowledge-only transition. Other out-of-mode input still
+                # returns to Orchestrator for a fresh authority decision.
+                $nextAgentId = if ($pendingCommentOwner -in $agentSequence) { $pendingCommentOwner } else { 'orchestrator' }
             }
             else {
                 foreach ($candidate in $agentSequence) {
