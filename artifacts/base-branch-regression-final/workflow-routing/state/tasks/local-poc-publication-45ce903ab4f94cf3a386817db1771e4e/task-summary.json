@@ -1,0 +1,37 @@
+{
+  "taskId": "local-poc-publication-45ce903ab4f94cf3a386817db1771e4e",
+  "status": "completed",
+  "completedAtUtc": "2026-09-24T16:59:16.3430893Z",
+  "repositories": [
+    "planning-space-excel-variable-poc"
+  ],
+  "outcomes": [],
+  "decisions": [
+    "The task used local-poc-delivery."
+  ],
+  "verification": [
+    "Requirements, implementation, review, and independent verification completed locally."
+  ],
+  "knowledgeUpdates": [],
+  "artifacts": [
+    "knowledge-update.json",
+    "task-summary.json"
+  ],
+  "residualItems": [],
+  "humanReadable": {
+    "title": "Synthetic local POC completion",
+    "overview": "The local-only POC completed without pipeline delivery.",
+    "audience": "Ecosystem maintainers",
+    "delivered": [
+      "Completed the local-only POC."
+    ],
+    "decisions": [
+      "Pipeline delivery was excluded by the selected execution mode."
+    ],
+    "verification": [
+      "Local review verification passed."
+    ],
+    "knowledgeUpdates": [],
+    "residualItems": []
+  }
+}

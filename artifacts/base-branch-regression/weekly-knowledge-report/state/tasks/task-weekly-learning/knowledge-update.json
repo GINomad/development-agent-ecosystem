@@ -1,0 +1,35 @@
+{
+  "taskId": "task-weekly-learning",
+  "entries": [
+    {
+      "id": "STYLE-001",
+      "status": "verified",
+      "statement": "Prefer <safe> focused style rules.",
+      "source": "review:REV-201",
+      "revision": "git:abc123",
+      "observedAtUtc": "2026-08-13T08:00:00Z",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/coding-style.md"
+    },
+    {
+      "id": "IDEA-001",
+      "status": "proposed",
+      "statement": "Unverified idea must stay out.",
+      "source": "comment:draft",
+      "revision": "none",
+      "observedAtUtc": "2026-08-13T09:00:00Z",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/draft.md"
+    },
+    {
+      "id": "OLD-001",
+      "status": "superseded",
+      "statement": "An older process rule was replaced.",
+      "source": "decision:replacement",
+      "revision": "git:def456",
+      "observedAtUtc": "2026-08-13T10:00:00Z",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/process.md"
+    }
+  ]
+}

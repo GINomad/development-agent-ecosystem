@@ -1,0 +1,292 @@
+[
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880053,
+      "System.Parent": 1869322,
+      "System.Title": "Develop: Browse and filter report variables"
+    },
+    "id": 1880053,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 3,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880053"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880054,
+      "System.Parent": 1869334,
+      "System.Title": "Develop: Configure template time-series orientation"
+    },
+    "id": 1880054,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 3,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880054"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 24.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 24.0,
+      "System.Id": 1880055,
+      "System.Parent": 1877820,
+      "System.Title": "Develop: Create and persist economic variable links"
+    },
+    "id": 1880055,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880055"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880056,
+      "System.Parent": 1877832,
+      "System.Title": "Develop: Manage links and preserve them during spreadsheet edits"
+    },
+    "id": 1880056,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 6,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880056"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880057,
+      "System.Parent": 1877828,
+      "System.Title": "Develop: Link report metadata variables"
+    },
+    "id": 1880057,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 3,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880057"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 27.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 27.0,
+      "System.Id": 1880058,
+      "System.Parent": 1869339,
+      "System.Title": "Develop: Support Range links (Date Range, Formula Range)"
+    },
+    "id": 1880058,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880058"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880059,
+      "System.Parent": 1877829,
+      "System.Title": "Develop: Configure variable link attributes and headers"
+    },
+    "id": 1880059,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 5,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880059"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 24.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 24.0,
+      "System.Id": 1880060,
+      "System.Parent": 1869369,
+      "System.Title": "Develop: Support Discount Rate links"
+    },
+    "id": 1880060,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 2,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880060"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+      "System.Id": 1880061,
+      "System.Parent": 1877830,
+      "System.Title": "Develop: Configure run-specific links and comparison metadata"
+    },
+    "id": 1880061,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 5,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880061"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Development",
+      "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+      "Microsoft.VSTS.Scheduling.OriginalEstimate": 24.0,
+      "Microsoft.VSTS.Scheduling.RemainingWork": 24.0,
+      "System.Id": 1880263,
+      "System.Parent": 1880262,
+      "System.Title": "Develop: Integrate the Report Designer component into Planning Space Web"
+    },
+    "id": 1880263,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 3,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880263"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880264,
+      "System.Parent": 1880262,
+      "System.Title": "Test: Integrate the Report Designer component into Planning Space Web"
+    },
+    "id": 1880264,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 2,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880264"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880283,
+      "System.Parent": 1869322,
+      "System.Title": "Test: Browse and filter report variables"
+    },
+    "id": 1880283,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880283"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880285,
+      "System.Parent": 1869334,
+      "System.Title": "Test: Configure template time-series orientation"
+    },
+    "id": 1880285,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880285"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880286,
+      "System.Parent": 1869339,
+      "System.Title": "Test: Support Range links (Date Range, Formula Range)"
+    },
+    "id": 1880286,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880286"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880287,
+      "System.Parent": 1869369,
+      "System.Title": "Test: Support Discount Rate links"
+    },
+    "id": 1880287,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880287"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880288,
+      "System.Parent": 1877820,
+      "System.Title": "Test: Create and persist economic variable links"
+    },
+    "id": 1880288,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880288"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880289,
+      "System.Parent": 1877828,
+      "System.Title": "Test: Link report metadata variables"
+    },
+    "id": 1880289,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880289"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880290,
+      "System.Parent": 1877829,
+      "System.Title": "Test: Configure variable link attributes and headers"
+    },
+    "id": 1880290,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880290"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880291,
+      "System.Parent": 1877830,
+      "System.Title": "Test: Configure run-specific links and comparison metadata"
+    },
+    "id": 1880291,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880291"
+  },
+  {
+    "fields": {
+      "Microsoft.VSTS.Common.Activity": "Testing",
+      "System.Id": 1880292,
+      "System.Parent": 1877832,
+      "System.Title": "Test: Manage links and preserve them during spreadsheet edits"
+    },
+    "id": 1880292,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://quorumsoftware.visualstudio.com/_apis/wit/workItems/1880292"
+  }
+]

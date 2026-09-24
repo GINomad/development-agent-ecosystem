@@ -1,0 +1,101 @@
+[
+  {
+    "taskId": 1880053,
+    "parentId": 1869322,
+    "title": "Develop: Browse and filter report variables",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880053"
+  },
+  {
+    "taskId": 1880054,
+    "parentId": 1869334,
+    "title": "Develop: Configure template time-series orientation",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880054"
+  },
+  {
+    "taskId": 1880055,
+    "parentId": 1877820,
+    "title": "Develop: Create and persist economic variable links",
+    "originalEstimate": 24.0,
+    "remainingWork": 24.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880055"
+  },
+  {
+    "taskId": 1880056,
+    "parentId": 1877832,
+    "title": "Develop: Manage links and preserve them during spreadsheet edits",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880056"
+  },
+  {
+    "taskId": 1880057,
+    "parentId": 1877828,
+    "title": "Develop: Link report metadata variables",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880057"
+  },
+  {
+    "taskId": 1880058,
+    "parentId": 1869339,
+    "title": "Develop: Support Range links (Date Range, Formula Range)",
+    "originalEstimate": 27.0,
+    "remainingWork": 27.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880058"
+  },
+  {
+    "taskId": 1880059,
+    "parentId": 1877829,
+    "title": "Develop: Configure variable link attributes and headers",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880059"
+  },
+  {
+    "taskId": 1880060,
+    "parentId": 1869369,
+    "title": "Develop: Support Discount Rate links",
+    "originalEstimate": 24.0,
+    "remainingWork": 24.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880060"
+  },
+  {
+    "taskId": 1880061,
+    "parentId": 1877830,
+    "title": "Develop: Configure run-specific links and comparison metadata",
+    "originalEstimate": 18.0,
+    "remainingWork": 18.0,
+    "activity": "Development",
+    "qaIncluded": false,
+    "verified": true,
+    "url": "https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1880061"
+  }
+]

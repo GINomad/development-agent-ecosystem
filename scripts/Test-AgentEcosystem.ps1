@@ -576,6 +576,25 @@ $postHealthResumePlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -T
 $postHealthContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $postHealthTaskId -CompletedAgentId health_check -PrepareOnly -ConfigPath $routingConfigPath
 if ([string]$postHealthRoute.Routing.executionMode -ne 'ecosystem-repair' -or -not [bool]$postHealthState.hasUnreadUserComments -or -not [bool]$postHealthResumePlan.HasWork -or 'developer' -notin @($postHealthResumePlan.UnfinishedAgentIds) -or [string]$postHealthContinuation.Status -ne 'prepared' -or [string]$postHealthContinuation.NextAgentId -ne 'orchestrator') { throw 'Completed Health Check did not preserve or return remaining direct agent input to Orchestrator for a fresh authority route.' }
 Add-Check -Name 'post-health-comment-routing' -Detail 'A completed single-role Health Check route returns remaining direct comments to Orchestrator for a fresh execution mode'
+
+$manualClosureTaskId = 'manual-closure-routing-' + [guid]::NewGuid().ToString('N')
+$manualClosureTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $manualClosureTaskId -TaskSelector synthetic-manual-closure-routing -Mode manual -RepositoryIds planning-space-excel-variable-poc -ConfigPath $routingConfigPath
+$manualClosureCreatedEvent = Get-Content -LiteralPath (Join-Path $manualClosureTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
+$manualClosureRepairRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $manualClosureTaskId -SourceEventId ([string]$manualClosureCreatedEvent.eventId) -InputKind task-intake -TargetAgentIds health_check -ExecutionMode ecosystem-repair -Rationale 'The synthetic task requires only bounded ecosystem maintenance.' -Confidence high -ConfigPath $routingConfigPath
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $manualClosureTaskId -AgentId health_check -AgentStatus completed -Stage synthetic_health_completed -Message 'Synthetic ecosystem repair completed.' -ConfigPath $routingConfigPath | Out-Null
+$manualClosureRequest = & (Join-Path $root 'scripts\Request-TaskClosure.ps1') -TaskId $manualClosureTaskId -Reason 'Close the completed ecosystem repair and retain verified knowledge.' -Kind manual -ConfigPath $routingConfigPath
+$manualClosureDispatch = & (Join-Path $root 'scripts\Test-WorkflowDispatchContract.ps1') -TaskId $manualClosureTaskId -TargetAgentId knowledge_keeper -ConfigPath $routingConfigPath
+$manualClosureProductTargetRejected = $false
+try {
+    & (Join-Path $root 'scripts\Test-WorkflowDispatchContract.ps1') -TaskId $manualClosureTaskId -TargetAgentId developer -ConfigPath $routingConfigPath | Out-Null
+}
+catch { $manualClosureProductTargetRejected = $_.Exception.Message -eq "Target agent 'developer' is outside execution mode 'ecosystem-repair'." }
+$manualClosureContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $manualClosureTaskId -CompletedAgentId health_check -PrepareOnly -ConfigPath $routingConfigPath
+$manualClosureTaskAfter = Get-Content -LiteralPath $manualClosureTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$manualClosureRepairRoute.Routing.executionMode -ne 'ecosystem-repair' -or [string]$manualClosureRequest.TargetAgentId -ne 'knowledge_keeper' -or -not [bool]$manualClosureDispatch.ManualClosureOverride -or [string]$manualClosureContinuation.NextAgentId -ne 'knowledge_keeper' -or -not $manualClosureProductTargetRejected) { throw 'Manual closure did not override the prior single-role repair route only for final Knowledge Keeper publication.' }
+if (@('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor') | Where-Object { [string]$manualClosureTaskAfter.agentStatuses.$_.status -ne 'skipped' }) { throw 'Manual ecosystem-repair closure made an excluded product-delivery role eligible.' }
+Add-Check -Name 'manual-closure-knowledge-dispatch' -Detail 'A persisted manual closure dispatches only Knowledge Keeper after an ecosystem-repair route while product delivery agents remain excluded'
+
 $researchTaskId = 'research-routing-' + [guid]::NewGuid().ToString('N')
 $researchTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $researchTaskId -TaskSelector synthetic-research-only -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $routingConfigPath
 $researchCreatedEvent = Get-Content -LiteralPath (Join-Path $researchTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
@@ -621,6 +640,15 @@ Write-Utf8NoBom -Path (Join-Path $schedulerSource 'tracked.txt') -Content "basel
 Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('add','tracked.txt') | Out-Null
 Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('commit','-m','baseline') | Out-Null
 Invoke-SchedulerTestGit -Workspace $schedulerRoot -Arguments @('clone','--bare',$schedulerSource,$schedulerRemote) | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('remote','add','origin',$schedulerRemote) | Out-Null
+$integrationBaseBranch = 'int/20.4/hazel'
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('checkout','-b',$integrationBaseBranch) | Out-Null
+Write-Utf8NoBom -Path (Join-Path $schedulerSource 'integration-base.txt') -Content "integration-base$([Environment]::NewLine)"
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('add','integration-base.txt') | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('commit','-m','integration base') | Out-Null
+$integrationBaseSha = (Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('push',$schedulerRemote,$integrationBaseBranch) | Out-Null
+Invoke-SchedulerTestGit -Workspace $schedulerSource -Arguments @('checkout','main') | Out-Null
 
 $schedulerConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $schedulerConfig.runtime.stateRoot = Join-Path $schedulerRoot 'state'
@@ -630,6 +658,8 @@ $schedulerConfig.workflow.workspaceScheduling.maxActiveTasks = 2
 $schedulerRepository = @($schedulerConfig.repositories | Where-Object id -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
 $schedulerRepository.url = $schedulerRemote
 $schedulerRepository.localWorkspace = $schedulerSource
+$schedulerRepository.baseBranch = $integrationBaseBranch
+$schedulerRepository.workspaceCloneSource = $schedulerSource
 Write-Utf8NoBom -Path $schedulerConfigPath -Content (($schedulerConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
 
 $taskAId = 'workspace-a-' + [guid]::NewGuid().ToString('N')
@@ -650,6 +680,11 @@ $workspaceA = [string]$leaseA.Workspaces[0].Path
 $workspaceB = [string]$leaseB.Workspaces[0].Path
 if ([string]$leaseA.Status -ne 'active' -or [string]$leaseB.Status -ne 'active' -or $workspaceA -eq $workspaceB -or -not (Test-Path -LiteralPath (Join-Path $workspaceA '.git') -PathType Container) -or -not (Test-Path -LiteralPath (Join-Path $workspaceB '.git') -PathType Container)) { throw 'Two tasks targeting one repository did not receive distinct full Git clones.' }
 if ([string]$leaseA.Workspaces[0].Branch -ne 'features/implement-friendly-branch-names' -or [string]$leaseB.Workspaces[0].Branch -ne 'bugfix/fix-sensitivity-endpoint') { throw 'Workspace provisioning did not use the persisted human-readable branch names.' }
+$workspaceManifestA = Get-Content -LiteralPath ([string]$leaseA.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+$workspaceManifestB = Get-Content -LiteralPath ([string]$leaseB.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$workspaceManifestA.baseBranch -ne $integrationBaseBranch -or [string]$workspaceManifestB.baseBranch -ne $integrationBaseBranch -or [string]$workspaceManifestA.baseSha -ne $integrationBaseSha -or [string]$workspaceManifestB.baseSha -ne $integrationBaseSha) { throw 'Repository-specific base branch provisioning did not record the configured integration branch and SHA.' }
+if ([string]$workspaceManifestA.cloneSource -ne [IO.Path]::GetFullPath($schedulerSource) -or [string]$workspaceManifestB.cloneSource -ne [IO.Path]::GetFullPath($schedulerSource) -or [string]$workspaceManifestA.canonicalOrigin -ne $schedulerRemote -or [string]$workspaceManifestB.canonicalOrigin -ne $schedulerRemote) { throw 'Local clone source provisioning did not retain the configured origin URL and source audit record.' }
+Add-Check -Name 'repository-specific-base-branch' -Detail 'A repository baseBranch provisions task clones from its integration branch and records the exact branch and SHA; repositories without it continue to fall back to runtime.defaultBaseBranch'
 Write-Utf8NoBom -Path (Join-Path $workspaceA 'task-a-uncommitted.txt') -Content "task-a-only$([Environment]::NewLine)"
 if (Test-Path -LiteralPath (Join-Path $workspaceB 'task-a-uncommitted.txt')) { throw 'Task A working-tree changes leaked into task B clone.' }
 $resolvedA = & (Join-Path $root 'scripts\Resolve-TaskWorkspace.ps1') -TaskId $taskAId -RepositoryId azure-planningspace-ps-excel-agent -ConfigPath $schedulerConfigPath
@@ -807,6 +842,8 @@ $taskEId = 'workspace-e-' + [guid]::NewGuid().ToString('N')
 $schedulerFailureConfigPath = Join-Path $schedulerRoot 'agents-missing-base.json'
 $schedulerFailureConfig = Get-Content -LiteralPath $schedulerConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $schedulerFailureConfig.runtime.defaultBaseBranch = 'definitely-missing-base'
+$schedulerFailureRepository = @($schedulerFailureConfig.repositories | Where-Object id -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
+$schedulerFailureRepository.PSObject.Properties.Remove('baseBranch')
 Write-Utf8NoBom -Path $schedulerFailureConfigPath -Content (($schedulerFailureConfig | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
 $null = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskEId -TaskSelector 'synthetic-workspace-provisioning-failure' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $schedulerFailureConfigPath
 $failedRunId = 'e' * 32

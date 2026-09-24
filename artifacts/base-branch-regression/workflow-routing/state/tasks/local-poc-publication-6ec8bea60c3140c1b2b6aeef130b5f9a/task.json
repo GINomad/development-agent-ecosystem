@@ -1,0 +1,62 @@
+{
+  "taskId": "local-poc-publication-6ec8bea60c3140c1b2b6aeef130b5f9a",
+  "selector": "synthetic-local-poc-publication",
+  "mode": "manual",
+  "taskName": "synthetic-local-poc-publication",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-local-poc-publication",
+  "repositoryId": "planning-space-excel-variable-poc",
+  "repositoryIds": [
+    "planning-space-excel-variable-poc"
+  ],
+  "createdAtUtc": "2026-09-24T16:58:19.556046Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-24T16:58:19.9717625Z",
+      "message": "Excluded by Orchestrator execution mode 'local-poc-delivery'."
+    },
+    "health_check": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-24T16:58:20.2151936Z",
+      "message": "Excluded by Orchestrator execution mode 'local-poc-delivery'."
+    },
+    "requirements_analyst": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:20.7077511Z",
+      "message": "Synthetic requirements_analyst completed."
+    },
+    "developer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:20.9710327Z",
+      "message": "Synthetic developer completed."
+    },
+    "reviewer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:21.2633793Z",
+      "message": "Synthetic reviewer completed."
+    },
+    "review_verifier": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:21.5423049Z",
+      "message": "Synthetic review_verifier completed."
+    },
+    "knowledge_keeper": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:21.9649733Z",
+      "message": "Synthetic local POC final publication completed."
+    }
+  },
+  "status": "interrupted",
+  "lastMessage": "Orchestrator routed input to: requirements_analyst.",
+  "currentStage": "knowledge_keeper-completed",
+  "updatedAtUtc": "2026-09-24T16:58:21.9649733Z",
+  "lastAgentMessage": "Synthetic local POC final publication completed."
+}

@@ -1,0 +1,94 @@
+{
+  "fields": {
+    "Microsoft.VSTS.Common.Activity": "Development",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-24T07:55:49.893Z",
+    "Microsoft.VSTS.Scheduling.CompletedWork": 0.0,
+    "Microsoft.VSTS.Scheduling.OriginalEstimate": 18.0,
+    "Microsoft.VSTS.Scheduling.RemainingWork": 18.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-24T07:55:49.893Z",
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-24T07:55:49.893Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-24T07:55:49.893Z",
+    "System.Description": "<p>Development work for <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869334\">PBI 1869334</a>, using the development-agent ecosystem. Follow the parent's scope and the accepted desktop-parity baseline. </p><h3>Development-only estimate </h3><ul><li><b>Original Estimate: 18 hours. Initial Remaining Work: 18 hours. Completed Work: 0.</b> </li><li>Includes implementation, developer unit/component tests, developer self-checks and changes required by code review. </li><li><b>Excludes QA execution, QA regression, manual acceptance testing and QA effort. These belong in a separate Task and are not included here.</b> A later review of defects may require updating development Remaining Work; do not charge QA work to this Task. </li><li>Estimated unassisted development portion: 24 hours. A provisional 25% reduction for ecosystem-assisted development yields 18 hours. The development/QA allocation and productivity adjustment are planning assumptions, not measured team results; recalibrate after the first comparable completed Tasks. </li><li>Parent Story Points cover broader PBI effort and remain unchanged. Do not add this Task's hours to SP-derived hours as additional scope, or treat Task completion as QA acceptance. </li> </ul><h3>Development plan </h3><ol><li>Load current parent requirements, repository-specific knowledge and desktop code. Identify ready scope, dependencies and unresolved questions before coding. </li><li>Implement the confirmed scope through the ecosystem workflow. Reuse the shared editor, domain models, named-range and lock-aware save contracts where applicable; preserve unknown behavior as questions. </li><li>Add developer-owned unit/component tests for the implemented behavior and persistence contracts. Run the relevant build, static checks and developer tests; fix implementation issues and code-review findings. </li><li>Record the code revision, developer test evidence, known limitations and setup/data needed for the separate QA Task. Hand off the implementation for QA without claiming that the PBI has passed QA. </li> </ol><h3>Boundaries </h3><p>No additional functionality is authorized by this Task. General editor foundation, migration and deployment work remain outside this Task when separately scoped. Creating this Task does not start product implementation. </p>",
+    "System.Id": 1880054,
+    "System.IterationId": 5753,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.2",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.2",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1869334,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 1,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "Develop: Configure template time-series orientation",
+    "System.Watermark": 11264517,
+    "System.WorkItemType": "Task"
+  },
+  "id": 1880054,
+  "multilineFieldsFormat": {
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334"
+    }
+  ],
+  "rev": 1,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880054"
+}

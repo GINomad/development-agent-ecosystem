@@ -1,0 +1,62 @@
+{
+  "taskId": "stale-question-40ef85f43d2342de95450e2ca5ce9fd3",
+  "selector": "synthetic-stale-question",
+  "mode": "manual",
+  "taskName": "synthetic-stale-question",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-stale-question",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-24T16:58:50.5425112Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:58:51.2314310Z",
+      "message": "Targeted restart completed without an input gate."
+    }
+  },
+  "status": "interrupted",
+  "currentStage": "targeted_agent_completed",
+  "lastMessage": "Targeted restart completed without an input gate.",
+  "updatedAtUtc": "2026-09-24T16:58:51.2314310Z",
+  "lastAgentMessage": "Targeted restart completed without an input gate."
+}

@@ -1,0 +1,62 @@
+{
+  "taskId": "rv-abc646634ca44913",
+  "selector": "synthetic-review-verification",
+  "mode": "manual",
+  "taskName": "synthetic-review-verification",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-review-verification",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-24T17:00:34.1574034Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T17:00:38.1259432Z",
+      "message": "Synthetic corrected review completed."
+    },
+    "review_verifier": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T17:00:38.8963702Z",
+      "message": "Synthetic finding was confirmed by the independent verifier."
+    }
+  },
+  "lastAgentMessage": "Synthetic finding was confirmed by the independent verifier.",
+  "status": "review_pending",
+  "currentStage": "review_decision_required",
+  "lastMessage": "Review Verifier confirmed or escalated 1 product finding(s) that are undecided, deferred, or missing an open bypass tech-debt item.",
+  "updatedAtUtc": "2026-09-24T17:00:39.3419828Z"
+}

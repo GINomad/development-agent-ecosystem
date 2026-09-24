@@ -1,0 +1,62 @@
+{
+  "taskId": "recovered-control-plane-458d473acb4e492a826b97542ea7deec",
+  "selector": "synthetic-control-plane-recovery",
+  "mode": "manual",
+  "taskName": "synthetic-control-plane-recovery",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-control-plane-recovery",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-24T16:57:51.0368277Z",
+  "lastMessage": "Task created. Workflow has not started yet.",
+  "revision": 1,
+  "agentStatuses": {
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:57:52.3330122Z",
+      "message": ""
+    },
+    "orchestrator": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:57:52.9877314Z",
+      "message": "The earlier runner failure was superseded by successful routed-agent outcomes; the original failure evidence remains in task history."
+    },
+    "health_check": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-24T16:57:53.2617570Z",
+      "message": "A later successful targeted workflow confirmed recovery; the prior waiting diagnostic remains preserved in task history."
+    }
+  },
+  "status": "review_pending",
+  "currentStage": "review_decision_required",
+  "updatedAtUtc": "2026-09-24T16:57:53.2617570Z",
+  "lastAgentMessage": "A later successful targeted workflow confirmed recovery; the prior waiting diagnostic remains preserved in task history."
+}

@@ -161,7 +161,7 @@
       "leaseHeartbeatSeconds": 30,
       "staleLeaseGraceSeconds": 300,
       "coordinatorStatePath": "${STATE_ROOT}/workspace-coordinator.json",
-      "workspaceRoot": "${STATE_ROOT}/workspaces",
+      "workspaceRoot": "C:/w",
       "maxActiveAgentsPerTask": 1
     },
     "automaticContinuation": {
@@ -538,6 +538,21 @@
       "excludeAuthors": []
     },
     {
+      "id": "azure-planningspace-planningspace",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "PlanningSpace",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/PlanningSpaceSource/PlanningSpace",
+      "baseBranch": "int/20.4/hazel",
+      "workspaceCloneSource": "C:/Repos/PlanningSpaceSource/PlanningSpace",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },    {
       "id": "azure-palantirplugins-ps-app-delfi",
       "enabled": true,
       "provider": "azure-devops",
@@ -562,6 +577,7 @@
         "local-devextreme-grid-poc",
         "azure-planningspace-ps-excel-agent",
         "azure-planningspace-ps-bicep",
+        "azure-planningspace-planningspace",
         "azure-palantirplugins-ps-app-delfi"
       ],
       "domainKnowledgeRoot": "${REPO_ROOT}/knowledge/managed/projects/planning-space"

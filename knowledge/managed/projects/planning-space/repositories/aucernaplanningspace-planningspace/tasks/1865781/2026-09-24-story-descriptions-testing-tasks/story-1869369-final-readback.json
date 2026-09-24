@@ -1,0 +1,128 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1999946150.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-03T18:41:35.313Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 12.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-24T14:30:20.753Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-24T14:30:20.753Z",
+    "System.CommentCount": 1,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.CreatedDate": "2026-09-03T18:41:35.313Z",
+    "System.Description": "<h2>What needs to be done </h2> <p>Expose the five existing Discount Rate slots, Rate 1 through Rate 5, as linkable report-output values in the web Report Designer. An author can link one or more cells to any slot, including multiple cells linked to the same slot. </p> <p>During report generation, each linked cell receives the value supplied for that slot by the report options, matching the desktop Report Designer. The link must use the normal template link lifecycle and persist through save and reopen. </p><hr><h2>Existing description and implementation details </h2><div><b>Sequencing note:</b> None </div><div><br> </div><div><b>Requirements</b> </div><div><br> </div><div><b>Conceptual distinction from variable linking</b> </div><div>Discount Rates (Discount Settings &gt; Discount Rates) are not simple display/variable mappings  the linked cell is a live calculation input, not just a value pulled from an existing variable. This is distinct from the variable linking mechanism covered in 1869322. </div><div><br> </div><div><b>Fixed slot ceiling</b> </div><div>Discount Settings &gt; Discount Rates offers a fixed ceiling of 5 named slots (Rate 15). </div><div><br> </div><div><b>Many-or-few links per slot</b> </div><div>Author can create as many or as few links as needed against any of the 5 slots, including multiple links to the same slot within a template. </div><div><br> </div><div><b>Link value feeds calculation</b> </div><div>Whatever value the Author types into a linked cell is used as the actual discount rate for that Rate 15 slot during report generation/calculation  not just displayed. <b>Open question:</b> Marg believes this is how it works (link the slot to a cell, then type the assumption value directly into that cell) but this mechanic is not yet confirmed  verify with engineering/UAT before finalizing AC. </div>",
+    "System.Id": 1869369,
+    "System.IterationId": 5754,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.3",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.3",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 9,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Support Discount Rate links",
+    "System.Watermark": 11267427,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1869369,
+  "multilineFieldsFormat": {
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    },
+    {
+      "attributes": {
+        "comment": "Parent User Story 1869369",
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880287"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880060"
+    }
+  ],
+  "rev": 9,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869369"
+}

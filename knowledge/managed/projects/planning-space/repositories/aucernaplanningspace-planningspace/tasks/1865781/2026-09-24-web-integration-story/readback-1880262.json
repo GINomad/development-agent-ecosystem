@@ -1,0 +1,131 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<ol>\n<li><b>Open the designer from Planning Space Web</b><br>\nGiven an authenticated user has access to a report template,<br>\nwhen Planning Space Web navigates to the Report Designer route with that template selected,<br>\nthen the Report Designer is displayed inside the Planning Space Web layout without opening a separate desktop application or browser window. </li>\n\n<li><b>Load the selected template</b><br>\nGiven a valid template identifier and authorized user,<br>\nwhen the Report Designer initializes,<br>\nthen the server loads the corresponding workbook into the editor session and the editor displays the expected worksheets, values, formulas, styles, merged cells, and named ranges.<br>\nDeveloper verification uses a representative existing desktop-authored template rather than only a newly generated empty workbook. </li>\n\n<li><b>Enforce authorization on the server</b><br>\nGiven a user does not have permission to open the selected template or the template belongs to another tenant,<br>\nwhen the editor is requested,<br>\nthen the server rejects the request and no workbook content is returned to the client.<br>\nChanging a template, tenant, or session identifier in the browser does not bypass this check. </li>\n\n<li><b>Use an isolated editor session</b><br>\nGiven two users or two browser tabs open Report Designer sessions,<br>\nwhen they load the same or different templates,<br>\nthen each session has its own document state and cannot read or modify another session's workbook through its session identifier. </li>\n\n<li><b>Establish a validated host communication contract</b><br>\nGiven the Angular host and Report Designer exchange lifecycle messages,<br>\nwhen a message is received,<br>\nthen its origin, source, session identifier, message type, and payload schema are validated before it is processed.<br>\nThe contract supports at least initialized, ready, dirty-state changed, load failed, session expired, and close/dispose. </li>\n\n<li><b>Display loading and failure states</b><br>\nGiven the Report Designer is loading, fails to initialize, cannot load the template, or the session expires,<br>\nwhen the corresponding state occurs,<br>\nthen Planning Space Web displays a clear loading or error state and provides the appropriate retry or return action without leaving an unusable editor surface. </li>\n\n<li><b>Clean up the editor lifecycle</b><br>\nGiven the user leaves the Report Designer route or closes the editor,<br>\nwhen the component is disposed,<br>\nthen client subscriptions and listeners are removed and the server session is released or marked for bounded cleanup.<br>\nRepeated open/close cycles do not reuse another user's document or accumulate duplicate message handlers. </li>\n\n<li><b>Expose dirty state</b><br>\nGiven the user changes the workbook in the Report Designer,<br>\nwhen the editor reports a document change,<br>\nthen Planning Space Web records and displays the dirty state through the integration contract. </li>\n\n<li><b>Meet the agreed web compatibility baseline</b><br>\nGiven the supported browser and viewport matrix,<br>\nwhen the Report Designer is opened,<br>\nthen its ribbon, worksheet tabs, formula bar, and scrollable grid remain usable within the Planning Space layout. </li>\n</ol>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-24T14:10:29.86Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 8.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-24T14:10:29.86Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-24T14:10:29.86Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-24T14:10:29.86Z",
+    "System.Description": "<p><b>As a</b> Report Author,<br>\n<b>I want</b> the Report Designer component to open inside Planning Space Web for a selected report template,<br>\n<b>so that</b> I can edit the report template without launching the desktop application. </p>\n\n<h3>Description </h3>\n<p>Integrate the Report Designer component into the existing Planning Space Angular application. Planning Space Web provides the application route and host container, while the server loads the selected report template into an isolated editor session. </p>\n<p>The integration establishes a secure and explicit contract between the Angular application and the Report Designer host. The contract carries the authenticated user, tenant, selected template, editor session, readiness, dirty state, errors, and close/dispose events without trusting client-supplied authorization decisions. </p>\n<p>This story delivers the editor shell and component lifecycle. Report content and linking capabilities are delivered by their respective stories under Feature 1865781. </p>\n\n<h3>Implementation Plan </h3>\n<ol>\n<li>Define a versioned integration contract for route parameters, editor-session creation, initialization, readiness, dirty state, errors, expiry, and disposal. </li>\n<li>Add the Angular Report Designer route and host component using existing Planning Space routing, authorization, loading-state, error-state, and cleanup patterns. </li>\n<li>Add or adapt the server-side editor host so it resolves the authenticated tenant and user, checks template access, loads the workbook through existing report services, and creates an isolated editor session. </li>\n<li>Implement the host bridge with strict origin, source, session, message-type, and payload validation. Apply the required framing, cookie, and anti-forgery controls. </li>\n<li>Wire editor lifecycle and dirty-state events into the Angular host. Release client and server resources when the editor closes, expires, or fails. </li>\n<li>Add developer-owned tests for route initialization, authorization failure, tenant isolation, message rejection, loading and error states, repeated open/close, and representative workbook rendering. </li>\n<li>Run a browser smoke test with an existing desktop-authored template and record unsupported workbook behavior as follow-up scope. </li>\n<li>Prepare the build, fixture, and supported-scenario list for the separate testing Task. </li>\n</ol>\n\n<h3>Dependencies </h3>\n<ul>\n<li>1874428 - Investigate Angular-compatible web packages for manipulating Excel data. </li>\n<li>1878698 - Security approval for the web-hosting approach. </li>\n<li>1869308 and its Report Management stories - final navigation and template-selection contract. </li>\n<li>Existing Planning Space authorization, tenant-resolution, report-template, and editor-host services. </li>\n</ul>",
+    "System.Id": 1880262,
+    "System.IterationId": 5755,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.4",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 1,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Integrate the Report Designer component into Planning Space Web",
+    "System.Watermark": 11267192,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": true,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1880262,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "comment": "Parent User Story 1880262",
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880264"
+    },
+    {
+      "attributes": {
+        "comment": "Parent User Story 1880262",
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880263"
+    },
+    {
+      "attributes": {
+        "comment": "Parent Feature 1865781",
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    }
+  ],
+  "rev": 1,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880262"
+}

@@ -30,6 +30,29 @@ function Invoke-TaskWorkspaceGit {
     if ($exitCode -ne 0) { throw "git $($Arguments -join ' ') failed in '$WorkingDirectory': $($output -join [Environment]::NewLine)" }
     return @($output | ForEach-Object { [string]$_ })
 }
+function Test-TaskWorkspaceGitRef {
+    param([Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string] $Reference)
+    $savedPreference = $ErrorActionPreference
+    try { $ErrorActionPreference = 'Continue'; $null = @(& git -C $WorkingDirectory show-ref --verify --quiet $Reference 2>&1); $exitCode = $LASTEXITCODE }
+    finally { $ErrorActionPreference = $savedPreference }
+    if ($exitCode -notin @(0,1)) { throw "git show-ref --verify --quiet $Reference failed in '$WorkingDirectory'." }
+    return $exitCode -eq 0
+}
+function Test-EquivalentGitRemoteUrl {
+    param([Parameter(Mandatory)][string] $Left, [Parameter(Mandatory)][string] $Right)
+    try {
+        $leftUri = [Uri]$Left
+        $rightUri = [Uri]$Right
+        if ($leftUri.IsAbsoluteUri -and $rightUri.IsAbsoluteUri) {
+            return $leftUri.Scheme.Equals($rightUri.Scheme, [StringComparison]::OrdinalIgnoreCase) -and
+                $leftUri.Host.Equals($rightUri.Host, [StringComparison]::OrdinalIgnoreCase) -and
+                $leftUri.Port -eq $rightUri.Port -and
+                ($leftUri.AbsolutePath.TrimEnd('/')).Equals($rightUri.AbsolutePath.TrimEnd('/'), [StringComparison]::OrdinalIgnoreCase)
+        }
+    }
+    catch { }
+    return $Left.TrimEnd('/').Equals($Right.TrimEnd('/'), [StringComparison]::OrdinalIgnoreCase)
+}
 function ConvertTo-WorkspaceResult {
     param([Parameter(Mandatory)] $Manifest)
     [pscustomobject][ordered]@{ RepositoryId=[string]$Manifest.repositoryId; Path=[string]$Manifest.clonePath; Branch=[string]$Manifest.branch; BaseSha=[string]$Manifest.baseSha; Lifecycle=[string]$Manifest.lifecycle; CanonicalOrigin=[string]$Manifest.canonicalOrigin; RunId=[string]$Manifest.runId; LeaseId=[string]$Manifest.leaseId; ManifestPath=[string]$Manifest.manifestPath }
@@ -69,16 +92,46 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
     if (Test-Path -LiteralPath $clonePath) { throw "Workspace path already exists and is not owned by this task: $clonePath" }
     $cloneCreatedByThisRun = $false
     try {
+        $baseBranch = if ($repository.PSObject.Properties['baseBranch'] -and -not [string]::IsNullOrWhiteSpace([string]$repository.baseBranch)) { [string]$repository.baseBranch } else { [string]$config.runtime.defaultBaseBranch }
+        $cloneSource = if ($repository.PSObject.Properties['workspaceCloneSource'] -and -not [string]::IsNullOrWhiteSpace([string]$repository.workspaceCloneSource)) { [IO.Path]::GetFullPath([string]$repository.workspaceCloneSource) } else { $null }
+        $baseSha = $null
+        if ($cloneSource) {
+            if (-not (Test-Path -LiteralPath (Join-Path $cloneSource '.git') -PathType Container)) { throw "Repository '$repositoryId' workspaceCloneSource is not a Git checkout: $cloneSource" }
+            $sourceOrigin = (Invoke-TaskWorkspaceGit -WorkingDirectory $cloneSource -Arguments @('remote','get-url','origin') | Select-Object -First 1).Trim()
+            if (-not $sourceOrigin -or -not (Test-EquivalentGitRemoteUrl -Left $sourceOrigin -Right ([string]$repository.url))) { throw "Repository '$repositoryId' workspaceCloneSource origin does not match its configured repository URL." }
+            $sourceBaseRef = $null
+            foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
+                if (Test-TaskWorkspaceGitRef -WorkingDirectory $cloneSource -Reference $candidate) { $sourceBaseRef = $candidate; break }
+            }
+            if (-not $sourceBaseRef) { throw "Repository '$repositoryId' workspaceCloneSource is missing base branch '$baseBranch'." }
+            $baseSha = (Invoke-TaskWorkspaceGit -WorkingDirectory $cloneSource -Arguments @('rev-parse',$sourceBaseRef) | Select-Object -First 1).Trim()
+        }
+        $cloneArguments = [Collections.Generic.List[string]]::new()
+        foreach ($argument in @('clone','--origin','origin')) { $cloneArguments.Add($argument) }
+        if ($cloneSource) {
+            $cloneArguments.Add('--no-hardlinks')
+            $cloneArguments.Add($cloneSource)
+        }
+        else {
+            $cloneArguments.Add([string]$repository.url)
+        }
+        $cloneArguments.Add($clonePath)
         New-Item -ItemType Directory -Path (Split-Path -Parent $clonePath) -Force | Out-Null
-        $cloneOutput = @(Invoke-TaskWorkspaceGit -WorkingDirectory (Split-Path -Parent $clonePath) -Arguments @('clone','--origin','origin',([string]$repository.url),$clonePath))
+        $cloneOutput = @(Invoke-TaskWorkspaceGit -WorkingDirectory (Split-Path -Parent $clonePath) -Arguments ([string[]]$cloneArguments.ToArray()))
         $cloneCreatedByThisRun = Test-Path -LiteralPath $clonePath
         if ($LASTEXITCODE -ne 0) { throw "git clone failed for repository '$repositoryId': $($cloneOutput -join [Environment]::NewLine)" }
+        if ($cloneSource) { Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('remote','set-url','origin',([string]$repository.url)) | Out-Null }
         $canonicalOrigin = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('remote','get-url','origin') | Select-Object -First 1).Trim()
-        if (-not $canonicalOrigin) { throw "Clone for '$repositoryId' has no origin URL." }
-        $baseRef = "origin/$([string]$config.runtime.defaultBaseBranch)"
-        $baseSha = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('rev-parse',$baseRef) | Select-Object -First 1).Trim()
+        if (-not $canonicalOrigin -or -not (Test-EquivalentGitRemoteUrl -Left $canonicalOrigin -Right ([string]$repository.url))) { throw "Clone for '$repositoryId' does not retain the configured origin URL." }
+        if ($cloneSource) {
+            Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('cat-file','-e',"$baseSha^{commit}") | Out-Null
+        }
+        else {
+            $baseRef = "origin/$baseBranch"
+            $baseSha = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('rev-parse',$baseRef) | Select-Object -First 1).Trim()
+        }
         Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('checkout','-b',$branch,$baseSha) | Out-Null
-        $manifest = [pscustomobject][ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId=$repositoryId; clonePath=$clonePath; canonicalOrigin=$canonicalOrigin; baseSha=$baseSha; branch=$branch; lifecycle='provisioned'; runId=$RunId; leaseId=$LeaseId; createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
+        $manifest = [pscustomobject][ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId=$repositoryId; clonePath=$clonePath; canonicalOrigin=$canonicalOrigin; cloneSource=$cloneSource; baseBranch=$baseBranch; baseSha=$baseSha; branch=$branch; lifecycle='provisioned'; runId=$RunId; leaseId=$LeaseId; createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
         Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
         $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest))
     }

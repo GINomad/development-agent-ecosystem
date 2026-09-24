@@ -1,0 +1,78 @@
+{
+  "fields": {
+    "Custom.ROAMCategory": "Owned",
+    "Microsoft.VSTS.CMMI.MitigationPlan": "<div>Check in immediately with Security team to verify that iFrame can or cannot be used to embed DevExpress component in Economics app. </div>",
+    "Microsoft.VSTS.Common.Priority": 1,
+    "Microsoft.VSTS.Common.Severity": "1 - Critical",
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-22T16:23:55.567Z",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AssignedTo": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MjNmODM3NTctMzhhNS03ODVkLWJlNDMtYmUzMWExYjEzODBj"
+        }
+      },
+      "descriptor": "aad.MjNmODM3NTctMzhhNS03ODVkLWJlNDMtYmUzMWExYjEzODBj",
+      "displayName": "Nestor Piazuelo Alonso",
+      "id": "23f83757-38a5-685d-be43-be31a1b1380c",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MjNmODM3NTctMzhhNS03ODVkLWJlNDMtYmUzMWExYjEzODBj",
+      "uniqueName": "nestor.piazuelo@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/23f83757-38a5-685d-be43-be31a1b1380c"
+    },
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.ChangedDate": "2026-09-22T16:26:07.373Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.CreatedDate": "2026-09-22T16:23:55.567Z",
+    "System.Description": "<div>Iframes (inline frames) are widely used to embed thirdparty content such as videos, maps, ads, and forms. While convenient, they introduce additional trust boundaries and can be exploited for serious security attacks if not properly secured.<br> </div>",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.1",
+    "System.Parent": 1874388,
+    "System.Reason": "Moved to state New",
+    "System.State": "New",
+    "System.Tags": "PI 26.3",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Will IFrame be approved by Security?",
+    "System.WorkItemType": "Risk"
+  },
+  "id": 1878698,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.CMMI.MitigationPlan": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+    }
+  ],
+  "rev": 3,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1878698"
+}

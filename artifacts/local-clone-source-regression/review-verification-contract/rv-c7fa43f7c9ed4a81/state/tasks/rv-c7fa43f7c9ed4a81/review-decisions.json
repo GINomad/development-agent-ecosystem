@@ -1,0 +1,26 @@
+{
+  "taskId": "rv-c7fa43f7c9ed4a81",
+  "decisions": [
+    {
+      "findingId": "REV-101",
+      "reviewedRevision": "rev-4",
+      "reviewArtifactSha256": "15bb572cf7d50a9ceb18927788278fd7af424647dcb717a1062ee17b351dbe98",
+      "verificationVerdict": "confirmed",
+      "decision": "approved",
+      "decidedAtUtc": "2026-09-24T17:41:43.1500288Z",
+      "decidedBy": "test-user",
+      "note": ""
+    },
+    {
+      "findingId": "REV-101",
+      "reviewedRevision": "rev-4",
+      "reviewArtifactSha256": "15bb572cf7d50a9ceb18927788278fd7af424647dcb717a1062ee17b351dbe98",
+      "verificationVerdict": "confirmed",
+      "decision": "bypassed",
+      "decidedAtUtc": "2026-09-24T17:41:43.6278221Z",
+      "decidedBy": "test-user",
+      "note": "Accepted temporarily and tracked as explicit review debt.",
+      "techDebtItemId": "TD-REV-101"
+    }
+  ]
+}

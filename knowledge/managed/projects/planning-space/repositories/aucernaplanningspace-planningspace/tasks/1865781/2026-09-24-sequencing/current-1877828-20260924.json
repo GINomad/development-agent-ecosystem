@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:26.8835800Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1877828,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1877828",
+      "revision": 5,
+      "type": "User Story",
+      "title": "[Report Designer] Link report metadata variables",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum",
+      "changedDate": "09/21/2026 16:12:36",
+      "description": "<p><b>As a</b> Report Author, <b>I want</b> to link report metadata variables, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope and estimate </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><p><b>Optimistic: 32 hours / 8 SP. Pessimistic: 32 hours / 8 SP.</b> These are provisional effort estimates including development, review, automated tests and QA; 1 SP = 4 hours and 2 SP = one assumed 8-hour person-day. Scenario labels describe desktop parity versus the initial requirements interpretation, not statistical bounds. </p><h3>Implementation plan </h3><p>1. Map each required category/leaf from ADO1869322 to desktop definitions and its existing pseudo-variable provider. Record unsupported or unclear mappings instead of substituting similarly named fields. </p><p>2. Reuse <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links) creation/persistence while preserving pseudo-variable identity and type; avoid duplicating linking code for each category. </p><p>3. Apply existing pseudo-variable eligibility rules. Expose read-only metadata; editable settings are owned by <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877829\">1877829</a> (Configure variable link attributes and headers). </p><p>4. Add fixture-based roundtrip and generator checks across the supported categories and both template types. </p><h3>Open questions / held behavior </h3><p>Question 1: Confirm behavior of unavailable context, absent incremental settings, and missing metadata values from desktop/provider tests. </p><p>Question 2: Identify any category/leaf whose ADO wording does not uniquely map to a domain definition; hold that leaf until resolved. </p><p>Scope boundary: comparison-run metadata belongs to <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877830\">1877830</a> (Configure run-specific links and comparison metadata). Discount Rate slots belong to1869369; Date/Formula Range belongs to1869339. Risks: incorrect provider mapping and inappropriate property availability. Depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links). </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are estimated separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+      "acceptanceCriteria": "<p>AC1: Confirmed metadata leaves can be linked using the same persistent mechanism as economic variables: Project Settings/Dates, Calculation Settings, Report Options, Comments, Discount Date/Method and Incremental Project Info. </p><p>AC2: Each metadata link preserves its domain identity and desktop-defined type after save/reopen. Comments is a linkable value, not merely a category label. </p><p>AC3: Metadata appears in the shared tree for Standard and One Line Summary templates according to the confirmed desktop eligibility matrix. </p><p>AC4: Existing generator output for representative metadata links matches the corresponding desktop fixture; no new hierarchy configuration or calculation behavior is introduced. </p>",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

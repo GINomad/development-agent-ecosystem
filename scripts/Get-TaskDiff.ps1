@@ -92,7 +92,7 @@ function Get-RepositoryDiffState {
         $baseRef = "$diffTarget^"
     }
     else {
-        $baseBranch = [string]$config.runtime.defaultBaseBranch
+        $baseBranch = if ($Repository.PSObject.Properties['baseBranch'] -and -not [string]::IsNullOrWhiteSpace([string]$Repository.baseBranch)) { [string]$Repository.baseBranch } else { [string]$config.runtime.defaultBaseBranch }
         $baseRef = $null
         foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
             $null = Invoke-GitText -Workspace $workspace -Arguments @('show-ref','--verify','--quiet',$candidate) -AllowedExitCodes @(0,1)

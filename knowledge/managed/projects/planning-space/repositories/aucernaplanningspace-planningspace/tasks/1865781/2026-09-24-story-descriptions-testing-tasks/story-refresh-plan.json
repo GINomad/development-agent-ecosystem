@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1869322,
+    "title": "[Report Designer] Browse and filter report variables",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1869322.json",
+    "newDescriptionLength": 4742,
+    "createTestingTask": true
+  },
+  {
+    "id": 1869334,
+    "title": "[Report Designer] Configure template time-series orientation",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1869334.json",
+    "newDescriptionLength": 1510,
+    "createTestingTask": true
+  },
+  {
+    "id": 1869339,
+    "title": "[Report Designer] Support Range links (Date Range, Formula Range)",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1869339.json",
+    "newDescriptionLength": 2211,
+    "createTestingTask": true
+  },
+  {
+    "id": 1869369,
+    "title": "[Report Designer] Support Discount Rate links",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1869369.json",
+    "newDescriptionLength": 1854,
+    "createTestingTask": true
+  },
+  {
+    "id": 1877820,
+    "title": "[Report Designer] Create and persist economic variable links",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1877820.json",
+    "newDescriptionLength": 4621,
+    "createTestingTask": true
+  },
+  {
+    "id": 1877828,
+    "title": "[Report Designer] Link report metadata variables",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1877828.json",
+    "newDescriptionLength": 4266,
+    "createTestingTask": true
+  },
+  {
+    "id": 1877829,
+    "title": "[Report Designer] Configure variable link attributes and headers",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1877829.json",
+    "newDescriptionLength": 4398,
+    "createTestingTask": true
+  },
+  {
+    "id": 1877830,
+    "title": "[Report Designer] Configure run-specific links and comparison metadata",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1877830.json",
+    "newDescriptionLength": 3994,
+    "createTestingTask": true
+  },
+  {
+    "id": 1877832,
+    "title": "[Report Designer] Manage links and preserve them during spreadsheet edits",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1877832.json",
+    "newDescriptionLength": 5092,
+    "createTestingTask": true
+  },
+  {
+    "id": 1880262,
+    "title": "[Report Designer] Integrate the Report Designer component into Planning Space Web",
+    "updatePatch": "C:\\Users\\okruk2\\Documents\\Codex\\2026-09-21\\https-quorumsoftware-visualstudio-com-quorum-workitems\\outputs\\update-description-1880262.json",
+    "newDescriptionLength": 3377,
+    "createTestingTask": false
+  }
+]

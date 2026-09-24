@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "taskId": "rv-ddbce78c031b4e5f",
+  "updatedAtUtc": "2026-09-24T16:58:44.1684095Z",
+  "snapshots": [
+    {
+      "reviewedRevision": "rev-1",
+      "requirementsRevision": "requirements-v1",
+      "sha256": "c65ad963f65b096f4e660b1d948dbc4cc44ce44c79d95b4981733868b3c9753c",
+      "relativePath": "review-history/review-c65ad963f65b096f4e660b1d948dbc4cc44ce44c79d95b4981733868b3c9753c.json",
+      "capturedAtUtc": "2026-09-24T16:58:38.3188457Z"
+    },
+    {
+      "reviewedRevision": "rev-2",
+      "requirementsRevision": "requirements-v1",
+      "sha256": "661fe96e9029c2f3f3643754fda674418e6b6cff2fa039757b2fbc118fb0cfae",
+      "relativePath": "review-history/review-661fe96e9029c2f3f3643754fda674418e6b6cff2fa039757b2fbc118fb0cfae.json",
+      "capturedAtUtc": "2026-09-24T16:58:39.2060558Z"
+    },
+    {
+      "reviewedRevision": "rev-3",
+      "requirementsRevision": "requirements-v1",
+      "sha256": "27edd4e5530c51ab10f294df4307f78a66bb662c7efd29dc9f0eb300f1b60e4d",
+      "relativePath": "review-history/review-27edd4e5530c51ab10f294df4307f78a66bb662c7efd29dc9f0eb300f1b60e4d.json",
+      "capturedAtUtc": "2026-09-24T16:58:39.3446712Z"
+    },
+    {
+      "reviewedRevision": "rev-4",
+      "requirementsRevision": "requirements-v1",
+      "sha256": "80fc04c07dab0291edb12353553506e1dca7cbca460c0ba72945d3d1c1144cec",
+      "relativePath": "review-history/review-80fc04c07dab0291edb12353553506e1dca7cbca460c0ba72945d3d1c1144cec.json",
+      "capturedAtUtc": "2026-09-24T16:58:39.515889Z"
+    },
+    {
+      "reviewedRevision": "rev-5",
+      "requirementsRevision": "requirements-v1",
+      "sha256": "6d00b8bdae2ce1b110004851ca7c1709ada303c9f25f3ada0852a5ff32339ea1",
+      "relativePath": "review-history/review-6d00b8bdae2ce1b110004851ca7c1709ada303c9f25f3ada0852a5ff32339ea1.json",
+      "capturedAtUtc": "2026-09-24T16:58:44.1683729Z"
+    }
+  ]
+}

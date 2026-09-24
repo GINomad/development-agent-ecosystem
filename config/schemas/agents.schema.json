@@ -1452,6 +1452,14 @@
             "type": "string",
             "minLength": 1
           },
+          "workspaceCloneSource": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseBranch": {
+            "type": "string",
+            "minLength": 1
+          },
           "allowedExecutionModes": {
             "type": "array",
             "uniqueItems": true,

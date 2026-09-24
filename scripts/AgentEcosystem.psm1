@@ -184,6 +184,8 @@ function Assert-EcosystemConfig {
     foreach ($repository in @($Config.repositories)) {
         if (-not $repository.id -or $repositoryIds.ContainsKey([string]$repository.id)) { throw 'Repository IDs must be unique and non-empty.' }
         $repositoryIds[[string]$repository.id] = $true
+        if ($repository.PSObject.Properties['baseBranch'] -and [string]::IsNullOrWhiteSpace([string]$repository.baseBranch)) { throw "Repository '$($repository.id)' baseBranch must not be blank when configured." }
+        if ($repository.PSObject.Properties['workspaceCloneSource'] -and [string]::IsNullOrWhiteSpace([string]$repository.workspaceCloneSource)) { throw "Repository '$($repository.id)' workspaceCloneSource must not be blank when configured." }
         if ([string]::IsNullOrWhiteSpace([string]$repository.localWorkspace)) { throw "Repository '$($repository.id)' requires a product localWorkspace." }
         $productWorkspace = [IO.Path]::GetFullPath(([Environment]::ExpandEnvironmentVariables([string]$repository.localWorkspace) -replace '/', [IO.Path]::DirectorySeparatorChar))
         if (Test-EcosystemRootInsideProductWorkspace -Left $ecosystemRoot -Right $productWorkspace) {

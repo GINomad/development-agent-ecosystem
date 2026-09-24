@@ -1,0 +1,130 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<p>AC1: Selecting a single existing linked range resolves its persisted association for inspection. Unlink removes the association and updates the Linked filter; effects on workbook content must follow the confirmed desktop rule, not an assumed clearing policy. </p><p>AC2: After unlink/save/reopen, no stale link record or link-owned named range remains according to the desktop cleanup contract. </p><p>AC3: For EACH structural-edit scenario accepted into the matrix below, perform the edit, save, fresh reopen and report generation; resulting range associations and values match the desktop reference. This AC is conditional and cannot be signed off before the matrix is resolved. </p><p>AC4: An edit failure must not silently persist mismatched workbook/link metadata. Unsupported operations require an explicitly approved handling policy; rejection is not assumed to be acceptable desktop parity. </p>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1999997862.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-21T15:54:51.493Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 8.0,
+    "System.AreaId": 6062,
+    "System.AreaLevel1": "Quorum",
+    "System.AreaLevel2": "PEnR",
+    "System.AreaLevel3": "Planning Space",
+    "System.AreaLevel4": "Economics",
+    "System.AreaLevel5": "Veles Team",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AuthorizedAs": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.AuthorizedDate": "2026-09-24T14:31:26.893Z",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-24T14:31:26.893Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-21T15:54:51.493Z",
+    "System.Description": "<h2>What needs to be done </h2> <p>Allow an author to find and remove an existing variable link and keep link metadata synchronized with workbook ranges during the supported row, column, range, and worksheet edits. Removing a link must clean up its domain association and named range according to desktop behavior without damaging unrelated cell content. </p> <p>For every supported structural edit, the workbook, named ranges, and stored link list must remain consistent after save and reopen. Copy, move, overlap, deletion, and sheet operations must follow verified desktop behavior so that report generation never uses orphaned or duplicated links. </p><hr><h2>Existing description and implementation details </h2><p><b>As a</b> Report Author, <b>I want</b> to manage links and preserve them during spreadsheet edits, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><h3>Implementation plan </h3><p>1. Build a scenario matrix from desktop commands/helper code and actual fixtures: insert/delete rows/columns, copy/cut/paste linked ranges, moving/rebinding ranges, sheet rename/delete and overlapping/mixed selections. For each record expected workbook, named ranges, link metadata and generator result. </p><p>2. Mark each scenario confirmed/unknown plus source revision. Determine what the chosen component does automatically and where a domain adapter is required. </p><p>3. Implement single-link lookup and unlink using the confirmed cleanup semantics; connect changes to <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869322\">1869322</a> (Browse and filter report variables) refresh and the shared save unit. </p><p>4. Implement ONLY confirmed structural-edit behavior in the agreed scope. Preserve link identifiers or regenerate them according to evidence; do not blindly clone metadata on paste. </p><p>5. Add before/edit/save/reopen/generate regression fixtures per confirmed scenario. Split scenarios into additional PBIs if complexity exceeds the agreed story scope rather than silently dropping desktop behavior. </p><h3>Open questions / held behavior </h3><p>Question 1: Does unlink preserve cell values, formulas, formatting and headers? What named-range cleanup is required? </p><p>Question 2: Exact behavior for copy versus move, overlapping links, multi-link selections, deleting linked rows and deleting/renaming sheets. </p><p>Question 3: Can a link's Range be edited directly without recreation? What validations/side effects apply? </p><p>Question 4: Which operations belong in this story, and how are remaining desktop scenarios decomposed? This affects scope, not permission to invent new behavior. </p><p>Risks: orphaned metadata, duplicate link identities, subtle engine-specific coordinate changes. Depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links) and shared editor mutation/save infrastructure. Integration with <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877829\">1877829</a> (Configure variable link attributes and headers)/<a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877830\">1877830</a> (Configure run-specific links and comparison metadata) must preserve all settings during edits. </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are tracked separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+    "System.Id": 1877832,
+    "System.IterationId": 5755,
+    "System.IterationLevel1": "Quorum",
+    "System.IterationLevel2": "PI 26.3",
+    "System.IterationLevel3": "26.3.4",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.4",
+    "System.NodeName": "Veles Team",
+    "System.Parent": 1865781,
+    "System.PersonId": 96041663,
+    "System.Reason": "New",
+    "System.Rev": 10,
+    "System.RevisedDate": "9999-01-01T00:00:00Z",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[Report Designer] Manage links and preserve them during spreadsheet edits",
+    "System.Watermark": 11267440,
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_System.ExtensionMarker": true,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_System.ExtensionMarker": true,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_System.ExtensionMarker": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_System.ExtensionMarker": true
+  },
+  "id": 1877832,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880056"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+    },
+    {
+      "attributes": {
+        "comment": "Parent User Story 1877832",
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1880292"
+    }
+  ],
+  "rev": 10,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1877832"
+}

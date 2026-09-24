@@ -1,0 +1,17 @@
+{
+  "failureId": "632d5d3f9ef3413d90bc20ed9535a2cf",
+  "occurrenceId": "66cebf9bd66c49ad8055dde5ec60ac3a",
+  "correlationId": "cause-b26a8cec24a0ac0620ce6272",
+  "failureSignature": "ffb85f41121f6add55a57ecca7eaa86c10579a5ef085ec0fc987199ee8e18990",
+  "rootCauseFingerprint": "b26a8cec24a0ac0620ce6272a4e22f5b7340feccfb5bc72e574c534fde4a0f3d",
+  "taskId": "target-terminal-4b928a39ce8a4a1c89e89819336c63fe",
+  "agentId": "pipeline_monitor",
+  "stage": "pipeline_watcher_terminal_evidence",
+  "occurredAtUtc": "2026-09-24T16:57:54.7173002Z",
+  "summary": "Synthetic watcher did not produce terminal evidence.",
+  "exitCode": null,
+  "diagnostic": "pipeline-result.json was absent.",
+  "evidence": [
+    "run:synthetic"
+  ]
+}

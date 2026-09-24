@@ -1,0 +1,22 @@
+{
+  "taskId": "task-weekly-learning",
+  "status": "completed",
+  "completedAtUtc": "2026-08-13T11:00:00Z",
+  "repositories": [
+    "repo-one"
+  ],
+  "outcomes": [],
+  "decisions": [
+    "Use the focused review style rule."
+  ],
+  "verification": [
+    "Reviewer approved REV-201."
+  ],
+  "knowledgeUpdates": [
+    "STYLE-001"
+  ],
+  "artifacts": [
+    "knowledge-update.json"
+  ],
+  "residualItems": []
+}
