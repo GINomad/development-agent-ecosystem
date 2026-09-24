@@ -1,5 +1,7 @@
 # Development Agent Ecosystem
 
+For the standalone **GitHub Copilot agents in VS Code**, follow [INSTALL-COPILOT-VSCODE-AGENTS.md](INSTALL-COPILOT-VSCODE-AGENTS.md). The `copilot` branch adds eight native agent profiles, five portable skills, role routing, and private project knowledge outside product repositories, following the standalone Claude installer. Profiles use the model selected in Copilot. CLI/dashboard migration is outside this standalone pack; the full Codex runtime below remains separate. Maintainers can validate the pack with `./tests/Test-CopilotAgentPack.ps1`.
+
 An evidence-first local Codex ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, candidate code review, independent review verification, and Azure Pipelines monitoring.
 
 The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Codex agent TOML definitions. Do not edit generated TOML files manually.
