@@ -1,0 +1,64 @@
+{
+  "taskId": "duplicate-question-8fe67ad060f84f87a93afe34b74baadf",
+  "selector": "synthetic-duplicate-question",
+  "mode": "manual",
+  "taskName": "synthetic-duplicate-question",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-duplicate-question",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-25T04:58:35.7129544Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "waiting",
+      "updatedAtUtc": "2026-09-25T04:58:36.4956461Z",
+      "message": "Your decision: Provide the refined sensitivity mapping.\r\nWhy work is paused: The ecosystem cannot infer this task-specific decision safely from repository evidence.\r\nChoices:\r\n1. Provide the requested decision.\r\n2. Revise the task so the decision is no longer required.\r\nRecommended choice: Provide the requested decision.\r\nWhy I recommend it: Providing the decision preserves the requested scope and lets the owning agent continue."
+    }
+  },
+  "lastAgentMessage": "Your decision: Provide the refined sensitivity mapping.\r\nWhy work is paused: The ecosystem cannot infer this task-specific decision safely from repository evidence.\r\nChoices:\r\n1. Provide the requested decision.\r\n2. Revise the task so the decision is no longer required.\r\nRecommended choice: Provide the requested decision.\r\nWhy I recommend it: Providing the decision preserves the requested scope and lets the owning agent continue.",
+  "updatedAtUtc": "2026-09-25T04:58:36.9428969Z",
+  "lastCommentAtUtc": "2026-09-25T04:58:36.9428969Z",
+  "hasUnreadUserComments": true,
+  "status": "interrupted",
+  "currentStage": "input_received",
+  "lastMessage": "A user answer is ready. Resume the workflow to continue from the input gate."
+}

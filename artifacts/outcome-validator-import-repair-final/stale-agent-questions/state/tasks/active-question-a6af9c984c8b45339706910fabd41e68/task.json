@@ -1,0 +1,62 @@
+{
+  "taskId": "active-question-a6af9c984c8b45339706910fabd41e68",
+  "selector": "synthetic-active-question",
+  "mode": "manual",
+  "taskName": "synthetic-active-question",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-active-question",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-25T04:58:34.937372Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "waiting",
+      "updatedAtUtc": "2026-09-25T04:58:35.2628426Z",
+      "message": "Your decision: This input is still required.\r\nWhy work is paused: The ecosystem cannot infer this task-specific decision safely from repository evidence.\r\nChoices:\r\n1. Provide the requested decision.\r\n2. Revise the task so the decision is no longer required.\r\nRecommended choice: Provide the requested decision.\r\nWhy I recommend it: Providing the decision preserves the requested scope and lets the owning agent continue."
+    }
+  },
+  "status": "waiting_for_input",
+  "currentStage": "waiting_for_input",
+  "lastMessage": "Your decision: This input is still required.\r\nWhy work is paused: The ecosystem cannot infer this task-specific decision safely from repository evidence.\r\nChoices:\r\n1. Provide the requested decision.\r\n2. Revise the task so the decision is no longer required.\r\nRecommended choice: Provide the requested decision.\r\nWhy I recommend it: Providing the decision preserves the requested scope and lets the owning agent continue.",
+  "updatedAtUtc": "2026-09-25T04:58:35.2628426Z",
+  "lastAgentMessage": "Your decision: This input is still required.\r\nWhy work is paused: The ecosystem cannot infer this task-specific decision safely from repository evidence.\r\nChoices:\r\n1. Provide the requested decision.\r\n2. Revise the task so the decision is no longer required.\r\nRecommended choice: Provide the requested decision.\r\nWhy I recommend it: Providing the decision preserves the requested scope and lets the owning agent continue."
+}

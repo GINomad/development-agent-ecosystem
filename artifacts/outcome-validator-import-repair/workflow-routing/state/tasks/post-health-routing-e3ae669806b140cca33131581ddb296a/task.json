@@ -1,0 +1,64 @@
+{
+  "taskId": "post-health-routing-e3ae669806b140cca33131581ddb296a",
+  "selector": "synthetic-post-health-routing",
+  "mode": "manual",
+  "taskName": "synthetic-post-health-routing",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-post-health-routing",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-25T04:57:55.3029621Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:56.0358042Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "developer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:56.3018593Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "reviewer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:56.575594Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "review_verifier": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:56.8281914Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "pipeline_monitor": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:57.1027473Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "knowledge_keeper": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:57.3789454Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "health_check": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T04:57:58.2346167Z",
+      "message": "Synthetic Health repair completed."
+    }
+  },
+  "lastCommentAtUtc": "2026-09-25T04:57:55.7039068Z",
+  "status": "interrupted",
+  "lastMessage": "Orchestrator routed input to: health_check.",
+  "currentStage": "synthetic_health_completed",
+  "hasUnreadUserComments": true,
+  "updatedAtUtc": "2026-09-25T04:57:58.2346167Z",
+  "lastAgentMessage": "Synthetic Health repair completed."
+}

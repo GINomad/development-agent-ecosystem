@@ -10,6 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+
 function Get-CountPairs {
     param([AllowNull()][string] $Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return @() }

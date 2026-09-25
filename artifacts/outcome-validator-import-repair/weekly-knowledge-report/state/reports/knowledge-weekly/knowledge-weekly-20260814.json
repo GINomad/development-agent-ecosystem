@@ -1,0 +1,79 @@
+{
+  "reportId": "knowledge-weekly-20260814",
+  "generatedAtUtc": "2026-09-25T04:57:27.7940735Z",
+  "period": {
+    "startUtc": "2026-08-07T07:00:00.0000000Z",
+    "endUtc": "2026-08-14T07:00:00.0000000Z",
+    "timeZone": "FLE Standard Time",
+    "schedule": "Friday 10:00 local time"
+  },
+  "summary": {
+    "verifiedLearning": 1,
+    "skillsAndPractices": 1,
+    "supersededLearning": 1,
+    "decisions": 1,
+    "completedTasks": 1
+  },
+  "skillsAndPractices": [
+    {
+      "taskId": "task-weekly-learning",
+      "id": "STYLE-001",
+      "status": "verified",
+      "statement": "Prefer <safe> focused style rules.",
+      "source": "review:REV-201",
+      "revision": "git:abc123",
+      "observedAtUtc": "08/13/2026 08:00:00",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/coding-style.md"
+    }
+  ],
+  "verifiedLearning": [
+    {
+      "taskId": "task-weekly-learning",
+      "id": "STYLE-001",
+      "status": "verified",
+      "statement": "Prefer <safe> focused style rules.",
+      "source": "review:REV-201",
+      "revision": "git:abc123",
+      "observedAtUtc": "08/13/2026 08:00:00",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/coding-style.md"
+    }
+  ],
+  "supersededLearning": [
+    {
+      "taskId": "task-weekly-learning",
+      "id": "OLD-001",
+      "status": "superseded",
+      "statement": "An older process rule was replaced.",
+      "source": "decision:replacement",
+      "revision": "git:def456",
+      "observedAtUtc": "08/13/2026 10:00:00",
+      "observedBy": "knowledge_keeper",
+      "targetPath": "knowledge/decisions/process.md"
+    }
+  ],
+  "decisions": [
+    {
+      "taskId": "task-weekly-learning",
+      "statement": "Use the focused review style rule.",
+      "source": "C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair\\weekly-knowledge-report\\state\\tasks\\task-weekly-learning\\task-summary.json"
+    }
+  ],
+  "completedTasks": [
+    {
+      "taskId": "task-weekly-learning",
+      "completedAtUtc": "08/13/2026 11:00:00",
+      "repositories": [
+        "repo-one"
+      ],
+      "knowledgeUpdates": [
+        "STYLE-001"
+      ]
+    }
+  ],
+  "sources": [
+    "C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair\\weekly-knowledge-report\\state\\tasks\\task-weekly-learning\\knowledge-update.json",
+    "C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair\\weekly-knowledge-report\\state\\tasks\\task-weekly-learning\\task-summary.json"
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "taskId": "activity-ac23525d5e86430583e5af5c59f48ed2",
+  "selector": "synthetic-activity",
+  "mode": "manual",
+  "taskName": "synthetic-activity",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-activity",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "status": "created",
+  "createdAtUtc": "2026-09-25T04:57:36.6786491Z",
+  "updatedAtUtc": "2026-09-25T04:57:36.6786491Z",
+  "currentStage": "not-started",
+  "lastMessage": "Task created. Workflow has not started yet.",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    }
+  }
+}

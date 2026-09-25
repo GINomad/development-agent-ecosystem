@@ -1,0 +1,8 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = true
+	symlinks = false
+	ignorecase = true
+[remote "origin"]
+	url = C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair\\workspace-scheduler-17a4b5fe825a4017a50bc1daf3e1f9a1\\source

@@ -1,0 +1,62 @@
+{
+  "taskId": "target-terminal-d34649b7a4c742438d500098f0708889",
+  "selector": "synthetic-target-terminal",
+  "mode": "manual",
+  "taskName": "synthetic-target-terminal",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-target-terminal",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "status": "created",
+  "createdAtUtc": "2026-09-25T04:58:32.2280451Z",
+  "lastMessage": "Task created. Workflow has not started yet.",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T04:58:32.6973988Z",
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "failed",
+      "updatedAtUtc": "2026-09-25T04:58:33.3788087Z",
+      "message": "Synthetic watcher did not produce terminal evidence."
+    }
+  },
+  "currentStage": "pipeline_watcher_terminal_evidence",
+  "updatedAtUtc": "2026-09-25T04:58:33.3788087Z",
+  "lastAgentMessage": "Synthetic watcher did not produce terminal evidence."
+}

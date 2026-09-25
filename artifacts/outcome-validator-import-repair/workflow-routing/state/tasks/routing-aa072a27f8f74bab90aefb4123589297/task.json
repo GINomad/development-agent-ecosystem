@@ -1,0 +1,64 @@
+{
+  "taskId": "routing-aa072a27f8f74bab90aefb4123589297",
+  "selector": "synthetic-routing",
+  "mode": "manual",
+  "taskName": "synthetic-routing",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-routing",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-25T04:57:44.544241Z",
+  "revision": 1,
+  "agentStatuses": {
+    "developer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T04:57:44.9333694Z",
+      "message": "Synthetic completed target must remain preserved during routing."
+    },
+    "reviewer": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T04:57:49.0135281Z",
+      "message": ""
+    },
+    "orchestrator": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T04:57:50.9998658Z",
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:52.3279083Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "review_verifier": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:52.5935386Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "pipeline_monitor": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:52.8327713Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "knowledge_keeper": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T04:57:53.078856Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": "2026-09-25T04:57:53.3201058Z",
+      "message": "Selected by Orchestrator execution mode 'ecosystem-repair'."
+    }
+  },
+  "lastAgentMessage": "Selected by Orchestrator execution mode 'ecosystem-repair'.",
+  "lastCommentAtUtc": "2026-09-25T04:57:54.4130011Z",
+  "hasUnreadUserComments": true,
+  "status": "interrupted",
+  "currentStage": "orchestration_routed",
+  "lastMessage": "Orchestrator routed input to: health_check.",
+  "updatedAtUtc": "2026-09-25T04:57:54.9021264Z"
+}

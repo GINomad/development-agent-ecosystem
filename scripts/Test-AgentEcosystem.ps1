@@ -1579,6 +1579,8 @@ if ($healthRecoveryScript -notmatch 'Resolve-TaskWorkspaceLeaseContext.+-Expecte
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
 if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'agentFingerprints' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'" -or $workflowScript -notmatch 'Get-AgentResumePlan\.ps1.+-PreserveArtifactIndex') { throw 'Per-agent resume artifact fingerprinting, completed-outcome filtering, or non-consuming bookkeeping is incomplete.' }
 if ($publishOutcomeScript -notmatch 'Test-AgentOutcomeArtifact\.ps1' -or $developerPrompt -notmatch 'New-DeveloperPublicationEvidence\.ps1' -or $developerPrompt -notmatch 'publicationEvidenceId') { throw 'Developer final-command evidence generation or semantic outcome validation is not wired end to end.' }
+$outcomeValidatorScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -Raw
+if ($outcomeValidatorScript -notmatch "Import-Module \(Join-Path \$PSScriptRoot 'AgentEcosystem\.psm1'\) -Force") { throw 'Outcome artifact validator must import AgentEcosystem so standalone validation can resolve Get-EcosystemFileSha256.' }
 
 $outcomeValidationRoot = Join-Path $OutputRoot ('outcome-validation-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $outcomeValidationRoot -Force | Out-Null

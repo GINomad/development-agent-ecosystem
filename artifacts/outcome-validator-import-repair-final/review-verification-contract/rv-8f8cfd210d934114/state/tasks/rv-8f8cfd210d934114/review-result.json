@@ -1,0 +1,119 @@
+{
+  "taskId": "rv-8f8cfd210d934114",
+  "reviewedRevision": "rev-5",
+  "requirementsRevision": "requirements-v1",
+  "requirementTraceability": [
+    {
+      "requirementId": "REQ-1",
+      "requirementText": "Review must use an independent verifier.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "synthetic",
+          "filePath": "src/example.ps1",
+          "startLine": 17,
+          "evidence": "The gate is represented at this line."
+        }
+      ],
+      "testEvidence": [
+        "Targeted review verification test"
+      ],
+      "notes": "Synthetic contract fixture."
+    }
+  ],
+  "reviewCoverage": [
+    {
+      "dimension": "requirements",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for requirements"
+      ],
+      "notes": "Reviewed requirements against the current revision."
+    },
+    {
+      "dimension": "correctness",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for correctness"
+      ],
+      "notes": "Reviewed correctness against the current revision."
+    },
+    {
+      "dimension": "security",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for security"
+      ],
+      "notes": "Reviewed security against the current revision."
+    },
+    {
+      "dimension": "regression",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for regression"
+      ],
+      "notes": "Reviewed regression against the current revision."
+    },
+    {
+      "dimension": "testing",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for testing"
+      ],
+      "notes": "Reviewed testing against the current revision."
+    },
+    {
+      "dimension": "maintainability",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for maintainability"
+      ],
+      "notes": "Reviewed maintainability against the current revision."
+    },
+    {
+      "dimension": "performance",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for performance"
+      ],
+      "notes": "Reviewed performance against the current revision."
+    },
+    {
+      "dimension": "concurrency",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for concurrency"
+      ],
+      "notes": "Reviewed concurrency against the current revision."
+    },
+    {
+      "dimension": "configuration-deployment",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for configuration-deployment"
+      ],
+      "notes": "Reviewed configuration-deployment against the current revision."
+    },
+    {
+      "dimension": "documentation",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for documentation"
+      ],
+      "notes": "Reviewed documentation against the current revision."
+    }
+  ],
+  "findings": [],
+  "heldScopeViolations": [],
+  "agentProcessFindings": [],
+  "findingLifecycle": [
+    {
+      "findingId": "REV-101",
+      "status": "unchanged",
+      "firstSeenRevision": "rev-1",
+      "lastObservedRevision": "rev-5",
+      "evidence": "REV-101 remains observable at rev-5 and is tracked by open TD-REV-101."
+    }
+  ],
+  "summary": "The finding remains observable but is represented by open bypass debt instead of the active decision gate."
+}

@@ -1,0 +1,31 @@
+{
+  "taskId": "rv-8f8cfd210d934114",
+  "items": [
+    {
+      "id": "TD-REV-101",
+      "sourceFindingId": "REV-101",
+      "title": "A valid task can skip its required gate.",
+      "createdAtUtc": "2026-09-25T04:58:26.6668913Z",
+      "createdBy": "test-user",
+      "previousReviewBindings": [
+        {
+          "reviewedRevision": "legacy",
+          "reviewArtifactSha256": "legacy",
+          "bypassReason": "Accepted temporarily and tracked as explicit review debt."
+        }
+      ],
+      "status": "open",
+      "severity": "high",
+      "category": "correctness",
+      "reviewArtifact": "C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair-final\\review-verification-contract\\rv-8f8cfd210d934114\\state\\tasks\\rv-8f8cfd210d934114\\review-result.json",
+      "reviewedRevision": "rev-4",
+      "reviewArtifactSha256": "1ebe9874b8879d9b7dd47de640b00d9bd5422ddbb2e8ad4bf3939da8dbe87cd0",
+      "reviewVerificationArtifact": "C:\\Repos\\development-agent-ecosystem\\artifacts\\outcome-validator-import-repair-final\\review-verification-contract\\rv-8f8cfd210d934114\\state\\tasks\\rv-8f8cfd210d934114\\review-verification.json",
+      "bypassReason": "Explicitly bypassed again after debt resolution.",
+      "evidence": "The current branch reproduces the incorrect transition.",
+      "impact": "A valid task can skip its required gate.",
+      "correctionDirection": "Preserve the gate until independent verification succeeds.",
+      "updatedAtUtc": "2026-09-25T04:58:27.3324768Z"
+    }
+  ]
+}
