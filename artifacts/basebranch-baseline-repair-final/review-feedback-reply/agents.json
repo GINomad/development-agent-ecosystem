@@ -1,0 +1,1063 @@
+{
+  "$schema": "./schemas/agents.schema.json",
+  "schemaVersion": "1.3.0",
+  "namespace": "development-ecosystem",
+  "runtime": {
+    "maxConcurrentAgents": 4,
+    "approvalPolicy": "on-request",
+    "stateRoot": "C:\\Repos\\development-agent-ecosystem\\artifacts\\basebranch-baseline-repair-final\\review-feedback-reply\\state",
+    "agentInstallRoot": "${CODEX_HOME}/agents",
+    "historyFormat": "jsonl",
+    "defaultBaseBranch": "main",
+    "executionGuard": {
+      "maxIdenticalFailures": 3,
+      "maxRunMinutes": 120,
+      "pollMilliseconds": 500
+    },
+    "contextLimits": {
+      "maxSourceFiles": 80,
+      "maxCommandOutputLines": 200,
+      "maxCommandOutputBytes": 65536,
+      "workflowLogTailLines": 200,
+      "ledgerTailLines": 60
+    },
+    "elevatedFallback": {
+      "enabled": true,
+      "useByDefault": true,
+      "requiresDashboardApproval": false,
+      "sandboxMode": "danger-full-access",
+      "installCompatibleAgentsOnDetection": true,
+      "agentProfileSuffix": "_host_compatible",
+      "compatibilityPromptPath": "${REPO_ROOT}/prompts/common/os-policy-compatibility.md",
+      "launchStrategy": "in-process-runspace"
+    }
+  },
+  "operation": {
+    "mode": "manual",
+    "manual": {
+      "requireTaskSelector": true
+    },
+    "automate": {
+      "pollIntervalMinutes": 360,
+      "dailyTime": "11:00",
+      "maxTasksPerRun": 10
+    }
+  },
+  "workflow": {
+    "orchestration": {
+      "enabled": true,
+      "agentId": "orchestrator",
+      "outcomeDrivenTransitions": true,
+      "transitionEntryPoint": "${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1",
+      "routeUntargetedComments": true,
+      "preserveExplicitTargets": true,
+      "forwardOutOfScopeComments": true,
+      "autoDispatchForwardedComments": true,
+      "allowMultipleTargets": true,
+      "fallbackAgentId": "requirements_analyst",
+      "routingArtifact": "workflow-routing.jsonl",
+      "executionModes": {
+        "full-delivery": {
+          "description": "Run the complete evidence, implementation, review, independent verification, pipeline, and final knowledge sequence.",
+          "agentSequence": [
+            "requirements_analyst",
+            "developer",
+            "reviewer",
+            "review_verifier",
+            "pipeline_monitor",
+            "knowledge_keeper"
+          ],
+          "codeChangesAllowed": true,
+          "continueAutomatically": true
+        },
+        "local-poc-delivery": {
+          "description": "Run the evidence, implementation, review, independent verification, and knowledge sequence for an isolated local-only POC. Pipeline and pull-request delivery are deliberately excluded.",
+          "agentSequence": [
+            "requirements_analyst",
+            "developer",
+            "reviewer",
+            "review_verifier",
+            "knowledge_keeper"
+          ],
+          "codeChangesAllowed": true,
+          "continueAutomatically": true
+        },
+        "research-only": {
+          "description": "Produce evidence-backed research and requirements analysis without product changes, review, or pipeline execution.",
+          "agentSequence": [
+            "requirements_analyst"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": false
+        },
+        "requirements-only": {
+          "description": "Update requirements, acceptance criteria, questions, workflow, and implementation planning only.",
+          "agentSequence": [
+            "requirements_analyst"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": false
+        },
+        "implementation-only": {
+          "description": "Implement already-ready scope or an explicitly requested bounded code/test remediation after pipeline evidence, then review it and monitor its exact delivery pipelines.",
+          "agentSequence": [
+            "developer",
+            "reviewer",
+            "review_verifier",
+            "pipeline_monitor"
+          ],
+          "codeChangesAllowed": true,
+          "continueAutomatically": true
+        },
+        "review-only": {
+          "description": "Run Reviewer and an independent Review Verifier, then stop at the verified outcome or decision gate.",
+          "agentSequence": [
+            "reviewer",
+            "review_verifier"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": true
+        },
+        "pipeline-only": {
+          "description": "Run Pipeline Monitor only for read-only observation of an explicitly authorized branch, commit, build, or PR; do not use when the requested outcome includes a source correction.",
+          "agentSequence": [
+            "pipeline_monitor"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": false
+        },
+        "knowledge-only": {
+          "description": "Run Knowledge Keeper only for an explicit context, skill, or final publication request.",
+          "agentSequence": [
+            "knowledge_keeper"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": false
+        },
+        "ecosystem-repair": {
+          "description": "Run Health Check only for bounded ecosystem diagnosis, repair, or repair routing.",
+          "agentSequence": [
+            "health_check"
+          ],
+          "codeChangesAllowed": false,
+          "continueAutomatically": false
+        }
+      },
+      "dispatchPriority": [
+        "health_check",
+        "requirements_analyst",
+        "knowledge_keeper",
+        "developer",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor"
+      ]
+    },
+    "workspaceScheduling": {
+      "enabled": true,
+      "maxActiveTasks": 2,
+      "queueWhenBusy": true,
+      "lockTimeoutSeconds": 30,
+      "leaseHeartbeatSeconds": 30,
+      "staleLeaseGraceSeconds": 300,
+      "coordinatorStatePath": "${STATE_ROOT}/workspace-coordinator.json",
+      "workspaceRoot": "C:/w",
+      "maxActiveAgentsPerTask": 1
+    },
+    "automaticContinuation": {
+      "enabled": true,
+      "maxChainSteps": 16,
+      "maxTransitionRepeats": 4,
+      "useElevatedExecution": true,
+      "recoveryGraceSeconds": 60,
+      "recoveryPollIntervalMinutes": 1,
+      "orderedAgentIds": [
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor",
+        "knowledge_keeper"
+      ],
+      "stopStatuses": [
+        "waiting_for_input",
+        "held",
+        "review_pending",
+        "failed"
+      ]
+    }
+  },
+  "modelRouting": {
+    "enabled": true,
+    "artifactName": "model-routing.json",
+    "maxDecisionsPerTask": 50,
+    "maxEvidenceCharacters": 24000,
+    "largeEvidenceCharacters": 8000,
+    "capacityFallback": {
+      "enabled": true,
+      "tier": "standard",
+      "maxAttempts": 1
+    },
+    "tiers": [
+      {
+        "id": "routine",
+        "rank": 0,
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "low"
+      },
+      {
+        "id": "standard",
+        "rank": 1,
+        "model": "gpt-5.6-terra",
+        "reasoningEffort": "medium"
+      },
+      {
+        "id": "complex",
+        "rank": 2,
+        "model": "gpt-5.6-sol",
+        "reasoningEffort": "high"
+      },
+      {
+        "id": "critical",
+        "rank": 3,
+        "model": "gpt-5.6-sol",
+        "reasoningEffort": "xhigh"
+      }
+    ],
+    "rolePolicies": [
+      {
+        "agentId": "orchestrator",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "knowledge_keeper",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "requirements_analyst",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "developer",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "reviewer",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "review_verifier",
+        "defaultTier": "standard",
+        "minimumTier": "standard",
+        "maximumTier": "critical"
+      },
+      {
+        "agentId": "pipeline_monitor",
+        "defaultTier": "routine",
+        "minimumTier": "routine",
+        "maximumTier": "standard"
+      },
+      {
+        "agentId": "health_check",
+        "defaultTier": "standard",
+        "minimumTier": "routine",
+        "maximumTier": "complex"
+      }
+    ],
+    "complexSignals": [
+      "architecture",
+      "breaking change",
+      "concurrency",
+      "cross-repository",
+      "deadlock",
+      "intermittent",
+      "migration",
+      "multi-repository",
+      "race condition",
+      "rollback",
+      "unknown error"
+    ],
+    "criticalSignals": [
+      "authentication",
+      "authorization",
+      "certificate",
+      "code signing",
+      "credential",
+      "digital signature",
+      "key vault",
+      "production deployment",
+      "secret",
+      "security",
+      "token exfiltration",
+      "vulnerability"
+    ]
+  },
+  "ui": {
+    "listenAddress": "127.0.0.1",
+    "port": 43127,
+    "openBrowser": true,
+    "taskRefreshSeconds": 5,
+    "agentLogRefreshSeconds": 30,
+    "diffContextLines": 3,
+    "diffMaxBytes": 2097152
+  },
+  "health": {
+    "enabled": true,
+    "repairMode": "safe-deterministic-only",
+    "checkOnWorkflowFailure": true,
+    "dashboardHealthUrl": "http://127.0.0.1:43127/health",
+    "automaticRecovery": {
+      "enabled": true,
+      "allowEcosystemSourceChanges": true,
+      "preserveDirtyWorktreeChanges": true,
+      "commitVerifiedRepairs": true,
+      "pushVerifiedRepairs": true,
+      "pushRemote": "origin",
+      "pushRemoteUrl": "https://github.com/GINomad/development-agent-ecosystem.git",
+      "repairBranchPrefix": "health-recovery",
+      "maxAttemptsPerFailureSignature": 1,
+      "workspace": "${REPO_ROOT}",
+      "sandboxMode": "workspace-write",
+      "elevatedFallback": {
+        "enabled": true,
+        "useByDefault": true,
+        "requiresDashboardApproval": false,
+        "sandboxMode": "danger-full-access",
+        "maxAttemptsPerFailureSignature": 1
+      },
+      "targetedResume": {
+        "enabled": true,
+        "requireSuccessfulRepair": true,
+        "maxAttemptsPerFailureSignature": 1,
+        "allowedAgentIds": [
+          "orchestrator",
+          "knowledge_keeper",
+          "requirements_analyst",
+          "developer",
+          "reviewer",
+          "review_verifier",
+          "pipeline_monitor"
+        ]
+      },
+      "allowProductCodeChanges": false,
+      "allowExternalWrites": false
+    }
+  },
+  "review": {
+    "excludeSelfAuthored": false,
+    "includeActivePrComments": true,
+    "rerunWhenCommentsChange": true,
+    "maxFilesPerReview": 80,
+    "maxDiffCharacters": 500000,
+    "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor",
+    "monitorDataRoot": "${STATE_ROOT}/azure-pr-review-monitor",
+    "userNotesRoot": "${STATE_ROOT}/reviewer-notes",
+    "generatedPromptRoot": "${STATE_ROOT}/review-prompts",
+    "mcp": {
+      "mode": "disabled",
+      "allowedServers": []
+    }
+  },
+  "mcp": {
+    "enabled": true,
+    "defaultMode": "allowlist",
+    "localServer": {
+      "name": "ecosystem-read",
+      "command": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "${REPO_ROOT}/scripts/Start-EcosystemReadMcpServer.ps1"
+      ],
+      "enabledTools": [
+        "get_task_state",
+        "get_artifact_summary",
+        "read_artifact_evidence",
+        "list_pending_comments"
+      ]
+    },
+    "servers": [],
+    "rolePolicies": {
+      "orchestrator": [],
+      "knowledge_keeper": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments"
+          ]
+        }
+      ],
+      "requirements_analyst": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments"
+          ]
+        }
+      ],
+      "developer": [],
+      "reviewer": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments"
+          ]
+        }
+      ],
+      "review_verifier": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments"
+          ]
+        }
+      ],
+      "pipeline_monitor": [],
+      "health_check": []
+    },
+    "resilience": {
+      "failureThreshold": 2,
+      "failureWindowSeconds": 60,
+      "circuitOpenSeconds": 300,
+      "requiredSuccessfulProbes": 3,
+      "toolTimeoutSeconds": 20,
+      "maxCallsPerRoleRun": 30,
+      "maxResponseBytes": 262144,
+      "maxConcurrentRepairs": 1,
+      "relatedTaskDepth": 1,
+      "maxRelatedTasks": 20
+    }
+  },
+  "pipeline": {
+    "enabled": true,
+    "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor",
+    "ownership": {
+      "monitorAgentId": "pipeline_monitor",
+      "productRemediationAgentId": "developer",
+      "remediationReviewAgentId": "reviewer",
+      "reviewVerificationAgentId": "review_verifier",
+      "exceptionRoutingAgentId": "orchestrator",
+      "ecosystemRecoveryAgentId": "health_check",
+      "completionAgentId": "knowledge_keeper"
+    },
+    "delivery": {
+      "autoPushAfterCleanReview": true,
+      "remote": "origin",
+      "forbiddenBranches": [
+        "main",
+        "master"
+      ],
+      "allowForce": false,
+      "allowTags": false,
+      "requireCleanWorktree": true
+    },
+    "pullRequests": {
+      "enabled": true,
+      "pollIntervalMinutes": 120,
+      "completedStatuses": [
+        "completed"
+      ],
+      "abandonedStatuses": [
+        "abandoned"
+      ]
+    },
+    "postPush": {
+      "enabled": true,
+      "autoQueueApprovedBuilds": true,
+      "activityHeartbeatSeconds": 60,
+      "maxRemediationCycles": 3,
+      "failureLogTailLines": 120,
+      "failureLogMaxBytes": 65536
+    },
+    "repositories": [
+      {
+        "repositoryId": "azure-planningspace-ps-excel-agent",
+        "definitionIds": [],
+        "autoQueueDefinitionIds": [
+          814,
+          892
+        ],
+        "skipOnMissingYamlDefinitionIds": [
+          892
+        ]
+      },
+      {
+        "repositoryId": "azure-planningspace-ps-bicep",
+        "definitionIds": [],
+        "autoQueueDefinitionIds": []
+      },
+      {
+        "repositoryId": "azure-palantirplugins-ps-app-delfi",
+        "definitionIds": [
+          17
+        ],
+        "autoQueueDefinitionIds": []
+      }
+    ]
+  },
+  "credentialProfiles": [
+    {
+      "id": "local-git",
+      "provider": "local-git",
+      "mode": "none"
+    },
+    {
+      "id": "azure-default",
+      "provider": "azure-devops",
+      "mode": "azure-cli",
+      "cliPath": "C:/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az.cmd",
+      "environmentVariable": "AZURE_DEVOPS_EXT_PAT"
+    }
+  ],
+  "repositories": [
+    {
+      "id": "planning-space-excel-variable-poc",
+      "enabled": true,
+      "provider": "local-git",
+      "repository": "excel-variable-poc",
+      "url": "C:/Repos/PlanningSpace/excel-variable-poc",
+      "reviewer": "local-review",
+      "credentialProfile": "local-git",
+      "localWorkspace": "C:/Repos/PlanningSpace/excel-variable-poc",
+      "allowedExecutionModes": [
+        "local-poc-delivery",
+        "research-only",
+        "requirements-only",
+        "review-only",
+        "knowledge-only",
+        "ecosystem-repair"
+      ],
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "local-devextreme-grid-poc",
+      "enabled": true,
+      "provider": "local-git",
+      "repository": "devextreme-grid-poc",
+      "url": "C:/Users/okruk2/Documents/Codex/2026-09-17/g/outputs/devextreme-grid-poc",
+      "reviewer": "local-review",
+      "credentialProfile": "local-git",
+      "localWorkspace": "C:/Users/okruk2/Documents/Codex/2026-09-17/g/outputs/devextreme-grid-poc",
+      "allowedExecutionModes": [
+        "local-poc-delivery",
+        "research-only",
+        "requirements-only",
+        "review-only",
+        "knowledge-only",
+        "ecosystem-repair"
+      ],
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "azure-planningspace-ps-excel-agent",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/ps-excel-agent",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "ps-excel-agent",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-excel-agent",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "azure-planningspace-ps-bicep",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/ps-bicep",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "ps-bicep",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-bicep",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "azure-planningspace-planningspace",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace",
+      "organizationUrl": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "repository": "PlanningSpace",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/PlanningSpaceSource/PlanningSpace",
+      "baseBranch": "int/20.4/hazel",
+      "workspaceCloneSource": "C:/Repos/PlanningSpaceSource/PlanningSpace",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    },
+    {
+      "id": "azure-palantirplugins-ps-app-delfi",
+      "enabled": true,
+      "provider": "azure-devops",
+      "url": "https://dev.azure.com/palantir-consulting/PalantirPlugins/_git/ps-app-delfi",
+      "organizationUrl": "https://dev.azure.com/palantir-consulting",
+      "project": "PalantirPlugins",
+      "repository": "ps-app-delfi",
+      "reviewer": "oleksandr.kruk@quorumsoftware.com",
+      "credentialProfile": "azure-default",
+      "localWorkspace": "C:/Repos/ps-app-delfi",
+      "includeAuthors": [],
+      "excludeAuthors": []
+    }
+  ],
+  "projects": [
+    {
+      "id": "planning-space",
+      "name": "PlanningSpace",
+      "enabled": true,
+      "repositoryIds": [
+        "planning-space-excel-variable-poc",
+        "local-devextreme-grid-poc",
+        "azure-planningspace-ps-excel-agent",
+        "azure-planningspace-ps-bicep",
+        "azure-planningspace-planningspace",
+        "azure-palantirplugins-ps-app-delfi"
+      ],
+      "domainKnowledgeRoot": "${REPO_ROOT}/knowledge/managed/projects/planning-space"
+    }
+  ],
+  "taskSources": [
+    {
+      "id": "planning-space-azure-boards",
+      "provider": "azure-devops",
+      "enabled": true,
+      "organization": "https://dev.azure.com/Aucerna",
+      "project": "PlanningSpace",
+      "credentialProfile": "azure-default",
+      "assignee": "@Me",
+      "statesExcluded": [
+        "Closed",
+        "Removed"
+      ],
+      "includeComments": true
+    },
+    {
+      "id": "quorum-azure-boards",
+      "provider": "azure-devops",
+      "enabled": true,
+      "organization": "https://dev.azure.com/quorumsoftware",
+      "project": "Quorum",
+      "credentialProfile": "azure-default",
+      "assignee": "@Me",
+      "statesExcluded": [
+        "Closed",
+        "Removed"
+      ],
+      "includeComments": true
+    }
+  ],
+  "knowledge": {
+    "seedSources": [
+      {
+        "id": "ps-excel-agent-initial",
+        "projectId": "planning-space",
+        "path": "C:/Repos/AI Knowledge/ps_excel_agent",
+        "mode": "read-only-import",
+        "includeExtensions": [
+          ".md",
+          ".txt",
+          ".json",
+          ".yaml",
+          ".yml",
+          ".ps1"
+        ]
+      }
+    ],
+    "technicalRoot": "${REPO_ROOT}/knowledge/managed/global",
+    "globalStandardsPath": "${REPO_ROOT}/knowledge/managed/global/engineering-code-standards.md",
+    "versionedRoots": [
+      "${REPO_ROOT}/knowledge/managed/global",
+      "${REPO_ROOT}/knowledge/managed/projects/planning-space"
+    ],
+    "taskHistoryRoot": "${STATE_ROOT}/tasks",
+    "publicationPolicy": "verified-evidence-only",
+    "requiredEvidenceFields": [
+      "source",
+      "revision",
+      "observedAtUtc",
+      "observedBy"
+    ],
+    "weeklyReport": {
+      "enabled": true,
+      "dayOfWeek": "Friday",
+      "localTime": "10:00",
+      "lookbackDays": 7,
+      "outputRoot": "${STATE_ROOT}/reports/knowledge-weekly"
+    }
+  },
+  "gates": {
+    "unresolvedRequirements": {
+      "behavior": "hold-affected-scope",
+      "allowIndependentScope": true
+    },
+    "reviewFindings": {
+      "behavior": "require-human-approval",
+      "decisionScript": "${REPO_ROOT}/scripts/Set-ReviewDecision.ps1",
+      "allowedDecisions": [
+        "approved",
+        "rejected",
+        "deferred"
+      ]
+    },
+    "externalWrites": {
+      "behavior": "configured-standing-or-explicit",
+      "standingAuthorizations": [
+        {
+          "operation": "git-push",
+          "policy": "pipeline.delivery"
+        },
+        {
+          "operation": "git-push",
+          "policy": "health.automaticRecovery.pushVerifiedRepairs"
+        },
+        {
+          "operation": "queue-pipeline",
+          "policy": "pipeline.repositories[].autoQueueDefinitionIds"
+        }
+      ],
+      "explicitAuthorizationOperations": [
+        "publish-review-comment",
+        "deployment",
+        "create-or-update-work-item"
+      ]
+    }
+  },
+  "agents": [
+    {
+      "id": "orchestrator",
+      "name": "development_workflow_orchestrator",
+      "description": "Control-plane agent that classifies task intake and workflow comments, selects the responsible configured agents, and preserves delivery gates.",
+      "responsibilities": [
+        "Classify each new task and untargeted workflow comment from evidence without performing delivery work.",
+        "Select the smallest sufficient set of responsible agents from their configured responsibilities.",
+        "Classify the requested outcome into the narrowest configured execution mode and prevent excluded delivery roles from starting.",
+        "Persist idempotent routing decisions and keep explicit agent targets and question answers intact.",
+        "Start or queue the selected agent while preserving prerequisites, completed artifacts, approval gates, and the existing continuation chain.",
+        "Validate terminal delivery signals and route final publication to Knowledge Keeper without performing knowledge work.",
+        "Immediately classify durable authority handoffs returned by agents and route only their remaining out-of-scope work.",
+        "Route source-controlled ecosystem scripts, configuration, prompts, skills, dashboard, agent definitions, tests, documentation, and control-plane maintenance to Health Check for bounded ecosystem recovery; never assign those changes to the product Developer by default."
+      ],
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/orchestrator.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md"
+      ],
+      "handoffs": [
+        "knowledge_keeper",
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor",
+        "health_check"
+      ],
+      "requiredArtifacts": [
+        "workflow-routing.jsonl"
+      ]
+    },
+    {
+      "id": "knowledge_keeper",
+      "name": "development_knowledge_keeper",
+      "description": "On-demand knowledge service that selects verified context, records completed task history, maintains evidence-backed knowledge, and publishes documentation-style human-readable outcomes.",
+      "responsibilities": [
+        "Provide bounded verified code, domain, decision, and skill context when another agent requests it.",
+        "Ingest only successful final agent outcomes and decide what verified knowledge must be updated.",
+        "Evaluate every confirmed review comment about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles and promote it into a global or technology-scoped standard only after independent verification, successful implementation when applicable, a clean review, and passing exact-SHA verification; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude verifier-rejected, bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
+        "Maintain per-task history and publish the final task summary after delivery completion.",
+        "Present verified and superseded knowledge updates in plain language with applicability, and summarize completed delivery as end-user documentation while preserving machine-readable evidence.",
+        "Never poll agents, classify general workflow comments, or ingest private unfinished checkpoints.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "sandboxMode": "workspace-write",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/knowledge-keeper.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/keep-task-knowledge/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor",
+        "health_check"
+      ],
+      "requiredArtifacts": [
+        "task-ledger.jsonl",
+        "context-pack.json",
+        "knowledge-update.json",
+        "task-summary.json"
+      ]
+    },
+    {
+      "id": "requirements_analyst",
+      "name": "development_requirements_analyst",
+      "description": "Read-only analyst for assigned tasks, comments, code, knowledge, gaps, questions, and implementation-ready planning.",
+      "responsibilities": [
+        "Read task requirements and comments, source code, and verified knowledge while excluding dependencies and generated output.",
+        "Find requirement/code discrepancies, identify ready and held scope, and ask evidence-backed clarification questions.",
+        "Produce an implementation-ready plan without inventing missing facts or implementing code.",
+        "Publish a plain-language requirements, workflow, and implementation-plan presentation for the dashboard.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/roles/requirements-analyst.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "developer"
+      ],
+      "requiredArtifacts": [
+        "requirements-analysis.json"
+      ]
+    },
+    {
+      "id": "developer",
+      "name": "development_implementer",
+      "description": "Implementation owner that creates a branch, changes only ready scope, tests it, and reports exact implementation evidence.",
+      "responsibilities": [
+        "Plan and implement only requirements-ready product code, tests, and authorized pipeline YAML changes.",
+        "Create and use the task branch, verify changes locally, and report exact implementation evidence.",
+        "Apply Reviewer findings only after the required human approval and stop on unresolved scope.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "workspace-write",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/developer.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/implement-approved-plan/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "requirements_analyst",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor"
+      ],
+      "requiredArtifacts": [
+        "implementation-plan.json",
+        "developer-publication-evidence.json",
+        "implementation-result.json"
+      ]
+    },
+    {
+      "id": "reviewer",
+      "name": "development_reviewer",
+      "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
+      "responsibilities": [
+        "Review local task diffs, Developer work, and external pull requests against requirements and held scope.",
+        "Report product and agent-process candidate findings with evidence and render source-specific findings at exact diff lines.",
+        "Publish requirement-to-code traceability for every analyzed requirement with exact repository-relative file and line evidence without inventing missing mappings.",
+        "Publish the complete reviewCoverage matrix and stable new, unchanged, resolved, or regressed finding lifecycle records for independent verification.",
+        "Answer user questions attached to exact diff lines with bounded code, caller, test, and requirement evidence while remaining read-only.",
+        "Treat an explicit human bypass as a non-resolution decision and require the trusted decision action to preserve exact-review-bound task-local technical debt before delivery can continue.",
+        "Remain read-only and never silently convert a finding into implementation authority.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/reviewer.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/review-against-requirements/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pr-review-monitor/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "requirements_analyst",
+        "developer",
+        "review_verifier"
+      ],
+      "requiredArtifacts": [
+        "review-result.json"
+      ]
+    },
+    {
+      "id": "review_verifier",
+      "name": "development_review_verifier",
+      "description": "Independent read-only verifier that falsifies Reviewer claims, validates review coverage and finding lifecycle, and gates human decisions.",
+      "responsibilities": [
+        "Independently verify the exact persisted Reviewer artifact against requirements, code, tests, accepted knowledge, and prior review snapshots without consuming Reviewer private reasoning.",
+        "Confirm, reject, or escalate every product and agent-process finding after explicit falsification attempts.",
+        "Verify every reviewCoverage matrix entry and every new, unchanged, resolved, or regressed lifecycle transition against direct evidence.",
+        "Bind review-verification.json to the exact review-result.json SHA-256 and reviewed revision so stale verification cannot authorize rework or delivery.",
+        "Remain source-code read-only, never rewrite Reviewer findings, and never convert a verification verdict into implementation authority.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/review-verifier.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/verify-review-findings/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-dotnet/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-javascript-typescript/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/develop-react/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "reviewer"
+      ],
+      "requiredArtifacts": [
+        "review-verification.json"
+      ]
+    },
+    {
+      "id": "pipeline_monitor",
+      "name": "development_pipeline_monitor",
+      "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
+      "responsibilities": [
+        "Push only a clean reviewed task branch after passing independent exact-SHA review verification under configured authorization and monitor exact-commit builds.",
+        "Queue only allowlisted build definitions, classify bounded failure logs, and route code or test remediation to Developer.",
+        "Track task pull-request lifecycle and report completed-PR closure evidence to Orchestrator for final routing.",
+        "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/pipeline-monitor.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/monitor-delivery-pipelines/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "developer",
+        "reviewer",
+        "review_verifier"
+      ],
+      "requiredArtifacts": [
+        "pipeline-result.json"
+      ]
+    },
+    {
+      "id": "health_check",
+      "name": "development_health_check",
+      "description": "Ecosystem maintenance owner that diagnoses failures and explicit control-plane change requests, drives bounded ecosystem-only recovery, verifies it, and routes non-ecosystem repairs to the responsible configured agent.",
+      "responsibilities": [
+        "Diagnose failed or stuck ecosystem agents from bounded recent evidence.",
+        "Own explicit source-controlled changes to the development-agent ecosystem, including scripts, configuration, prompts, skills, dashboard, generated-agent contracts, tests, documentation, and control-plane behavior.",
+        "Translate an ecosystem change request into one bounded ecosystem_recovery plan, require complete ecosystem validation, and report the verified outcome without modifying product repositories.",
+        "Apply safe deterministic ecosystem repairs or route a single-owner repair to the responsible agent.",
+        "Restart only the failed target after verified repair and stop at human authority or credential gates.",
+        "Return only non-ecosystem comments outside configured responsibilities to Orchestrator through a durable authority handoff."
+      ],
+      "model": "gpt-5.6-terra",
+      "reasoningEffort": "medium",
+      "sandboxMode": "read-only",
+      "promptPaths": [
+        "${REPO_ROOT}/prompts/common/evidence-first.md",
+        "${REPO_ROOT}/prompts/common/task-protocol.md",
+        "${REPO_ROOT}/prompts/common/approval-boundaries.md",
+        "${REPO_ROOT}/prompts/roles/health-check.md"
+      ],
+      "skillPaths": [
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/diagnose-agent-health/SKILL.md"
+      ],
+      "handoffs": [
+        "orchestrator",
+        "knowledge_keeper",
+        "requirements_analyst",
+        "developer",
+        "reviewer",
+        "review_verifier",
+        "pipeline_monitor"
+      ],
+      "requiredArtifacts": [
+        "health-check-result.json"
+      ]
+    }
+  ]
+}

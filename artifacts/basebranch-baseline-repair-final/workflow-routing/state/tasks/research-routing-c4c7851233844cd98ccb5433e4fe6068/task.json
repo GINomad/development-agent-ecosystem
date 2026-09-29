@@ -1,0 +1,62 @@
+{
+  "taskId": "research-routing-c4c7851233844cd98ccb5433e4fe6068",
+  "selector": "synthetic-research-only",
+  "mode": "manual",
+  "taskName": "synthetic-research-only",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-research-only",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "createdAtUtc": "2026-09-25T10:12:58.3374293Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:58.7767652Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "reviewer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:59.053295Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "review_verifier": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:59.3072025Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "pipeline_monitor": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:59.5541762Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "knowledge_keeper": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:59.7986094Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "health_check": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:13:00.0677545Z",
+      "message": "Excluded by Orchestrator execution mode 'research-only'."
+    },
+    "requirements_analyst": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T10:13:00.5823252Z",
+      "message": "Research-only analysis completed."
+    }
+  },
+  "status": "interrupted",
+  "lastMessage": "Orchestrator routed input to: requirements_analyst.",
+  "currentStage": "research_completed",
+  "updatedAtUtc": "2026-09-25T10:13:00.5823252Z",
+  "lastAgentMessage": "Research-only analysis completed."
+}

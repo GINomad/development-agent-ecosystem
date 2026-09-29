@@ -1,0 +1,120 @@
+{
+  "taskId": "rv-d2c6d8926d364b44",
+  "reviewedRevision": "rev-3",
+  "requirementsRevision": "requirements-v1",
+  "requirementTraceability": [
+    {
+      "requirementId": "REQ-1",
+      "requirementText": "Review must use an independent verifier.",
+      "implementationStatus": "verified",
+      "codeReferences": [
+        {
+          "repositoryId": "synthetic",
+          "filePath": "src/example.ps1",
+          "startLine": 17,
+          "evidence": "The gate is represented at this line."
+        }
+      ],
+      "testEvidence": [
+        "Targeted review verification test"
+      ],
+      "notes": "Synthetic contract fixture."
+    }
+  ],
+  "reviewCoverage": [
+    {
+      "dimension": "requirements",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for requirements"
+      ],
+      "notes": "Reviewed requirements against the current revision."
+    },
+    {
+      "dimension": "correctness",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for correctness"
+      ],
+      "notes": "Reviewed correctness against the current revision."
+    },
+    {
+      "dimension": "security",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for security"
+      ],
+      "notes": "Reviewed security against the current revision."
+    },
+    {
+      "dimension": "regression",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for regression"
+      ],
+      "notes": "Reviewed regression against the current revision."
+    },
+    {
+      "dimension": "testing",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for testing"
+      ],
+      "notes": "Reviewed testing against the current revision."
+    },
+    {
+      "dimension": "maintainability",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for maintainability"
+      ],
+      "notes": "Reviewed maintainability against the current revision."
+    },
+    {
+      "dimension": "performance",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for performance"
+      ],
+      "notes": "Reviewed performance against the current revision."
+    },
+    {
+      "dimension": "concurrency",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for concurrency"
+      ],
+      "notes": "Reviewed concurrency against the current revision."
+    },
+    {
+      "dimension": "configuration-deployment",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for configuration-deployment"
+      ],
+      "notes": "Reviewed configuration-deployment against the current revision."
+    },
+    {
+      "dimension": "documentation",
+      "status": "covered",
+      "evidence": [
+        "direct evidence for documentation"
+      ],
+      "notes": "Reviewed documentation against the current revision."
+    }
+  ],
+  "findings": [],
+  "heldScopeViolations": [],
+  "agentProcessFindings": [],
+  "findingLifecycle": [
+    {
+      "findingId": "REV-101",
+      "status": "resolved",
+      "firstSeenRevision": "rev-1",
+      "lastObservedRevision": "rev-2",
+      "evidence": "Lifecycle resolved was checked at rev-3.",
+      "resolvedRevision": "rev-3"
+    }
+  ],
+  "summary": "Review at rev-3 with lifecycle resolved."
+}

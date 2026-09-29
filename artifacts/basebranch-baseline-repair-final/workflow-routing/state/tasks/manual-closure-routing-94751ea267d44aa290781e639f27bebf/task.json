@@ -1,0 +1,72 @@
+{
+  "taskId": "manual-closure-routing-94751ea267d44aa290781e639f27bebf",
+  "selector": "synthetic-manual-closure-routing",
+  "mode": "manual",
+  "taskName": "synthetic-manual-closure-routing",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-manual-closure-routing",
+  "repositoryId": "planning-space-excel-variable-poc",
+  "repositoryIds": [
+    "planning-space-excel-variable-poc"
+  ],
+  "createdAtUtc": "2026-09-25T10:12:54.5285592Z",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:54.9670289Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "developer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:55.2161024Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "reviewer": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:55.4770566Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "review_verifier": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:55.7538552Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "pipeline_monitor": {
+      "status": "skipped",
+      "updatedAtUtc": "2026-09-25T10:12:56.0860373Z",
+      "message": "Excluded by Orchestrator execution mode 'ecosystem-repair'."
+    },
+    "health_check": {
+      "status": "completed",
+      "updatedAtUtc": "2026-09-25T10:12:57.031679Z",
+      "message": "Synthetic ecosystem repair completed."
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": "2026-09-25T10:12:57.3680366Z",
+      "message": "Manual closure is waiting for the final knowledge update."
+    }
+  },
+  "lastAgentMessage": "Synthetic ecosystem repair completed.",
+  "closure": {
+    "kind": "manual",
+    "status": "knowledge-update-pending",
+    "reason": "Close the completed ecosystem repair and retain verified knowledge.",
+    "requestedBy": "user",
+    "requestedAtUtc": "2026-09-25T10:12:57.3680366Z",
+    "completedAtUtc": null
+  },
+  "status": "queued",
+  "currentStage": "manual_close_knowledge_update",
+  "updatedAtUtc": "2026-09-25T10:12:57.6675112Z",
+  "lastCommentAtUtc": "2026-09-25T10:12:57.6675112Z",
+  "hasUnreadUserComments": true,
+  "lastMessage": "A user comment for agent 'knowledge_keeper' is queued for the next end-of-block checkpoint; no restart is required while the workflow is running."
+}

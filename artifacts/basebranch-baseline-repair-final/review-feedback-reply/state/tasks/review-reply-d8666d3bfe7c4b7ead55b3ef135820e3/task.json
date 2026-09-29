@@ -1,0 +1,63 @@
+{
+  "taskId": "review-reply-d8666d3bfe7c4b7ead55b3ef135820e3",
+  "selector": "synthetic-review-reply",
+  "mode": "manual",
+  "taskName": "synthetic-review-reply",
+  "taskType": "Task",
+  "projectId": "planning-space",
+  "branchName": "features/synthetic-review-reply",
+  "repositoryId": "azure-planningspace-ps-excel-agent",
+  "repositoryIds": [
+    "azure-planningspace-ps-excel-agent"
+  ],
+  "status": "created",
+  "createdAtUtc": "2026-09-25T10:12:27.9134133Z",
+  "currentStage": "not-started",
+  "revision": 1,
+  "agentStatuses": {
+    "orchestrator": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "knowledge_keeper": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "requirements_analyst": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "developer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "reviewer": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "review_verifier": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "pipeline_monitor": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    },
+    "health_check": {
+      "status": "pending",
+      "updatedAtUtc": null,
+      "message": ""
+    }
+  },
+  "updatedAtUtc": "2026-09-25T10:12:29.3158679Z",
+  "lastCommentAtUtc": "2026-09-25T10:12:29.3158679Z",
+  "hasUnreadUserComments": true,
+  "lastMessage": "A user comment for agent 'reviewer' is queued for the next end-of-block checkpoint; no restart is required while the workflow is running."
+}
