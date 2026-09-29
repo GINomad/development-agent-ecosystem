@@ -246,6 +246,7 @@ $modelRouteParameters = @{
     CodexHome = $CodexHome
 }
 $modelRoute = & (Join-Path $PSScriptRoot 'Resolve-AgentModelRoute.ps1') @modelRouteParameters
+$providerRoute = & (Join-Path $PSScriptRoot 'Resolve-AgentProviderRoute.ps1') -TaskId $TaskId -AgentId $executedAgentId -Tier ([string]$modelRoute.complexity) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $capacityFallback = $config.modelRouting.capacityFallback
 $capacityFallbackTier = @($config.modelRouting.tiers | Where-Object { [string]$_.id -eq [string]$capacityFallback.tier }) | Select-Object -First 1
 if (-not $capacityFallbackTier) { throw 'Configured capacity fallback tier does not exist.' }
@@ -356,6 +357,7 @@ $result = [pscustomobject]@{
     ResumeScope = $resumeScope
     TargetAgentId = $TargetAgentId
     ModelRoute = $modelRoute
+    ProviderRoute = $providerRoute
     WorkspaceLease = $workspaceLease
     UnfinishedAgentIds = if ($resumePlan) { @($resumePlan.UnfinishedAgentIds) } else { @() }
 }
@@ -363,13 +365,15 @@ if ($PrepareOnly) { return $result }
 
 $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
 $startMessage = if ($TargetAgentId) { "Targeted restart started for agent '$TargetAgentId'." } elseif ($Resume) { "Checkpoint resume started through Orchestrator for unfinished agents: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." } else { 'Workflow started. Orchestrator is classifying task intake.' }
-$startMessage += " Model route: $($modelRoute.complexity), $($modelRoute.model), reasoning $($modelRoute.reasoningEffort)."
+$startMessage += " Provider: $($providerRoute.provider); model route: $($providerRoute.tier), $($providerRoute.model), reasoning $($providerRoute.reasoningEffort)."
 $startStage = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
 & $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
 & $statusScript -TaskId $TaskId -AgentId $executedAgentId -AgentStatus running -Stage $executedAgentId -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
-$codexLogPath = Join-Path $task.TaskRoot 'workflow-codex.jsonl'
+$providerLogName = if ([string]$providerRoute.provider -eq 'codex') { 'workflow-codex.jsonl' } else { 'workflow-' + [string]$providerRoute.provider + '.jsonl' }
+$codexLogPath = Join-Path $task.TaskRoot $providerLogName
+
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
@@ -388,6 +392,7 @@ function Complete-CurrentMcpCanary([bool]$Succeeded) {
         try{$state=Get-Content -LiteralPath $statePath -Raw -Encoding UTF8|ConvertFrom-Json;if([string]$state.state -eq 'half-open' -and [string]$state.canaryClaimId -eq $mcpCanaryClaimId){& (Join-Path $PSScriptRoot 'Complete-McpCanary.ps1') -ServerName ([string]$candidate.name) -ClaimId $mcpCanaryClaimId -Succeeded $Succeeded -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null}}catch{Write-Warning "MCP canary completion failed: $($_.Exception.Message)"}
     }
 }
+
 function Write-CurrentMcpRoleMetric([string]$Outcome,[Nullable[int]]$QualityProxy) {
     if (-not (Get-Variable -Name workflowStartedAtUtc -ErrorAction SilentlyContinue)) { return }
     $configuredMode=if($mcpExecution){[string]$mcpExecution.Mode}else{'classic'}
@@ -434,13 +439,22 @@ foreach ($directory in $additionalDirectories) {
 foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalResponsePath, '-')) { $arguments.Add([string]$argument) }
 $workflowStartedAtUtc = [DateTime]::UtcNow
 try {
-    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; attemptId=$roleAttemptId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec'; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
+    $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; attemptId=$roleAttemptId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner='codex exec'; provider=[string]$providerRoute.provider; providerRouteDecisionId=[string]$providerRoute.decisionId; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$modelRoute.model; reasoningEffort=[string]$modelRoute.reasoningEffort } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
     & $leaseHeartbeatAction | Out-Null
+    if ([string]$providerRoute.provider -eq 'copilot') {
+        $copilotParams=@{ Prompt=$prompt; WorkingDirectory=$agentWorkingDirectory; LogPath=$codexLogPath; FinalResponsePath=$finalResponsePath; GuardArtifactPath=$guardArtifactPath; Model=[string]$providerRoute.model; MaxIdenticalFailures=[int]$config.runtime.executionGuard.maxIdenticalFailures; MaxRunMinutes=[int]$config.runtime.executionGuard.maxRunMinutes; PollMilliseconds=[int]$config.runtime.executionGuard.pollMilliseconds; HeartbeatAction=$leaseHeartbeatAction; HeartbeatIntervalSeconds=[int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds; CliPath=[string]$providerRoute.command; AdditionalDirectories=$additionalDirectories; ReadOnly=([string]$activeAgent.sandboxMode -eq 'read-only') }
+        if ($mcpSession) { $copilotParams.McpSessionPath=[string]$mcpSession.Path }
+        $guardResult=& (Join-Path $PSScriptRoot 'Invoke-CopilotRole.ps1') @copilotParams
+    } elseif ([string]$providerRoute.provider -eq 'claude') {
+        $claudeArguments=@('-p','--output-format','stream-json','--model',[string]$providerRoute.model)
+        $guardResult=& (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath ([string]$providerRoute.command) -Arguments $claudeArguments -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled:$false -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+    } else {
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+    }
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Codex exited with code $codexExitCode. See $codexLogPath" }

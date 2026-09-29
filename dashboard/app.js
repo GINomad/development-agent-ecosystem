@@ -346,7 +346,7 @@ function renderTaskDetail(task) {
     name.textContent = label;
     const badge = document.createElement('span');
     const unreadCommentCount = Number(state.unreadCommentCount) || 0;
-    badge.textContent = unreadCommentCount ? state.status + ' - ' + unreadCommentCount + ' new' : state.status;
+    badge.textContent = (state.provider || 'codex') + ' - ' + (unreadCommentCount ? state.status + ' - ' + unreadCommentCount + ' new' : state.status);
     top.append(name, badge);
     const message = document.createElement('p');
     message.textContent = state.message || 'No activity recorded.';
@@ -833,7 +833,7 @@ function renderAgentOutcome() {
   document.querySelector('#agentOutcomePanel').classList.remove('hidden');
   document.querySelector('#agentOutcomeTitle').textContent = `${label} outcome`;
   const modelRoute = state.modelRoute;
-  document.querySelector('#agentOutcomeMeta').textContent = `${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}` +
+  document.querySelector('#agentOutcomeMeta').textContent = `(state.provider || 'codex') + ' - ' + ${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}` +
     (modelRoute ? ` - ${modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
   document.querySelector('#agentOutcomeSummary').textContent = state.message || 'No persisted outcome summary is available.';
   document.querySelector('#openReviewDiff').classList.toggle('hidden', agentId !== 'reviewer');

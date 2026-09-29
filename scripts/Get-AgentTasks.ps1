@@ -66,16 +66,23 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         if (Test-Path -LiteralPath $modelRoutingPath -PathType Leaf) {
             try { $modelRouteDecisions = @((Get-Content -LiteralPath $modelRoutingPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } catch { $modelRouteDecisions = @() }
         }
+        $providerRouteDecisions = @()
+        $providerRoutingPath = Join-Path $directory.FullName ([string]$config.providerRouting.artifactName)
+        if (Test-Path -LiteralPath $providerRoutingPath -PathType Leaf) { try { $providerRouteDecisions = @((Get-Content -LiteralPath $providerRoutingPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } catch { $providerRouteDecisions = @() } }
         $agentStatuses = [ordered]@{}
         foreach ($agentId in $agentIds) {
             $value = $null
             if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$agentId]) { $value = $task.agentStatuses.$agentId }
             $modelRoute = @($modelRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
+            $providerRoute = @($providerRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
+            $agentConfig = @($config.agents | Where-Object { [string]$_.id -eq $agentId } | Select-Object -First 1)
             $agentStatuses[$agentId] = [pscustomobject][ordered]@{
                 status = if ($value) { [string]$value.status } else { 'pending' }
                 updatedAtUtc = if ($value) { [string]$value.updatedAtUtc } else { $null }
                 message = if ($value) { [string]$value.message } else { '' }
                 unreadCommentCount = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $agentId }).Count
+                provider = if ($providerRoute.Count) { [string]$providerRoute[0].provider } elseif ($agentConfig.Count) { [string]$agentConfig[0].provider } else { [string]$config.providerRouting.defaultProvider }
+                providerRoute = if ($providerRoute.Count) { [pscustomobject][ordered]@{ tier=[string]$providerRoute[0].tier; model=[string]$providerRoute[0].model; reasoningEffort=[string]$providerRoute[0].reasoningEffort; decisionId=[string]$providerRoute[0].decisionId } } else { $null }
                 modelRoute = if ($modelRoute.Count) { [pscustomobject][ordered]@{ complexity=[string]$modelRoute[0].complexity; model=[string]$modelRoute[0].model; reasoningEffort=[string]$modelRoute[0].reasoningEffort; confidence=[double]$modelRoute[0].confidence; decisionId=[string]$modelRoute[0].decisionId } } else { $null }
             }
         }

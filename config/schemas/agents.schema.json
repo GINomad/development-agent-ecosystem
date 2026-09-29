@@ -336,7 +336,8 @@
                   "continueAutomatically"
                 ],
                 "properties": {
-                  "description": {
+                  "provider": { "enum": ["codex", "copilot", "claude"] },
+        "description": {
                     "type": "string",
                     "minLength": 1
                   },
@@ -674,7 +675,17 @@
         }
       }
     },
-    "ui": {
+    "providerRouting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "artifactName", "defaultProvider", "providers"],
+      "properties": {
+        "enabled": { "const": true },
+        "artifactName": { "const": "provider-routing.json" },
+        "defaultProvider": { "enum": ["codex", "copilot", "claude"] },
+        "providers": { "type": "object", "additionalProperties": { "type": "object" } }
+      }
+    },    "ui": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -744,7 +755,11 @@
           "type": "string",
           "pattern": "^http://127\\.0\\.0\\.1:[0-9]+/health$"
         },
-        "automaticRecovery": {
+        "dailyIncidentScan": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "localTime", "lookbackHours", "maxLogLines"],
+          "properties": { "enabled": { "type": "boolean" }, "localTime": { "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }, "lookbackHours": { "type": "integer", "minimum": 1, "maximum": 168 }, "maxLogLines": { "type": "integer", "minimum": 20, "maximum": 1000 } }
+        },        "automaticRecovery": {
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -1725,6 +1740,7 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_]*$"
         },
+        "provider": { "enum": ["codex", "copilot", "claude"] },
         "description": {
           "type": "string",
           "minLength": 20
