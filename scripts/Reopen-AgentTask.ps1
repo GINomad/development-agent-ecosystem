@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidateLength(5,2000)][string] $Reason,
-    [ValidateSet('requirements_analyst','developer')][string] $ResumeFrom = 'requirements_analyst',
+    [ValidateSet('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper')][string] $ResumeFrom = 'requirements_analyst',
     [ValidateRange(1,2147483647)][int] $ExpectedRevision,
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedRunId,
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedLeaseId,
@@ -37,7 +37,10 @@ $mutation = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutS
     foreach ($file in @(Get-ChildItem -LiteralPath $taskRoot -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') -and $_.Extension -ne '.lock' })) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $archiveRoot $file.Name) -Force }
     Write-Utf8NoBom -Path (Join-Path $archiveRoot 'task.json') -Content (($task | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
     $now = [DateTime]::UtcNow.ToString('o')
-    $resetAgentIds = if ($ResumeFrom -eq 'requirements_analyst') { @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper') } else { @('developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper') }
+    $deliveryAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper')
+    $resumeIndex = [Array]::IndexOf($deliveryAgentIds, $ResumeFrom)
+    if ($resumeIndex -lt 0) { throw "Agent '$ResumeFrom' cannot be used as a task revision boundary." }
+    $resetAgentIds = @($deliveryAgentIds[$resumeIndex..($deliveryAgentIds.Count - 1)])
     foreach ($agentId in $resetAgentIds) {
         $task.agentStatuses | Add-Member -NotePropertyName $agentId -NotePropertyValue ([pscustomobject][ordered]@{ status='pending'; updatedAtUtc=$now; message="Task revision $($currentRevision + 1) reopened from $ResumeFrom." }) -Force
     }

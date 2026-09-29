@@ -177,14 +177,48 @@ function Assert-TaskControllerIsIdle {
     $activeLease = @($coordinator.leases | Where-Object { [string]$_.taskId -eq [string]$Task.taskId } | Select-Object -First 1)
     if ($activeLease.Count) { throw "Task '$([string]$Task.taskId)' still has an active workspace lease. Stop or finish it before starting a different controller." }
 }
+function Open-CompletedTaskRevisionForTargetedResume {
+    param(
+        [Parameter(Mandatory)][string] $TaskId,
+        [Parameter(Mandatory)][string] $AgentId,
+        [Parameter(Mandatory)] $Task
+    )
+
+    $closureStatus = if ($Task.PSObject.Properties['closure'] -and $Task.closure) { [string]$Task.closure.status } else { '' }
+    if ([string]$Task.status -ne 'completed' -and $closureStatus -ne 'completed') {
+        return [pscustomobject][ordered]@{ Task=$Task; Reopen=$null }
+    }
+    $revisionAgents = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper')
+    if ($AgentId -notin $revisionAgents) {
+        throw "Completed task '$TaskId' cannot reopen from agent '$AgentId'. Reopen it from a delivery agent first."
+    }
+    Assert-TaskControllerIsIdle -Task $Task
+    $currentRevision = if ($Task.PSObject.Properties['revision']) { [int]$Task.revision } else { 1 }
+    $reopenParameters = @{
+        TaskId=$TaskId
+        Reason="Process pending comments addressed to '$AgentId' after revision $currentRevision was completed."
+        ResumeFrom=$AgentId
+        ExpectedRevision=$currentRevision
+        ConfigPath=$ConfigPath
+        CodexHome=$CodexHome
+    }
+    if ($Task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhiteSpace([string]$Task.executionRunId)) { $reopenParameters.ExpectedRunId = [string]$Task.executionRunId }
+    if ($Task.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWhiteSpace([string]$Task.workspaceLeaseId)) { $reopenParameters.ExpectedLeaseId = [string]$Task.workspaceLeaseId }
+    $reopen = & (Join-Path $PSScriptRoot 'Reopen-AgentTask.ps1') @reopenParameters
+    $reopenedTask = Get-Content -LiteralPath (Join-Path $stateRoot "tasks\$TaskId\task.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    return [pscustomobject][ordered]@{ Task=$reopenedTask; Reopen=$reopen }
+}
 function Start-TargetedAgentResume {
     param(
         [Parameter(Mandatory)][string] $TaskId,
         [Parameter(Mandatory)][string] $AgentId,
         [Parameter(Mandatory)] $Task,
-        [Parameter(Mandatory)][string] $Instruction
+        [Parameter(Mandatory)][string] $Instruction,
+        [bool] $ElevatedApproved = $false
     )
 
+    $revisionTransition = Open-CompletedTaskRevisionForTargetedResume -TaskId $TaskId -AgentId $AgentId -Task $Task
+    $Task = $revisionTransition.Task
     Assert-TaskControllerIsIdle -Task $Task
     $repositoryIds = @(Get-RequestedRepositoryIds -Source $Task -Required)
     $parameters = @{
@@ -193,11 +227,15 @@ function Start-TargetedAgentResume {
         UserInstruction=$Instruction
         Resume=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
     }
+    if ($ElevatedApproved) { $parameters.ElevatedApproved = $true }
     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $TaskId -Parameters $parameters
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$AgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$AgentId'." -TargetAgentId $AgentId -Artifact (Join-Path $stateRoot "tasks\$TaskId\task.json") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    $executionMode = if ([bool]$config.runtime.elevatedFallback.useByDefault) { 'elevated-approved' } else { 'sandboxed' }
-    return [pscustomobject][ordered]@{ status='scheduled'; taskId=$TaskId; agentId=$AgentId; processId=$PID; runId=$run.runId; executionMode=$executionMode; pendingAgents=@($AgentId); message="Only '$AgentId' was scheduled; it will run when this task owns the workspace lease." }
+    $executionMode = if ($ElevatedApproved -or [bool]$config.runtime.elevatedFallback.useByDefault) { 'elevated-approved' } else { 'sandboxed' }
+    $reopened = $null -ne $revisionTransition.Reopen
+    $revision = if ($Task.PSObject.Properties['revision']) { [int]$Task.revision } else { 1 }
+    $message = if ($reopened) { "Task reopened as revision $revision and '$AgentId' was scheduled with its downstream chain." } else { "Only '$AgentId' was scheduled; it will run when this task owns the workspace lease." }
+    return [pscustomobject][ordered]@{ status='scheduled'; taskId=$TaskId; agentId=$AgentId; processId=$PID; runId=$run.runId; executionMode=$executionMode; pendingAgents=@($AgentId); reopened=$reopened; revision=$revision; message=$message }
 }
 function Stop-TaskScriptRunspaces {
     param([Parameter(Mandatory)][string] $TaskId)
@@ -631,26 +669,10 @@ try {
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before restarting one agent." }
-                    Assert-TaskControllerIsIdle -Task $persistedTask
-                    $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
-                    $parameters = @{
-                        Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
-                        RepositoryIds=$repositoryIds; TargetAgentId=$requestedAgentId
-                        UserInstruction="Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve every other agent."
-                        Resume=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
-                    }
                     $elevated = [bool]$body.elevated
-                    if ($elevated) {
-                        if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
-                        $parameters.ElevatedApproved = $true
-                    }
-                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
-                    $processId = $PID
-                    $runId = $run.runId
-                    $executionMode = if ($elevated) { 'elevated-approved' } else { 'sandboxed' }
-                    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$requestedAgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$requestedAgentId'." -TargetAgentId $requestedAgentId -Artifact $taskPath -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-                    Send-Json -Response $response -Value @{ status='scheduled'; taskId=$requestedTaskId; agentId=$requestedAgentId; processId=$processId; runId=$runId; executionMode=$executionMode; pendingAgents=@($requestedAgentId); message="Only '$requestedAgentId' was scheduled; it will run when this task owns the workspace lease." }
+                    if ($elevated -and -not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
+                    $dispatch = Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId $requestedAgentId -Task $persistedTask -Instruction "Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve completed upstream agents." -ElevatedApproved:$elevated
+                    Send-Json -Response $response -Value $dispatch
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/close$') {
