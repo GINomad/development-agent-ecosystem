@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:27.0844240Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1877820,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1877820",
+      "revision": 9,
+      "type": "User Story",
+      "title": "[Report Designer] Create and persist economic variable links",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum",
+      "changedDate": "09/21/2026 16:12:36",
+      "description": "<p><b>As a</b> Report Author, <b>I want</b> to create and persist economic variable links, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope and estimate </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><p><b>Optimistic: 40 hours / 10 SP. Pessimistic: 40 hours / 10 SP.</b> These are provisional effort estimates including development, review, automated tests and QA; 1 SP = 4 hours and 2 SP = one assumed 8-hour person-day. Scenario labels describe desktop parity versus the initial requirements interpretation, not statistical bounds. </p><h3>Implementation plan </h3><p>1. Trace desktop link creation through editor/helper/entity code. Document identifier construction, range naming, Summary/Periodic distinction, default values and minimum persisted fields. </p><p>2. Implement an adapter from the chosen spreadsheet selection to the domain range representation. Keep control-specific coordinates separate from the domain model. </p><p>3. Reuse desktop/domain rules to create the link and corresponding workbook named range; validate variable eligibility and target before mutation. </p><p>4. Integrate both changes with the shared lock-aware save operation. Define a consistent failure path; do not independently save workbook and link list from unrelated UI requests. </p><p>5. Add create -&gt; save -&gt; fresh reopen -&gt; generate regression cases for Summary and Periodic links. Cover representative Standard and OLS behavior through confirmed fixtures. </p><h3>Open questions / held behavior </h3><p>Question 1: What counts as a valid target: merged/protected cells, non-contiguous selections, existing linked cells, multi-cell Summary links? </p><p>Question 2: For overlapping targets, does desktop replace, split, reject or combine links? Overlap mutation is held until verified. </p><p>Question 3: What interaction is approved: drop, selection+Link, or both? Desktop semantics are fixed; web gesture choice is not established by this plan. </p><p>Risks: orphaned named ranges; corrupt range/metadata association; component reload losing unsaved edits. Depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869322\">1869322</a> (Browse and filter report variables) and shared host/save. <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links) owns initial link creation; <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877832\">1877832</a> (Manage links and preserve them during spreadsheet edits) owns subsequent structural edits and unlink. </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are estimated separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+      "acceptanceCriteria": "<p>AC1: For a valid writable target and eligible economic variable, the author can create a Summary or Periodic link using the accepted web interaction. A persisted domain association is created; inserting a snapshot value alone does not satisfy this AC. </p><p>AC2: A created link displays inherited Variable Name, Prompt and Type read-only and uses desktop defaults for its remaining settings. </p><p>AC3: After save, closing and freshly reopening the template preserves variable identity, link kind, worksheet/range association and the required metadata. Workbook named ranges and VariableList refer to the same link. </p><p>AC4: A template with newly created links can be consumed by the existing report generator and matches an equivalent desktop fixture for the agreed representative cases. </p><p>AC5: Failed validation or a rejected save does not leave a successfully persisted workbook with missing/mismatched link metadata. Existing template data remains recoverable through the shared save contract. </p>",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

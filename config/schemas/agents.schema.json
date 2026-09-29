@@ -181,6 +181,77 @@
               "const": "in-process-runspace"
             }
           }
+        },
+        "hybrid": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "copilotModel",
+            "requirementsDraft",
+            "providers"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "copilotModel": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "knowledgeSyncEnabled": { "type": "boolean" },
+            "knowledgeSourceRoot": { "type": "string", "minLength": 1 },
+            "requirementsDraft": {
+              "type": "boolean"
+            },
+            "providers": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "orchestrator",
+                "knowledge_keeper",
+                "requirements_analyst",
+                "developer",
+                "reviewer",
+                "review_verifier",
+                "pipeline_monitor",
+                "health_check"
+              ],
+              "properties": {
+                "orchestrator": {
+                  "enum": [
+                    "copilot",
+                    "codex"
+                  ]
+                },
+                "knowledge_keeper": {
+                  "enum": [
+                    "copilot",
+                    "codex"
+                  ]
+                },
+                "requirements_analyst": {
+                  "const": "codex"
+                },
+                "developer": {
+                  "enum": [
+                    "copilot",
+                    "codex"
+                  ]
+                },
+                "reviewer": {
+                  "const": "codex"
+                },
+                "review_verifier": {
+                  "const": "codex"
+                },
+                "pipeline_monitor": { "const": "codex" },
+                "health_check": {
+                  "const": "codex"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1009,7 +1080,7 @@
                   "get_task_state",
                   "get_artifact_summary",
                   "read_artifact_evidence",
-                  "list_pending_comments"
+                  "list_pending_comments", "list_knowledge", "read_knowledge"
                 ]
               }
             }
@@ -1456,7 +1527,19 @@
             "type": "array",
             "uniqueItems": true,
             "minItems": 1,
-            "items": { "enum": ["full-delivery", "local-poc-delivery", "research-only", "requirements-only", "implementation-only", "review-only", "pipeline-only", "knowledge-only", "ecosystem-repair"] }
+            "items": {
+              "enum": [
+                "full-delivery",
+                "local-poc-delivery",
+                "research-only",
+                "requirements-only",
+                "implementation-only",
+                "review-only",
+                "pipeline-only",
+                "knowledge-only",
+                "ecosystem-repair"
+              ]
+            }
           },
           "includeAuthors": {
             "type": "array",
@@ -1536,18 +1619,38 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "name", "enabled", "repositoryIds", "domainKnowledgeRoot"],
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "repositoryIds",
+          "domainKnowledgeRoot"
+        ],
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
-          "name": { "type": "string", "minLength": 1 },
-          "enabled": { "type": "boolean" },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
           "repositoryIds": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$"
+            }
           },
-          "domainKnowledgeRoot": { "type": "string", "minLength": 1 }
+          "domainKnowledgeRoot": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },

@@ -1,0 +1,110 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:35.9526923Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869308,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869308",
+      "revision": 31,
+      "type": "Feature",
+      "title": "[Report Designer] Web-based Report Management",
+      "state": "Backlog",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Phoenix Team",
+      "iterationPath": "Quorum\\PI 26.4",
+      "changedDate": "09/22/2026 11:15:13",
+      "description": "<div>Placeholder � scope and requirements to be refined. Covers web-based equivalents of WPF Report Designer's Reports tab (template list) actions: create/rename/delete/organize templates and folders, Master/Project/Regime report type management, Export/Import template (XML), Permissions (Read/Update/Delete/Assign, folder-inherited), and the Edit Using Excel live-edit round-trip (open question: relevance once reports live in a web-based spreadsheet component). Sibling to 1865781 [Report Designer] Webify the Excel based editor, which covers the Report Template tab (layout, variable linking, groups, preview, migration). </div><div><br> </div><div>Mockup is general - where there are inconsistencies with Econ UI patterns the implemented UI wins. Interactive html is attached - download and open. </div><div><br> </div><div><b>url</b>: .../planningspaceeconomics/#/configuration/managereports<br> </div><div><b>breadcrumb</b>: planning space &gt; Economics &gt; Configuration &gt; Manage Reports </div><div><br> </div><div><img src=\"https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/attachments/8e6ef25c-9937-4a6c-8899-44928f0cf48a?fileName=image.png\" alt=Image><br> </div>",
+      "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>Template &amp; Folder List</b><ul><li>The Manage Reports screen must present two views of templates: an &quot;All Reports&quot; view listing every template (searchable by name substring), and a &quot;Master List&quot; view showing only templates currently designated as Master Reports � matching desktop Report Designer behavior. </li><li>Templates must be organizable into folders, including nested folders. </li> </ul> </li><li><b>Create, Rename, Delete</b><ul><li>A user must be able to create a new report template as either a Standard Report or a One Line Summary Report, or create a new folder, within a selected folder. </li><li>Creating a template must prompt for a name before it is added to the folder's list. </li><li>A user must be able to rename an existing template or folder. </li><li>A user must be able to delete an existing template or folder, subject to a confirmation step before the deletion is applied. This Feature does not need to define what happens to a template's existing usages elsewhere (Project/Regime links, scratchpad/result set reports); that is owned by the features that consume templates. </li> </ul> </li><li><b>Report Type Management</b><ul><li>Each template in the list must display its report type: Master Report, Project Report, Regime Report, or none. </li><li>A user must be able to add a template to, or remove it from, the Master Reports designation from this screen; a template designated as a Master Report must be visible on the Reports tab of every project in the hierarchy. </li><li>Creating or removing a Project Report link (via Manage Inputs) or a Regime Report link (via the Regime Library) is out of scope for this screen � this screen only reflects and lets a user filter/search by the resulting type, it does not create those links. </li> </ul> </li><li><b>Export / Import Template</b><ul><li>A user must be able to export a selected template to a local XML file. </li><li>A user must be able to import a template from an XML file into a selected folder. </li> </ul> </li><li><b>Permissions</b><ul><li>Permissions (Read, Update, Delete, Assign) must be assignable per template and per folder, to individual users or to workgroups. </li><li>Read grants viewing the template (and using it in reporting); Update grants modifying a template or folder; Delete grants deleting a template or folder; Assign grants changing permissions on it. </li><li>A new template or folder must inherit its parent folder's permissions by default. </li><li>Changing a folder's permissions must support applying the change to: this node only (default), this node and all child nodes, all child nodes only, this node and all parent nodes, or this node and all child and parent nodes. </li> </ul> </li> </ul><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: </li><li>What regression is required: </li><li>Impact on automation: </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: </li><li>Web API testing required?: </li><li>Upgrade required?: yes/no<ul><li>Do these require DBA review? yes/no </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: </li><li>Security: Permissions must be enforced consistently with the desktop Report Designer's Read/Update/Delete/Assign model, folder-inherited </li><li>Concurrency: </li><li>Resilience: </li><li>Observability and Logging: </li><li>Compatibility and DPI: </li><li>Network/latency: </li><li>Memory leak/mgt testing required: </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876573"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876575"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876574"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876576"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Related"
+          },
+          "rel": "System.LinkTypes.Related",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876572"
+        }
+      ],
+      "comments": [
+        {
+          "id": "17768616",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/18/2026 17:00:54",
+          "updatedAt": "09/18/2026 17:00:54",
+          "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,3de9bb5f-30a9-48d4-928a-c314ce28a6cf\">@Binni Singh</a>&nbsp;<a href=\"#\" data-vss-mention=\"version:2.0,ea8470c6-61e0-6bc3-9533-4845e37e2d7c\">@Swapnil Wagharalkar</a>&nbsp;Removed from Phoenix 26.3 in favour of Currency Decks.</div><div>cc: <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a> </div>"
+        },
+        {
+          "id": "17764198",
+          "author": "binni.singh@quorumsoftware.com",
+          "createdAt": "09/18/2026 11:41:42",
+          "updatedAt": "09/18/2026 11:41:42",
+          "text": "<div>Dev - 20 days</div><div>QA - 5 days</div>"
+        },
+        {
+          "id": "17750630",
+          "author": "binni.singh@quorumsoftware.com",
+          "createdAt": "09/17/2026 11:59:38",
+          "updatedAt": "09/17/2026 11:59:38",
+          "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,ea8470c6-61e0-6bc3-9533-4845e37e2d7c\">@Swapnil Wagharalkar</a><a href=\"#\" data-vss-mention=\"version:2.0,fab00f11-ad9a-6a74-91a2-85593449b3be\">@Vaibhav Barhate</a>Updated the acceptance.</div>"
+        },
+        {
+          "id": "17643004",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/03/2026 20:51:00",
+          "updatedAt": "09/03/2026 20:51:00",
+          "text": "<div><a href=\"#\" data-vss-mention=\"version:2.0,23f83757-38a5-685d-be43-be31a1b1380c\">@Nestor Piazuelo Alonso</a>&nbsp; <a href=\"#\" data-vss-mention=\"version:2.0,688a669c-70f7-4dc8-ab85-18a9c3f3a3b0\">@Aditya Thangirala</a>&nbsp;To be confirmed - The&nbsp;Report template in web can be split I think, so that a team familiar in Economics UI can create the Management UI, and Veles can do the template itself?</div><div><br></div><div><a href=\"#\" data-vss-mention=\"version:2.0,3de9bb5f-30a9-48d4-928a-c314ce28a6cf\">@Binni Singh</a> </div><div><br></div><div><br></div>"
+        }
+      ]
+    }
+  ]
+}

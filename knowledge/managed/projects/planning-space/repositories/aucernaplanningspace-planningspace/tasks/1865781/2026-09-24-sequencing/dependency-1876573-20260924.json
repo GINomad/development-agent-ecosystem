@@ -1,0 +1,78 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.TargetReleaseUpdateNumber": "N/A",
+    "EngineeringCMMI.Module": "N/A",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>Create</b><ul><li>A user must be able to create a new report template as either a Standard Report or a One Line Summary Report, or create a new folder, within a selected folder. </li><li>Creating a template must prompt for a name before it is added to the folder's list. </li> </ul> </li><li><b>Rename</b><ul><li>A user must be able to rename an existing template or folder. </li> </ul> </li><li><b>Delete</b><ul><li>A user must be able to delete an existing template or folder, subject to a confirmation step before the deletion is applied. This story does not need to define what happens to a template's existing usages elsewhere (Project/Regime links, scratchpad/result set reports); that is owned by the features that consume templates. </li> </ul> </li> </ul>",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1999964070.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-18T05:59:31.18Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Phoenix Team",
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5"
+        }
+      },
+      "descriptor": "aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "displayName": "Marg Brodie",
+      "id": "503a8717-a1ad-6852-a9e1-c24a95a91019",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.NTAzYTg3MTctYTFhZC03ODUyLWE5ZTEtYzI0YTk1YTkxMDE5",
+      "uniqueName": "marg.brodie@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/503a8717-a1ad-6852-a9e1-c24a95a91019"
+    },
+    "System.ChangedDate": "2026-09-21T17:02:51.23Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MWVjZGE4YzMtZmMwNi03ZDQzLTk3MzgtYWMzNjY3YThmNTY0"
+        }
+      },
+      "descriptor": "aad.MWVjZGE4YzMtZmMwNi03ZDQzLTk3MzgtYWMzNjY3YThmNTY0",
+      "displayName": "Binni Singh",
+      "id": "3de9bb5f-30a9-48d4-928a-c314ce28a6cf",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MWVjZGE4YzMtZmMwNi03ZDQzLTk3MzgtYWMzNjY3YThmNTY0",
+      "uniqueName": "binni.singh@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/3de9bb5f-30a9-48d4-928a-c314ce28a6cf"
+    },
+    "System.CreatedDate": "2026-09-18T05:59:31.18Z",
+    "System.Description": "<div><b>As a</b> report author, </div><div><b>I want to</b> create, rename, and delete templates and folders, </div><div><b>So that</b> I can manage the report library's structure. </div>",
+    "System.IterationPath": "Quorum\\PI 27.1",
+    "System.Parent": 1869308,
+    "System.Reason": "New",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "Create, rename, and delete report templates and folders",
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_8FFA2912606B464491B01262507D6829_Kanban.Column": "New",
+    "WEF_8FFA2912606B464491B01262507D6829_Kanban.Column.Done": false,
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column": "New",
+    "WEF_D8557F311BFC42E9A83D5A28A8EA0F91_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false
+  },
+  "id": 1876573,
+  "multilineFieldsFormat": {
+    "Microsoft.VSTS.Common.AcceptanceCriteria": "html",
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869308"
+    }
+  ],
+  "rev": 5,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876573"
+}

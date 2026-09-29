@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:16.9127768Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1869322,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1869322",
+      "revision": 22,
+      "type": "User Story",
+      "title": "[Report Designer] Browse and filter report variables",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.3",
+      "changedDate": "09/21/2026 16:12:18",
+      "description": "<p><b>As a</b> Report Author, <b>I want</b> to browse and filter report variables, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope and estimate </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><p><b>Optimistic: 32 hours / 8 SP. Pessimistic: 32 hours / 8 SP.</b> These are provisional effort estimates including development, review, automated tests and QA; 1 SP = 4 hours and 2 SP = one assumed 8-hour person-day. Scenario labels describe desktop parity versus the initial requirements interpretation, not statistical bounds. </p><h3>Implementation plan </h3><p>1. Trace the desktop variable-tree provider and its callers; identify regime scoping, variable identity, categories, and which metadata is eligible for each report type. Record actual provider/API names in implementation notes. </p><p>2. Locate reusable authenticated web access to that catalog. If missing, propose the smallest adapter around existing domain services; validate its contract before implementation. </p><p>3. Build the tree with distinct catalog data, filter state, and current-template linked IDs. Derive Linked from links, not from cached flags on catalog nodes. </p><p>4. Wire search, regime selection, and All/Linked. Use existing client patterns to prevent an earlier response overwriting a later selection. </p><p>5. Test a small deterministic real-shape fixture and a persisted desktop template. Integrate link-change refresh with <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links)/<a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877832\">1877832</a> (Manage links and preserve them during spreadsheet edits); fixture-based coverage alone does not finish AC4. </p><h3>Open questions / held behavior </h3><p>Question 1: On changing regime, does desktop retain, hide, invalidate, or remove existing links? Regime-change mutation behavior remains held; AC5 does not answer this case. </p><p>Question 2: Exact search matching: name/prompt/path, case sensitivity and parent-node retention. Read desktop logic before finalizing exact expected matches. </p><p>Question 3: Does Linked include links on every sheet and how does it represent variables no longer available in the catalog? </p><p>Risks: large catalogs, stale asynchronous results, confusing node identity with labels. Depends on shared catalog access and link representation; mutation integration depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links)/<a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877832\">1877832</a> (Manage links and preserve them during spreadsheet edits). </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are estimated separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+      "acceptanceCriteria": "<p>AC1: Opening the variable panel for a template displays variables from the selected regime, grouped into the desktop-defined Summary/Periodic and metadata categories. The UI uses real domain identifiers, not display text as identity. </p><p>AC2: For a fixed regime and a known fixture catalog, search narrows the displayed results. Clearing search restores the regime-scoped results without changing existing links or workbook contents. </p><p>AC3: For a template fixture with one linked and one unlinked variable, All displays both eligible variables; Linked displays only the linked variable. Multiple links for one variable do not turn it into different domain variables. </p><p>AC4: Search and All/Linked operate together within the selected regime. A successful link creation/removal refreshes the Linked view from the current link model, including after save/reopen. </p><p>AC5: Browsing and filtering alone do not create, delete, or modify template links. </p>",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

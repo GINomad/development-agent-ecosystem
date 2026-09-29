@@ -26,6 +26,7 @@ function ConvertTo-WindowsArgument {
 function Get-FailureFingerprint {
     param([string] $Line)
     try { $event = $Line | ConvertFrom-Json } catch { return $null }
+    if ($null -eq $event -or -not $event.PSObject.Properties['type']) { return $null }
     if ([string]$event.type -eq 'error' -and $event.PSObject.Properties['message']) {
         $detail = [string]$event.message
         if ($detail -match '(?i)selected model is at capacity') {

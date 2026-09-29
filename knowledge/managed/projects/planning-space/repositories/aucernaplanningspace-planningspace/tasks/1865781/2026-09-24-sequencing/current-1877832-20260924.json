@@ -1,0 +1,41 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:16.9107895Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1877832,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1877832",
+      "revision": 4,
+      "type": "User Story",
+      "title": "[Report Designer] Manage links and preserve them during spreadsheet edits",
+      "state": "New",
+      "assignedTo": "",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum",
+      "changedDate": "09/21/2026 16:12:36",
+      "description": "<p><b>As a</b> Report Author, <b>I want</b> to manage links and preserve them during spreadsheet edits, <b>so that</b> I can design report templates in the web client with the corresponding desktop behavior. </p><h3>Scope and estimate </h3><p>Part of the variable-linking scope split under Feature <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1865781\">1865781</a>. Desktop is the accepted business-behavior reference. The acceptance criteria are in the separate Acceptance Criteria field. </p><p><b>Optimistic: 32 hours / 8 SP. Pessimistic: 32 hours / 8 SP.</b> These are provisional effort estimates including development, review, automated tests and QA; 1 SP = 4 hours and 2 SP = one assumed 8-hour person-day. Scenario labels describe desktop parity versus the initial requirements interpretation, not statistical bounds. </p><p><b>Estimate condition:</b> 8 SP assumes a bounded, confirmed structural-edit matrix. Re-estimate or split after verifying desktop behavior; this is not a commitment to unrestricted Excel editing. </p><h3>Implementation plan </h3><p>1. Build a scenario matrix from desktop commands/helper code and actual fixtures: insert/delete rows/columns, copy/cut/paste linked ranges, moving/rebinding ranges, sheet rename/delete and overlapping/mixed selections. For each record expected workbook, named ranges, link metadata and generator result. </p><p>2. Mark each scenario confirmed/unknown plus source revision. Determine what the chosen component does automatically and where a domain adapter is required. </p><p>3. Implement single-link lookup and unlink using the confirmed cleanup semantics; connect changes to <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1869322\">1869322</a> (Browse and filter report variables) refresh and the shared save unit. </p><p>4. Implement ONLY confirmed structural-edit behavior in the agreed scope. Preserve link identifiers or regenerate them according to evidence; do not blindly clone metadata on paste. </p><p>5. Add before/edit/save/reopen/generate regression fixtures per confirmed scenario. Split scenarios into additional PBIs if complexity exceeds8SP rather than silently dropping desktop behavior. </p><h3>Open questions / held behavior </h3><p>Question 1: Does unlink preserve cell values, formulas, formatting and headers? What named-range cleanup is required? </p><p>Question 2: Exact behavior for copy versus move, overlapping links, multi-link selections, deleting linked rows and deleting/renaming sheets. </p><p>Question 3: Can a link's Range be edited directly without recreation? What validations/side effects apply? </p><p>Question 4: Which operations can be delivered in this8SP slice, and how are remaining desktop scenarios decomposed? This affects scope/estimate, not permission to invent new behavior. </p><p>Risks: orphaned metadata, duplicate link identities, subtle engine-specific coordinate changes. Depends on <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877820\">1877820</a> (Create and persist economic variable links) and shared editor mutation/save infrastructure. Integration with <a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877829\">1877829</a> (Configure variable link attributes and headers)/<a href=\"https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1877830\">1877830</a> (Configure run-specific links and comparison metadata) must preserve all settings during edits. </p><h3>Implementation context and evidence </h3><p>Repository: <a href=\"https://dev.azure.com/Aucerna/PlanningSpace/_git/PlanningSpace\">PlanningSpace</a>. Inspected baseline: db7f87c7209b5897bba21df7d98a0e0081b58cef. Refresh source and ADO context before implementation. The existing uncommitted prototype is not completed production functionality. </p><p>Source anchors: Fusion/Components/Administration/ViewModels/Reports/ReportTemplateEditorViewModel.cs; ReportTemplateSpreadsheetHelper.cs and ReportVariableLinkSettingsViewModel.cs in the same folder; Fusion/Framework/Report.Entities/Entities/StandardReportVariableLink.cs and EditableStandardReportEntity.cs; Fusion/Framework/Report.DataAccess/DBRepository/EditableStandardReportDBRepository.cs; Fusion/Framework/ReportGenerator/. </p><p>Shared prerequisites: accepted spreadsheet host/component and selection contract; authenticated open/save service enforcing update permission and business locks. General host/save, migration and release work are estimated separately at Feature level. Each story owns its domain mapping and tests. Preserve workbook Template and VariableList consistently; verify through fresh reopen, not only in-memory state. </p><p>Open questions remain open. Resolve desktop implementation facts with source revision and reproducible examples before treating the affected behavior as an acceptance criterion. Do not infer new behavior from an incomplete mockup. </p>",
+      "acceptanceCriteria": "<p>AC1: Selecting a single existing linked range resolves its persisted association for inspection. Unlink removes the association and updates the Linked filter; effects on workbook content must follow the confirmed desktop rule, not an assumed clearing policy. </p><p>AC2: After unlink/save/reopen, no stale link record or link-owned named range remains according to the desktop cleanup contract. </p><p>AC3: For EACH structural-edit scenario accepted into the matrix below, perform the edit, save, fresh reopen and report generation; resulting range associations and values match the desktop reference. This AC is conditional and cannot be signed off before the matrix is resolved. </p><p>AC4: An edit failure must not silently persist mismatched workbook/link metadata. Unsupported operations require an explicitly approved handling policy; rejection is not assumed to be acceptable desktop parity. </p>",
+      "tags": "",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        }
+      ],
+      "comments": [
+        {
+          "id": "",
+          "author": "",
+          "createdAt": "",
+          "updatedAt": "",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

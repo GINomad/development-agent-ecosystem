@@ -1,12 +1,12 @@
 {
   "$schema": "./schemas/agents.schema.json",
   "schemaVersion": "1.3.0",
-  "namespace": "development-ecosystem",
+  "namespace": "development-ecosystem-hybrid",
   "runtime": {
     "maxConcurrentAgents": 4,
     "approvalPolicy": "on-request",
-    "stateRoot": "${LOCALAPPDATA}/Codex/development-agent-ecosystem",
-    "agentInstallRoot": "${CODEX_HOME}/agents",
+    "stateRoot": "${LOCALAPPDATA}/Codex/development-agent-ecosystem-hybrid",
+    "agentInstallRoot": "${STATE_ROOT}/agents",
     "historyFormat": "jsonl",
     "defaultBaseBranch": "main",
     "executionGuard": {
@@ -30,6 +30,23 @@
       "agentProfileSuffix": "_host_compatible",
       "compatibilityPromptPath": "${REPO_ROOT}/prompts/common/os-policy-compatibility.md",
       "launchStrategy": "in-process-runspace"
+    },
+    "hybrid": {
+      "enabled": true,
+      "copilotModel": "auto",
+      "requirementsDraft": true,
+      "knowledgeSyncEnabled": true,
+      "knowledgeSourceRoot": "C:/Repos/development-agent-ecosystem/knowledge/managed",
+      "providers": {
+        "orchestrator": "copilot",
+        "knowledge_keeper": "copilot",
+        "requirements_analyst": "codex",
+        "developer": "copilot",
+        "reviewer": "codex",
+        "review_verifier": "codex",
+        "pipeline_monitor": "codex",
+        "health_check": "codex"
+      }
     }
   },
   "operation": {
@@ -304,7 +321,7 @@
   },
   "ui": {
     "listenAddress": "127.0.0.1",
-    "port": 43127,
+    "port": 43128,
     "openBrowser": true,
     "taskRefreshSeconds": 5,
     "agentLogRefreshSeconds": 30,
@@ -315,7 +332,7 @@
     "enabled": true,
     "repairMode": "safe-deterministic-only",
     "checkOnWorkflowFailure": true,
-    "dashboardHealthUrl": "http://127.0.0.1:43127/health",
+    "dashboardHealthUrl": "http://127.0.0.1:43128/health",
     "automaticRecovery": {
       "enabled": true,
       "allowEcosystemSourceChanges": true,
@@ -324,7 +341,7 @@
       "pushVerifiedRepairs": true,
       "pushRemote": "origin",
       "pushRemoteUrl": "https://github.com/GINomad/development-agent-ecosystem.git",
-      "repairBranchPrefix": "health-recovery",
+      "repairBranchPrefix": "hybrid-health-recovery",
       "maxAttemptsPerFailureSignature": 1,
       "workspace": "${REPO_ROOT}",
       "sandboxMode": "workspace-write",
@@ -374,17 +391,66 @@
     "localServer": {
       "name": "ecosystem-read",
       "command": "powershell",
-      "arguments": ["-NoProfile", "-File", "${REPO_ROOT}/scripts/Start-EcosystemReadMcpServer.ps1"],
-      "enabledTools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"]
+      "arguments": [
+        "-NoProfile",
+        "-File",
+        "${REPO_ROOT}/scripts/Start-EcosystemReadMcpServer.ps1"
+      ],
+      "enabledTools": [
+        "get_task_state",
+        "get_artifact_summary",
+        "read_artifact_evidence",
+        "list_pending_comments", "list_knowledge", "read_knowledge"
+      ]
     },
     "servers": [],
     "rolePolicies": {
       "orchestrator": [],
-      "knowledge_keeper": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
-      "requirements_analyst": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "knowledge_keeper": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments", "list_knowledge", "read_knowledge"
+          ]
+        }
+      ],
+      "requirements_analyst": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments", "list_knowledge", "read_knowledge"
+          ]
+        }
+      ],
       "developer": [],
-      "reviewer": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
-      "review_verifier": [{ "server": "ecosystem-read", "tools": ["get_task_state", "get_artifact_summary", "read_artifact_evidence", "list_pending_comments"] }],
+      "reviewer": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments", "list_knowledge", "read_knowledge"
+          ]
+        }
+      ],
+      "review_verifier": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments", "list_knowledge", "read_knowledge"
+          ]
+        }
+      ],
       "pipeline_monitor": [],
       "health_check": []
     },
@@ -492,7 +558,14 @@
       "reviewer": "local-review",
       "credentialProfile": "local-git",
       "localWorkspace": "C:/Repos/PlanningSpace/excel-variable-poc",
-      "allowedExecutionModes": ["local-poc-delivery", "research-only", "requirements-only", "review-only", "knowledge-only", "ecosystem-repair"],
+      "allowedExecutionModes": [
+        "local-poc-delivery",
+        "research-only",
+        "requirements-only",
+        "review-only",
+        "knowledge-only",
+        "ecosystem-repair"
+      ],
       "includeAuthors": [],
       "excludeAuthors": []
     },
@@ -505,7 +578,14 @@
       "reviewer": "local-review",
       "credentialProfile": "local-git",
       "localWorkspace": "C:/Users/okruk2/Documents/Codex/2026-09-17/g/outputs/devextreme-grid-poc",
-      "allowedExecutionModes": ["local-poc-delivery", "research-only", "requirements-only", "review-only", "knowledge-only", "ecosystem-repair"],
+      "allowedExecutionModes": [
+        "local-poc-delivery",
+        "research-only",
+        "requirements-only",
+        "review-only",
+        "knowledge-only",
+        "ecosystem-repair"
+      ],
       "includeAuthors": [],
       "excludeAuthors": []
     },
@@ -695,7 +775,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/orchestrator.md"
+        "${REPO_ROOT}/prompts/roles/orchestrator.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md"
@@ -733,7 +814,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/knowledge-keeper.md"
+        "${REPO_ROOT}/prompts/roles/knowledge-keeper.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/keep-task-knowledge/SKILL.md",
@@ -775,7 +857,8 @@
       "promptPaths": [
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
-        "${REPO_ROOT}/prompts/roles/requirements-analyst.md"
+        "${REPO_ROOT}/prompts/roles/requirements-analyst.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md"
@@ -806,7 +889,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/developer.md"
+        "${REPO_ROOT}/prompts/roles/developer.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/implement-approved-plan/SKILL.md",
@@ -850,7 +934,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/reviewer.md"
+        "${REPO_ROOT}/prompts/roles/reviewer.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/review-against-requirements/SKILL.md",
@@ -890,7 +975,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/review-verifier.md"
+        "${REPO_ROOT}/prompts/roles/review-verifier.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/verify-review-findings/SKILL.md",
@@ -925,7 +1011,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/pipeline-monitor.md"
+        "${REPO_ROOT}/prompts/roles/pipeline-monitor.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/monitor-delivery-pipelines/SKILL.md",
@@ -961,7 +1048,8 @@
         "${REPO_ROOT}/prompts/common/evidence-first.md",
         "${REPO_ROOT}/prompts/common/task-protocol.md",
         "${REPO_ROOT}/prompts/common/approval-boundaries.md",
-        "${REPO_ROOT}/prompts/roles/health-check.md"
+        "${REPO_ROOT}/prompts/roles/health-check.md",
+        "${REPO_ROOT}/prompts/common/hybrid-runtime.md"
       ],
       "skillPaths": [
         "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/diagnose-agent-health/SKILL.md"

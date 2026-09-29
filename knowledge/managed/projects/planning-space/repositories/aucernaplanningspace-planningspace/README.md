@@ -7,3 +7,7 @@ This is under the configured project domainKnowledgeRoot/versionedRoots. The mai
 [Latest1869322 six-PBI AC/implementation refinement](tasks/1865781/2026-09-21-linking-refinement/README.md)
 
 [Current Azure DevOps stories and revised1869322](tasks/1865781/2026-09-21-created-pbis/README.md) - supersedes draft-only mapping and original50SP scope of1869322.
+
+[2026-09-24 current ADO review and proposed delivery order](tasks/1865781/2026-09-24-sequencing/README.md). Proposed sequencing; no new implementation approval or ADO edits.
+
+[Development-only child Tasks and ecosystem-adjusted estimates](tasks/1865781/2026-09-24-development-tasks/README.md).183hours; QA excluded; parent SP unchanged.

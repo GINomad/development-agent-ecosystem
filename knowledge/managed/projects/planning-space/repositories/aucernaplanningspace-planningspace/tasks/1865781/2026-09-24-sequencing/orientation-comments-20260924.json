@@ -1,0 +1,45 @@
+{
+  "comments": [
+    {
+      "createdBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+          }
+        },
+        "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+        "displayName": "Oleksandr Kruk (EXT)",
+        "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+        "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+        "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+        "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+      },
+      "createdDate": "2026-09-21T15:28:26.55Z",
+      "format": "html",
+      "id": 17777842,
+      "mentions": [],
+      "modifiedBy": {
+        "_links": {
+          "avatar": {
+            "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+          }
+        },
+        "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+        "displayName": "Oleksandr Kruk (EXT)",
+        "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+        "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+        "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+        "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+      },
+      "modifiedDate": "2026-09-21T15:28:26.55Z",
+      "renderedText": "",
+      "text": "<div><li><strong><span>Questions:</span></strong><span> Verify exactly which links Desktop clears and whether cell values and formulas are preserved.</span></li><li><span><br></span></li><li><strong><span>Risks:</span></strong><span> Incomplete link cleanup, loss of unsaved changes, or incorrect orientation of dependent ranges.</span></li><li><span><br></span></li><li><strong><span>Implementation plan:</span></strong><span> Implement the template-level setting  reproduce desktop confirmation and cleanup  save changes consistently  test Cancel/Confirm, both orientations, and reopening. </span></li><br></div>",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1869334/comments/17777842",
+      "version": 1,
+      "workItemId": 1869334
+    }
+  ],
+  "continuation_token": null,
+  "count": 1,
+  "totalCount": 1
+}

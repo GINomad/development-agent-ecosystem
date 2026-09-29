@@ -110,6 +110,20 @@ function Assert-EcosystemConfig {
     foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','projects','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
+    if ($Config.runtime.PSObject.Properties['hybrid'] -and [bool]$Config.runtime.hybrid.enabled) {
+        $hybrid = $Config.runtime.hybrid
+        if ([string]::IsNullOrWhiteSpace([string]$hybrid.copilotModel)) { throw 'hybrid.copilotModel must not be empty.' }
+        foreach ($role in @($Config.agents)) {
+            $property = $hybrid.providers.PSObject.Properties[[string]$role.id]
+            if (-not $property -or [string]$property.Value -notin @('codex','copilot')) { throw "Missing or invalid runtime for '$($role.id)'." }
+            if ([string]$role.id -in @('requirements_analyst','reviewer','review_verifier','health_check','pipeline_monitor') -and [string]$property.Value -ne 'codex') { throw "Independent control role '$($role.id)' must use Codex." }
+        }
+        $classicState = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Codex/development-agent-ecosystem'))
+        $hybridState = Get-EcosystemStateRoot -Config $Config -CodexHome $CodexHome
+        if ($hybridState.Equals($classicState,[StringComparison]::OrdinalIgnoreCase)) { throw 'Hybrid stateRoot must be isolated from the classic instance.' }
+        $installRoot = Resolve-EcosystemPath -Value ([string]$Config.runtime.agentInstallRoot) -Config $Config -CodexHome $CodexHome
+        if (-not (Test-EcosystemRootInsideProductWorkspace -Left $installRoot -Right $hybridState)) { throw 'Hybrid agent definitions must stay inside the hybrid state root.' }
+    }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
     if ([string]$Config.mcp.defaultMode -notin @('disabled','allowlist')) { throw 'mcp.defaultMode is invalid.' }
     $mcpNames=@('ecosystem-read')+@($Config.mcp.servers|ForEach-Object{[string]$_.name})

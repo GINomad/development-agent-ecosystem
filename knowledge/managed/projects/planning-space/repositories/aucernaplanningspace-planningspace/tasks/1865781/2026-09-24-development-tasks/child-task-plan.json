@@ -1,0 +1,83 @@
+[
+  {
+    "parent": 1869322,
+    "title": "Develop: Browse and filter report variables",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1869322.json",
+    "developmentBaselineHours": 24
+  },
+  {
+    "parent": 1869334,
+    "title": "Develop: Configure template time-series orientation",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1869334.json",
+    "developmentBaselineHours": 24
+  },
+  {
+    "parent": 1877820,
+    "title": "Develop: Create and persist economic variable links",
+    "hours": 24.0,
+    "parentSP": 10.0,
+    "baselineHours": 40.0,
+    "file": "work/child-task-patch-1877820.json",
+    "developmentBaselineHours": 32
+  },
+  {
+    "parent": 1877832,
+    "title": "Develop: Manage links and preserve them during spreadsheet edits",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1877832.json",
+    "developmentBaselineHours": 24
+  },
+  {
+    "parent": 1877828,
+    "title": "Develop: Link report metadata variables",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1877828.json",
+    "developmentBaselineHours": 24
+  },
+  {
+    "parent": 1869339,
+    "title": "Develop: Support Range links (Date Range, Formula Range)",
+    "hours": 27.0,
+    "parentSP": 12.0,
+    "baselineHours": 48.0,
+    "file": "work/child-task-patch-1869339.json",
+    "developmentBaselineHours": 36
+  },
+  {
+    "parent": 1877829,
+    "title": "Develop: Configure variable link attributes and headers",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1877829.json",
+    "developmentBaselineHours": 24
+  },
+  {
+    "parent": 1869369,
+    "title": "Develop: Support Discount Rate links",
+    "hours": 24.0,
+    "parentSP": 12.0,
+    "baselineHours": 48.0,
+    "file": "work/child-task-patch-1869369.json",
+    "developmentBaselineHours": 32
+  },
+  {
+    "parent": 1877830,
+    "title": "Develop: Configure run-specific links and comparison metadata",
+    "hours": 18.0,
+    "parentSP": 8.0,
+    "baselineHours": 32.0,
+    "file": "work/child-task-patch-1877830.json",
+    "developmentBaselineHours": 24
+  }
+]

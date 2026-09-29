@@ -1,0 +1,106 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.WorkCategory": "Innovation / Exploratory",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.ActivatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "Microsoft.VSTS.Common.ActivatedDate": "2026-09-24T07:33:08.8Z",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1999957158.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-24T07:33:08.8Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 6.0,
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AssignedTo": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.BoardColumn": "Develop",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.ChangedDate": "2026-09-24T07:33:08.8Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-15T15:23:33.133Z",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.1",
+    "System.Parent": 1874388,
+    "System.Reason": "Moved to state Develop",
+    "System.State": "Develop",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[SPIKE] - Investigate Angular compatible Web packages for manipulating Excel data",
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "Develop",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "Develop",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "Develop",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false
+  },
+  "id": 1874428,
+  "multilineFieldsFormat": {},
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874429"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+    }
+  ],
+  "rev": 5,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874428"
+}

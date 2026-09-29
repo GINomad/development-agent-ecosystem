@@ -1,0 +1,73 @@
+{
+  "sourceId": "quorum-azure-boards",
+  "fetchedAtUtc": "2026-09-24T07:37:36.1933529Z",
+  "mode": "manual",
+  "workItems": [
+    {
+      "id": 1874388,
+      "url": "https://dev.azure.com/quorumsoftware/Quorum/_workitems/edit/1874388",
+      "revision": 13,
+      "type": "Feature",
+      "title": "[Report Designer] Tech Spike for web designer",
+      "state": "New",
+      "assignedTo": "nestor.piazuelo@quorumsoftware.com",
+      "areaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+      "iterationPath": "Quorum\\PI 26.3\\26.3.1",
+      "changedDate": "09/17/2026 21:30:41",
+      "description": "<div><b>As a</b> Report Author </div><div><b>I want</b> to build and configure report templates in a web-based spreadsheet editor </div><div><b>So that</b> I can design reports without depending on the WPF desktop client, while keeping the spreadsheet experience I already use today </div><div><br> </div><div>This feature captures the investigation activities required to decide on the tools and interaction model used to build report templates on the web. The current desktop experience is delivered through an Excel add-in task pane; because an add-in pane sits outside Excel's own event model, moving a variable from the pane into a spreadsheet cell (via drag-and-drop or right-click) cannot be assumed to carry over to a web equivalent. This spike determines the viable interaction model and web-compatible spreadsheet component before implementation work begins. </div><div><br> </div><ol><li>Investigate whether variables can be moved from the task pane into spreadsheet cells via drag-and-drop, right-click, or left-click in a web context. </li><li>Investigate Angular-compatible web packages capable of manipulating Excel-like spreadsheet data, and compare relative cost/effort. </li><li>Produce a recommended interaction model and component approach so implementation work can be estimated. </li> </ol><div><br> </div><div><b>Out of scope:</b> Implementation of the chosen approach � tracked under the web Report Designer delivery work. This Feature covers investigation and decision-making only. </div>",
+      "acceptanceCriteria": "<div><b>Acceptance Criteria</b> </div><ul><li><b>AC1 � Interaction Model Findings Documented</b><br>Given the investigation into moving variables from the task pane to Excel cells, when the spike concludes, then findings on the feasibility of drag-and-drop, right-click, and left-click interactions are documented, including any constraints imposed by the Excel add-in sandbox/event model. </li><li><b>AC2 � Web Package Options Evaluated</b><br>Given the investigation into Angular-compatible packages for manipulating Excel data, when the spike concludes, then a list of viable options is documented, including relative cost and effort for each. </li><li><b>AC3 � Recommended Approach Agreed</b><br>Given the findings from both investigation stories, when the team reconvenes, then a single recommended interaction model and component approach is agreed and documented, enabling implementation stories to be estimated. </li> </ul><div><br> </div><div><b>Scope &amp; Impact</b> </div><ul><li>Impacted areas: Web Report Designer / Excel add-in task pane </li><li>What regression is required: None � investigation only, no code changes </li><li>Web APIs modified in this work item? No<ul><li>List new/changed endpoints here: N/A </li><li>Web API testing required (inform Automation Team): No </li> </ul> </li><li>Impact on automation: None </li><li>Impact on other teams, Build, Infrastructure, Other Development teams: None at spike stage </li><li>DB Upgrade required?: No<ul><li>Do these require DBA review? No </li> </ul> </li> </ul><div><b>Non-functionals</b> </div><ul><li>Performance metrics: Deferred to implementation feature once approach is selected </li><li>Security: Deferred to implementation feature once approach is selected </li><li>Concurrency: N/A at spike stage </li><li>Resilience: N/A at spike stage </li><li>Observability and Logging: N/A at spike stage </li><li>Compatibility and DPI: Chosen approach must work within the constraints of the Office web add-in platform </li><li>Network/latency: N/A at spike stage </li><li>Memory leak/mgt testing required: N/A at spike stage </li> </ul><div>Developer: </div><div>Code Reviewer: </div><div>QA: </div>",
+      "tags": "PI 26.3",
+      "relations": [
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Parent"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1855446"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874428"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Successor"
+          },
+          "rel": "System.LinkTypes.Dependency-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1865781"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1878698"
+        },
+        {
+          "attributes": {
+            "isLocked": false,
+            "name": "Child"
+          },
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874423"
+        }
+      ],
+      "comments": [
+        {
+          "id": "17731178",
+          "author": "marg.brodie@quorumsoftware.com",
+          "createdAt": "09/15/2026 15:30:09",
+          "updatedAt": "09/15/2026 15:30:09",
+          "text": "<div>Description, Acceptance Criteria, and custom fields (Business Outcome, Objective, Non-Functional Requirements, In Scope, Key Metrics) populated by Claude Desktop, based on the tech spike discussion covering the Excel add-in architecture constraints, the right-click/drag-and-drop investigation, and the Angular-compatible web package investigation.</div>"
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,7 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
     $ConfigPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'
 }
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'HybridRuntime.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $root = Get-EcosystemRoot
 $dashboardRoot = Join-Path $root 'dashboard'
@@ -282,7 +283,7 @@ try {
         try {
             $path = $request.Url.AbsolutePath
             if ($path -eq '/health') {
-                Send-Json -Response $response -Value @{ status='ok' }
+                Send-Json -Response $response -Value @{ status='ok'; instance=[string]$config.namespace; port=[int]$config.ui.port }
                 continue
             }
             if ($path.StartsWith('/api/')) {
@@ -297,8 +298,8 @@ try {
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
-                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts) } })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; projects=$safeProjects; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
+                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts); runtimeProvider=(Get-AgentRuntimeRoute -Config $config -AgentId ([string]$_.id)).Provider } })
+                    Send-Json -Response $response -Value @{ instance=[string]$config.namespace; mode=[string]$config.operation.mode; projects=$safeProjects; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
@@ -885,7 +886,12 @@ try {
             }
             $contentType = if ($file.EndsWith('.css')) { 'text/css; charset=utf-8' } elseif ($file.EndsWith('.js')) { 'application/javascript; charset=utf-8' } else { 'text/html; charset=utf-8' }
             $content = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)
-            if ($file.EndsWith('index.html')) { $content = $content.Replace('__SESSION_TOKEN__', $token) }
+            if ($file.EndsWith('index.html')) {
+                $content = $content.Replace('__SESSION_TOKEN__', $token)
+                if ($config.runtime.PSObject.Properties['hybrid'] -and [bool]$config.runtime.hybrid.enabled) {
+                    $content = $content.Replace('Development Agent Desk','Hybrid Development Agent Desk').Replace('One entry point for tasks, Reviewer-agent notes, and the complete delivery workflow.','Copilot implements and prepares requirements drafts. Codex checks requirements, reviews changes, and verifies findings.')
+                }
+            }
             Send-Bytes -Response $response -Bytes ((New-Object Text.UTF8Encoding($false)).GetBytes($content)) -ContentType $contentType
         }
         catch {

@@ -1,0 +1,104 @@
+{
+  "fields": {
+    "Custom.ReleaseNotesNeeded": false,
+    "Custom.WorkCategory": "Innovation / Exploratory",
+    "Custom.WorkClassification": "Capability",
+    "EngineeringCMMI.Product": "PlanningSpace",
+    "Microsoft.VSTS.Common.Priority": 2,
+    "Microsoft.VSTS.Common.StackRank": 1999957030.0,
+    "Microsoft.VSTS.Common.StateChangeDate": "2026-09-15T15:21:34.907Z",
+    "Microsoft.VSTS.Common.ValueArea": "Business",
+    "Microsoft.VSTS.Scheduling.StoryPoints": 4.0,
+    "System.AreaPath": "Quorum\\PEnR\\Planning Space\\Economics\\Veles Team",
+    "System.AssignedTo": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.BoardColumn": "New",
+    "System.BoardColumnDone": false,
+    "System.ChangedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.N2RiMDFlYjYtNjFmYy03NDUxLWFlZDItYTA0YzQyYWQyMzFk"
+        }
+      },
+      "descriptor": "aad.N2RiMDFlYjYtNjFmYy03NDUxLWFlZDItYTA0YzQyYWQyMzFk",
+      "displayName": "Drake Rutherford",
+      "id": "7db01eb6-61fc-6451-aed2-a04c42ad231d",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.N2RiMDFlYjYtNjFmYy03NDUxLWFlZDItYTA0YzQyYWQyMzFk",
+      "uniqueName": "drake.rutherford@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/7db01eb6-61fc-6451-aed2-a04c42ad231d"
+    },
+    "System.ChangedDate": "2026-09-21T16:12:28.36Z",
+    "System.CommentCount": 0,
+    "System.CreatedBy": {
+      "_links": {
+        "avatar": {
+          "href": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0"
+        }
+      },
+      "descriptor": "aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "displayName": "Oleksandr Kruk (EXT)",
+      "id": "2cc2a91b-fe0e-6bc3-9129-faddea2096c4",
+      "imageUrl": "https://quorumsoftware.visualstudio.com/_apis/GraphProfile/MemberAvatars/aad.MmNjMmE5MWItZmUwZS03YmMzLTkxMjktZmFkZGVhMjA5NmM0",
+      "uniqueName": "oleksandr.kruk@quorumsoftware.com",
+      "url": "https://spsprodcus1.vssps.visualstudio.com/Ad3da48f3-2cef-4e25-a87a-965f11566ec0/_apis/Identities/2cc2a91b-fe0e-6bc3-9129-faddea2096c4"
+    },
+    "System.CreatedDate": "2026-09-15T15:21:34.907Z",
+    "System.Description": "<div><ol><li>Investigate whether it is possible to drag n drop a variable from the taskpane to Excel cells. </li><li>Investigate whether it is possible to add a variable from the taskpane to Excel cells via right-click </li><li>Investigate whether it is possible to add a variable from the taskpane to Excel cells via left-click </li> </ol> </div>",
+    "System.IterationPath": "Quorum\\PI 26.3\\26.3.1",
+    "System.Parent": 1874388,
+    "System.Reason": "New",
+    "System.State": "New",
+    "System.TeamProject": "Quorum",
+    "System.Title": "[SPIKE] - Investigate variables transition from add-in to Excel",
+    "System.WorkItemType": "User Story",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column": "New",
+    "WEF_52E103AB6193481D8649CD2E844CB4E1_Kanban.Column.Done": false,
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column": "New",
+    "WEF_8F339349562A4ABBA3764DAAFDB7E46C_Kanban.Column.Done": false,
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column": "New",
+    "WEF_E8DF628C7AF744EA8ABFE8597894EB61_Kanban.Column.Done": false
+  },
+  "id": 1874423,
+  "multilineFieldsFormat": {
+    "System.Description": "html"
+  },
+  "relations": [
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1876749"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Parent"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Reverse",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874388"
+    },
+    {
+      "attributes": {
+        "isLocked": false,
+        "name": "Child"
+      },
+      "rel": "System.LinkTypes.Hierarchy-Forward",
+      "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874424"
+    }
+  ],
+  "rev": 3,
+  "url": "https://quorumsoftware.visualstudio.com/7ede841e-a036-4e14-b565-9e41d97411a3/_apis/wit/workItems/1874423"
+}
