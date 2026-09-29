@@ -29,6 +29,17 @@ $f2 = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $taskId -Agen
 Assert-True ($f1.Failure.failureSignature -ne $f2.Failure.failureSignature) 'Occurrence-specific failureSignature unexpectedly collapsed.'
 Assert-True ($f1.Failure.rootCauseFingerprint -eq $f2.Failure.rootCauseFingerprint -and $f1.Failure.correlationId -eq $f2.Failure.correlationId) 'Equivalent parser failures were not correlated by normalized root cause.'
 
+$safeForeachPipeline = @'
+$results = foreach ($path in @('first', 'second')) {
+    [pscustomobject]@{ Path = $path }
+}
+$results | Format-Table -AutoSize | Out-String | Out-Null
+'@
+$parseErrors = $null
+$parseTokens = $null
+[void][System.Management.Automation.Language.Parser]::ParseInput($safeForeachPipeline, [ref]$parseTokens, [ref]$parseErrors)
+Assert-True ($parseErrors.Count -eq 0) 'Safe foreach collection formatting must remain valid PowerShell syntax.'
+
 $createdEvent = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task-ledger.jsonl') | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
 $null = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $taskId -SourceEventId $createdEvent.eventId -InputKind task-intake -TargetAgentIds reviewer -ExecutionMode review-only -Rationale synthetic -Confidence high -ConfigPath $fixtureConfigPath
 $validDispatch = & (Join-Path $root 'scripts\Test-WorkflowDispatchContract.ps1') -TaskId $taskId -TargetAgentId reviewer -ConfigPath $fixtureConfigPath
@@ -54,4 +65,4 @@ New-Item -ItemType Directory -Path $marked,$unmarked -Force | Out-Null
 $removed = @(& (Join-Path $root 'scripts\Remove-StaleTestOutput.ps1') -OutputRoot $retentionRoot -RetentionDays 14)
 Assert-True ($removed.Count -eq 1 -and -not (Test-Path -LiteralPath $marked) -and (Test-Path -LiteralPath $unmarked)) 'Retention did not remove only marked stale output.'
 
-[pscustomobject]@{ Status='passed'; Checks=@('typed review inspection','failure correlation','dispatch contract','safe test retention') }
+[pscustomobject]@{ Status='passed'; Checks=@('typed review inspection','failure correlation','safe foreach collection formatting','dispatch contract','safe test retention') }
