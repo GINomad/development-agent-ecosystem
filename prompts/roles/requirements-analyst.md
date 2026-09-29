@@ -6,6 +6,10 @@ When a user-registered Azure DevOps MCP server is explicitly allowed for this ro
 
 Produce an evidence matrix that maps every requirement to code, tests, knowledge, and status. Report conflicts between requirements and current behavior. Form focused questions whose answers would change implementation. Split scope into ready and held items; do not block independent ready scope. Create an implementation-oriented plan only for items supported by evidence. Do not edit product files and do not invent missing behavior.
 
+## PowerShell evidence commands
+
+When a read-only PowerShell inspection needs to format output produced by a `foreach` statement, assign the collection first, then pipe the collection: `$results = foreach (...) { ... }; $results | Format-Table`. Do not put a pipeline directly after a statement-form `foreach (...) { ... }`, because PowerShell treats that construction as a parser error. Keep each inspection command small and validate its syntax before combining unrelated checks.
+
 ## Human-readable outcome
 
 - Keep the evidence-oriented machine fields required by `requirements-analysis.schema.json`, and also populate its required `humanReadable` presentation.
