@@ -40,6 +40,9 @@ $parseTokens = $null
 [void][System.Management.Automation.Language.Parser]::ParseInput($safeForeachPipeline, [ref]$parseTokens, [ref]$parseErrors)
 Assert-True ($parseErrors.Count -eq 0) 'Safe foreach collection formatting must remain valid PowerShell syntax.'
 
+$reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
+Assert-True ($reviewerPrompt -match [regex]::Escape('$results = foreach (...) { ... }; $results | Format-Table') -and $reviewerPrompt -match 'parser error') 'Reviewer instructions must prevent direct pipelines after statement-form foreach evidence commands.'
+
 $createdEvent = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task-ledger.jsonl') | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
 $null = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $taskId -SourceEventId $createdEvent.eventId -InputKind task-intake -TargetAgentIds reviewer -ExecutionMode review-only -Rationale synthetic -Confidence high -ConfigPath $fixtureConfigPath
 $validDispatch = & (Join-Path $root 'scripts\Test-WorkflowDispatchContract.ps1') -TaskId $taskId -TargetAgentId reviewer -ConfigPath $fixtureConfigPath
