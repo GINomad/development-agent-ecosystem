@@ -19,9 +19,17 @@ $config.providerRouting.providers.claude.command=$hostCli
 Write-Utf8NoBom -Path $testConfigPath -Content (($config|ConvertTo-Json -Depth 100)+[Environment]::NewLine)
 
 $expected=[ordered]@{orchestrator='codex';knowledge_keeper='codex';requirements_analyst='codex';developer='copilot';reviewer='copilot';review_verifier='codex';pipeline_monitor='copilot';health_check='codex'}
-foreach($entry in $expected.GetEnumerator()){
-    $agent=@($config.agents|Where-Object{[string]$_.id -eq $entry.Key}|Select-Object -First 1)
-    if(-not $agent -or [string]$agent.provider -ne [string]$entry.Value){throw "Default provider assignment is incorrect for '$($entry.Key)'."}
+$canonicalConfigPath=[IO.Path]::GetFullPath((Join-Path $root 'config\agents.json'))
+if([IO.Path]::GetFullPath($ConfigPath) -eq $canonicalConfigPath){
+    foreach($entry in $expected.GetEnumerator()){
+        $agent=@($config.agents|Where-Object{[string]$_.id -eq $entry.Key}|Select-Object -First 1)
+        if(-not $agent -or [string]$agent.provider -ne [string]$entry.Value){throw "Default provider assignment is incorrect for '$($entry.Key)'."}
+    }
+}else{
+    foreach($agent in @($config.agents)){
+        if([string]$agent.provider -notin @('codex','copilot','claude')){throw "Configured provider is invalid for '$($agent.id)'."}
+        $expected[[string]$agent.id]=[string]$agent.provider
+    }
 }
 
 $taskId='provider-route-'+[guid]::NewGuid().ToString('N')

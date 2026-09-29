@@ -8,7 +8,8 @@ param(
     [switch] $InteractiveProviderSetup,
     [switch] $ChatOnly,
     [ValidateSet('codex','copilot','claude')][string] $ChatProvider = 'codex',
-    [string] $ChatInstallRoot
+    [string] $ChatInstallRoot,
+    [string] $ValidationOutputRoot
 )
 
 Set-StrictMode -Version Latest
@@ -67,7 +68,9 @@ if($codexSelected){
     }
     foreach($external in @($config.mcp.servers)){if(-not @($registeredMcp|Where-Object{[string]$_.name -eq [string]$external.name}).Count){throw "Configured external MCP server '$($external.name)' is not registered in Codex."}}
 }
-$tests = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+$validationParameters=@{ConfigPath=$ConfigPath;CodexHome=$CodexHome}
+if($ValidationOutputRoot){$validationParameters.OutputRoot=$ValidationOutputRoot}
+$tests = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') @validationParameters
 
 $pluginResult = $null
 if (-not $SkipPlugin -and $codexSelected) {

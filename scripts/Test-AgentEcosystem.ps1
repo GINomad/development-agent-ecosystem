@@ -9,6 +9,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
+$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$codexSelected = @($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
 $checks = [Collections.Generic.List[object]]::new()
 $null = New-Item -ItemType Directory -Path $OutputRoot -Force
 $null = & (Join-Path $PSScriptRoot 'Remove-StaleTestOutput.ps1') -OutputRoot (Split-Path -Parent $OutputRoot) -RetentionDays 14 -CurrentRunPath $OutputRoot
@@ -119,7 +121,7 @@ $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-Agen
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 $reviewVerificationTestScript = Get-Content -LiteralPath (Join-Path $root 'tests\Test-ReviewVerification.ps1') -Raw -Encoding UTF8
 $developerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\developer.md') -Raw -Encoding UTF8
-if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
+if (($codexSelected -and -not (Resolve-CodexCliPath)) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Codex-assigned roles require an available CLI, and all Codex hosts must share the PATH-independent resolver.' }
 if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
 if ($healthCliScript -notmatch "'--ignore-user-config'" -or $healthCliScript -match "mcp_servers\.\{0\}\.enabled=false") { throw 'Suppressed Health recovery must use the supported no-user-config mode instead of constructing invalid MCP transport overrides.' }
@@ -128,7 +130,7 @@ if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sou
 if ($reviewVerificationTestScript -match 'Get-FileHash' -or $reviewVerificationTestScript -notmatch 'Get-EcosystemFileSha256') { throw 'Recovery validation tests must use the module-independent ecosystem SHA-256 helper in long-lived dashboard runspaces.' }
 if ($workflowCliScript -notmatch 'Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId') { throw 'Agent prompts must reserve controller identity fields for the trusted workflow host.' }
 if ($developerPrompt -notmatch 'trusted host has already validated the context pack' -or $developerPrompt -notmatch 'instead of recreating hash validation with a nested PowerShell command') { throw 'Developer instructions must consume host-validated context fingerprints without recreating nested PowerShell hash validation.' }
-Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
+Add-Check -Name 'scheduled-host-codex-cli' -Detail $(if($codexSelected){'Codex is selected and available; Workflow, Health Check, and recovery hosts resolve it consistently'}else{'No role is assigned to Codex; source contracts remain validated without requiring the Codex CLI'})
 
 $heartbeatClosure = & {
     param([ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId)
@@ -157,7 +159,15 @@ function Invoke-SchedulerTestGit {
     @($output | ForEach-Object { [string]$_ })
 }
 
-$powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.Extension -in @('.ps1','.psm1') })
+$sourceExclusions=@(
+    [IO.Path]::GetFullPath((Join-Path $root '.test-output')),
+    [IO.Path]::GetFullPath($OutputRoot)
+)|Select-Object -Unique
+$powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object {
+    if($_.Extension -notin @('.ps1','.psm1')){return $false}
+    $candidate=[IO.Path]::GetFullPath($_.FullName)
+    -not @($sourceExclusions|Where-Object{$candidate.StartsWith(($_.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)}).Count
+})
 $parseErrors = [Collections.Generic.List[object]]::new()
 foreach ($file in $powerShellFiles) {
     $tokens = $null
@@ -960,7 +970,6 @@ foreach ($excludedTree in @('node_modules','.nuget','vendor','bin','obj','dist',
 if ($requirementsPrompt -notmatch 'first-party source code' -or $requirementsPrompt -notmatch 'Do not inspect the dependency') { throw 'Requirements Analyst must not analyze third-party dependency implementation.' }
 Add-Check -Name 'requirements-first-party-boundary' -Detail 'Requirements Analyst excludes dependency implementations, caches, vendor trees, and generated output'
 
-$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $crossProjectConfigPath = Join-Path $schedulerRoot 'cross-project-agents.json'
 $crossProjectConfig = Get-Content -LiteralPath $schedulerConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $primaryProject = @($crossProjectConfig.projects | Where-Object id -eq 'planning-space') | Select-Object -First 1
@@ -1837,28 +1846,36 @@ foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','P
 Add-Check -Name 'llm-guided-installation' -Detail 'The branch contains a provider-aware interactive setup interview with secret handling, preview, validation, prepare-only smoke, and separate installation approval'
 
 $agentOutput = Join-Path $OutputRoot 'agents'
-& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $agentOutput -CodexHome $CodexHome | Out-Null
-$tomlFiles = @(Get-ChildItem -LiteralPath $agentOutput -Filter '*.toml' -File)
-if ($tomlFiles.Count -ne @($config.agents).Count) { throw 'Generated agent definition count does not match configuration.' }
-foreach ($file in $tomlFiles) {
-    $content = Get-Content -LiteralPath $file.FullName -Raw
-    if ($content -notmatch '(?m)^name = ' -or $content -notmatch '(?m)^developer_instructions = ' -or $content -notmatch '(?m)^\[\[skills\.config\]\]') {
-        throw "Generated agent TOML is incomplete: $($file.FullName)"
+if($codexSelected){
+    & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $agentOutput -CodexHome $CodexHome | Out-Null
+    $tomlFiles = @(Get-ChildItem -LiteralPath $agentOutput -Filter '*.toml' -File)
+    if ($tomlFiles.Count -ne @($config.agents).Count) { throw 'Generated agent definition count does not match configuration.' }
+    foreach ($file in $tomlFiles) {
+        $content = Get-Content -LiteralPath $file.FullName -Raw
+        if ($content -notmatch '(?m)^name = ' -or $content -notmatch '(?m)^developer_instructions = ' -or $content -notmatch '(?m)^\[\[skills\.config\]\]') {
+            throw "Generated agent TOML is incomplete: $($file.FullName)"
+        }
     }
+    Add-Check -Name 'agent-compilation' -Detail "$($tomlFiles.Count) TOML definitions"
+}else{
+    Add-Check -Name 'agent-compilation' -Detail 'Skipped Codex TOML generation because no role is assigned to Codex'
 }
-Add-Check -Name 'agent-compilation' -Detail "$($tomlFiles.Count) TOML definitions"
 
 $compatibleAgentOutput = Join-Path $OutputRoot 'agents-host-compatible'
-& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $compatibleAgentOutput -CodexHome $CodexHome -IncludeHostCompatibilityProfile | Out-Null
-$compatibleTomlFiles = @(Get-ChildItem -LiteralPath $compatibleAgentOutput -Filter '*.toml' -File)
-$profileSuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
-$profileTomlFiles = @($compatibleTomlFiles | Where-Object BaseName -like "*$profileSuffix")
-if ($compatibleTomlFiles.Count -ne (@($config.agents).Count * 2) -or $profileTomlFiles.Count -ne @($config.agents).Count) { throw 'Host-compatible agent profile count is incorrect.' }
-foreach ($file in $profileTomlFiles) {
-    $content = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
-    if ($content -notmatch 'sandbox_mode = "danger-full-access"' -or $content -notmatch 'OS policy compatibility profile') { throw "Host-compatible agent definition is incomplete: $($file.FullName)" }
+if($codexSelected){
+    & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -OutputDirectory $compatibleAgentOutput -CodexHome $CodexHome -IncludeHostCompatibilityProfile | Out-Null
+    $compatibleTomlFiles = @(Get-ChildItem -LiteralPath $compatibleAgentOutput -Filter '*.toml' -File)
+    $profileSuffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
+    $profileTomlFiles = @($compatibleTomlFiles | Where-Object BaseName -like "*$profileSuffix")
+    if ($compatibleTomlFiles.Count -ne (@($config.agents).Count * 2) -or $profileTomlFiles.Count -ne @($config.agents).Count) { throw 'Host-compatible agent profile count is incorrect.' }
+    foreach ($file in $profileTomlFiles) {
+        $content = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+        if ($content -notmatch 'sandbox_mode = "danger-full-access"' -or $content -notmatch 'OS policy compatibility profile') { throw "Host-compatible agent definition is incomplete: $($file.FullName)" }
+    }
+    Add-Check -Name 'host-compatible-agent-compilation' -Detail "$($profileTomlFiles.Count) derived profiles preserve prompts and use current-user execution"
+}else{
+    Add-Check -Name 'host-compatible-agent-compilation' -Detail 'Skipped Codex host-compatible profiles because no role is assigned to Codex'
 }
-Add-Check -Name 'host-compatible-agent-compilation' -Detail "$($profileTomlFiles.Count) derived profiles preserve prompts and use current-user execution"
 
 $planningSpaceProject = @($config.projects | Where-Object id -eq 'planning-space') | Select-Object -First 1
 $manifestPath = Join-Path (Resolve-EcosystemPath -Value ([string]$planningSpaceProject.domainKnowledgeRoot) -Config $config -CodexHome $CodexHome) '.knowledge-import.json'

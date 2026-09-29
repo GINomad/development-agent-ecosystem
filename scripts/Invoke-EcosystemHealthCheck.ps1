@@ -22,6 +22,7 @@ $failureParts = [Collections.Generic.List[string]]::new()
 $taskRoot = if ($TaskId) { Join-Path $stateRoot "tasks\$TaskId" } else { $null }
 $taskPath = if ($taskRoot) { Join-Path $taskRoot 'task.json' } else { $null }
 $policyCompatibilityPrepared = $false
+$codexSelected = @($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
 
 function Add-HealthCheck {
     param([string] $Id, [ValidateSet('passed','warning','failed','repaired')][string] $Status, [string] $Summary, [string[]] $Evidence = @())
@@ -43,13 +44,15 @@ try {
 
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
 
-    $codexCliPath = Resolve-CodexCliPath
-    if ($codexCliPath) {
+    $codexCliPath = if($codexSelected){Resolve-CodexCliPath}else{$null}
+    if ($codexSelected -and $codexCliPath) {
         $codexVersion = (& $codexCliPath --version 2>&1 | Out-String).Trim()
         Add-HealthCheck -Id 'codex-cli' -Status passed -Summary "Codex CLI is available: $codexVersion" -Evidence @($codexCliPath)
     }
-    else {
+    elseif($codexSelected) {
         Add-HealthCheck -Id 'codex-cli' -Status failed -Summary 'Codex CLI was not found in the workflow environment.'
+    }else{
+        Add-HealthCheck -Id 'codex-cli' -Status passed -Summary 'Codex CLI is not required because no role is assigned to Codex.'
     }
 
     try {
@@ -102,8 +105,12 @@ try {
         return @($drift)
     }
 
-    $agentDefinitionDrift = @(Get-AgentDefinitionDrift)
-    if (-not $agentDefinitionDrift.Count) {
+    $agentDefinitionDrift = if($codexSelected){@(Get-AgentDefinitionDrift)}else{@()}
+    if(-not $codexSelected){
+        Add-HealthCheck -Id 'installed-agents' -Status passed -Summary 'Codex agent definitions are not required because no role is assigned to Codex.'
+        Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'No Codex agent definitions are required.'
+    }
+    elseif (-not $agentDefinitionDrift.Count) {
         Add-HealthCheck -Id 'installed-agents' -Status passed -Summary "All installed generated agent definitions match canonical configuration, prompts, and skills." -Evidence @($agentInstallRoot)
         Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Installed agent definitions are current.'
     }
@@ -221,7 +228,7 @@ try {
                 $failureEvidence = @($taskPath, $ledgerPath)
                 if (Test-Path -LiteralPath $codexLogPath) { $failureEvidence += $codexLogPath }
                 $osPolicyBlocked = $failureSummary -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260' -or $lastDiagnostic -match 'CreateProcessWithLogonW|Windows sandbox|error\s*1260'
-                if ($osPolicyBlocked -and [bool]$config.runtime.elevatedFallback.installCompatibleAgentsOnDetection) {
+                if ($codexSelected -and $osPolicyBlocked -and [bool]$config.runtime.elevatedFallback.installCompatibleAgentsOnDetection) {
                     if ($Repair) {
                         $compatibilitySync = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install -IncludeHostCompatibilityProfile
                         $suffix = [string]$config.runtime.elevatedFallback.agentProfileSuffix
