@@ -96,6 +96,17 @@ foreach ($taskPath in $taskPaths) {
             $targets.Add($clonePath)
         }
 
+        if ($manifests.Count -gt 0 -and -not $WhatIfPreference) {
+            $snapshotParameters = @{
+                TaskId = $candidateTaskId
+                ConfigPath = $ConfigPath
+                CodexHome = $CodexHome
+            }
+            $snapshot = & (Join-Path $PSScriptRoot 'Save-TaskDiffSnapshot.ps1') @snapshotParameters
+            if (-not $snapshot -or -not (Test-Path -LiteralPath ([string]$snapshot.SnapshotPath) -PathType Leaf)) {
+                throw "Refusing to clean task '$candidateTaskId' before its dashboard diff snapshot is durable."
+            }
+        }
         $removed = [Collections.Generic.List[string]]::new()
         foreach ($entry in $manifests) {
             if ($PSCmdlet.ShouldProcess([string]$entry.ClonePath, "Remove finally closed task workspace '$candidateTaskId'")) {
