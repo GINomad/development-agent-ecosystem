@@ -25,6 +25,14 @@ elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) {
 else { @() })
 if (-not $taskRepositoryIds.Count) { throw "Task '$TaskId' does not persist a repository scope." }
 if ($RepositoryId -and $RepositoryId -notin $taskRepositoryIds) { throw "Repository '$RepositoryId' is not part of task '$TaskId'." }
+$diffSnapshot = $null
+$diffSnapshotPath = Join-Path $taskRoot 'diff-snapshots\dashboard-diff.json'
+if (Test-Path -LiteralPath $diffSnapshotPath -PathType Leaf) {
+    $diffSnapshot = Get-Content -LiteralPath $diffSnapshotPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$diffSnapshot.schemaVersion -ne '1.0.0' -or [string]$diffSnapshot.taskId -ne $TaskId) {
+        throw "Task diff snapshot is invalid: $diffSnapshotPath"
+    }
+}
 
 $reviewedCommit = $null
 if ($Scope -eq 'reviewed-commit') {
@@ -32,7 +40,7 @@ if ($Scope -eq 'reviewed-commit') {
     if (Test-Path -LiteralPath $reviewResultPath -PathType Leaf) {
         $reviewResult = Get-Content -LiteralPath $reviewResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $reviewedRevision = [string]$reviewResult.reviewedRevision
-        if ($reviewedRevision -match '^git:([0-9a-fA-F]{40,64})(?:;|$)') { $reviewedCommit = $Matches[1].ToLowerInvariant() }
+        if ($reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $reviewedCommit = $Matches[1].ToLowerInvariant() }
     }
 }
 
@@ -67,9 +75,30 @@ function Get-GitObjectId {
 
 function Get-RepositoryDiffState {
     param([Parameter(Mandatory)] $Repository)
-    $resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId ([string]$Repository.id) -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome
-    $workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
-    if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Task workspace is not a Git repository: $workspace" }
+    $snapshotRepository = if ($diffSnapshot) { @($diffSnapshot.repositories | Where-Object { [string]$_.id -eq [string]$Repository.id }) | Select-Object -First 1 } else { $null }
+    $snapshotScope = if ($snapshotRepository -and $snapshotRepository.scopes -and $snapshotRepository.scopes.PSObject.Properties[$Scope]) { $snapshotRepository.scopes.PSObject.Properties[$Scope].Value } else { $null }
+    try {
+        $resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId ([string]$Repository.id) -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
+        if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Task workspace is not a Git repository: $workspace" }
+    }
+    catch {
+        if (-not $snapshotScope) { throw }
+        return [pscustomobject][ordered]@{
+            id = [string]$snapshotRepository.id
+            repository = [string]$snapshotRepository.repository
+            workspace = $null
+            branch = [string]$snapshotRepository.branch
+            head = [string]$snapshotRepository.head
+            baseRef = [string]$snapshotScope.baseRef
+            diffBase = [string]$snapshotScope.diffBase
+            diffTarget = [string]$snapshotScope.diffTarget
+            scope = $Scope
+            revisionSource = 'snapshot'
+            files = @($snapshotScope.files)
+            patches = @($snapshotScope.patches)
+        }
+    }
     $head = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','HEAD'))
     if (-not $head) { throw "Git HEAD in '$workspace' did not resolve to an object ID." }
     $branch = (Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()
@@ -170,6 +199,7 @@ function Get-RepositoryDiffState {
         scope = $Scope
         revisionSource = $revisionSource
         files = @($files | Sort-Object path)
+        patches = @()
     }
 }
 
@@ -211,8 +241,14 @@ if (-not $file) { throw "File '$FilePath' is not present in the current task dif
 
 $contextLines = [int]$config.ui.diffContextLines
 $maximumBytes = [int]$config.ui.diffMaxBytes
-if ([bool]$file.untracked) {
+if (-not $repositoryState.workspace) {
+    $savedPatch = @($repositoryState.patches | Where-Object { [string]$_.path -ceq $FilePath }) | Select-Object -First 1
+    if (-not $savedPatch) { throw "Saved patch for '$FilePath' is missing from the task diff snapshot." }
+    $patch = [string]$savedPatch.patch
+}
+elseif ([bool]$file.untracked) {
     $patchLines = Invoke-GitText -Workspace $repositoryState.workspace -Arguments @('diff','--no-index','--no-ext-diff','--no-color',"--unified=$contextLines",'--','/dev/null',[string]$file.path) -AllowedExitCodes @(0,1,-1)
+    $patch = $patchLines -join [Environment]::NewLine
 }
 else {
     $patchArguments = [Collections.Generic.List[string]]::new()
@@ -222,8 +258,8 @@ else {
     if ($file.oldPath) { $patchArguments.Add([string]$file.oldPath) }
     $patchArguments.Add([string]$file.path)
     $patchLines = Invoke-GitText -Workspace $repositoryState.workspace -Arguments @($patchArguments)
+    $patch = $patchLines -join [Environment]::NewLine
 }
-$patch = $patchLines -join [Environment]::NewLine
 $encoding = New-Object Text.UTF8Encoding($false, $false)
 $patchBytes = $encoding.GetBytes($patch)
 $truncated = $patchBytes.Length -gt $maximumBytes
