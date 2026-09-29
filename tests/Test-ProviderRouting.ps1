@@ -44,10 +44,24 @@ foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-c
 foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgentProvider.ps1','/provider')){if(($dashboard+$dashboardHost) -notmatch [regex]::Escape($token)){throw "Dashboard provider switching is missing '$token'."}}
 
 foreach($provider in @('codex','copilot','claude')){
-    $preview=& (Join-Path $root 'scripts\Install-ChatOnlyAgents.ps1') -Provider $provider -DestinationRoot (Join-Path $OutputRoot ('preview-'+$provider)) -Preview -ConfigPath $testConfigPath
+    $installParameters=@{Provider=$provider;DestinationRoot=(Join-Path $OutputRoot ('preview-'+$provider));ConfigPath=$testConfigPath}
+    if($provider -ne 'codex'){$installParameters.Preview=$true}
+    $preview=& (Join-Path $root 'scripts\Install-ChatOnlyAgents.ps1') @installParameters
     if(@($preview.Written).Count -ne 13 -or [bool]$preview.DashboardInstalled){throw "Chat-only preview for '$provider' is incomplete."}
+    if($provider -eq 'codex'){
+        $codexAgent=Get-Content -LiteralPath (Join-Path $preview.DestinationRoot 'agents\development_implementer.toml') -Raw -Encoding UTF8
+        if($codexAgent -notmatch 'standalone Codex agent-only mode' -or $codexAgent -match 'standalone GitHub Copilot'){throw 'Codex chat-only agent still depends on another provider profile.'}
+    }
 }
 $daily=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
 if([string]$daily.status -ne 'no-incidents' -or $daily.reportPath){throw 'A clean daily health scan was not a true no-op.'}
+$taskRoot=Join-Path $config.runtime.stateRoot ('tasks\'+$taskId)
+$dailyLog=Join-Path $taskRoot 'workflow-copilot.jsonl'
+Write-Utf8NoBom -Path $dailyLog -Content ((@{type='assistant.message';data=@{content='Successfully reviewed ordinary error-handling code.'}}|ConvertTo-Json -Compress)+[Environment]::NewLine)
+$successfulTextScan=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
+if([string]$successfulTextScan.status -ne 'no-incidents'){throw 'Successful assistant text produced a false-positive daily incident.'}
+[IO.File]::AppendAllText($dailyLog,((@{type='session.error';data=@{message='Provider rate limit reached.'}}|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+$incidentScan=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
+if([string]$incidentScan.status -ne 'incidents-found' -or [int]$incidentScan.incidentCount -ne 1 -or -not(Test-Path -LiteralPath $incidentScan.reportPath)){throw 'Structured provider failure was not captured by the daily incident scan.'}
 
-[pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$copilotRoute.provider;OverrideProvider=[string]$claudeRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status}
+[pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$copilotRoute.provider;OverrideProvider=[string]$claudeRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}
