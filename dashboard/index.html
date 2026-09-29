@@ -264,8 +264,19 @@
                   <button class="button primary" id="sendAgentComment" type="button">Send to agent</button>
                   <button class="button danger" id="restartAgentWithComment" type="button">Restart agent</button>
                 </div>
+                <div class="actions">
+                  <label>
+                    AI provider
+                    <select id="agentProviderSelect">
+                      <option value="codex">Codex</option>
+                      <option value="copilot">GitHub Copilot</option>
+                      <option value="claude">Claude</option>
+                    </select>
+                  </label>
+                  <button class="button secondary" id="switchAgentProvider" type="button">Switch and restart</button>
+                </div>
                 <p class="agent-action-status" id="agentActionStatus" role="status"></p>
-                <p class="hint">Send queues the comment for this agent's next end-of-block checkpoint. A running agent reads the batch and continues without restart. Restart is only for a stopped or completed agent and preserves every other agent and completed artifact.</p>
+                <p class="hint">Send queues the comment for this agent's next end-of-block checkpoint. Switch and restart stops an active workflow after confirmation, changes only this task's provider override, and restarts only the selected role while preserving every other completed artifact.</p>
               </div>
             </section>
 

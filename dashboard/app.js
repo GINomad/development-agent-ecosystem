@@ -351,8 +351,8 @@ function renderTaskDetail(task) {
     const message = document.createElement('p');
     message.textContent = state.message || 'No activity recorded.';
     const time = document.createElement('small');
-    const modelRoute = state.modelRoute;
-    time.textContent = formatDate(state.updatedAtUtc) + (modelRoute ? ` - ${modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
+    const providerRoute = state.providerRoute;
+    time.textContent = formatDate(state.updatedAtUtc) + (providerRoute ? ` - ${providerRoute.tier}: ${providerRoute.model} / ${providerRoute.reasoningEffort}` : '');
     logButton.append(top, message, time);
     logButton.addEventListener('click', () => openAgentLog(id));
     const outcomeButton = document.createElement('button');
@@ -832,9 +832,9 @@ function renderAgentOutcome() {
   const availableNames = requiredNames.filter(name => taskArtifacts.some(artifact => artifact.name === name));
   document.querySelector('#agentOutcomePanel').classList.remove('hidden');
   document.querySelector('#agentOutcomeTitle').textContent = `${label} outcome`;
-  const modelRoute = state.modelRoute;
-  document.querySelector('#agentOutcomeMeta').textContent = `(state.provider || 'codex') + ' - ' + ${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}` +
-    (modelRoute ? ` - ${modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
+  const modelRoute = state.providerRoute || state.modelRoute;
+  document.querySelector('#agentOutcomeMeta').textContent = `${state.provider || 'codex'} - ${state.status || 'pending'} - updated ${formatDate(state.updatedAtUtc)}` +
+    (modelRoute ? ` - ${modelRoute.tier || modelRoute.complexity}: ${modelRoute.model} / ${modelRoute.reasoningEffort}` : '');
   document.querySelector('#agentOutcomeSummary').textContent = state.message || 'No persisted outcome summary is available.';
   document.querySelector('#openReviewDiff').classList.toggle('hidden', agentId !== 'reviewer');
   document.querySelectorAll('.agent-state').forEach(card => card.classList.toggle('outcome-selected', card.dataset.agentId === agentId));
@@ -2057,6 +2057,8 @@ function closeAgentLog() {
 
 function openAgentLog(agentId) {
   selectedAgentId = agentId;
+  const provider = selectedTask?.agentStatuses?.[agentId]?.provider || 'codex';
+  document.querySelector('#agentProviderSelect').value = provider;
   document.querySelector('#agentLogPanel').classList.remove('hidden');
   document.querySelectorAll('.agent-state').forEach(card => card.classList.toggle('selected', card.dataset.agentId === agentId));
   document.querySelector('#agentLogTitle').textContent = `${agentLabels[agentId] || agentId} activity`;
@@ -2371,6 +2373,50 @@ document.querySelector('#restartAgentWithComment').addEventListener('click', asy
   } finally {
     button.disabled = restartStarted || selectedTask?.status === 'running';
     button.textContent = 'Restart agent';
+  }
+});
+
+document.querySelector('#switchAgentProvider').addEventListener('click', async () => {
+  const button = document.querySelector('#switchAgentProvider');
+  try {
+    if (!selectedTaskId || !selectedAgentId) throw new Error('Select an agent first.');
+    const taskId = selectedTaskId;
+    const agentId = selectedAgentId;
+    const provider = document.querySelector('#agentProviderSelect').value;
+    const currentProvider = selectedTask?.agentStatuses?.[agentId]?.provider || 'codex';
+    if (provider === currentProvider) throw new Error(`${agentLabels[agentId] || agentId} already uses ${provider}.`);
+    const running = selectedTask?.status === 'running';
+    const prompt = running
+      ? `Stop the active workflow, switch only ${agentLabels[agentId] || agentId} from ${currentProvider} to ${provider}, and restart that role?`
+      : `Switch only ${agentLabels[agentId] || agentId} from ${currentProvider} to ${provider} and restart that role?`;
+    if (!window.confirm(prompt)) return;
+    button.disabled = true;
+    button.textContent = running ? 'Stopping...' : 'Switching...';
+    if (running) {
+      const stopTarget = selectedTask;
+      await api(`/api/tasks/${encodeURIComponent(taskId)}/workflow/stop`, {
+        method: 'POST',
+        body: JSON.stringify({ runId: stopTarget?.executionRunId || '', leaseId: stopTarget?.workspaceLeaseId || '', revision: stopTarget?.revision ?? null })
+      });
+      taskStateRevision += 1;
+      await loadTaskDetail(taskId, taskStateRevision);
+    }
+    button.textContent = 'Switching...';
+    const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/provider`, {
+      method: 'POST',
+      body: JSON.stringify({ provider, resume: true, elevated: true, ...taskViewGuard() })
+    });
+    taskStateRevision += 1;
+    setAgentActionStatus(result.message, 'success');
+    log(result);
+    await loadTaskDetail(taskId, taskStateRevision);
+    await loadTaskList({ silent: true });
+  } catch (error) {
+    setAgentActionStatus(error.message, 'error');
+    log(`Error: ${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Switch and restart';
   }
 });
 

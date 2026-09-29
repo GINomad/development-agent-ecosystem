@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('codex','claude')][string] $Provider = 'codex',
     [Parameter(Mandatory)][string] $FilePath,
     [Parameter(Mandatory)][string[]] $Arguments,
     [Parameter(Mandatory)][AllowEmptyString()][string] $Prompt,
@@ -25,7 +26,20 @@ function ConvertTo-WindowsArgument {
 
 function Get-FailureFingerprint {
     param([string] $Line)
-    try { $event = $Line | ConvertFrom-Json } catch { return $null }
+    try { $event = $Line | ConvertFrom-Json } catch {
+        if ($Line -notmatch '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|authentication|unauthorized|not logged') { return $null }
+        $canonical = (($Line -replace '\s+', ' ').Trim())
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+        return [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$Line; Kind='provider-failure' }
+    }
+    if ($Provider -eq 'claude' -and [string]$event.type -eq 'result' -and $event.PSObject.Properties['is_error'] -and [bool]$event.is_error) {
+        $detail = if ($event.PSObject.Properties['result']) { [string]$event.result } else { ($event | ConvertTo-Json -Depth 12 -Compress) }
+        $canonical = (($detail -replace '\s+', ' ').Trim())
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+        return [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail; Kind='provider-failure' }
+    }
     if ([string]$event.type -eq 'error' -and $event.PSObject.Properties['message']) {
         $detail = [string]$event.message
         if ($detail -match '(?i)selected model is at capacity') {
@@ -115,9 +129,9 @@ try {
             if ($failure) {
                 if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
                 $lastFailure = $failure
-                if ($failure.Kind -eq 'command-parse-failure' -or $identicalFailureCount -ge $MaxIdenticalFailures) {
+                if ($failure.Kind -in @('command-parse-failure','provider-failure') -or $identicalFailureCount -ge $MaxIdenticalFailures) {
                     $guardTriggered = $true
-                    $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
+                    $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } elseif ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
                     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
                     break
                 }
@@ -149,15 +163,15 @@ finally {
         if ($failure) {
             if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
             $lastFailure = $failure
-            if ($failure.Kind -eq 'command-parse-failure' -or $identicalFailureCount -ge $MaxIdenticalFailures) {
+            if ($failure.Kind -in @('command-parse-failure','provider-failure') -or $identicalFailureCount -ge $MaxIdenticalFailures) {
                 $guardTriggered = $true
-                $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
+                $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } elseif ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
             }
         }
     }
     if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
         foreach ($stderrLine in @(Get-Content -LiteralPath $stderrPath -Encoding UTF8)) {
-            $record = [ordered]@{ type='codex-stderr'; text=[string]$stderrLine } | ConvertTo-Json -Compress
+            $record = [ordered]@{ type=($Provider + '-stderr'); provider=$Provider; text=[string]$stderrLine } | ConvertTo-Json -Compress
             [IO.File]::AppendAllText($LogPath, $record + [Environment]::NewLine, $encoding)
         }
     }
@@ -189,7 +203,8 @@ $result = [ordered]@{
     completedAtUtc = [DateTime]::UtcNow.ToString('o')
     processId = $processId
     exitCode = $resolvedExitCode
-    exitCodeSource = if ($null -ne $nativeExitCode) { 'native' } else { 'codex-event-fallback' }
+    provider = $Provider
+    exitCodeSource = if ($null -ne $nativeExitCode) { 'native' } else { $Provider + '-event-fallback' }
     logPath = $LogPath
     stderrPath = $stderrPath
 }

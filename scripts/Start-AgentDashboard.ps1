@@ -335,8 +335,9 @@ try {
                     $safeRepositories = @($config.repositories | Where-Object { $_.enabled } | ForEach-Object {
                         [pscustomobject]@{ id=[string]$_.id; provider=[string]$_.provider; repository=[string]$_.repository; localWorkspace=[string]$_.localWorkspace }
                     })
-                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts) } })
-                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; projects=$safeProjects; repositories=$safeRepositories; agents=$safeAgents; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
+                    $safeAgents = @($config.agents | ForEach-Object { [pscustomobject]@{ id=[string]$_.id; name=[string]$_.name; provider=[string]$_.provider; description=[string]$_.description; responsibilities=@($_.responsibilities); requiredArtifacts=@($_.requiredArtifacts) } })
+                    $safeProviders = @($config.providerRouting.providers.PSObject.Properties.Name)
+                    Send-Json -Response $response -Value @{ mode=[string]$config.operation.mode; projects=$safeProjects; repositories=$safeRepositories; agents=$safeAgents; providers=$safeProviders; taskRefreshSeconds=[int]$config.ui.taskRefreshSeconds; agentLogRefreshSeconds=[int]$config.ui.agentLogRefreshSeconds; diffContextLines=[int]$config.ui.diffContextLines; diffMaxBytes=[int]$config.ui.diffMaxBytes }
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks/assigned') {
@@ -673,6 +674,29 @@ try {
                     if ($elevated -and -not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                     $dispatch = Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId $requestedAgentId -Task $persistedTask -Instruction "Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve completed upstream agents." -ElevatedApproved:$elevated
                     Send-Json -Response $response -Value $dispatch
+                    continue
+                }
+                if ($path -match '^/api/tasks/([^/]+)/agents/([^/]+)/provider$') {
+                    $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
+                    $requestedAgentId = [Uri]::UnescapeDataString($Matches[2])
+                    $requestedProvider = [string](Get-ObjectPropertyValue -Source $body -Name 'provider')
+                    if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
+                    if (-not @($config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
+                    if ($requestedProvider -notin @($config.providerRouting.providers.PSObject.Properties.Name)) { throw 'Provider was not found.' }
+                    $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
+                    if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
+                    $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
+                    if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before switching one agent." }
+                    $switchResult=& (Join-Path $PSScriptRoot 'Switch-TaskAgentProvider.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -Provider $requestedProvider -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $dispatch=$null
+                    if ([bool](Get-ObjectPropertyValue -Source $body -Name 'resume')) {
+                        $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                        $elevated = [bool](Get-ObjectPropertyValue -Source $body -Name 'elevated')
+                        if ($elevated -and -not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
+                        $dispatch=Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId $requestedAgentId -Task $persistedTask -Instruction "Restart only agent '$requestedAgentId' using provider '$requestedProvider'. Preserve completed upstream agents and artifacts." -ElevatedApproved:$elevated
+                    }
+                    Send-Json -Response $response -Value @{ status=if($dispatch){'scheduled'}else{'switched'}; switch=$switchResult; dispatch=$dispatch; message="Agent '$requestedAgentId' now uses '$requestedProvider' for this task." }
                     continue
                 }
                 if ($path -match '^/api/tasks/([^/]+)/close$') {

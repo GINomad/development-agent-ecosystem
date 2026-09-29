@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory)][string] $GuardArtifactPath,
     [string[]] $AdditionalDirectories = @(),
     [string] $Model = 'auto',
+    [ValidateSet('none','minimal','low','medium','high','xhigh','max')][string] $ReasoningEffort = 'medium',
     [string] $McpSessionPath,
     [switch] $ReadOnly,
     [string] $CliPath,
@@ -41,6 +42,7 @@ $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
 $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
 foreach ($argument in $CliPrefixArguments) { $start.ArgumentList.Add($argument) }
 foreach ($argument in @('-p',$entryPrompt,'--model',$Model,'--output-format=json','--stream=off',
+    '--reasoning-effort',$ReasoningEffort,
     '--no-ask-user','--no-auto-update','--no-remote','--no-remote-export','--disable-builtin-mcps',
     '--log-dir',$attemptDirectory,'--usage-output-file',(Join-Path $attemptDirectory 'usage.json'))) {
     $start.ArgumentList.Add($argument)
@@ -142,7 +144,7 @@ try {
 } finally {
     if ($processStarted -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
     $result=[ordered]@{
-        provider='copilot'; model=$Model; attemptId=$attemptId; exitCode=$exitCode
+        provider='copilot'; model=$Model; reasoningEffort=$ReasoningEffort; attemptId=$attemptId; exitCode=$exitCode
         guardTriggered=$guardTriggered; reason=$reason; failureDetail=$lastFailure
         failureKind=if ($stderr -match '(?i)authentication|not logged|unauthorized') { 'authentication' } else { 'runtime' }
         startedAtUtc=$started.ToString('o'); completedAtUtc=[DateTime]::UtcNow.ToString('o')

@@ -1,29 +1,12 @@
 Set-StrictMode -Version Latest
 
-function Get-AgentRuntimeRoute {
-    param([Parameter(Mandatory)] $Config, [Parameter(Mandatory)][string] $AgentId)
-    if (-not @($Config.agents | Where-Object { [string]$_.id -eq $AgentId }).Count) { throw "Unknown runtime role '$AgentId'." }
-    $hybrid = if ($Config.runtime.PSObject.Properties['hybrid']) { $Config.runtime.hybrid } else { $null }
-    if (-not $hybrid -or -not [bool]$hybrid.enabled) {
-        return [pscustomobject]@{ Provider='codex'; Model=$null; RequirementsDraft=$false }
-    }
-    $provider = [string]$hybrid.providers.$AgentId
-    if ($provider -notin @('codex','copilot')) { throw "Invalid provider for '$AgentId'." }
-    if ($AgentId -in @('requirements_analyst','reviewer','review_verifier','health_check','pipeline_monitor') -and $provider -ne 'codex') {
-        throw "Independent control role '$AgentId' must remain on Codex."
-    }
-    [pscustomobject]@{
-        Provider=$provider
-        Model=if ($provider -eq 'copilot') { [string]$hybrid.copilotModel } else { $null }
-        RequirementsDraft=($AgentId -eq 'requirements_analyst' -and [bool]$hybrid.requirementsDraft)
-    }
-}
-
 function Resolve-CopilotCliPath {
     param([string] $Override)
     if ($Override) {
-        if (-not (Test-Path -LiteralPath $Override -PathType Leaf)) { throw "Copilot CLI does not exist: $Override" }
-        return [IO.Path]::GetFullPath($Override)
+        $overrideCommand = Get-Command $Override -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($overrideCommand -and $overrideCommand.Source) { return [IO.Path]::GetFullPath([string]$overrideCommand.Source) }
+        if (Test-Path -LiteralPath $Override -PathType Leaf) { return [IO.Path]::GetFullPath($Override) }
+        if ($Override -ne 'copilot') { throw "Copilot CLI does not exist: $Override" }
     }
     $command = Get-Command copilot.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($command) { return [string]$command.Source }
@@ -34,6 +17,21 @@ function Resolve-CopilotCliPath {
     )
     foreach ($path in $locations) { if (Test-Path -LiteralPath $path -PathType Leaf) { return $path } }
     throw 'Copilot CLI was not found. Install GitHub.Copilot or @github/copilot, then run copilot login.'
+}
+
+function Resolve-ClaudeCliPath {
+    param([string] $Override)
+    if ($Override) {
+        $overrideCommand = Get-Command $Override -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($overrideCommand -and $overrideCommand.Source) { return [IO.Path]::GetFullPath([string]$overrideCommand.Source) }
+        if (Test-Path -LiteralPath $Override -PathType Leaf) { return [IO.Path]::GetFullPath($Override) }
+        if ($Override -ne 'claude') { throw "Claude CLI does not exist: $Override" }
+    }
+    $command = Get-Command claude.exe, claude.cmd, claude -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and $command.Source) { return [IO.Path]::GetFullPath([string]$command.Source) }
+    $nativePath = Join-Path ([string]$env:USERPROFILE) '.local\bin\claude.exe'
+    if (Test-Path -LiteralPath $nativePath -PathType Leaf) { return [IO.Path]::GetFullPath($nativePath) }
+    throw 'Claude CLI was not found. Install Claude Code, then run claude auth login.'
 }
 
 function Get-CopilotEventSummary {
@@ -54,5 +52,5 @@ function Get-CopilotEventSummary {
     }
     [pscustomobject]@{ Type=$type; Content=$content; Failure=$failure }
 }
-Export-ModuleMember -Function Get-AgentRuntimeRoute, Resolve-CopilotCliPath, Get-CopilotEventSummary
+Export-ModuleMember -Function Resolve-CopilotCliPath, Resolve-ClaudeCliPath, Get-CopilotEventSummary
 
