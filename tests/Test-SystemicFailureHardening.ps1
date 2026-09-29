@@ -40,8 +40,20 @@ $parseTokens = $null
 [void][System.Management.Automation.Language.Parser]::ParseInput($safeForeachPipeline, [ref]$parseTokens, [ref]$parseErrors)
 Assert-True ($parseErrors.Count -eq 0) 'Safe foreach collection formatting must remain valid PowerShell syntax.'
 
+$unsafeControlBlockPipeline = @'
+if ($true) {
+    [pscustomobject]@{ Path = 'first' }
+} | Format-Table -AutoSize | Out-String | Out-Null
+'@
+$parseErrors = $null
+$parseTokens = $null
+[void][System.Management.Automation.Language.Parser]::ParseInput($unsafeControlBlockPipeline, [ref]$parseTokens, [ref]$parseErrors)
+Assert-True (@($parseErrors | Where-Object { $_.Message -match 'empty pipe element' }).Count -eq 1) 'Direct pipelines after statement-form control blocks must reproduce the empty-pipe parser failure.'
+
 $reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
 Assert-True ($reviewerPrompt -match [regex]::Escape('$results = foreach (...) { ... }; $results | Format-Table') -and $reviewerPrompt -match 'parser error') 'Reviewer instructions must prevent direct pipelines after statement-form foreach evidence commands.'
+$taskProtocol = Get-Content -LiteralPath (Join-Path $root 'prompts\common\task-protocol.md') -Raw -Encoding UTF8
+Assert-True ($taskProtocol -match 'never pipe directly from a statement-form control block' -and $taskProtocol -match 'empty pipe element' -and $taskProtocol -match 'foreach`, `if`, `switch`, `try`, or `function') 'Shared workflow instructions must prevent empty-pipe parser failures for every role.'
 
 $createdEvent = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task-ledger.jsonl') | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
 $null = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $taskId -SourceEventId $createdEvent.eventId -InputKind task-intake -TargetAgentIds reviewer -ExecutionMode review-only -Rationale synthetic -Confidence high -ConfigPath $fixtureConfigPath
