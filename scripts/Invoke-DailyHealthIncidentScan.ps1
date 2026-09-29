@@ -17,34 +17,88 @@ $after=[DateTime]::UtcNow.AddHours(-[int]$policy.lookbackHours)
 $incidents=[Collections.Generic.List[object]]::new()
 $patterns='(?i)\b(failed|exception|error|quota|rate[- ]?limit|limit reached|capacity|too many requests|mcp.*fail)\b'
 function Protect-IncidentText([string]$Text){
-    $safe=$Text -replace '(?i)(authorization:\s*bearer\s+)[^\s"'']+','$1[redacted]'
-    return ($safe -replace '(?i)((?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s"'']+','$1[redacted]')
+    $safe=[string]$Text
+    $safe=[regex]::Replace($safe,'(?i)(authorization\s*[:=]\s*["'']?bearer\s+)[^\s"'']+','$1[redacted]')
+    $safe=[regex]::Replace($safe,'(?i)(["'']?(?:access[_-]?token|refresh[_-]?token|token|password|secret|api[_-]?key|apikey)["'']?\s*[:=]\s*["'']?)[^"''\s,}\]]+','$1[redacted]')
+    $safe=[regex]::Replace($safe,'(?i)\b(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{10,}\b','[redacted]')
+    $safe=[regex]::Replace($safe,'(?i)\b[A-Z]:\\[^\s"'']+','[path]')
+    return ([regex]::Replace($safe,'\s+',' ').Trim())
+}
+function New-IncidentEvidence([string]$Category,[string]$EventType,[string]$Detail){
+    $summary=Protect-IncidentText $Detail
+    if([string]::IsNullOrWhiteSpace($summary)){$summary="$Category incident detected."}
+    if($summary.Length -gt 512){$summary=$summary.Substring(0,512)}
+    $canonical=($Category+'|'+$EventType+'|'+$summary)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{$signature=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+    [pscustomobject]@{category=$Category;eventType=$EventType;signature=$signature;summary=$summary}
+}
+function Get-FirstIncidentText([object]$Object,[string[]]$Names){
+    if($null -eq $Object){return ''}
+    foreach($name in $Names){
+        if($Object.PSObject.Properties[$name]){
+            $value=$Object.$name
+            if($null -ne $value -and ($value -is [string] -or $value -is [ValueType])){return [string]$value}
+        }
+    }
+    return ''
 }
 function Get-IncidentEvidence([IO.FileInfo]$File){
     $lines=@(Get-Content -LiteralPath $File.FullName -Tail ([int]$policy.maxLogLines) -Encoding UTF8)
     if($File.Name -like 'agent-failure-*.json' -or $File.Name -like 'provider-limit-*.json'){
-        return @($lines|Select-Object -Last 20|ForEach-Object{Protect-IncidentText ([string]$_)})
+        $category=if($File.Name -like 'provider-limit-*'){'provider-limit'}else{'agent-failure'}
+        try{
+            $failure=$lines -join [Environment]::NewLine|ConvertFrom-Json
+            $eventType=Get-FirstIncidentText $failure @('failureKind','category','stage','type')
+            if(-not $eventType){$eventType=$category}
+            $detail=Get-FirstIncidentText $failure @('failureCanonical','summary','message','reason','error','diagnostic')
+            return @(New-IncidentEvidence $category $eventType $detail)
+        }catch{return @(New-IncidentEvidence $category 'invalid-json' 'Incident artifact could not be parsed.')}
     }
     if($File.Name -eq 'workflow-execution-guard.json'){
-        try{$guard=$lines -join [Environment]::NewLine|ConvertFrom-Json;if([bool]$guard.guardTriggered -or [int]$guard.exitCode -ne 0){return @($lines|Select-Object -Last 20|ForEach-Object{Protect-IncidentText ([string]$_)})}}catch{}
+        try{
+            $guard=$lines -join [Environment]::NewLine|ConvertFrom-Json
+            if([bool]$guard.guardTriggered -or [int]$guard.exitCode -ne 0){
+                $detail=Get-FirstIncidentText $guard @('reason','failureDetail','failureKind')
+                return @(New-IncidentEvidence 'execution-guard' 'guard-triggered' $detail)
+            }
+        }catch{return @(New-IncidentEvidence 'execution-guard' 'invalid-json' 'Execution guard artifact could not be parsed.')}
         return @()
     }
     if($File.Name -eq 'health-check-result.json'){
-        try{$health=$lines -join [Environment]::NewLine|ConvertFrom-Json;$failed=@($health.Checks|Where-Object{[string]$_.Status -in @('failed','unhealthy')});if([string]$health.status -in @('failed','unhealthy') -or $failed.Count){return @($lines|Select-Object -Last 20|ForEach-Object{Protect-IncidentText ([string]$_)})}}catch{}
+        try{
+            $health=$lines -join [Environment]::NewLine|ConvertFrom-Json
+            $failed=@($health.Checks|Where-Object{[string]$_.Status -in @('failed','unhealthy')})
+            $healthStatus=Get-FirstIncidentText $health @('status','Status')
+            if($healthStatus -in @('failed','unhealthy') -or $failed.Count){
+                $failedNames=@($failed|ForEach-Object{Get-FirstIncidentText $_ @('Name','name','Check','check')}|Where-Object{$_})
+                $detail=('status='+$healthStatus+'; failedChecks='+($failedNames -join ','))
+                return @(New-IncidentEvidence 'health-check' $healthStatus $detail)
+            }
+        }catch{return @(New-IncidentEvidence 'health-check' 'invalid-json' 'Health result could not be parsed.')}
         return @()
     }
-    $evidence=[Collections.Generic.List[string]]::new()
+    $evidence=[Collections.Generic.List[object]]::new()
     foreach($line in $lines){
         $matched=$false
+        $eventType='unstructured-error'
+        $detail='Unstructured log entry matched an incident pattern.'
         try{
             $event=$line|ConvertFrom-Json -ErrorAction Stop
             $type=[string]$event.type
+            $eventType=if($type){$type}else{'unknown-event'}
             if($type -in @('error','session.error','turn.failed')){$matched=$true}
             elseif($type -eq 'item.completed' -and $event.PSObject.Properties['item'] -and [string]$event.item.status -eq 'failed'){$matched=$true}
             elseif($type -eq 'result' -and $event.PSObject.Properties['is_error'] -and [bool]$event.is_error){$matched=$true}
             elseif($type -match '-stderr$' -and [string]$event.text -match $patterns){$matched=$true}
+            if($matched){
+                $detail=Get-FirstIncidentText $event @('message','error','text','reason','failure')
+                if(-not $detail -and $event.PSObject.Properties['data']){$detail=Get-FirstIncidentText $event.data @('message','error','text','reason','failure')}
+                if(-not $detail -and $event.PSObject.Properties['item']){$detail=Get-FirstIncidentText $event.item @('message','error','text','reason','status')}
+                if(-not $detail){$detail="$eventType incident detected."}
+            }
         }catch{$matched=[string]$line -match $patterns}
-        if($matched){$evidence.Add((Protect-IncidentText ([string]$line)))}
+        if($matched){$evidence.Add((New-IncidentEvidence 'workflow-log' $eventType $detail))}
     }
     return @($evidence|Select-Object -Last 20)
 }
@@ -53,8 +107,8 @@ foreach($taskDir in @(Get-ChildItem -LiteralPath $tasksRoot -Directory -ErrorAct
     foreach($log in @(Get-ChildItem -LiteralPath $taskDir.FullName -File -ErrorAction SilentlyContinue|Where-Object{
         $_.Name -match '^(workflow-.*\.jsonl|agent-failure-.*\.json|provider-limit-.*\.json|workflow-execution-guard\.json|health-check-result\.json)$' -and $_.LastWriteTimeUtc -ge $after
     })){
-        $tail=@(Get-IncidentEvidence -File $log)
-        if($tail.Count){$incidents.Add([pscustomobject]@{taskId=$taskDir.Name;log=$log.Name;path=$log.FullName;updatedAtUtc=$log.LastWriteTimeUtc.ToString('o');tail=@($tail|Select-Object -Last 20)})}
+        $evidence=@(Get-IncidentEvidence -File $log)
+        if($evidence.Count){$incidents.Add([pscustomobject]@{taskId=$taskDir.Name;log=$log.Name;updatedAtUtc=$log.LastWriteTimeUtc.ToString('o');evidence=@($evidence|Select-Object -Last 20)})}
     }
 }
 
@@ -66,9 +120,10 @@ if($Repair){
     foreach($taskId in @($incidents.taskId|Select-Object -Unique)){
         try{
             $health=& (Join-Path $PSScriptRoot 'Invoke-EcosystemHealthCheck.ps1') -TaskId $taskId -Repair -ConfigPath $ConfigPath -CodexHome $CodexHome
-            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='deterministic-health';status=[string]$health.Status;evidence=[string]$health.ResultPath})
+            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='deterministic-health';status=[string]$health.Status;evidence=if($health.ResultPath){[IO.Path]::GetFileName([string]$health.ResultPath)}else{$null}})
         }catch{
-            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='deterministic-health';status='failed';error=$_.Exception.Message})
+            $safeError=New-IncidentEvidence 'daily-repair' 'deterministic-health-failed' $_.Exception.Message
+            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='deterministic-health';status='failed';error=$safeError.summary;signature=$safeError.signature})
         }
         $taskRoot=Join-Path $tasksRoot $taskId
         $failure=Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File -ErrorAction SilentlyContinue|
@@ -78,9 +133,10 @@ if($Repair){
             # Nightly recovery may change and locally commit only the ecosystem checkout.
             # External publication and product-task restart remain explicit operator actions.
             $recovery=& (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $taskId -FailurePath $failure.FullName -SuppressExternalDelivery -SuppressTargetedResume -ConfigPath $ConfigPath -CodexHome $CodexHome
-            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='source-recovery';status=[string]$recovery.Status;evidence=[string]$recovery.ResultPath;commit=[string]$recovery.RecoveryCommit})
+            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='source-recovery';status=[string]$recovery.Status;evidence=if($recovery.ResultPath){[IO.Path]::GetFileName([string]$recovery.ResultPath)}else{$null};commit=[string]$recovery.RecoveryCommit})
         }catch{
-            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='source-recovery';status='failed';error=$_.Exception.Message;evidence=$failure.FullName})
+            $safeError=New-IncidentEvidence 'daily-repair' 'source-recovery-failed' $_.Exception.Message
+            $repairs.Add([pscustomobject]@{taskId=$taskId;kind='source-recovery';status='failed';error=$safeError.summary;signature=$safeError.signature;evidence=$failure.Name})
         }
     }
 }

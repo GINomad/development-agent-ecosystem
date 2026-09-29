@@ -26,6 +26,7 @@ foreach($entry in $expected.GetEnumerator()){
 
 $taskId='provider-route-'+[guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'Synthetic provider routing test.' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath|Out-Null
+$taskRoot=Join-Path $config.runtime.stateRoot ('tasks\'+$taskId)
 $copilotRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
 if([string]$copilotRoute.provider -ne 'copilot' -or [string]$copilotRoute.model -ne 'gpt-5' -or [string]$copilotRoute.reasoningEffort -ne 'medium'){throw 'Copilot provider tier mapping failed.'}
 & (Join-Path $root 'scripts\Switch-TaskAgentProvider.ps1') -TaskId $taskId -AgentId developer -Provider claude -ConfigPath $testConfigPath|Out-Null
@@ -38,10 +39,15 @@ if(@($routingArtifact.decisions).Count -ne 2){throw 'Provider routing decisions 
 
 $workflow=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $copilot=Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CopilotRole.ps1') -Raw -Encoding UTF8
+$installer=Get-Content -LiteralPath (Join-Path $root 'scripts\Install-AgentEcosystem.ps1') -Raw -Encoding UTF8
 $dashboard=Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHost=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
-foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','provider-limit-')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
+foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
+foreach($token in @('$codexSelected','if($codexSelected)','-not $SkipPlugin -and $codexSelected')){if($installer -notmatch [regex]::Escape($token)){throw "Installer does not support a no-Codex role selection ('$token')."}}
 foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgentProvider.ps1','/provider')){if(($dashboard+$dashboardHost) -notmatch [regex]::Escape($token)){throw "Dashboard provider switching is missing '$token'."}}
+
+$emptyMcpSession=& (Join-Path $root 'scripts\New-McpSession.ps1') -TaskId $taskId -AgentId reviewer -RunId 'run-provider-test' -LeaseId 'lease-provider-test' -TaskRoot $taskRoot -Workspaces @($root) -AllowedTools @() -Config $config -AttemptId 'attempt-provider-test'
+if(@($emptyMcpSession.Session.allowedTools).Count){throw 'An external-only MCP policy was repopulated with local ecosystem-read tools.'}
 
 foreach($provider in @('codex','copilot','claude')){
     $installParameters=@{Provider=$provider;DestinationRoot=(Join-Path $OutputRoot ('preview-'+$provider));ConfigPath=$testConfigPath}
@@ -55,13 +61,16 @@ foreach($provider in @('codex','copilot','claude')){
 }
 $daily=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
 if([string]$daily.status -ne 'no-incidents' -or $daily.reportPath){throw 'A clean daily health scan was not a true no-op.'}
-$taskRoot=Join-Path $config.runtime.stateRoot ('tasks\'+$taskId)
 $dailyLog=Join-Path $taskRoot 'workflow-copilot.jsonl'
 Write-Utf8NoBom -Path $dailyLog -Content ((@{type='assistant.message';data=@{content='Successfully reviewed ordinary error-handling code.'}}|ConvertTo-Json -Compress)+[Environment]::NewLine)
 $successfulTextScan=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
 if([string]$successfulTextScan.status -ne 'no-incidents'){throw 'Successful assistant text produced a false-positive daily incident.'}
-[IO.File]::AppendAllText($dailyLog,((@{type='session.error';data=@{message='Provider rate limit reached.'}}|ConvertTo-Json -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+[IO.File]::AppendAllText($dailyLog,((@{type='session.error';data=@{message='Provider rate limit reached. Authorization: Bearer bearer-secret-value';context=@{apiKey='nested-secret-value';password='nested-password-value'}}}|ConvertTo-Json -Depth 8 -Compress)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
 $incidentScan=& (Join-Path $root 'scripts\Invoke-DailyHealthIncidentScan.ps1') -ConfigPath $testConfigPath
 if([string]$incidentScan.status -ne 'incidents-found' -or [int]$incidentScan.incidentCount -ne 1 -or -not(Test-Path -LiteralPath $incidentScan.reportPath)){throw 'Structured provider failure was not captured by the daily incident scan.'}
+$incidentReport=Get-Content -LiteralPath $incidentScan.reportPath -Raw -Encoding UTF8
+foreach($secret in @('bearer-secret-value','nested-secret-value','nested-password-value')){if($incidentReport -match [regex]::Escape($secret)){throw "Daily incident report leaked '$secret'."}}
+if($incidentReport -notmatch '\[redacted\]' -or $incidentReport -notmatch '"signature"\s*:\s*"[a-f0-9]{64}"'){throw 'Daily incident report lacks redacted, fingerprinted evidence.'}
+if($incidentReport -match '"path"\s*:' -or $incidentReport -match [regex]::Escape([IO.Path]::GetFullPath($OutputRoot))){throw 'Daily incident report persisted an absolute local path.'}
 
 [pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$copilotRoute.provider;OverrideProvider=[string]$claudeRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}

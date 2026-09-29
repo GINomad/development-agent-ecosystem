@@ -9,6 +9,7 @@ param(
     [string] $Model = 'auto',
     [ValidateSet('none','minimal','low','medium','high','xhigh','max')][string] $ReasoningEffort = 'medium',
     [string] $McpSessionPath,
+    [object[]] $McpServers = @(),
     [switch] $ReadOnly,
     [string] $CliPath,
     [string[]] $CliPrefixArguments = @(),
@@ -51,13 +52,24 @@ $available = if ($ReadOnly) { 'view,grep,glob' } else { 'view,grep,glob,edit,cre
 if ($McpSessionPath) {
     $session=Get-Content -LiteralPath $McpSessionPath -Raw|ConvertFrom-Json
     $mcpTools=@($session.allowedTools|ForEach-Object{[string]$_})
-    if (-not $mcpTools.Count -or @($mcpTools|Where-Object{$_ -notmatch '^[a-z_]+$'}).Count) { throw 'Invalid Copilot MCP role allowlist.' }
-    $mcpConfig=Join-Path $attemptDirectory 'mcp-config.json'
-    $server=[ordered]@{type='stdio';command=(Get-Command powershell.exe -ErrorAction Stop).Source;args=@('-NoProfile','-File',(Join-Path $PSScriptRoot 'Start-EcosystemReadMcpServer.ps1'));env=@{ECOSYSTEM_MCP_SESSION_PATH=[IO.Path]::GetFullPath($McpSessionPath)};tools=$mcpTools;timeout=([int]$session.toolTimeoutSeconds*1000)}
-    [IO.File]::WriteAllText($mcpConfig,(@{mcpServers=@{'ecosystem-read'=$server}}|ConvertTo-Json -Depth 8))
-    $start.ArgumentList.Add('--additional-mcp-config');$start.ArgumentList.Add('@'+$mcpConfig)
-    $start.ArgumentList.Add('--enable-mcp-server=ecosystem-read')
-    foreach($tool in $mcpTools){$available+=",ecosystem-read-$tool";$start.ArgumentList.Add("--allow-tool=ecosystem-read($tool)")}
+    if (@($mcpTools|Where-Object{$_ -notmatch '^[a-z_]+$'}).Count) { throw 'Invalid Copilot MCP role allowlist.' }
+    if ($mcpTools.Count) {
+        $mcpConfig=Join-Path $attemptDirectory 'mcp-config.json'
+        $server=[ordered]@{type='stdio';command=(Get-Command powershell.exe -ErrorAction Stop).Source;args=@('-NoProfile','-File',(Join-Path $PSScriptRoot 'Start-EcosystemReadMcpServer.ps1'));env=@{ECOSYSTEM_MCP_SESSION_PATH=[IO.Path]::GetFullPath($McpSessionPath)};tools=$mcpTools;timeout=([int]$session.toolTimeoutSeconds*1000)}
+        [IO.File]::WriteAllText($mcpConfig,(@{mcpServers=@{'ecosystem-read'=$server}}|ConvertTo-Json -Depth 8))
+        $start.ArgumentList.Add('--additional-mcp-config');$start.ArgumentList.Add('@'+$mcpConfig)
+        $start.ArgumentList.Add('--enable-mcp-server=ecosystem-read')
+        foreach($tool in $mcpTools){$available+=",ecosystem-read-$tool";$start.ArgumentList.Add("--allow-tool=ecosystem-read($tool)")}
+    }
+}
+foreach($mcpServer in @($McpServers|Where-Object{[string]$_.name -ne 'ecosystem-read'})){
+    $serverName=[string]$mcpServer.name
+    $serverTools=@($mcpServer.roleTools|ForEach-Object{[string]$_})
+    if($serverName -notmatch '^[A-Za-z0-9._-]+$' -or -not $serverTools.Count -or @($serverTools|Where-Object{$_ -notmatch '^[A-Za-z0-9._-]+$'}).Count){throw 'Invalid external Copilot MCP role allowlist.'}
+    & $cli @CliPrefixArguments mcp get $serverName 2>$null|Out-Null
+    if($LASTEXITCODE -ne 0){throw "MCP server '$serverName' is not registered in Copilot."}
+    $start.ArgumentList.Add("--enable-mcp-server=$serverName")
+    foreach($tool in $serverTools){$available+=",$serverName-$tool";$start.ArgumentList.Add("--allow-tool=$serverName($tool)")}
 }
 $start.ArgumentList.Add("--available-tools=$available")
 $start.ArgumentList.Add('--allow-tool=read')
