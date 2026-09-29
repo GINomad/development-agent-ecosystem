@@ -159,9 +159,14 @@ $bootstrap = Invoke-EcosystemFileLock -LockPath $bootstrapLockPath -TimeoutSecon
     Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
     $standardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
     if (-not (Test-Path -LiteralPath $standardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $standardsPath" }
-    $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
-    if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
-    $syncResult = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
+    $codexSelected=@($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
+    if($codexSelected){
+        $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
+        if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
+        $syncResult = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
+    }else{
+        $syncResult=[pscustomobject]@{Installed=$false;OutputDirectory=$null;AgentFiles=@();Reason='No agent is assigned to Codex.'}
+    }
     Update-CurrentWorkspaceLeaseHeartbeat -HeartbeatConfigPath $ConfigPath
     return [pscustomobject]@{ KnowledgeImport=$importResult; GlobalStandardsPath=$standardsPath; Sync=$syncResult }
 }
