@@ -46,27 +46,31 @@ if($InteractiveProviderSetup){
 }
 
 $knowledge = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
-$agents = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install
+$codexSelected=@($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
+$agents = if($codexSelected){& (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install}else{[pscustomobject]@{Installed=$false;OutputDirectory=$null;AgentFiles=@();Reason='No agent is assigned to Codex.'}}
 $review = & (Join-Path $PSScriptRoot 'Sync-ReviewMonitorConfig.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 $mcpHealth = & (Join-Path $PSScriptRoot 'Test-McpServerHealth.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not [bool]$mcpHealth.Healthy) { throw "Configured local MCP server is unhealthy: $($mcpHealth.Reason)" }
-$codexCliPath=Resolve-CodexCliPath
-if(-not $codexCliPath){throw 'Codex CLI was not found for MCP inventory validation.'}
-try{$mcpInventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $mcpInventory){throw 'empty inventory'};$mcpInventory=$mcpInventory|ConvertFrom-Json;$registeredMcp=if($mcpInventory.PSObject.Properties['servers']){@($mcpInventory.servers)}else{@($mcpInventory)}}catch{throw 'Codex MCP inventory cannot be verified; installation is denied.'}
-if ($ConfirmMcpRegistration) {
-    $local = @($registeredMcp | Where-Object { [string]$_.name -eq 'ecosystem-read' })
-    if (-not $local.Count) {
-        $localScript = Resolve-EcosystemPath -Value ([string]$config.mcp.localServer.arguments[-1]) -Config $config -CodexHome $CodexHome
-        & $codexCliPath mcp add ecosystem-read -- powershell -NoProfile -File $localScript
-        if ($LASTEXITCODE -ne 0) { throw 'Unable to register local ecosystem-read MCP server.' }
-        try{$mcpInventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $mcpInventory){throw 'empty inventory'};$mcpInventory=$mcpInventory|ConvertFrom-Json;$registeredMcp=if($mcpInventory.PSObject.Properties['servers']){@($mcpInventory.servers)}else{@($mcpInventory)}}catch{throw 'Codex MCP inventory cannot be verified after local registration.'}
+$registeredMcp=@()
+if($codexSelected){
+    $codexCliPath=Resolve-CodexCliPath
+    if(-not $codexCliPath){throw 'Codex CLI was not found for agents assigned to Codex.'}
+    try{$mcpInventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $mcpInventory){throw 'empty inventory'};$mcpInventory=$mcpInventory|ConvertFrom-Json;$registeredMcp=if($mcpInventory.PSObject.Properties['servers']){@($mcpInventory.servers)}else{@($mcpInventory)}}catch{throw 'Codex MCP inventory cannot be verified for agents assigned to Codex; installation is denied.'}
+    if ($ConfirmMcpRegistration) {
+        $local = @($registeredMcp | Where-Object { [string]$_.name -eq 'ecosystem-read' })
+        if (-not $local.Count) {
+            $localScript = Resolve-EcosystemPath -Value ([string]$config.mcp.localServer.arguments[-1]) -Config $config -CodexHome $CodexHome
+            & $codexCliPath mcp add ecosystem-read -- powershell -NoProfile -File $localScript
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to register local ecosystem-read MCP server.' }
+            try{$mcpInventory=& $codexCliPath mcp list --json 2>$null;if($LASTEXITCODE -ne 0 -or -not $mcpInventory){throw 'empty inventory'};$mcpInventory=$mcpInventory|ConvertFrom-Json;$registeredMcp=if($mcpInventory.PSObject.Properties['servers']){@($mcpInventory.servers)}else{@($mcpInventory)}}catch{throw 'Codex MCP inventory cannot be verified after local registration.'}
+        }
     }
+    foreach($external in @($config.mcp.servers)){if(-not @($registeredMcp|Where-Object{[string]$_.name -eq [string]$external.name}).Count){throw "Configured external MCP server '$($external.name)' is not registered in Codex."}}
 }
-foreach($external in @($config.mcp.servers)){if(-not @($registeredMcp|Where-Object{[string]$_.name -eq [string]$external.name}).Count){throw "Configured external MCP server '$($external.name)' is not registered in Codex."}}
 $tests = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 
 $pluginResult = $null
-if (-not $SkipPlugin) {
+if (-not $SkipPlugin -and $codexSelected) {
     $marketplaceResponse = & codex plugin marketplace list --json | ConvertFrom-Json
     $marketplaces = @($marketplaceResponse.marketplaces)
     if (-not @($marketplaces | Where-Object { $_.name -eq 'personal' -and [IO.Path]::GetFullPath([string]$_.root) -eq [IO.Path]::GetFullPath($root) }).Count) {

@@ -447,19 +447,31 @@ try {
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
     & $leaseHeartbeatAction | Out-Null
     if ([string]$providerRoute.provider -eq 'copilot') {
-        $copilotParams=@{ Prompt=$prompt; WorkingDirectory=$agentWorkingDirectory; LogPath=$codexLogPath; FinalResponsePath=$finalResponsePath; GuardArtifactPath=$guardArtifactPath; Model=[string]$providerRoute.model; ReasoningEffort=[string]$providerRoute.reasoningEffort; MaxIdenticalFailures=[int]$config.runtime.executionGuard.maxIdenticalFailures; MaxRunMinutes=[int]$config.runtime.executionGuard.maxRunMinutes; PollMilliseconds=[int]$config.runtime.executionGuard.pollMilliseconds; HeartbeatAction=$leaseHeartbeatAction; HeartbeatIntervalSeconds=[int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds; CliPath=[string]$providerRoute.command; AdditionalDirectories=$additionalDirectories; ReadOnly=([string]$activeAgent.sandboxMode -eq 'read-only') }
+        $copilotParams=@{ Prompt=$prompt; WorkingDirectory=$agentWorkingDirectory; LogPath=$codexLogPath; FinalResponsePath=$finalResponsePath; GuardArtifactPath=$guardArtifactPath; Model=[string]$providerRoute.model; ReasoningEffort=[string]$providerRoute.reasoningEffort; MaxIdenticalFailures=[int]$config.runtime.executionGuard.maxIdenticalFailures; MaxRunMinutes=[int]$config.runtime.executionGuard.maxRunMinutes; PollMilliseconds=[int]$config.runtime.executionGuard.pollMilliseconds; HeartbeatAction=$leaseHeartbeatAction; HeartbeatIntervalSeconds=[int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds; CliPath=[string]$providerRoute.command; AdditionalDirectories=$additionalDirectories; ReadOnly=([string]$activeAgent.sandboxMode -eq 'read-only'); McpServers=@($mcpExecution.Servers) }
         if ($mcpSession) { $copilotParams.McpSessionPath=[string]$mcpSession.Path }
         $guardResult=& (Join-Path $PSScriptRoot 'Invoke-CopilotRole.ps1') @copilotParams
     } elseif ([string]$providerRoute.provider -eq 'claude') {
         $claudeArguments=[Collections.Generic.List[string]]::new()
         foreach($argument in @('-p','--output-format','stream-json','--verbose','--model',[string]$providerRoute.model,'--no-session-persistence')){$claudeArguments.Add($argument)}
-        if ($mcpSession) {
+        $claudeExternalMcp=@($mcpExecution.Servers|Where-Object{[string]$_.name -ne 'ecosystem-read'})
+        if ($mcpSession -and @($mcpSession.Session.allowedTools).Count) {
             $claudeMcpConfig=Join-Path $task.TaskRoot ('claude-mcp-'+$roleAttemptId+'.json')
             $claudeMcpTools=@($mcpSession.Session.allowedTools|ForEach-Object{[string]$_})
             $claudeMcpServer=[ordered]@{type='stdio';command=(Get-Command powershell.exe -ErrorAction Stop).Source;args=@('-NoProfile','-File',(Join-Path $PSScriptRoot 'Start-EcosystemReadMcpServer.ps1'));env=@{ECOSYSTEM_MCP_SESSION_PATH=[string]$mcpSession.Path}}
             Write-Utf8NoBomAtomic -Path $claudeMcpConfig -Content ((@{mcpServers=@{'ecosystem-read'=$claudeMcpServer}}|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
-            $claudeArguments.Add('--strict-mcp-config');$claudeArguments.Add('--mcp-config');$claudeArguments.Add($claudeMcpConfig)
+            if(-not $claudeExternalMcp.Count){$claudeArguments.Add('--strict-mcp-config')}
+            $claudeArguments.Add('--mcp-config');$claudeArguments.Add($claudeMcpConfig)
             foreach($tool in $claudeMcpTools){$claudeArguments.Add('--allowedTools');$claudeArguments.Add(('mcp__ecosystem-read__'+$tool))}
+        }
+        foreach($mcpServer in $claudeExternalMcp){
+            $serverName=[string]$mcpServer.name
+            if($serverName -notmatch '^[A-Za-z0-9._-]+$'){throw "Invalid Claude MCP server name '$serverName'."}
+            & ([string]$providerRoute.command) mcp get $serverName 2>$null|Out-Null
+            if($LASTEXITCODE -ne 0){throw "MCP server '$serverName' is not registered in Claude."}
+            foreach($tool in @($mcpServer.roleTools|ForEach-Object{[string]$_})){
+                if($tool -notmatch '^[A-Za-z0-9._-]+$'){throw "Invalid Claude MCP tool name '$tool'."}
+                $claudeArguments.Add('--allowedTools');$claudeArguments.Add(('mcp__'+$serverName+'__'+$tool))
+            }
         }
         foreach($directory in $additionalDirectories){$claudeArguments.Add('--add-dir');$claudeArguments.Add([IO.Path]::GetFullPath([string]$directory))}
         $guardResult=& (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -Provider claude -FilePath ([string]$providerRoute.command) -Arguments @($claudeArguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
@@ -680,7 +692,8 @@ catch {
     }
     if (-not $HealthRecoveryRetry -and $failureMessage -match '(?i)\bmcp\b|protocol|tools/list') {
         $mcpSignature = (Get-FileHash -Algorithm SHA256 -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($failureMessage)))).Hash.ToLowerInvariant()
-        $recoveryServers=if(@($mcpJsonlFailedServers).Count){@($mcpJsonlFailedServers)}else{@('ecosystem-read')}
+        $recoveryServers=if(@($mcpJsonlFailedServers).Count){@($mcpJsonlFailedServers)}else{@($mcpExecution.Servers|ForEach-Object{[string]$_.name}|Where-Object{$_}|Select-Object -Unique)}
+        if(-not $recoveryServers.Count){$recoveryServers=@('ecosystem-read')}
         foreach($serverName in $recoveryServers){if(-not @($mcpJsonlFailedServers).Count){& (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature $mcpSignature -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null;$diagnosticPath=New-McpFailureDiagnostic $serverName $failureMessage;& (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature $mcpSignature -TaskId $TaskId -AgentId $failureAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null};& (Join-Path $PSScriptRoot 'Write-McpMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AgentId $failureAgentId -Server $serverName -Status failed -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -AttemptId $roleAttemptId -ErrorClass 'transport-or-protocol' -FallbackUsed | Out-Null}
         if ($TargetAgentId) { return & $PSCommandPath -Mode $Mode -TaskId $TaskId -TaskSelector $TaskSelector -RepositoryIds $RepositoryIds -Resume -TargetAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -HealthRecoveryRetry -SkipChainContinuation -ConfigPath $ConfigPath -CodexHome $CodexHome }
     }
