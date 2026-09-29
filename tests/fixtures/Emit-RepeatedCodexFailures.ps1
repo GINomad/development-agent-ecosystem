@@ -1,3 +1,5 @@
+Write-Output ''
+Write-Output '{"diagnostic":"ignore non-event JSON"}'
 $failure = [ordered]@{
     type = 'item.completed'
     item = [ordered]@{

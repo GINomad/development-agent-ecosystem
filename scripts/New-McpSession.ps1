@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string] $TaskId,[Parameter(Mandatory)][string] $AgentId,[Parameter(Mandatory)][string] $RunId,[Parameter(Mandatory)][string] $LeaseId,[Parameter(Mandatory)][string] $TaskRoot,[Parameter(Mandatory)][string[]] $Workspaces,[Parameter(Mandatory)][object] $Config,[string[]] $AllowedTools,[ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $AttemptId)
+param([Parameter(Mandatory)][string] $TaskId,[Parameter(Mandatory)][string] $AgentId,[Parameter(Mandatory)][string] $RunId,[Parameter(Mandatory)][string] $LeaseId,[Parameter(Mandatory)][string] $TaskRoot,[Parameter(Mandatory)][string[]] $Workspaces,[Parameter(Mandatory)][object] $Config,[string[]] $AllowedTools,[ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $AttemptId,[string] $KnowledgeManifestPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if(-not (Get-Command Get-EcosystemStateRoot -ErrorAction SilentlyContinue)){Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Global}
@@ -8,5 +8,12 @@ if($AgentId -notin @('requirements_analyst','knowledge_keeper','reviewer','revie
 $artifacts=if($AgentId -eq 'review_verifier'){@('requirements-analysis.json','review-result.json','review-verification.json')}elseif($AgentId -eq 'reviewer'){@('requirements-analysis.json','implementation-result.json','review-result.json')}else{@('requirements-analysis.json','implementation-result.json')}
 $stateRoot=Get-EcosystemStateRoot -Config $Config;$keyRoot=Join-Path $stateRoot 'health\mcp';New-Item -ItemType Directory -Path $keyRoot -Force|Out-Null;$keyPath=Join-Path $keyRoot 'session-signing.key';if(-not(Test-Path -LiteralPath $keyPath)){try{$bytes=New-Object byte[] 32;[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes);$stream=[IO.File]::Open($keyPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}catch [IO.IOException] { if(-not(Test-Path -LiteralPath $keyPath)){throw 'MCP session signing key could not be created.'}}catch{throw 'MCP session signing key could not be created.'}};$key=[IO.File]::ReadAllBytes($keyPath)
 $doc=[ordered]@{schemaVersion=3;taskId=$TaskId;attemptId=if($AttemptId){$AttemptId}else{$RunId};agentId=$AgentId;runId=$RunId;leaseId=$LeaseId;taskRoot=[IO.Path]::GetFullPath($TaskRoot);workspaces=@($Workspaces|ForEach-Object{[IO.Path]::GetFullPath($_)});allowedTools=$tools;publicArtifacts=$artifacts;metricsPath=(Join-Path $TaskRoot 'mcp-metrics.jsonl');signingKeyPath=$keyPath;maxCalls=[int]$Config.mcp.resilience.maxCallsPerRoleRun;maxResponseBytes=[int]$Config.mcp.resilience.maxResponseBytes;toolTimeoutSeconds=[int]$Config.mcp.resilience.toolTimeoutSeconds;createdAtUtc=[DateTime]::UtcNow.ToString('o')}
+if ($KnowledgeManifestPath) {
+    $resolved=[IO.Path]::GetFullPath($KnowledgeManifestPath)
+    $prefix=[IO.Path]::GetFullPath($TaskRoot).TrimEnd('\')+'\'
+    if(-not $resolved.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Knowledge manifest must belong to this task.'}
+    $doc.knowledgeManifestPath=$resolved
+    $doc.knowledgeManifestSha256=(Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 $canonical=$doc|ConvertTo-Json -Depth 8 -Compress;$hmac=[Security.Cryptography.HMACSHA256]::new($key);try{$doc.sessionHmac=([BitConverter]::ToString($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant()}finally{$hmac.Dispose()}
 $path=Join-Path $TaskRoot ('mcp-session-'+$AgentId+'-'+$(if($AttemptId){$AttemptId}else{$RunId})+'.json');$tmp=$path+'.'+[guid]::NewGuid().ToString('N')+'.tmp';[IO.File]::WriteAllText($tmp,(($doc|ConvertTo-Json -Depth 8)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)));Move-Item -LiteralPath $tmp -Destination $path -Force;[pscustomobject]@{Path=$path;Session=$doc}

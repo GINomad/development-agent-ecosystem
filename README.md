@@ -1,5 +1,7 @@
 # Development Agent Ecosystem
 
+This is the **hybrid Copilot / Codex branch**. Copilot performs implementation and requirements research; Codex independently checks requirements, reviews changes, and verifies findings. See [hybrid setup and parallel launch](docs/hybrid-runtime.md). Run `Start-Hybrid.cmd` for port 43128 and `Start-Classic.cmd` for the unchanged classic checkout on port 43127. The existing delivery gates remain in place.
+
 An evidence-first local Codex ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, candidate code review, independent review verification, and Azure Pipelines monitoring.
 
 The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Codex agent TOML definitions. Do not edit generated TOML files manually.

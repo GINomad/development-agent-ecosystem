@@ -2629,6 +2629,7 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
     const configuredAgents = Array.isArray(config.agents) ? config.agents : [];
     configuredAgents.forEach(agent => {
       if (!agentLabels[agent.id]) agentLabels[agent.id] = agent.name || agent.id;
+      if (agent.runtimeProvider) agentLabels[agent.id] += ' (' + agent.runtimeProvider + ')';
       agentRequiredArtifacts[agent.id] = Array.isArray(agent.requiredArtifacts) ? agent.requiredArtifacts : [];
     });
     configuredProjects = Array.isArray(config.projects) ? config.projects : [];
