@@ -308,10 +308,11 @@
     "defaultProvider": "codex",
     "providers": {
       "codex": { "command": "codex", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-5.6-luna", "reasoningEffort": "low" }, "standard": { "model": "gpt-5.6-terra", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5.6-sol", "reasoningEffort": "high" }, "critical": { "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" } } },
-      "copilot": { "command": "C:/Users/okruk2/AppData/Local/Programs/copilot-cli/node_modules/@github/copilot/node_modules/@github/copilot-win32-x64/copilot.exe", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-5", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5", "reasoningEffort": "high" }, "critical": { "model": "gpt-5", "reasoningEffort": "xhigh" } } },
-      "claude": { "command": "claude", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "claude-haiku", "reasoningEffort": "none" }, "standard": { "model": "claude-sonnet", "reasoningEffort": "none" }, "complex": { "model": "claude-sonnet", "reasoningEffort": "none" }, "critical": { "model": "claude-opus", "reasoningEffort": "none" } } }
+      "copilot": { "command": "copilot", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-5", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5", "reasoningEffort": "high" }, "critical": { "model": "gpt-5", "reasoningEffort": "xhigh" } } },
+      "claude": { "command": "claude", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "haiku", "reasoningEffort": "none" }, "standard": { "model": "sonnet", "reasoningEffort": "none" }, "complex": { "model": "sonnet", "reasoningEffort": "none" }, "critical": { "model": "opus", "reasoningEffort": "none" } } }
     }
-  },  "ui": {
+  },
+  "ui": {
     "listenAddress": "127.0.0.1",
     "port": 43127,
     "openBrowser": true,

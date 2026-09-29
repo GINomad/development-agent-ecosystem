@@ -37,7 +37,7 @@ Ask concise grouped questions in chat, one group at a time. Reuse facts safely d
 Collect and confirm:
 
 1. Platform: OS, shell, preferred repository root, and the user context that will run interactive sessions and scheduled tasks.
-2. Agent runtime: whether its CLI is installed, whether interactive and headless execution are required, and whether its non-secret authentication-status check succeeds.
+2. Agent runtimes and routing: detect Codex, GitHub Copilot, and Claude CLIs; ask which provider should run each of the eight agents; confirm routine, standard, complex, and critical model aliases plus supported reasoning effort for every selected provider. Default Developer, Reviewer, and Pipeline Monitor to Copilot and the remaining roles to Codex unless the developer chooses otherwise.
 3. Developer identity: display name, email, Azure DevOps and GitHub usernames used to discover assigned work and exclude self-authored reviews.
 4. Projects and repositories: define a stable ecosystem project ID, display name, isolated domain-knowledge root, and one or more repositories. Every repository belongs to exactly one project; confirm its provider, canonical clone URL, operator/reference local workspace (never used for task execution), default base branch, organization or host, repository name or ID, and enabled state.
 5. Credentials: the approved authentication strategy for each provider and the environment-variable name when applicable. Never ask for a credential value.
@@ -57,6 +57,7 @@ Never ask the developer to paste passwords, PATs, API keys, refresh tokens, cook
 Ask the developer to complete interactive authentication directly in their own terminal or browser:
 
 - For the configured agent runtime, use its documented interactive sign-in or approved environment-based authentication and then run only its non-secret status check.
+- For GitHub Copilot CLI, use `scripts/Start-AgentProviderLogin.ps1 -Provider copilot`; for Claude Code use `scripts/Start-AgentProviderLogin.ps1 -Provider claude`. Both flows are provider-owned and the ecosystem must not read or persist their credentials. Codex uses the application account session.
 - For Azure, use the organization's approved `az login` flow. If `az devops login` is required, the developer must enter the PAT directly into that command, never into chat.
 - For GitHub, use `gh auth login`, followed by `gh auth status`.
 - For Git remotes, use the approved credential manager, SSO flow, or SSH agent.
@@ -67,13 +68,13 @@ Status checks may report account names, hosts, scopes, and expiry metadata, but 
 
 1. Run read-only prerequisite checks: CLI availability, repository existence, canonical remote URLs, current authentication status, configured paths, clone-root write access and free space, and port availability.
 2. Do not clone repositories, install software or plugins, authenticate, create scheduled tasks, push, queue pipelines, publish comments, or mutate work items before the developer confirms the preview.
-3. Present a redacted summary containing repositories, task sources, paths, parallel-task capacity, queue policy, heartbeat/stale-lease settings, expected clone storage, schedules, model routing, pipeline definition allowlists, all eight canonical agent roles, Reviewer/Review Verifier separation, pipeline ownership, MCP local/external server allowlists by role, disabled integrations, unresolved items, and the exact files or local state you intend to change.
+3. Present a redacted summary containing repositories, task sources, paths, parallel-task capacity, queue policy, heartbeat/stale-lease settings, expected clone storage, schedules, per-agent provider assignments, provider model/effort maps, pipeline definition allowlists, all eight canonical agent roles, Reviewer/Review Verifier separation, pipeline ownership, MCP local/external server allowlists by role, disabled integrations, unresolved items, and the exact files or local state you intend to change.
 4. Ask the developer to confirm the preview. Treat materially changed answers as a new preview, not implicit approval.
 5. Preserve unrelated local changes. Use patch-based edits. Update canonical `config/agents.json` only with confirmed non-secret settings and keep it valid against `config/schemas/agents.schema.json`.
 6. Clone or fetch a repository only after preview confirmation. Never overwrite an existing directory; verify its Git identity and remote instead.
 7. Run `scripts/Sync-AgentDefinitions.ps1` into a temporary output directory, run the local `tests/Test-ReviewVerification.ps1` coverage/lifecycle contract, run `scripts/Test-AgentEcosystem.ps1`, run `scripts/Test-McpServerHealth.ps1` for the local server, and execute one `Start-DevelopmentWorkflow.ps1 -PrepareOnly` smoke test against a confirmed enabled repository. Prepare-only validation must not invoke a model or mutate an external service.
 8. Show validation results and remaining gaps, including the repository/definition matrix, all eight compiled standard agents, every `pipeline.ownership` agent ID, and the independent verifier's exact-SHA/coverage/lifecycle checks. Do not weaken schemas, tests, permissions, review-verification gates, human decision gates, or delivery gates to make setup pass.
-9. Ask for a separate confirmation before running `scripts/Install-AgentEcosystem.ps1` or installing scheduled tasks because those commands change local runtime, plugin, or scheduler state.
+9. Ask for a separate confirmation before running `scripts/Install-AgentEcosystem.ps1` or installing scheduled tasks because those commands change local runtime, provider routing, plugin, or scheduler state. Use `-InteractiveProviderSetup` for the first full installation, or offer `-ChatOnly -ChatProvider codex|copilot|claude` when the developer explicitly wants agents without the dashboard.
 10. Finish with the files and local state changed, exact validation results, authentication status without secrets, disabled integrations, commands to start the dashboard and a manual workflow, and documented rollback steps.
 
 Stop and ask the developer if documentation and schema conflict, a required value cannot be safely discovered, an existing directory contains unrelated data, validation repeatedly fails with the same signature, or an action would broaden external authority.

@@ -170,6 +170,7 @@ Allowed decisions are `approved`, `rejected`, `deferred`, and `bypassed`. Develo
 - `Development Ecosystem - Task PR Lifecycle`: synchronizes task PR state every `pipeline.pullRequests.pollIntervalMinutes` without model polling;
 - `Development Ecosystem - Continuation Recovery`: keeps one hidden resident host that reconciles missing durable continuations;
 - `Development Ecosystem - Knowledge Weekly Report`: renders the configured weekly evidence report without invoking AI.
+- `Development Ecosystem - Daily Incident Health Check`: at 23:55 local, scans the preceding bounded 24-hour failure window and runs local ecosystem-only recovery only when incidents exist.
 
 Review reports are local by default. The monitor writes Markdown and interactive HTML reports to `%LOCALAPPDATA%\Codex\development-agent-ecosystem\azure-pr-review-monitor\reports`; `latest-summary.md` points to the newest run state. Comment hashes are tracked per PR. A changed comment forces only that PR, and `pending-review-changes.json` keeps the change visible as `pending-ai-review` or `requires-human-intervention` until a successful review consumes it. Nothing is emailed or posted to Azure DevOps automatically; publishing a selected finding remains an explicit, approval-gated action.
 
@@ -205,7 +206,6 @@ If the new review dry run fails, legacy scheduled tasks remain enabled. If insta
 
 ## Daily incident health scan
 
-Invoke-DailyHealthIncidentScan.ps1 -Repair scans only the previous 24 hours of bounded workflow/failure tails. With no incident it writes a
-o-incidents report and takes no repair action. Schedule it daily at health.dailyIncidentScan.localTime (default 23:55 local). On matched failures, capacity/quota errors, or MCP errors it records the bounded evidence and enters the existing ecosystem-only Health Check path.
+`Invoke-DailyHealthIncidentScan.ps1 -Repair` scans only the previous 24 hours of bounded workflow/failure tails. With no incident it performs a true no-op and writes no report. On matched failures, capacity/quota errors, or MCP errors it records bounded evidence, runs deterministic repair, and may create a validated local ecosystem recovery commit. It never pushes or restarts a product task from the nightly schedule.
 
-To change an agent during a task, use Switch-TaskAgentProvider.ps1 -TaskId <id> -AgentId <agent> -Provider codex -Resume. A running target is checkpointed and stopped before its own targeted resume; other agents and task artifacts are preserved.
+To change an agent during a task, use the dashboard's **Switch and restart** control. It confirms and stops an active workflow first, then persists a task-scoped override and schedules only that role. From the command line, stop the workflow first and run `Switch-TaskAgentProvider.ps1 -TaskId <id> -AgentId <agent> -Provider codex`; then use the normal targeted resume path. Other agents and task artifacts are preserved.

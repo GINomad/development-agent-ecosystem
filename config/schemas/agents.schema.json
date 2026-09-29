@@ -11,6 +11,7 @@
     "operation",
     "workflow",
     "modelRouting",
+    "providerRouting",
     "ui",
     "health",
     "review",
@@ -336,8 +337,7 @@
                   "continueAutomatically"
                 ],
                 "properties": {
-                  "provider": { "enum": ["codex", "copilot", "claude"] },
-        "description": {
+                  "description": {
                     "type": "string",
                     "minLength": 1
                   },
@@ -683,7 +683,16 @@
         "enabled": { "const": true },
         "artifactName": { "const": "provider-routing.json" },
         "defaultProvider": { "enum": ["codex", "copilot", "claude"] },
-        "providers": { "type": "object", "additionalProperties": { "type": "object" } }
+        "providers": {
+          "type": "object",
+          "required": ["codex", "copilot", "claude"],
+          "additionalProperties": false,
+          "properties": {
+            "codex": { "$ref": "#/$defs/provider" },
+            "copilot": { "$ref": "#/$defs/provider" },
+            "claude": { "$ref": "#/$defs/provider" }
+          }
+        }
       }
     },    "ui": {
       "type": "object",
@@ -739,6 +748,7 @@
         "repairMode",
         "checkOnWorkflowFailure",
         "dashboardHealthUrl",
+        "dailyIncidentScan",
         "automaticRecovery"
       ],
       "properties": {
@@ -1715,12 +1725,43 @@
     }
   },
   "$defs": {
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "supportsMcp", "supportsReasoningEffort", "models"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "supportsMcp": { "type": "boolean" },
+        "supportsReasoningEffort": { "type": "boolean" },
+        "models": {
+          "type": "object",
+          "required": ["routine", "standard", "complex", "critical"],
+          "additionalProperties": false,
+          "properties": {
+            "routine": { "$ref": "#/$defs/providerModel" },
+            "standard": { "$ref": "#/$defs/providerModel" },
+            "complex": { "$ref": "#/$defs/providerModel" },
+            "critical": { "$ref": "#/$defs/providerModel" }
+          }
+        }
+      }
+    },
+    "providerModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "reasoningEffort"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] }
+      }
+    },
     "agent": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "id",
         "name",
+        "provider",
         "description",
         "responsibilities",
         "model",

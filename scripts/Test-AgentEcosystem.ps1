@@ -1938,6 +1938,9 @@ Add-Check -Name 'systemic-failure-hardening' -Detail 'Typed review inspection, r
 & (Join-Path $root 'tests\Test-McpResilience.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 Add-Check -Name 'mcp-resilience' -Detail 'Session integrity, task isolation, quotas, metrics, and circuit canary behavior'
 
+& (Join-Path $root 'tests\Test-ProviderRouting.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'provider-routing') -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'multi-provider-routing' -Detail 'Per-agent defaults, provider tier maps, task override, MCP adapters, quota artifacts, dashboard switching, chat-only packs, and clean daily no-op'
+
 [pscustomobject]@{
     Passed = $true
     CheckedAtUtc = [DateTime]::UtcNow.ToString('o')

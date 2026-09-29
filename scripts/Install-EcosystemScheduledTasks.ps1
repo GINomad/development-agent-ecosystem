@@ -45,11 +45,11 @@ $specification = [pscustomobject]@{
     PullRequestLifecycleIntervalMinutes = [int]$config.pipeline.pullRequests.pollIntervalMinutes
     ContinuationRecoveryIntervalMinutes = [int]$config.workflow.automaticContinuation.recoveryPollIntervalMinutes
     KnowledgeWeeklyReport = [pscustomobject]@{ Enabled=[bool]$config.knowledge.weeklyReport.enabled; DayOfWeek=[string]$config.knowledge.weeklyReport.dayOfWeek; LocalTime=[string]$config.knowledge.weeklyReport.localTime; OutputRoot=[string]$config.knowledge.weeklyReport.outputRoot }
+    DailyIncidentHealthCheck = [pscustomobject]@{ Enabled=[bool]$config.health.dailyIncidentScan.enabled; LocalTime=[string]$config.health.dailyIncidentScan.localTime; LookbackHours=[int]$config.health.dailyIncidentScan.lookbackHours; Script=$dailyIncidentScan }
 }
 if ($Action -eq 'Preview') { return $specification }
 
 if ($Action -eq 'Rollback') {
-    Register-ScheduledTask -TaskName $newNames[6] -Action $dailyHealthAction -Trigger $dailyHealthTrigger -Settings $settings -Principal $maintenancePrincipal -Description 'Scans daily bounded failures and invokes Health Check only for incidents.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Disable-ScheduledTask -TaskName $name | Out-Null }
     }

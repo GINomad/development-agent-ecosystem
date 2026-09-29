@@ -18,6 +18,9 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `plugins/development-agent-ecosystem/skills` | Workflow and health-diagnostics skills plus vendored Azure PR and pipeline monitors |
 | `scripts/AgentEcosystem.psm1` | JSON loading, semantic validation, path expansion, and TOML generation primitives |
 | `scripts/Start-DevelopmentWorkflow.ps1` | Fresh-config startup, multi-repository workspace selection, task creation/resume, knowledge import, and Orchestrator launch |
+| `scripts/Resolve-AgentProviderRoute.ps1` | Task override, per-agent provider selection, tier-to-model mapping, CLI capability resolution, and durable routing evidence for Codex, Copilot, and Claude |
+| `scripts/Switch-TaskAgentProvider.ps1` | Task-scoped provider override for one stopped role; the dashboard can stop, switch, and targeted-resume that role without discarding other completed artifacts |
+| `scripts/Install-ChatOnlyAgents.ps1` | Dashboard-free standalone installation into Codex, Copilot, or Claude chat agent directories with conflict-safe file writes |
 | `scripts/Set-WorkflowInputRoute.ps1` | Idempotent task/comment routing plus a durable intent-scoped execution policy backed by `workflow-routing.jsonl` |
 | `scripts/Request-OrchestratorCommentRouting.ps1` | Durable, idempotent return of out-of-scope targeted comments to Orchestrator with original-event traceability |
 | `scripts/Switch-TaskWorkspace.ps1` | Capacity/FIFO admission, exact run/lease ownership, stale-lease reconciliation, and isolated full-clone provisioning for each task/repository pair |
@@ -30,7 +33,8 @@ The repository-level diagram shows how source-controlled configuration, prompts,
 | `scripts/Invoke-PostPushPipeline.ps1` | Exact pushed-ref verification, allowlisted build queueing, native run monitoring, result publication, and bounded Developer remediation routing |
 | `scripts/Sync-TaskPullRequestStatus.ps1` | One-shot task-branch PR correlation; completed PR triggers final Keeper work, abandoned PR opens a question |
 | `scripts/Sync-ActiveTaskPullRequests.ps1` | Shared model-free PR lifecycle index on a configurable schedule (120 minutes by default) |
-| `scripts/Invoke-GuardedCodex.ps1` | Native Codex supervision, UTF-8 log normalization, three-identical-failure cutoff, and execution-guard artifacts |
+| `scripts/Invoke-GuardedCodex.ps1` | Native Codex/Claude supervision, UTF-8 log normalization, provider failure and repeated-failure cutoffs, and execution-guard artifacts |
+| `scripts/Invoke-CopilotRole.ps1` | Copilot CLI supervision with provider model/effort mapping, least-privilege tools, MCP session injection, and final response extraction |
 | `scripts/Invoke-EcosystemHealthCheck.ps1` | Deterministic diagnostics, safe derived-state repairs, and OS-policy compatibility profile generation |
 | `scripts/Start-AgentHealthRecovery.ps1` | One-attempt, ecosystem-only automatic source recovery using a bounded recent-log diagnostic bundle |
 | `scripts/Save-AgentCheckpoint.ps1` | Private per-role context for running, waiting, or failed attempts; not shared with Knowledge Keeper |
@@ -279,3 +283,13 @@ role dispatch -> policy + circuit -> MCP read tools
 The local `ecosystem-read` session is bound to one task, role, run, and lease. An explicitly allowlisted Azure DevOps adapter may return current work-item details, bounded relations, comments, history, and linked PR context. All external text remains untrusted; every fact retains ID, provider revision, and retrieval time. Requirements Analyst publishes that evidence as the review input, preserving the Reviewer/Verifier boundary.
 
 The circuit transitions `healthy → suspect → open → half-open → healthy`. In `open`, a new role run starts in classic context mode immediately; it does not wait for repair. Health Check starts an MCP-disabled asynchronous repair/probe lane. Only configured consecutive read-only probes permit a canary role run after half-open; security or isolation failures require human review. MCP supplies evidence only. The trusted PowerShell host retains leases, workflow transitions, artifact validation, commits, delivery and all write approvals.
+
+## AI provider routing
+
+The trusted host resolves a provider independently for every role run. Precedence is: task-scoped override, agent default, then the configured default provider. The selected complexity tier is mapped through `providerRouting.providers.<provider>.models`, so equivalent routine, standard, complex, and critical work can use provider-specific model IDs and supported reasoning effort. Each decision is appended to `provider-routing.json`; secrets and OAuth tokens are never written there.
+
+Codex, GitHub Copilot, and Claude use separate CLI adapters but share the same task lease, role prompt, outcome validation, execution guard, and MCP session policy. MCP is attempted first for allowlisted roles. A transport, protocol, or tool failure opens the existing circuit and the one permitted targeted retry uses classic context; provider selection never silently changes. Usage-limit failures create `provider-limit-<agent>.json`, appear in the dashboard, and list alternative configured providers for an explicit operator switch.
+
+At runtime, the dashboard shows the effective provider on every agent card. **Switch and restart** stops the current workflow after confirmation, writes only a task-local override, and schedules only the selected role. Completed upstream roles and artifacts remain unchanged.
+
+The scheduled daily incident scan runs at `health.dailyIncidentScan.localTime` (23:55 local by default). A clean 24-hour window is a true no-op. When bounded logs contain incidents, Health Check records analysis, applies deterministic repairs, and may create a locally validated ecosystem-only recovery commit. The nightly path never pushes that commit and never restarts a product task automatically.

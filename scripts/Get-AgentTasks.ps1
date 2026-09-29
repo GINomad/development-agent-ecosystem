@@ -69,6 +69,9 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         $providerRouteDecisions = @()
         $providerRoutingPath = Join-Path $directory.FullName ([string]$config.providerRouting.artifactName)
         if (Test-Path -LiteralPath $providerRoutingPath -PathType Leaf) { try { $providerRouteDecisions = @((Get-Content -LiteralPath $providerRoutingPath -Raw -Encoding UTF8 | ConvertFrom-Json).decisions) } catch { $providerRouteDecisions = @() } }
+        $providerOverrides = $null
+        $providerOverridesPath = Join-Path $directory.FullName 'provider-overrides.json'
+        if (Test-Path -LiteralPath $providerOverridesPath -PathType Leaf) { try { $providerOverrides = Get-Content -LiteralPath $providerOverridesPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $providerOverrides = $null } }
         $agentStatuses = [ordered]@{}
         foreach ($agentId in $agentIds) {
             $value = $null
@@ -76,13 +79,18 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             $modelRoute = @($modelRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
             $providerRoute = @($providerRouteDecisions | Where-Object { [string]$_.agentId -eq $agentId } | Select-Object -Last 1)
             $agentConfig = @($config.agents | Where-Object { [string]$_.id -eq $agentId } | Select-Object -First 1)
+            $providerOverride = if ($providerOverrides -and $providerOverrides.agents.PSObject.Properties[$agentId]) { [string]$providerOverrides.agents.PSObject.Properties[$agentId].Value.provider } else { '' }
+            $providerLimit = $null
+            $providerLimitPath = Join-Path $directory.FullName ('provider-limit-'+$agentId+'.json')
+            if (Test-Path -LiteralPath $providerLimitPath -PathType Leaf) { try { $providerLimit = Get-Content -LiteralPath $providerLimitPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $providerLimit = $null } }
             $agentStatuses[$agentId] = [pscustomobject][ordered]@{
                 status = if ($value) { [string]$value.status } else { 'pending' }
                 updatedAtUtc = if ($value) { [string]$value.updatedAtUtc } else { $null }
                 message = if ($value) { [string]$value.message } else { '' }
                 unreadCommentCount = @($unacknowledgedComments | Where-Object { $_.PSObject.Properties['targetAgentId'] -and [string]$_.targetAgentId -eq $agentId }).Count
-                provider = if ($providerRoute.Count) { [string]$providerRoute[0].provider } elseif ($agentConfig.Count) { [string]$agentConfig[0].provider } else { [string]$config.providerRouting.defaultProvider }
+                provider = if ($providerOverride) { $providerOverride } elseif ($providerRoute.Count) { [string]$providerRoute[0].provider } elseif ($agentConfig.Count) { [string]$agentConfig[0].provider } else { [string]$config.providerRouting.defaultProvider }
                 providerRoute = if ($providerRoute.Count) { [pscustomobject][ordered]@{ tier=[string]$providerRoute[0].tier; model=[string]$providerRoute[0].model; reasoningEffort=[string]$providerRoute[0].reasoningEffort; decisionId=[string]$providerRoute[0].decisionId } } else { $null }
+                providerLimit = $providerLimit
                 modelRoute = if ($modelRoute.Count) { [pscustomobject][ordered]@{ complexity=[string]$modelRoute[0].complexity; model=[string]$modelRoute[0].model; reasoningEffort=[string]$modelRoute[0].reasoningEffort; confidence=[double]$modelRoute[0].confidence; decisionId=[string]$modelRoute[0].decisionId } } else { $null }
             }
         }

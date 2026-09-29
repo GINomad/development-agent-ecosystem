@@ -4,7 +4,11 @@ param(
     [string] $CodexHome,
     [switch] $MigrateScheduledTasks,
     [switch] $SkipPlugin,
-    [switch] $ConfirmMcpRegistration
+    [switch] $ConfirmMcpRegistration,
+    [switch] $InteractiveProviderSetup,
+    [switch] $ChatOnly,
+    [ValidateSet('codex','copilot','claude')][string] $ChatProvider = 'codex',
+    [string] $ChatInstallRoot
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +16,34 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+
+if($ChatOnly){
+    $parameters=@{Provider=$ChatProvider;ConfigPath=$ConfigPath;CodexHome=$CodexHome}
+    if($ChatInstallRoot){$parameters.DestinationRoot=$ChatInstallRoot}
+    return & (Join-Path $PSScriptRoot 'Install-ChatOnlyAgents.ps1') @parameters
+}
+
+if($InteractiveProviderSetup){
+    $rawConfig=Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8|ConvertFrom-Json
+    Write-Host 'Choose a provider for each agent: codex, copilot, or claude. Press Enter to keep the current value.'
+    foreach($agent in @($rawConfig.agents)){
+        $current=[string]$agent.provider
+        $choice=(Read-Host ("{0} [{1}]" -f [string]$agent.name,$current)).Trim().ToLowerInvariant()
+        if(-not $choice){$choice=$current}
+        if($choice -notin @('codex','copilot','claude')){throw "Unsupported provider '$choice' for agent '$($agent.id)'."}
+        $agent.provider=$choice
+    }
+    Write-Utf8NoBomAtomic -Path $ConfigPath -Content (($rawConfig|ConvertTo-Json -Depth 100)+[Environment]::NewLine)
+    $config=Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $auth=& (Join-Path $PSScriptRoot 'Get-AgentProviderAuth.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+    foreach($provider in @($auth.providers|Where-Object{$_.provider -in @($config.agents.provider|Select-Object -Unique)})){
+        Write-Host ("{0}: installed={1}; auth={2}" -f $provider.provider,$provider.installed,$provider.authStatus)
+        if($provider.provider -in @('copilot','claude') -and $provider.installed){
+            $login=(Read-Host ("Start provider-owned login for {0}? [y/N]" -f $provider.provider)).Trim()
+            if($login -match '^(?i:y|yes)$'){& (Join-Path $PSScriptRoot 'Start-AgentProviderLogin.ps1') -Provider ([string]$provider.provider) -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null}
+        }
+    }
+}
 
 $knowledge = & (Join-Path $PSScriptRoot 'Import-InitialKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 $agents = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -Install

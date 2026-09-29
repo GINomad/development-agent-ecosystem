@@ -60,7 +60,7 @@ The UI is available only on loopback. Its URL contains a random session token, a
 .\scripts\Install-EcosystemScheduledTasks.ps1 -Action Install
 ```
 
-`Install` first runs the new monitor with `-DryRun`. It then registers six `Development Ecosystem - ...` tasks (review polling, daily review, review dashboard, task PR lifecycle, a hidden resident durable-continuation host, and the weekly knowledge report), verifies that they exist, and only then disables the legacy `Codex PR Review - ...` tasks. Legacy task XML is saved under `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
+`Install` first runs the new monitor with `-DryRun`. It then registers seven `Development Ecosystem - ...` tasks (review polling, daily review, review dashboard, task PR lifecycle, a hidden resident durable-continuation host, the weekly knowledge report, and the 23:55 daily incident Health Check), verifies that they exist, and only then disables the legacy `Codex PR Review - ...` tasks. Legacy task XML is saved under `%LOCALAPPDATA%\Codex\development-agent-ecosystem\scheduled-task-backup`.
 
 ## Verify the installation
 
@@ -78,4 +78,4 @@ Before the first live workflow, confirm that the configured clone root is writab
 
 The installer validates the local read-only MCP probe. During the setup interview, choose any external read-only servers by registered name and role; do not place commands, URLs, credentials, or secrets in `agents.json`. Leave unknown or write-capable integrations disabled. Azure DevOps server selection follows [the adapter contract](mcp-azure-adapter-contract.md).
 
-During installation, choose a provider for each role, then use the provider-owned login command. Copilot authentication is Start-AgentProviderLogin.ps1 -Provider copilot; the ecosystem stores no token. Chat-only standalone prompt packs remain available in .github/agents (Copilot) and INSTALL-CLAUDE-VSCODE-AGENTS.md (Claude); they share the same provider-routing policy but do not require the dashboard.
+For a first interactive setup, run `Install-AgentEcosystem.ps1 -InteractiveProviderSetup`. It asks for each role's provider and can launch provider-owned Copilot or Claude login. The ecosystem stores no token. For a dashboard-free installation use `Install-AgentEcosystem.ps1 -ChatOnly -ChatProvider codex|copilot|claude`, or follow `INSTALL-CHAT-ONLY-AGENTS.md` to paste the installer request directly into provider chat.
