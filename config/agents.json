@@ -302,7 +302,16 @@
       "vulnerability"
     ]
   },
-  "ui": {
+  "providerRouting": {
+    "enabled": true,
+    "artifactName": "provider-routing.json",
+    "defaultProvider": "codex",
+    "providers": {
+      "codex": { "command": "codex", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-5.6-luna", "reasoningEffort": "low" }, "standard": { "model": "gpt-5.6-terra", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5.6-sol", "reasoningEffort": "high" }, "critical": { "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" } } },
+      "copilot": { "command": "C:/Users/okruk2/AppData/Local/Programs/copilot-cli/node_modules/@github/copilot/node_modules/@github/copilot-win32-x64/copilot.exe", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-5", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5", "reasoningEffort": "high" }, "critical": { "model": "gpt-5", "reasoningEffort": "xhigh" } } },
+      "claude": { "command": "claude", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "claude-haiku", "reasoningEffort": "none" }, "standard": { "model": "claude-sonnet", "reasoningEffort": "none" }, "complex": { "model": "claude-sonnet", "reasoningEffort": "none" }, "critical": { "model": "claude-opus", "reasoningEffort": "none" } } }
+    }
+  },  "ui": {
     "listenAddress": "127.0.0.1",
     "port": 43127,
     "openBrowser": true,
@@ -316,6 +325,7 @@
     "repairMode": "safe-deterministic-only",
     "checkOnWorkflowFailure": true,
     "dashboardHealthUrl": "http://127.0.0.1:43127/health",
+    "dailyIncidentScan": { "enabled": true, "localTime": "23:55", "lookbackHours": 24, "maxLogLines": 200 },
     "automaticRecovery": {
       "enabled": true,
       "allowEcosystemSourceChanges": true,
@@ -692,6 +702,7 @@
   "agents": [
     {
       "id": "orchestrator",
+      "provider": "codex",
       "name": "development_workflow_orchestrator",
       "description": "Control-plane agent that classifies task intake and workflow comments, selects the responsible configured agents, and preserves delivery gates.",
       "responsibilities": [
@@ -731,6 +742,7 @@
     },
     {
       "id": "knowledge_keeper",
+      "provider": "codex",
       "name": "development_knowledge_keeper",
       "description": "On-demand knowledge service that selects verified context, records completed task history, maintains evidence-backed knowledge, and publishes documentation-style human-readable outcomes.",
       "responsibilities": [
@@ -776,6 +788,7 @@
     },
     {
       "id": "requirements_analyst",
+      "provider": "codex",
       "name": "development_requirements_analyst",
       "description": "Read-only analyst for assigned tasks, comments, code, knowledge, gaps, questions, and implementation-ready planning.",
       "responsibilities": [
@@ -807,6 +820,7 @@
     },
     {
       "id": "developer",
+      "provider": "copilot",
       "name": "development_implementer",
       "description": "Implementation owner that creates a branch, changes only ready scope, tests it, and reports exact implementation evidence.",
       "responsibilities": [
@@ -847,6 +861,7 @@
     },
     {
       "id": "reviewer",
+      "provider": "copilot",
       "name": "development_reviewer",
       "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
       "responsibilities": [
@@ -889,6 +904,7 @@
     },
     {
       "id": "review_verifier",
+      "provider": "codex",
       "name": "development_review_verifier",
       "description": "Independent read-only verifier that falsifies Reviewer claims, validates review coverage and finding lifecycle, and gates human decisions.",
       "responsibilities": [
@@ -926,6 +942,7 @@
     },
     {
       "id": "pipeline_monitor",
+      "provider": "copilot",
       "name": "development_pipeline_monitor",
       "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
       "responsibilities": [
@@ -960,6 +977,7 @@
     },
     {
       "id": "health_check",
+      "provider": "codex",
       "name": "development_health_check",
       "description": "Ecosystem maintenance owner that diagnoses failures and explicit control-plane change requests, drives bounded ecosystem-only recovery, verifies it, and routes non-ecosystem repairs to the responsible configured agent.",
       "responsibilities": [

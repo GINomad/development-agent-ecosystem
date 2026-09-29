@@ -77,3 +77,5 @@ Before the first live workflow, confirm that the configured clone root is writab
 ## Optional MCP setup
 
 The installer validates the local read-only MCP probe. During the setup interview, choose any external read-only servers by registered name and role; do not place commands, URLs, credentials, or secrets in `agents.json`. Leave unknown or write-capable integrations disabled. Azure DevOps server selection follows [the adapter contract](mcp-azure-adapter-contract.md).
+
+During installation, choose a provider for each role, then use the provider-owned login command. Copilot authentication is Start-AgentProviderLogin.ps1 -Provider copilot; the ecosystem stores no token. Chat-only standalone prompt packs remain available in .github/agents (Copilot) and INSTALL-CLAUDE-VSCODE-AGENTS.md (Claude); they share the same provider-routing policy but do not require the dashboard.

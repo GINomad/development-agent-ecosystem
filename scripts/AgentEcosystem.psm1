@@ -107,7 +107,7 @@ function Assert-EcosystemConfig {
         [Parameter(Mandatory)][string] $ConfigPath,
         [string] $CodexHome
     )
-    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','projects','taskSources','knowledge','gates','agents')) {
+    foreach ($property in @('schemaVersion','namespace','runtime','operation','workflow','modelRouting','providerRouting','ui','health','review','mcp','pipeline','credentialProfiles','repositories','projects','taskSources','knowledge','gates','agents')) {
         if (-not $Config.PSObject.Properties[$property]) { throw "Missing required configuration property '$property'." }
     }
     if ([string]$Config.operation.mode -notin @('manual','automate')) { throw "operation.mode must be 'manual' or 'automate'." }
@@ -148,6 +148,10 @@ function Assert-EcosystemConfig {
     if (-not [bool]$Config.runtime.elevatedFallback.installCompatibleAgentsOnDetection -or [string]$Config.runtime.elevatedFallback.agentProfileSuffix -notmatch '^_[a-z0-9_]+$') { throw 'Host-compatible agent profile configuration is invalid.' }
     if ([string]$Config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Host-compatible workflows must use the in-process-runspace launch strategy.' }
     if (-not [bool]$Config.modelRouting.enabled -or [string]$Config.modelRouting.artifactName -ne 'model-routing.json') { throw 'Deterministic model routing must be enabled with the canonical task artifact.' }
+    if (-not [bool]$Config.providerRouting.enabled -or [string]$Config.providerRouting.artifactName -ne 'provider-routing.json') { throw 'Provider routing must be enabled with the canonical task artifact.' }
+    foreach ($providerId in @('codex','copilot','claude')) { if (-not $Config.providerRouting.providers.PSObject.Properties[$providerId]) { throw "Provider routing must configure '$providerId'." } }
+    foreach ($agent in @($Config.agents)) { if ([string]$agent.provider -notin @('codex','copilot','claude')) { throw "Agent '$($agent.id)' has an unsupported provider." } }
+    if (-not [bool]$Config.health.dailyIncidentScan.enabled -or [string]$Config.health.dailyIncidentScan.localTime -notmatch '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'Daily incident scan must be enabled with a local HH:mm time.' }
     if ([int]$Config.modelRouting.largeEvidenceCharacters -ge [int]$Config.modelRouting.maxEvidenceCharacters) { throw 'modelRouting.largeEvidenceCharacters must be lower than maxEvidenceCharacters.' }
     $modelTiers = @($Config.modelRouting.tiers | Sort-Object { [int]$_.rank })
     if ((@($modelTiers | ForEach-Object { [string]$_.id }) -join '|') -ne 'routine|standard|complex|critical' -or (@($modelTiers | ForEach-Object { [string][int]$_.rank }) -join '|') -ne '0|1|2|3') { throw 'Model-routing tiers must define ordered routine, standard, complex, and critical levels.' }

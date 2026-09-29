@@ -202,3 +202,10 @@ After the new ecosystem is stable, the global `azure-pr-review-monitor` and `azu
 | A clone path or origin is unexpected | Resolve the task workspace with `-AllowReleased` and compare its manifest with the configured canonical repository URL. Do not move, reset, clean, or repurpose the clone. |
 
 If the new review dry run fails, legacy scheduled tasks remain enabled. If installation fails after partially disabling legacy tasks, the installation script re-enables every legacy task it already disabled.
+
+## Daily incident health scan
+
+Invoke-DailyHealthIncidentScan.ps1 -Repair scans only the previous 24 hours of bounded workflow/failure tails. With no incident it writes a
+o-incidents report and takes no repair action. Schedule it daily at health.dailyIncidentScan.localTime (default 23:55 local). On matched failures, capacity/quota errors, or MCP errors it records the bounded evidence and enters the existing ecosystem-only Health Check path.
+
+To change an agent during a task, use Switch-TaskAgentProvider.ps1 -TaskId <id> -AgentId <agent> -Provider codex -Resume. A running target is checkpointed and stopped before its own targeted resume; other agents and task artifacts are preserved.

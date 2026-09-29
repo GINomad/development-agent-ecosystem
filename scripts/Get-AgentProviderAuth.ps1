@@ -1,0 +1,5 @@
+[CmdletBinding()]
+param([ValidateSet('codex','copilot','claude')][string]$Provider,[string]$ConfigPath=(Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),[string]$CodexHome)
+Set-StrictMode -Version Latest;$ErrorActionPreference='Stop';Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force;$config=Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome;$items=@()
+foreach($entry in $config.providerRouting.providers.PSObject.Properties){$id=[string]$entry.Name;if($Provider -and $id -ne $Provider){continue};$command=[string]$entry.Value.command;$installed=[bool](Get-Command $command -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $command -PathType Leaf);$auth=if(-not $installed){'not-installed'}elseif($id -eq 'copilot'){'interactive-login-available'}else{'unknown'};$items += [pscustomobject]@{provider=$id;installed=$installed;authStatus=$auth;loginCommand=if($id -in @('copilot','claude')){'login'}else{'Use the Codex application account session.'};storesSecrets=$false}}
+[pscustomobject]@{providers=$items;generatedAtUtc=[DateTime]::UtcNow.ToString('o')}
