@@ -16,6 +16,7 @@ $dashboard = Join-Path $monitorRoot 'scripts\open_review_dashboard.ps1'
 $prLifecycle = Join-Path $PSScriptRoot 'Sync-ActiveTaskPullRequests.ps1'
 $continuationRecoveryHost = Join-Path $PSScriptRoot 'Start-AgentContinuationRecoveryHost.ps1'
 $weeklyKnowledgeReport = Join-Path $PSScriptRoot 'New-WeeklyKnowledgeReport.ps1'
+$dailyIncidentScan = Join-Path $PSScriptRoot 'Invoke-DailyHealthIncidentScan.ps1'
 $powerShellPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $quote = [string][char]34
 $newNames = @(
@@ -24,7 +25,8 @@ $newNames = @(
     'Development Ecosystem - PR Review Dashboard',
     'Development Ecosystem - Task PR Lifecycle',
     'Development Ecosystem - Continuation Recovery',
-    'Development Ecosystem - Knowledge Weekly Report'
+    'Development Ecosystem - Knowledge Weekly Report',
+    'Development Ecosystem - Daily Incident Health Check'
 )
 $legacyNames = @(
     'Codex PR Review - Updates',
@@ -47,6 +49,7 @@ $specification = [pscustomobject]@{
 if ($Action -eq 'Preview') { return $specification }
 
 if ($Action -eq 'Rollback') {
+    Register-ScheduledTask -TaskName $newNames[6] -Action $dailyHealthAction -Trigger $dailyHealthTrigger -Settings $settings -Principal $maintenancePrincipal -Description 'Scans daily bounded failures and invokes Health Check only for incidents.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Disable-ScheduledTask -TaskName $name | Out-Null }
     }
@@ -74,6 +77,8 @@ $dailyAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $daily
 $dashboardAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $dashboardArguments
 $prLifecycleAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $prLifecycleArguments
 $continuationAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $continuationArguments
+$dailyHealthArguments = $backgroundPowerShellArguments + ' -File ' + $quote + $dailyIncidentScan + $quote + ' -Repair -ConfigPath ' + $quote + $ConfigPath + $quote
+$dailyHealthAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $dailyHealthArguments
 $weeklyKnowledgeAction = New-ScheduledTaskAction -Execute $powerShellPath -Argument $weeklyKnowledgeArguments
 $pollTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([int]$config.operation.automate.pollIntervalMinutes))
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At ([string]$config.operation.automate.dailyTime)
@@ -82,6 +87,7 @@ $prLifecycleTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1
 $continuationTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([int]$config.workflow.automaticContinuation.recoveryPollIntervalMinutes))
 $weeklyKnowledgeDay = [Enum]::Parse([DayOfWeek], [string]$config.knowledge.weeklyReport.dayOfWeek, $true)
 $weeklyKnowledgeAt = [DateTime]::ParseExact([string]$config.knowledge.weeklyReport.localTime, 'HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+$dailyHealthTrigger = New-ScheduledTaskTrigger -Daily -At ([string]$config.health.dailyIncidentScan.localTime)
 $weeklyKnowledgeTrigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $weeklyKnowledgeDay -At $weeklyKnowledgeAt
 $dashboardSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
 $continuationSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
@@ -104,6 +110,7 @@ try {
     Register-ScheduledTask -TaskName $newNames[3] -Action $prLifecycleAction -Trigger $prLifecycleTrigger -Settings $settings -Principal $principal -Description 'Synchronizes task PR status without AI polling and routes completed PR tasks through Orchestrator for final Knowledge Keeper publication.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[4] -Action $continuationAction -Trigger $continuationTrigger -Settings $continuationSettings -Principal $maintenancePrincipal -Description 'Runs one hidden resident elevated recovery host; the recurring trigger is ignored while healthy and relaunches it after termination.' -Force | Out-Null
     Register-ScheduledTask -TaskName $newNames[5] -Action $weeklyKnowledgeAction -Trigger $weeklyKnowledgeTrigger -Settings $settings -Principal $nonInteractivePrincipal -Description 'Generates a Friday HTML report from verified Knowledge Keeper learning, decisions, and durable evidence without invoking AI.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $newNames[6] -Action $dailyHealthAction -Trigger $dailyHealthTrigger -Settings $settings -Principal $maintenancePrincipal -Description 'Scans daily bounded failures and invokes Health Check only for incidents.' -Force | Out-Null
     foreach ($name in $newNames) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { throw "New scheduled task '$name' was not registered." }
     }
