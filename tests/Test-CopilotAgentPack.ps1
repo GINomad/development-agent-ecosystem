@@ -68,4 +68,3 @@ foreach ($skill in $skills) {
     if (-not $installer.Contains(".github/skills/$skill/SKILL.md")) { throw "Missing installer skill: $skill" }
 }
 [pscustomobject]@{ Status = 'passed'; Agents = 8; Skills = 5; LiveCopilot = 'not-tested' }
-

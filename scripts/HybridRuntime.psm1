@@ -53,4 +53,3 @@ function Get-CopilotEventSummary {
     [pscustomobject]@{ Type=$type; Content=$content; Failure=$failure }
 }
 Export-ModuleMember -Function Resolve-CopilotCliPath, Resolve-ClaudeCliPath, Get-CopilotEventSummary
-

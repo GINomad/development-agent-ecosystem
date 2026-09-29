@@ -169,4 +169,3 @@ try {
     if (Test-Path -LiteralPath $promptFile) { Remove-Item -LiteralPath $promptFile -Force }
 }
 [pscustomobject]$result
-
