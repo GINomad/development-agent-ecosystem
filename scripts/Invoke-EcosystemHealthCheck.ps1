@@ -105,7 +105,8 @@ try {
         return @($drift)
     }
 
-    $agentDefinitionDrift = if($codexSelected){@(Get-AgentDefinitionDrift)}else{@()}
+    $agentDefinitionDrift = @()
+    if($codexSelected){$agentDefinitionDrift = @(Get-AgentDefinitionDrift)}
     if(-not $codexSelected){
         Add-HealthCheck -Id 'installed-agents' -Status passed -Summary 'Codex agent definitions are not required because no role is assigned to Codex.'
         Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'No Codex agent definitions are required.'

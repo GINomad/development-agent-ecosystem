@@ -683,17 +683,34 @@ catch {
     Write-CurrentMcpRoleMetric 'failed' 0
     $failureMessage = $_.Exception.Message
     $failureAgentId = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
-    if ($failureMessage -match '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit') {
+    $isProviderLimit = $failureMessage -match '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit'
+    if ($isProviderLimit) {
         $alternativeProviders=@($config.providerRouting.providers.PSObject.Properties.Name|Where-Object{$_ -ne [string]$providerRoute.provider})
+        $limitFallbackProvider=[string]$config.providerRouting.limitFallback.provider
+        $automaticProviderFallback=[bool]$config.providerRouting.limitFallback.enabled -and
+            [string]$providerRoute.provider -ne $limitFallbackProvider
         $providerLimitPath=Join-Path $task.TaskRoot ('provider-limit-'+$failureAgentId+'.json')
+        $providerLimitMessage=if($automaticProviderFallback){
+            "Provider '$([string]$providerRoute.provider)' reached a usage or capacity limit. Automatically switching this role to '$limitFallbackProvider' and restarting it."
+        }elseif([string]$providerRoute.provider -eq $limitFallbackProvider){
+            "Provider '$([string]$providerRoute.provider)' reached a usage or capacity limit. Automatic fallback is unavailable because this role already uses '$limitFallbackProvider'."
+        }else{
+            "Provider '$([string]$providerRoute.provider)' reached a usage or capacity limit. Switch this agent to $($alternativeProviders -join ' or ') and restart only this role."
+        }
         $providerLimit=[ordered]@{
-            schemaVersion=1;taskId=$TaskId;agentId=$failureAgentId;provider=[string]$providerRoute.provider
+            schemaVersion=2;taskId=$TaskId;agentId=$failureAgentId;provider=[string]$providerRoute.provider
             observedAtUtc=[DateTime]::UtcNow.ToString('o');category='usage-limit';alternatives=$alternativeProviders
-            message=("Provider '{0}' reached a usage or capacity limit. Switch this agent to {1} and restart only this role." -f [string]$providerRoute.provider,($alternativeProviders -join ' or '))
+            fallbackProvider=$limitFallbackProvider;automaticFallback=$automaticProviderFallback
+            message=$providerLimitMessage
         }
         Write-Utf8NoBomAtomic -Path $providerLimitPath -Content (($providerLimit|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level warning -Stage provider_limit -Summary ([string]$providerLimit.message) -Operation provider-switch -Target ($alternativeProviders -join ',') -Evidence @($providerLimitPath) -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null
         $failureMessage=[string]$providerLimit.message
+        if($automaticProviderFallback){
+            & (Join-Path $PSScriptRoot 'Switch-TaskAgentProvider.ps1') -TaskId $TaskId -AgentId $failureAgentId -Provider $limitFallbackProvider -AutomaticLimitFallback -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level progress -Stage provider_limit_fallback -Summary "Restarting '$failureAgentId' with provider '$limitFallbackProvider' after the original provider reached its limit." -Operation provider-restart -Target $limitFallbackProvider -Evidence @($providerLimitPath) -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null
+            return & $PSCommandPath -Mode $Mode -TaskId $TaskId -TaskSelector $TaskSelector -RepositoryIds $RepositoryIds -Resume -TargetAgentId $failureAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ElevatedApproved:$ElevatedApproved -HealthRecoveryRetry:$HealthRecoveryRetry -SkipChainContinuation:$SkipChainContinuation -ConfigPath $ConfigPath -CodexHome $CodexHome
+        }
     }
     if (-not $HealthRecoveryRetry -and $failureMessage -match '(?i)\bmcp\b|protocol|tools/list') {
         $mcpSignature = (Get-FileHash -Algorithm SHA256 -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($failureMessage)))).Hash.ToLowerInvariant()

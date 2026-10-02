@@ -44,13 +44,14 @@ $taskView=& (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $taskId -Incl
 if([string]$taskView.Tasks[0].AgentStatuses.developer.provider -ne 'claude'){throw 'Task view did not expose the effective provider override.'}
 $routingArtifact=Get-Content -LiteralPath (Join-Path $config.runtime.stateRoot "tasks\$taskId\provider-routing.json") -Raw -Encoding UTF8|ConvertFrom-Json
 if(@($routingArtifact.decisions).Count -ne 2){throw 'Provider routing decisions were not persisted exactly once per changed route.'}
+if(-not [bool]$config.providerRouting.limitFallback.enabled -or [string]$config.providerRouting.limitFallback.provider -ne 'codex'){throw 'Codex provider-limit fallback is not enabled.'}
 
 $workflow=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $copilot=Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CopilotRole.ps1') -Raw -Encoding UTF8
 $installer=Get-Content -LiteralPath (Join-Path $root 'scripts\Install-AgentEcosystem.ps1') -Raw -Encoding UTF8
 $dashboard=Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHost=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
-foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
+foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-','AutomaticLimitFallback','provider_limit_fallback')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
 foreach($token in @('$codexSelected','if($codexSelected)','-not $SkipPlugin -and $codexSelected')){if($installer -notmatch [regex]::Escape($token)){throw "Installer does not support a no-Codex role selection ('$token')."}}
 foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgentProvider.ps1','/provider')){if(($dashboard+$dashboardHost) -notmatch [regex]::Escape($token)){throw "Dashboard provider switching is missing '$token'."}}
 
@@ -80,5 +81,14 @@ $incidentReport=Get-Content -LiteralPath $incidentScan.reportPath -Raw -Encoding
 foreach($secret in @('bearer-secret-value','nested-secret-value','nested-password-value')){if($incidentReport -match [regex]::Escape($secret)){throw "Daily incident report leaked '$secret'."}}
 if($incidentReport -notmatch '\[redacted\]' -or $incidentReport -notmatch '"signature"\s*:\s*"[a-f0-9]{64}"'){throw 'Daily incident report lacks redacted, fingerprinted evidence.'}
 if($incidentReport -match '"path"\s*:' -or $incidentReport -match [regex]::Escape([IO.Path]::GetFullPath($OutputRoot))){throw 'Daily incident report persisted an absolute local path.'}
+
+$providerLimitPath=Join-Path $taskRoot 'provider-limit-developer.json'
+Write-Utf8NoBom -Path $providerLimitPath -Content (([ordered]@{schemaVersion=2;taskId=$taskId;agentId='developer';provider='claude';category='usage-limit';fallbackProvider='codex';automaticFallback=$true}|ConvertTo-Json)+[Environment]::NewLine)
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskId -AgentId developer -AgentStatus running -Stage provider_test -ConfigPath $testConfigPath|Out-Null
+$fallbackSwitch=& (Join-Path $root 'scripts\Switch-TaskAgentProvider.ps1') -TaskId $taskId -AgentId developer -Provider codex -AutomaticLimitFallback -ConfigPath $testConfigPath
+if(-not [bool]$fallbackSwitch.automaticLimitFallback -or [string]$fallbackSwitch.provider -ne 'codex'){throw 'Automatic provider-limit fallback did not switch the active role to Codex.'}
+if(-not(Test-Path -LiteralPath $providerLimitPath -PathType Leaf)){throw 'Automatic provider-limit fallback removed its diagnostic artifact.'}
+$fallbackRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
+if([string]$fallbackRoute.provider -ne 'codex'){throw 'Provider routing did not honor the automatic Codex fallback override.'}
 
 [pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$copilotRoute.provider;OverrideProvider=[string]$claudeRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}
