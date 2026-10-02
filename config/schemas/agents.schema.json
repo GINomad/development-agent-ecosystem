@@ -678,11 +678,20 @@
     "providerRouting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "artifactName", "defaultProvider", "providers"],
+      "required": ["enabled", "artifactName", "defaultProvider", "limitFallback", "providers"],
       "properties": {
         "enabled": { "const": true },
         "artifactName": { "const": "provider-routing.json" },
         "defaultProvider": { "enum": ["codex", "copilot", "claude"] },
+        "limitFallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "provider"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "provider": { "const": "codex" }
+          }
+        },
         "providers": {
           "type": "object",
           "required": ["codex", "copilot", "claude"],
