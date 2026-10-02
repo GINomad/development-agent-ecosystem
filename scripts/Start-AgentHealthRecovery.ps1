@@ -284,6 +284,7 @@ $arguments = @(
     '--model', [string]$healthAgentDefinition.model,
     '--config', ('model_reasoning_effort="{0}"' -f [string]$healthAgentDefinition.reasoningEffort),
     'exec',
+    '--ignore-user-config',
     '-C', $workspace,
     '-s', $recoverySandboxMode,
     '--json',
@@ -297,14 +298,6 @@ $repairTerminalRecorded = $false
 try {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    if ($SuppressExternalDelivery -or [string]$env:ECOSYSTEM_MCP_DISABLED -eq 'true') {
-        # Ignore user configuration as a whole: dotted enabled=false overrides can
-        # replace a server transport table with an invalid partial table in the CLI.
-        # Preserve the configured Health Check model through explicit arguments above.
-        $execIndex = [Array]::IndexOf($arguments, 'exec')
-        if ($execIndex -lt 0) { throw 'Recovery arguments are missing the exec command.' }
-        $arguments = @($arguments[0..$execIndex] + @('--ignore-user-config') + $arguments[($execIndex + 1)..($arguments.Count - 1)])
-    }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
