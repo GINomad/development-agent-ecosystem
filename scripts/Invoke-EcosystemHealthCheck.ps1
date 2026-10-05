@@ -5,7 +5,7 @@ param(
     [switch] $InjectFailureAfterRunning,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome,
-    [string] $ValidationOutputRoot = (Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'dae') 'health-validation')
+    [string] $ValidationOutputRoot = (Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'dae') ('health-validation-' + [guid]::NewGuid().ToString('N')))
 )
 
 Set-StrictMode -Version Latest
