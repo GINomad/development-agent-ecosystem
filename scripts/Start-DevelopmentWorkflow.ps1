@@ -416,7 +416,9 @@ function New-McpFailureDiagnostic([string]$Server,[string]$ErrorMessage) {
 }
 $enabledMcpServerNames = if ($HealthRecoveryRetry) { @() } else { @($mcpExecution.Servers | ForEach-Object { [string]$_.name }) }
 if ([string]$providerRoute.provider -eq 'codex') {
-    $mcpCodexCliPath=Resolve-CodexCliPath
+    # Provider routing already resolved and validated this exact executable. Reuse it
+    # so MCP setup does not depend on a helper being visible in the runner scope.
+    $mcpCodexCliPath=[string]$providerRoute.command
     if(-not $mcpCodexCliPath){throw 'Codex CLI was not found for MCP inventory verification.'}
     foreach ($override in @(& (Join-Path $PSScriptRoot 'Get-CodexMcpOverrides.ps1') -CodexPath $mcpCodexCliPath -EnabledServers $enabledMcpServerNames -ServerPolicies @($mcpExecution.Servers) -ToolTimeoutSeconds ([int]$config.mcp.resilience.toolTimeoutSeconds))) { $arguments.Add('--config'); $arguments.Add($override) }
 }
@@ -482,7 +484,7 @@ try {
         $guardResult=& (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -Provider claude -FilePath ([string]$providerRoute.command) -Arguments @($claudeArguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
         if (-not [bool]$guardResult.guardTriggered -and [int]$guardResult.exitCode -eq 0){& (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $codexLogPath -OutputPath $finalResponsePath|Out-Null}
     } else {
-    $codexCliPath = Resolve-CodexCliPath
+    $codexCliPath = [string]$providerRoute.command
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
     }
