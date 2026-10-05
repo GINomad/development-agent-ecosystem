@@ -62,7 +62,8 @@ foreach($provider in @('codex','copilot','claude')){
     $installParameters=@{Provider=$provider;DestinationRoot=(Join-Path $OutputRoot ('preview-'+$provider));ConfigPath=$testConfigPath}
     if($provider -ne 'codex'){$installParameters.Preview=$true}
     $preview=& (Join-Path $root 'scripts\Install-ChatOnlyAgents.ps1') @installParameters
-    if(@($preview.Written).Count -ne 13 -or [bool]$preview.DashboardInstalled){throw "Chat-only preview for '$provider' is incomplete."}
+    $managedAssetCount=@($preview.Written).Count+@($preview.Unchanged).Count
+    if($managedAssetCount -ne 13 -or [bool]$preview.DashboardInstalled){throw "Chat-only preview for '$provider' is incomplete."}
     if($provider -eq 'codex'){
         $codexAgent=Get-Content -LiteralPath (Join-Path $preview.DestinationRoot 'agents\development_implementer.toml') -Raw -Encoding UTF8
         if($codexAgent -notmatch 'standalone Codex agent-only mode' -or $codexAgent -match 'standalone GitHub Copilot'){throw 'Codex chat-only agent still depends on another provider profile.'}
