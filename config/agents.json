@@ -309,7 +309,7 @@
     "limitFallback": { "enabled": true, "provider": "codex" },
     "providers": {
       "codex": { "command": "codex", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-5.6-luna", "reasoningEffort": "low" }, "standard": { "model": "gpt-5.6-terra", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5.6-sol", "reasoningEffort": "high" }, "critical": { "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" } } },
-      "copilot": { "command": "copilot", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-5", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5", "reasoningEffort": "high" }, "critical": { "model": "gpt-5", "reasoningEffort": "xhigh" } } },
+      "copilot": { "command": "copilot", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-4.1", "reasoningEffort": "medium" }, "complex": { "model": "gpt-4.1", "reasoningEffort": "high" }, "critical": { "model": "gpt-4.1", "reasoningEffort": "xhigh" } } },
       "claude": { "command": "claude", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "haiku", "reasoningEffort": "none" }, "standard": { "model": "sonnet", "reasoningEffort": "none" }, "complex": { "model": "sonnet", "reasoningEffort": "none" }, "critical": { "model": "opus", "reasoningEffort": "none" } } }
     }
   },
