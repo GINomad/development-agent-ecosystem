@@ -383,7 +383,10 @@ $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
 $arguments = [Collections.Generic.List[string]]::new()
 foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$providerRoute.model, '--config', ('model_reasoning_effort="' + [string]$providerRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', $agentWorkingDirectory)) { $arguments.Add([string]$argument) }
-$additionalDirectories = if ($ecosystemWorkingDirectorySelected) { @($task.TaskRoot) } else { @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot)) }
+# Every role must be able to consume its validated task artifacts.  Product roles do
+# not run from the task-state directory, so include only this task's directory in
+# their explicit provider allowlist as well as their secondary workspaces.
+$additionalDirectories = if ($ecosystemWorkingDirectorySelected) { @($task.TaskRoot) } else { @($task.TaskRoot) + @($workspacePaths | Select-Object -Skip 1) + @((Get-EcosystemRoot)) }
 $mcpStateRoot=Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $mcpExecution = if ($HealthRecoveryRetry) { [pscustomobject]@{ Mode='classic'; Reason='health-recovery-mcp-disabled'; Servers=@() } } else { & (Join-Path $PSScriptRoot 'Resolve-McpExecutionMode.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome }
 $mcpCanaryClaimId = $TaskId+'-'+$executedAgentId
