@@ -4,7 +4,8 @@ param(
     [switch] $Repair,
     [switch] $InjectFailureAfterRunning,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
-    [string] $CodexHome
+    [string] $CodexHome,
+    [string] $ValidationOutputRoot = (Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'dae') 'health-validation')
 )
 
 Set-StrictMode -Version Latest
@@ -56,7 +57,7 @@ try {
     }
 
     try {
-        $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -OutputRoot $ValidationOutputRoot
         Add-HealthCheck -Id 'ecosystem-validation' -Status passed -Summary "Complete ecosystem validation passed with $(@($validation.Checks).Count) checks."
     }
     catch {
