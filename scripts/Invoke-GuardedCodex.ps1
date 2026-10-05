@@ -177,17 +177,28 @@ finally {
     }
 }
 
-$completedTurn = $false
+$completedProviderRun = $false
 if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
     foreach ($outputLine in @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8)) {
         try {
             $outputEvent = $outputLine | ConvertFrom-Json
-            if ([string]$outputEvent.type -eq 'turn.completed') { $completedTurn = $true; break }
+            if ([string]$outputEvent.type -eq 'turn.completed') { $completedProviderRun = $true; break }
+            if (
+                $Provider -eq 'claude' -and
+                [string]$outputEvent.type -eq 'result' -and
+                [string]$outputEvent.subtype -eq 'success' -and
+                [string]$outputEvent.terminal_reason -eq 'completed' -and
+                (-not $outputEvent.PSObject.Properties['is_error'] -or -not [bool]$outputEvent.is_error)
+            ) {
+                $completedProviderRun = $true
+                break
+            }
         }
         catch { }
     }
 }
-$resolvedExitCode = if ($null -ne $nativeExitCode) { [int]$nativeExitCode } elseif ($completedTurn) { 0 } else { 1 }
+$semanticSuccessOverride = -not $guardTriggered -and $Provider -eq 'claude' -and $completedProviderRun
+$resolvedExitCode = if ($guardTriggered) { 1 } elseif ($semanticSuccessOverride) { 0 } elseif ($null -ne $nativeExitCode) { [int]$nativeExitCode } elseif ($completedProviderRun) { 0 } else { 1 }
 
 $result = [ordered]@{
     guardTriggered = $guardTriggered
@@ -204,7 +215,7 @@ $result = [ordered]@{
     processId = $processId
     exitCode = $resolvedExitCode
     provider = $Provider
-    exitCodeSource = if ($null -ne $nativeExitCode) { 'native' } else { $Provider + '-event-fallback' }
+    exitCodeSource = if ($semanticSuccessOverride) { $Provider + '-semantic-success-override' } elseif ($null -ne $nativeExitCode) { 'native' } else { $Provider + '-event-fallback' }
     logPath = $LogPath
     stderrPath = $stderrPath
 }

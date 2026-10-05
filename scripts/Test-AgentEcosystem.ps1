@@ -1808,6 +1808,12 @@ $guardTest = & (Join-Path $root 'scripts\Invoke-GuardedCodex.ps1') -FilePath 'po
 $guardTemporaryFiles = @(Get-ChildItem -LiteralPath $guardTestRoot -File | Where-Object Name -Match '\.(stdin\.txt|stdout\.tmp)$')
 if (-not [bool]$guardTest.guardTriggered -or [int]$guardTest.identicalFailureCount -ne 3 -or [int]$guardTest.exitCode -ne 1 -or [string]$guardTest.reason -notmatch 'retry limit' -or -not (Test-Path -LiteralPath (Join-Path $guardTestRoot 'guard.json') -PathType Leaf) -or $guardTemporaryFiles.Count -ne 0) { throw 'Execution guard did not stop the deterministic repeated-failure fixture after exactly three attempts and clean up redirected temporary files.' }
 Add-Check -Name 'execution-retry-guard' -Detail 'Three identical failures stop execution, produce a guard artifact, and release redirected temporary files'
+$claudeSemanticSuccessTestRoot = Join-Path $OutputRoot 'claude-semantic-success'
+if (Test-Path -LiteralPath $claudeSemanticSuccessTestRoot) { Remove-Item -LiteralPath $claudeSemanticSuccessTestRoot -Recurse -Force }
+New-Item -ItemType Directory -Path $claudeSemanticSuccessTestRoot -Force | Out-Null
+$claudeSemanticSuccessTest = & (Join-Path $root 'scripts\Invoke-GuardedCodex.ps1') -Provider claude -FilePath 'powershell.exe' -Arguments @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tests\fixtures\Emit-ClaudeSemanticSuccessNativeFailure.ps1')) -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $claudeSemanticSuccessTestRoot 'events.jsonl') -GuardArtifactPath (Join-Path $claudeSemanticSuccessTestRoot 'guard.json') -MaxIdenticalFailures 3 -MaxRunMinutes 1 -PollMilliseconds 100
+if ([bool]$claudeSemanticSuccessTest.guardTriggered -or [int]$claudeSemanticSuccessTest.exitCode -ne 0 -or [string]$claudeSemanticSuccessTest.exitCodeSource -ne 'claude-semantic-success-override') { throw 'Claude semantic success did not override a contradictory native exit code.' }
+Add-Check -Name 'claude-semantic-success-exit-precedence' -Detail 'A validated Claude terminal success is authoritative over a contradictory native exit code when no guard triggered'
 $parserGuardTestRoot = Join-Path $OutputRoot 'parser-execution-guard'
 if (Test-Path -LiteralPath $parserGuardTestRoot) { Remove-Item -LiteralPath $parserGuardTestRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $parserGuardTestRoot -Force | Out-Null
