@@ -463,6 +463,10 @@ try {
     } elseif ([string]$providerRoute.provider -eq 'claude') {
         $claudeArguments=[Collections.Generic.List[string]]::new()
         foreach($argument in @('-p','--output-format','stream-json','--verbose','--model',[string]$providerRoute.model,'--no-session-persistence','--permission-mode','acceptEdits','--permission-prompts','none')){$claudeArguments.Add($argument)}
+        # Claude's acceptEdits mode does not approve shell tools.  With prompts disabled for
+        # non-interactive workflow runs, explicitly allow only the two shell tools used by
+        # the role contracts; this avoids silently denying their required local validation.
+        foreach($tool in @('Bash','PowerShell')){$claudeArguments.Add('--allowedTools');$claudeArguments.Add($tool)}
         $claudeExternalMcp=@($mcpExecution.Servers|Where-Object{[string]$_.name -ne 'ecosystem-read'})
         if ($mcpSession -and @($mcpSession.Session.allowedTools).Count) {
             $claudeMcpConfig=Join-Path $task.TaskRoot ('claude-mcp-'+$roleAttemptId+'.json')
