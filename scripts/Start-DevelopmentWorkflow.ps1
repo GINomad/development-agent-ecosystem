@@ -462,7 +462,7 @@ try {
         $guardResult=& (Join-Path $PSScriptRoot 'Invoke-CopilotRole.ps1') @copilotParams
     } elseif ([string]$providerRoute.provider -eq 'claude') {
         $claudeArguments=[Collections.Generic.List[string]]::new()
-        foreach($argument in @('-p','--output-format','stream-json','--verbose','--model',[string]$providerRoute.model,'--no-session-persistence')){$claudeArguments.Add($argument)}
+        foreach($argument in @('-p','--output-format','stream-json','--verbose','--model',[string]$providerRoute.model,'--no-session-persistence','--permission-mode','acceptEdits','--permission-prompts','none')){$claudeArguments.Add($argument)}
         $claudeExternalMcp=@($mcpExecution.Servers|Where-Object{[string]$_.name -ne 'ecosystem-read'})
         if ($mcpSession -and @($mcpSession.Session.allowedTools).Count) {
             $claudeMcpConfig=Join-Path $task.TaskRoot ('claude-mcp-'+$roleAttemptId+'.json')
