@@ -305,12 +305,12 @@
   "providerRouting": {
     "enabled": true,
     "artifactName": "provider-routing.json",
-    "defaultProvider": "codex",
+    "defaultProvider": "claude",
     "limitFallback": { "enabled": true, "provider": "codex" },
     "providers": {
       "codex": { "command": "codex", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-5.6-luna", "reasoningEffort": "low" }, "standard": { "model": "gpt-5.6-terra", "reasoningEffort": "medium" }, "complex": { "model": "gpt-5.6-sol", "reasoningEffort": "high" }, "critical": { "model": "gpt-5.6-sol", "reasoningEffort": "xhigh" } } },
       "copilot": { "command": "copilot", "supportsMcp": true, "supportsReasoningEffort": true, "models": { "routine": { "model": "gpt-4.1", "reasoningEffort": "low" }, "standard": { "model": "gpt-4.1", "reasoningEffort": "medium" }, "complex": { "model": "gpt-4.1", "reasoningEffort": "high" }, "critical": { "model": "gpt-4.1", "reasoningEffort": "xhigh" } } },
-      "claude": { "command": "claude", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "haiku", "reasoningEffort": "none" }, "standard": { "model": "sonnet", "reasoningEffort": "none" }, "complex": { "model": "sonnet", "reasoningEffort": "none" }, "critical": { "model": "opus", "reasoningEffort": "none" } } }
+      "claude": { "command": "C:\\Users\\okruk2\\.local\\bin\\claude.exe", "supportsMcp": true, "supportsReasoningEffort": false, "models": { "routine": { "model": "haiku", "reasoningEffort": "none" }, "standard": { "model": "sonnet", "reasoningEffort": "none" }, "complex": { "model": "sonnet", "reasoningEffort": "none" }, "critical": { "model": "opus", "reasoningEffort": "none" } } }
     }
   },
   "ui": {
@@ -704,7 +704,7 @@
   "agents": [
     {
       "id": "orchestrator",
-      "provider": "codex",
+      "provider": "claude",
       "name": "development_workflow_orchestrator",
       "description": "Control-plane agent that classifies task intake and workflow comments, selects the responsible configured agents, and preserves delivery gates.",
       "responsibilities": [
@@ -744,7 +744,7 @@
     },
     {
       "id": "knowledge_keeper",
-      "provider": "codex",
+      "provider": "claude",
       "name": "development_knowledge_keeper",
       "description": "On-demand knowledge service that selects verified context, records completed task history, maintains evidence-backed knowledge, and publishes documentation-style human-readable outcomes.",
       "responsibilities": [
@@ -790,7 +790,7 @@
     },
     {
       "id": "requirements_analyst",
-      "provider": "codex",
+      "provider": "claude",
       "name": "development_requirements_analyst",
       "description": "Read-only analyst for assigned tasks, comments, code, knowledge, gaps, questions, and implementation-ready planning.",
       "responsibilities": [
@@ -822,7 +822,7 @@
     },
     {
       "id": "developer",
-      "provider": "copilot",
+      "provider": "claude",
       "name": "development_implementer",
       "description": "Implementation owner that creates a branch, changes only ready scope, tests it, and reports exact implementation evidence.",
       "responsibilities": [
@@ -863,7 +863,7 @@
     },
     {
       "id": "reviewer",
-      "provider": "copilot",
+      "provider": "claude",
       "name": "development_reviewer",
       "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
       "responsibilities": [
@@ -906,7 +906,7 @@
     },
     {
       "id": "review_verifier",
-      "provider": "codex",
+      "provider": "claude",
       "name": "development_review_verifier",
       "description": "Independent read-only verifier that falsifies Reviewer claims, validates review coverage and finding lifecycle, and gates human decisions.",
       "responsibilities": [
@@ -944,7 +944,7 @@
     },
     {
       "id": "pipeline_monitor",
-      "provider": "copilot",
+      "provider": "claude",
       "name": "development_pipeline_monitor",
       "description": "Exact-branch and exact-commit Azure pipeline monitor with guarded build queueing and failure-log extraction.",
       "responsibilities": [
