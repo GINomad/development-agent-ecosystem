@@ -26,6 +26,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+$writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
@@ -147,7 +148,7 @@ if (-not $PrepareOnly) {
     $sourceConfigPath = [IO.Path]::GetFullPath($ConfigPath)
     $executionConfigPath = Join-Path $task.TaskRoot "execution-config-$ExecutionRunId.json"
     if (-not (Test-Path -LiteralPath $executionConfigPath -PathType Leaf)) {
-        Write-Utf8NoBomAtomic -Path $executionConfigPath -Content (($config | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
+        & $writeUtf8NoBomAtomic -Path $executionConfigPath -Content (($config | ConvertTo-Json -Depth 40) + [Environment]::NewLine)
     }
     $ConfigPath = $executionConfigPath
     $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -200,7 +201,7 @@ if (-not $PrepareOnly) {
             agentFiles = @($sync.AgentFiles)
             repositories = @($workspaceRecords | ForEach-Object { [ordered]@{ repositoryId=[string]$_.RepositoryId; path=[string]$_.Path; canonicalOrigin=[string]$_.CanonicalOrigin; baseSha=[string]$_.BaseSha; branch=[string]$_.Branch; manifestPath=[string]$_.ManifestPath } })
         }
-        Write-Utf8NoBomAtomic -Path $executionContextPath -Content (($executionContextDocument | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+        & $writeUtf8NoBomAtomic -Path $executionContextPath -Content (($executionContextDocument | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     }
 }
 $agentProfileSuffix = if ($ElevatedApproved) { [string]$config.runtime.elevatedFallback.agentProfileSuffix } else { '' }
@@ -414,7 +415,7 @@ function Write-CurrentMcpRoleMetric([string]$Outcome,[Nullable[int]]$QualityProx
 function New-McpFailureDiagnostic([string]$Server,[string]$ErrorMessage) {
     $path=Join-Path $task.TaskRoot ('mcp-failure-'+$executedAgentId+'-'+[guid]::NewGuid().ToString('N')+'.json')
     $diagnostic=[ordered]@{schemaVersion=1;taskId=$TaskId;attemptId=$roleAttemptId;agentId=$executedAgentId;runId=[string]$workspaceLease.RunId;leaseId=[string]$workspaceLease.LeaseId;server=$Server;error=$ErrorMessage;codexLogPath=$codexLogPath;createdAtUtc=[DateTime]::UtcNow.ToString('o')}
-    Write-Utf8NoBomAtomic -Path $path -Content (($diagnostic|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
+    & $writeUtf8NoBomAtomic -Path $path -Content (($diagnostic|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
     return $path
 }
 $enabledMcpServerNames = if ($HealthRecoveryRetry) { @() } else { @($mcpExecution.Servers | ForEach-Object { [string]$_.name }) }
@@ -472,7 +473,7 @@ try {
             $claudeMcpConfig=Join-Path $task.TaskRoot ('claude-mcp-'+$roleAttemptId+'.json')
             $claudeMcpTools=@($mcpSession.Session.allowedTools|ForEach-Object{[string]$_})
             $claudeMcpServer=[ordered]@{type='stdio';command=(Get-Command powershell.exe -ErrorAction Stop).Source;args=@('-NoProfile','-File',(Join-Path $PSScriptRoot 'Start-EcosystemReadMcpServer.ps1'));env=@{ECOSYSTEM_MCP_SESSION_PATH=[string]$mcpSession.Path}}
-            Write-Utf8NoBomAtomic -Path $claudeMcpConfig -Content ((@{mcpServers=@{'ecosystem-read'=$claudeMcpServer}}|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
+            & $writeUtf8NoBomAtomic -Path $claudeMcpConfig -Content ((@{mcpServers=@{'ecosystem-read'=$claudeMcpServer}}|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
             if(-not $claudeExternalMcp.Count){$claudeArguments.Add('--strict-mcp-config')}
             $claudeArguments.Add('--mcp-config');$claudeArguments.Add($claudeMcpConfig)
             foreach($tool in $claudeMcpTools){$claudeArguments.Add('--allowedTools');$claudeArguments.Add(('mcp__ecosystem-read__'+$tool))}
@@ -613,7 +614,7 @@ try {
                 if (-not $document.PSObject.Properties['closure']) { throw 'Task closure disappeared before completion could be persisted.' }
                 $document.closure.status = 'completed'
                 $document.closure.completedAtUtc = $completedAtUtc
-                Write-Utf8NoBomAtomic -Path $taskStatePath -Content (($document | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+                & $writeUtf8NoBomAtomic -Path $taskStatePath -Content (($document | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
                 $document
             }
             $closureKind = [string]$currentTask.closure.kind
@@ -712,7 +713,7 @@ catch {
             fallbackProvider=$limitFallbackProvider;automaticFallback=$automaticProviderFallback
             message=$providerLimitMessage
         }
-        Write-Utf8NoBomAtomic -Path $providerLimitPath -Content (($providerLimit|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
+        & $writeUtf8NoBomAtomic -Path $providerLimitPath -Content (($providerLimit|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level warning -Stage provider_limit -Summary ([string]$providerLimit.message) -Operation provider-switch -Target ($alternativeProviders -join ',') -Evidence @($providerLimitPath) -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null
         $failureMessage=[string]$providerLimit.message
         if($automaticProviderFallback){
