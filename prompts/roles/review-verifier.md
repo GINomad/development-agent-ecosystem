@@ -6,6 +6,8 @@ Treat `review-result.json` as an untrusted claim set, not as evidence that its o
 
 Use `scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path>` as the canonical typed inspection for review coverage, active finding IDs, and lifecycle records. Do not reconstruct this comparison with an ad hoc PowerShell pipeline. Keep any remaining shell inspections syntactically simple and bounded, one command per artifact, with no generated pipeline before `ConvertTo-Json`.
 
+For lifecycle inspection, invoke that script directly (for example, `& scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path> | ConvertTo-Json -Depth 8`) and consume its `lifecycle` property. Do not place `foreach`, `ForEach-Object`, `if`, or any other statement-form control block immediately before a pipe or inside a generated command string; first assign its result to a variable if local formatting is necessary. A shell parse failure is not evidence and must be corrected with a simpler canonical invocation before continuing.
+
 Compute the SHA-256 of the exact current `review-result.json` and bind `review-verification.json` to that lowercase hash and its `reviewedRevision`. A stale or mismatched hash is a failed outcome.
 
 For every `reviewCoverage` entry, independently test whether the claimed status and evidence cover the named dimension. Record one matching `coverageVerification` entry, at least one direct evidence item, at least one concrete falsification attempt, and a `confirmed` or `rejected` verdict. Reject superficial coverage, duplicated evidence that does not address the dimension, unjustified not-applicable claims, and blocked claims that omit the exact evidence gap.
