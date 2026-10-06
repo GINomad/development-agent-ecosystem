@@ -1447,6 +1447,21 @@ Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chain
 $reviewerToVerifier = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId reviewer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$reviewerToVerifier.Status -ne 'prepared' -or [string]$reviewerToVerifier.NextAgentId -ne 'review_verifier') { throw 'Reviewer completion did not schedule the independent Review Verifier.' }
 
+$chainImplementationPath = Join-Path $chainMatrixRoot 'implementation-result.json'
+Write-Utf8NoBom -Path $chainImplementationPath -Content (([ordered]@{ taskId=$chainMatrixTaskId; headCommit='synthetic-review-v1' } | ConvertTo-Json) + [Environment]::NewLine)
+$chainImplementationSha256 = Get-EcosystemFileSha256 -Path $chainImplementationPath
+& (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $chainMatrixTaskId -Actor knowledge_keeper -Type context-issued -Summary 'Synthetic Reviewer context binding.' -Evidence @("artifact:implementation-result.json:$chainImplementationSha256") -TargetAgentId reviewer -ConfigPath $deliveryConfigPath | Out-Null
+$chainVerification = New-SyntheticReviewVerification -TaskId $chainMatrixTaskId -ReviewPath $chainReviewPath
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'review-verification.json') -Content (($chainVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$chainMatrixTask.agentStatuses.review_verifier.status = 'completed'
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$reusedReviewChain = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$reusedReviewChain.Status -ne 'prepared' -or [string]$reusedReviewChain.NextAgentId -ne 'pipeline_monitor') { throw 'An unchanged exact revision did not reuse its already completed Reviewer and Review Verifier gates.' }
+Write-Utf8NoBom -Path $chainImplementationPath -Content (([ordered]@{ taskId=$chainMatrixTaskId; headCommit='synthetic-review-v2' } | ConvertTo-Json) + [Environment]::NewLine)
+$changedRevisionChain = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$changedRevisionChain.Status -ne 'prepared' -or [string]$changedRevisionChain.NextAgentId -ne 'reviewer') { throw 'A changed implementation revision incorrectly reused stale Reviewer or Review Verifier gates.' }
+Add-Check -Name 'unchanged-review-chain-reuse' -Detail 'Completed Reviewer and Verifier gates are reused only for the same validated exact revision; any changed revision schedules Reviewer again'
+
 $chainMatrixTask.status = 'interrupted'
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $requirementsToDeveloper = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId requirements_analyst -PrepareOnly -ConfigPath $deliveryConfigPath
@@ -1494,6 +1509,7 @@ $orchestratorToRequirements = & (Join-Path $root 'scripts\Continue-AgentChain.ps
 if ([string]$orchestratorToRequirements.Status -ne 'prepared' -or [string]$orchestratorToRequirements.NextAgentId -ne 'requirements_analyst') { throw 'Initial or resumed Orchestrator completion did not schedule the first pending delivery role.' }
 
 $chainMatrixTask.status = 'review_pending'
+$chainMatrixTask.agentStatuses.developer.status = 'completed'
 $chainMatrixTask.agentStatuses.reviewer.status = 'completed'
 $chainMatrixTask.agentStatuses.review_verifier.status = 'completed'
 $humanGateFinding = New-SyntheticReviewFinding -Id REV-099 -Category correctness -CorrectionDirection 'Resolve the synthetic human-gate finding.'
@@ -1501,7 +1517,12 @@ $humanGateReview = New-SyntheticReviewResult -TaskId $chainMatrixTaskId -Reviewe
 Write-Utf8NoBom -Path $chainReviewPath -Content (($humanGateReview | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 $humanGateVerification = New-SyntheticReviewVerification -TaskId $chainMatrixTaskId -ReviewPath $chainReviewPath
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'review-verification.json') -Content (($humanGateVerification | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+Write-Utf8NoBom -Path $chainImplementationPath -Content (([ordered]@{ taskId=$chainMatrixTaskId; headCommit='human-gate-v1' } | ConvertTo-Json) + [Environment]::NewLine)
+$humanGateImplementationSha256 = Get-EcosystemFileSha256 -Path $chainImplementationPath
+& (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $chainMatrixTaskId -Actor knowledge_keeper -Type context-issued -Summary 'Synthetic Reviewer context binding for the human gate.' -Evidence @("artifact:implementation-result.json:$humanGateImplementationSha256") -TargetAgentId reviewer -ConfigPath $deliveryConfigPath | Out-Null
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$reusedVerifierHumanGate = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
+if ([string]$reusedVerifierHumanGate.Status -ne 'review-pending') { throw 'Review-chain reuse bypassed the normal post-verification human decision gate.' }
 $verifierHumanGate = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$verifierHumanGate.Status -ne 'review-pending') { throw 'Verified human-decision gate was misclassified as a failed or abnormal chain stop.' }
 
@@ -1696,6 +1717,17 @@ $reviewerRepeatedPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -T
 $developerArtifacts = @('implementation-plan.json','developer-publication-evidence.json','implementation-result.json')
 if (@($developerArtifacts | Where-Object { $_ -notin @($postDeveloperBookkeepingPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerStartupPlan.ChangedArtifactNames) }).Count -or @($developerArtifacts | Where-Object { $_ -notin @($reviewerRepeatedPlan.UnchangedArtifactNames) }).Count) { throw 'Developer-to-Reviewer continuation consumed changed artifact fingerprints during post-Developer bookkeeping.' }
 Add-Check -Name 'developer-reviewer-resume-fingerprints' -Detail 'Post-Developer bookkeeping preserves the fingerprint baseline; Reviewer startup receives changed implementation artifacts and then advances the index once'
+$firstContextPack = & (Join-Path $root 'scripts\Update-AgentContextPack.ps1') -TaskId $fingerprintTaskId -RecipientAgentId reviewer -ArtifactNames $developerArtifacts -ConfigPath $fingerprintConfigPath
+$firstContextSha256 = Get-EcosystemFileSha256 -Path ([string]$firstContextPack.ContextPath)
+$secondContextPack = & (Join-Path $root 'scripts\Update-AgentContextPack.ps1') -TaskId $fingerprintTaskId -RecipientAgentId reviewer -ArtifactNames $developerArtifacts -ConfigPath $fingerprintConfigPath
+$secondContextSha256 = Get-EcosystemFileSha256 -Path ([string]$secondContextPack.ContextPath)
+$contextEvents = @(Get-Content -LiteralPath (Join-Path $fingerprintTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { [string]$_.type -eq 'context-issued' -and [string]$_.targetAgentId -eq 'reviewer' })
+if ([bool]$firstContextPack.Reused -or -not [bool]$secondContextPack.Reused -or $firstContextSha256 -ne $secondContextSha256 -or $contextEvents.Count -ne 1) { throw 'An unchanged per-agent context pack was rewritten or journaled more than once.' }
+Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-result.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"revised`"}$([Environment]::NewLine)"
+$changedContextPack = & (Join-Path $root 'scripts\Update-AgentContextPack.ps1') -TaskId $fingerprintTaskId -RecipientAgentId reviewer -ArtifactNames $developerArtifacts -ConfigPath $fingerprintConfigPath
+$changedContextEvents = @(Get-Content -LiteralPath (Join-Path $fingerprintTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { [string]$_.type -eq 'context-issued' -and [string]$_.targetAgentId -eq 'reviewer' })
+if ([bool]$changedContextPack.Reused -or $changedContextEvents.Count -ne 2) { throw 'A changed context artifact incorrectly reused the prior context pack.' }
+Add-Check -Name 'content-addressed-context-pack-reuse' -Detail 'Unchanged recipient context is validated and reused without file churn or duplicate ledger events; changed artifacts issue a new pack'
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'review-decisions.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"decisions`":[]}$([Environment]::NewLine)"
 $null = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId pipeline_monitor -ConfigPath $fingerprintConfigPath
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'review-decisions.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"decisions`":[{`"findingId`":`"REV-015`",`"decision`":`"bypassed`"},{`"findingId`":`"REV-016`",`"decision`":`"bypassed`"}]}$([Environment]::NewLine)"
