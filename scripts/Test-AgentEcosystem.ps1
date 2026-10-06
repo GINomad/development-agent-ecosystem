@@ -573,6 +573,14 @@ $healthPriorityDispatch = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') 
 if ([string]$ecosystemMaintenanceRoute.Status -ne 'routed' -or [string]$healthPriorityDispatch.NextAgentId -ne 'health_check') { throw 'Health Check maintenance input did not preempt unrelated pending delivery work.' }
 Add-Check -Name 'ecosystem-maintenance-dispatch' -Detail 'A routed Health Check maintenance request preempts unrelated pending delivery work without changing product scope'
 
+$unroutedHealthTaskId = 'unrouted-health-continuation-' + [guid]::NewGuid().ToString('N')
+$unroutedHealthTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $unroutedHealthTaskId -TaskSelector synthetic-unrouted-health-continuation -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $routingConfigPath
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $unroutedHealthTaskId -AgentId health_check -AgentStatus completed -Stage synthetic_health_completed -Message 'Synthetic Health repair completed without a persisted mode.' -ConfigPath $routingConfigPath | Out-Null
+$unroutedHealthContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $unroutedHealthTaskId -CompletedAgentId health_check -PrepareOnly -ConfigPath $routingConfigPath
+$unroutedHealthDispatch = & (Join-Path $root 'scripts\Test-WorkflowDispatchContract.ps1') -TaskId $unroutedHealthTaskId -TargetAgentId requirements_analyst -AllowUnroutedTarget -ConfigPath $routingConfigPath
+if ([string]$unroutedHealthContinuation.Status -ne 'prepared' -or [string]$unroutedHealthContinuation.NextAgentId -ne 'orchestrator' -or [string]$unroutedHealthDispatch.Status -ne 'unrouted') { throw 'Health Check continuation dispatched a delivery role before Orchestrator persisted an execution mode.' }
+Add-Check -Name 'health-recovery-mode-persistence' -Detail 'An un-routed Health Check outcome returns to Orchestrator; no delivery role is dispatched before an execution mode is persisted'
+
 $postHealthTaskId = 'post-health-routing-' + [guid]::NewGuid().ToString('N')
 $postHealthTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $postHealthTaskId -TaskSelector synthetic-post-health-routing -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $routingConfigPath
 $postHealthDeveloperComment = & (Join-Path $root 'scripts\Add-TaskComment.ps1') -TaskId $postHealthTaskId -Text 'Apply the remaining product correction.' -TargetAgentId developer -ConfigPath $routingConfigPath
@@ -1410,6 +1418,8 @@ $chainMatrixTask = [ordered]@{
     }
 }
 Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot 'task.json') -Content (($chainMatrixTask | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$chainMatrixRoute = [ordered]@{ routingId=[guid]::NewGuid().ToString('N'); executionMode='full-delivery'; agentSequence=@('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper'); codeChangesAllowed=$true; continueAutomatically=$true }
+Write-Utf8NoBom -Path (Join-Path $chainMatrixRoot ([string]$deliveryConfig.workflow.orchestration.routingArtifact)) -Content (($chainMatrixRoute | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine)
 $developerToReviewer = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $chainMatrixTaskId -CompletedAgentId developer -PrepareOnly -ConfigPath $deliveryConfigPath
 if ([string]$developerToReviewer.Status -ne 'prepared' -or [string]$developerToReviewer.NextAgentId -ne 'reviewer') { throw 'Developer completion at review_pending did not schedule Reviewer.' }
 $chainReviewPath = Join-Path $chainMatrixRoot 'review-result.json'
