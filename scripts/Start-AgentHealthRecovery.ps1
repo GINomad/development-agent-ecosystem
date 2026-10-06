@@ -215,9 +215,16 @@ if ($successfulAttempt.Count) {
     }
     return [pscustomobject]@{ Status='already-repaired'; EcosystemRepairStatus='repaired'; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$successfulResultPath; TargetedResume=$targetedResume }
 }
+$invalidatedAttemptIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($record in @($attempts | Where-Object { [string]$_.type -eq 'recovery-invalidated' -and [string]$_.failureSignature -eq $signature })) {
+    if ($record.PSObject.Properties['invalidatedAttemptId'] -and -not [string]::IsNullOrWhiteSpace([string]$record.invalidatedAttemptId)) {
+        [void]$invalidatedAttemptIds.Add([string]$record.invalidatedAttemptId)
+    }
+}
 $attemptCount = @($attempts | Where-Object {
     $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
     $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
+    -not $invalidatedAttemptIds.Contains([string]$_.attemptId) -and
     ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
 }).Count
 if ($attemptCount -ge $maximumAttempts) {
