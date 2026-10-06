@@ -31,14 +31,33 @@ $downstreamResults = @($events | Where-Object { [string]$_.type -eq 'agent-resul
 # terminal result. Reconcile only failures that carry the same run and execution-agent binding.
 foreach ($failureEvent in @($events | Where-Object { [string]$_.type -eq 'agent-failure' -and $_.artifact -and (Test-Path -LiteralPath ([string]$_.artifact) -PathType Leaf) } | Sort-Object { [DateTime]$_.timestampUtc })) {
     try { $failureArtifact = Get-Content -LiteralPath ([string]$failureEvent.artifact) -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-    if (-not $failureArtifact.PSObject.Properties['executionRunId'] -or -not $failureArtifact.executionRunId -or -not $failureArtifact.PSObject.Properties['executionAgentId']) { continue }
-    $executionAgentId = [string]$failureArtifact.executionAgentId
-    $executionRunId = [string]$failureArtifact.executionRunId
-    $laterExactResult = @($events | Where-Object {
-        [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq $executionAgentId -and
-        [DateTime]$_.timestampUtc -gt [DateTime]$failureEvent.timestampUtc -and
-        @($_.evidence) -contains "execution-run:$executionRunId" -and @($_.evidence) -contains "agent:$executionAgentId"
-    } | Sort-Object { [DateTime]$_.timestampUtc } -Descending | Select-Object -First 1)
+    $hasExplicitBinding = $failureArtifact.PSObject.Properties['executionRunId'] -and $failureArtifact.executionRunId -and $failureArtifact.PSObject.Properties['executionAgentId']
+    $executionAgentId = if ($hasExplicitBinding) { [string]$failureArtifact.executionAgentId } else { '' }
+    $executionRunId = if ($hasExplicitBinding) { [string]$failureArtifact.executionRunId } else { '' }
+    $laterExactResult = if ($hasExplicitBinding) {
+        @($events | Where-Object {
+            [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq $executionAgentId -and
+            [DateTime]$_.timestampUtc -gt [DateTime]$failureEvent.timestampUtc -and
+            @($_.evidence) -contains "execution-run:$executionRunId" -and @($_.evidence) -contains "agent:$executionAgentId"
+        } | Sort-Object { [DateTime]$_.timestampUtc } -Descending | Select-Object -First 1)
+    }
+    else {
+        # Legacy task-1880262 ordering: the host attributed a Verifier parser failure
+        # to Developer, then Verifier published PASS seven seconds later. Require an
+        # earlier same-diagnostic failure from that result's actor and a <=30s interval.
+        $legacyResult = @($events | Where-Object {
+            [string]$_.type -eq 'agent-result' -and [DateTime]$_.timestampUtc -gt [DateTime]$failureEvent.timestampUtc -and
+            ([DateTime]$_.timestampUtc - [DateTime]$failureEvent.timestampUtc).TotalSeconds -le 30
+        } | Sort-Object { [DateTime]$_.timestampUtc } | Select-Object -First 1)
+        if ($legacyResult) {
+            $matchingPriorFailure = @($events | Where-Object {
+                [string]$_.type -eq 'agent-failure' -and [string]$_.actor -eq [string]$legacyResult.actor -and
+                [string]$_.summary -eq [string]$failureEvent.summary -and [DateTime]$_.timestampUtc -lt [DateTime]$failureEvent.timestampUtc
+            } | Select-Object -Last 1)
+            if ($matchingPriorFailure) { $executionAgentId = [string]$legacyResult.actor; $legacyResult } else { @() }
+        }
+        else { @() }
+    }
     if (-not $laterExactResult) { continue }
 
     $failedAgentId = [string]$failureArtifact.agentId
