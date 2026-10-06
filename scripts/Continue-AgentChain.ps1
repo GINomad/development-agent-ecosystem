@@ -117,6 +117,7 @@ function Get-ActiveExecutionPolicy {
             AgentSequence = @($closureMode.agentSequence | ForEach-Object { [string]$_ })
             CodeChangesAllowed = [bool]$closureMode.codeChangesAllowed
             ContinueAutomatically = $true
+            HasPersistedRoute = $true
         }
     }
     $defaultMode = $config.workflow.orchestration.executionModes.'full-delivery'
@@ -127,6 +128,11 @@ function Get-ActiveExecutionPolicy {
         ContinueAutomatically = [bool]$defaultMode.continueAutomatically
     }
     $routingPath = Join-Path $taskRoot ([string]$config.workflow.orchestration.routingArtifact)
+    # A default policy is useful for planning, but it is not dispatch authority.
+    # Only Orchestrator may select and persist a mode before another delivery
+    # role is started. In particular, recovery must not infer full-delivery
+    # and dispatch Requirements Analyst from an un-routed Health Check result.
+    $result['HasPersistedRoute'] = $false
     if (-not (Test-Path -LiteralPath $routingPath -PathType Leaf)) { return [pscustomobject]$result }
     $routes = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } })
     $latest = @($routes | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
@@ -135,6 +141,7 @@ function Get-ActiveExecutionPolicy {
     $result.AgentSequence = @($latest.agentSequence | ForEach-Object { [string]$_ })
     $result.CodeChangesAllowed = [bool]$latest.codeChangesAllowed
     $result.ContinueAutomatically = [bool]$latest.continueAutomatically
+    $result.HasPersistedRoute = $true
     return [pscustomobject]$result
 }
 
@@ -329,6 +336,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'health_check' {
+            if (-not [bool]$executionPolicy.HasPersistedRoute) {
+                $nextAgentId = 'orchestrator'
+                break
+            }
             $pendingCommentOwner = Get-PendingCommentOwner -ExcludeAgentId 'health_check'
             if ($pendingCommentOwner) {
                 # An explicit manual closure is an already-authorized terminal

@@ -34,7 +34,9 @@ Assert-True ($f1.Failure.rootCauseFingerprint -eq $f2.Failure.rootCauseFingerpri
 $staleTaskId = 'stale-terminal-' + [guid]::NewGuid().ToString('N').Substring(0,12)
 $staleTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $staleTaskId -TaskSelector task-1880262-stale-verifier -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $fixtureConfigPath
 $staleRunId = 'run1880262exactbound'
-$staleFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $staleTaskId -AgentId developer -ExecutionAgentId review_verifier -ExecutionRunId $staleRunId -Stage failed -Summary 'ParserError from Verifier host was incorrectly attributed to Developer.' -Diagnostic 'ParserError: An empty pipe element is not allowed.' -ConfigPath $fixtureConfigPath
+$parserSummary = 'Non-retryable command parse failure: ParserError from Verifier host.'
+$null = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $staleTaskId -AgentId review_verifier -Stage failed -Summary $parserSummary -Diagnostic 'ParserError: An empty pipe element is not allowed.' -ConfigPath $fixtureConfigPath
+$staleFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $staleTaskId -AgentId developer -Stage failed -Summary $parserSummary -Diagnostic 'ParserError: An empty pipe element is not allowed.' -ConfigPath $fixtureConfigPath
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $staleTaskId -Status failed -Stage failed -Message 'Synthetic stale host failure.' -ConfigPath $fixtureConfigPath | Out-Null
 $staleLedgerPath = Join-Path $staleTask.TaskRoot 'task-ledger.jsonl'
 $staleLedgerEvents = @(Get-Content -LiteralPath $staleLedgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
