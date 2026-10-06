@@ -105,6 +105,75 @@ function Get-FindingRoutingSummary {
     [string]$Finding.id
 }
 
+function Get-ReusableReviewChain {
+    param([Parameter(Mandatory)] $Task)
+
+    if (-not $Task.PSObject.Properties['agentStatuses'] -or
+        -not $Task.agentStatuses.PSObject.Properties['reviewer'] -or
+        -not $Task.agentStatuses.PSObject.Properties['review_verifier'] -or
+        [string]$Task.agentStatuses.reviewer.status -ne 'completed' -or
+        [string]$Task.agentStatuses.review_verifier.status -ne 'completed') {
+        return $null
+    }
+
+    foreach ($agentId in @('reviewer','review_verifier')) {
+        $commentBatch = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId $agentId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        if ([int]$commentBatch.count -gt 0) { return $null }
+    }
+
+    $implementationPath = Join-Path $taskRoot 'implementation-result.json'
+    $reviewPath = Join-Path $taskRoot 'review-result.json'
+    $verificationPath = Join-Path $taskRoot 'review-verification.json'
+    if (-not (Test-Path -LiteralPath $implementationPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $reviewPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $implementation = Get-Content -LiteralPath $implementationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $implementationArtifactSha256 = Get-EcosystemFileSha256 -Path $implementationPath
+        $expectedImplementationEvidence = "artifact:implementation-result.json:$implementationArtifactSha256"
+        $reviewerImplementationEvidence = $null
+        $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+        if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
+            foreach ($line in @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ })) {
+                try { $event = $line | ConvertFrom-Json } catch { continue }
+                if ([string]$event.type -ne 'context-issued' -or [string]$event.targetAgentId -ne 'reviewer') { continue }
+                $binding = @($event.evidence | Where-Object { [string]$_ -like 'artifact:implementation-result.json:*' }) | Select-Object -Last 1
+                if ($binding) { $reviewerImplementationEvidence = [string]$binding }
+            }
+        }
+        if ($reviewerImplementationEvidence -ne $expectedImplementationEvidence) { return $null }
+        $implementedRevision = [string]$implementation.headCommit
+        $reviewedRevision = [string]$review.reviewedRevision
+        if ([string]::IsNullOrWhiteSpace($implementedRevision) -or [string]::IsNullOrWhiteSpace($reviewedRevision)) { return $null }
+
+        $implementedCommit = if ($implementedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1].ToLowerInvariant() } else { $implementedRevision.ToLowerInvariant() }
+        $reviewedCommit = if ($reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1].ToLowerInvariant() } else { $reviewedRevision.ToLowerInvariant() }
+        if ($implementedCommit -ne $reviewedCommit -or [string]$verification.verificationStatus -ne 'passed') { return $null }
+
+        & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $reviewPath -TaskRoot $taskRoot | Out-Null
+        & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot | Out-Null
+        $reviewSha256 = Get-EcosystemFileSha256 -Path $reviewPath
+        if ([string]$verification.reviewArtifactSha256 -ne $reviewSha256 -or [string]$verification.reviewedRevision -ne $reviewedRevision) { return $null }
+
+        return [pscustomobject]@{
+            ReviewedRevision = $reviewedRevision
+            ImplementationArtifactSha256 = $implementationArtifactSha256
+            ReviewArtifactSha256 = $reviewSha256
+            VerificationArtifactSha256 = Get-EcosystemFileSha256 -Path $verificationPath
+            ReviewPath = $reviewPath
+            VerificationPath = $verificationPath
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
 function Get-ActiveExecutionPolicy {
     $currentTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $manualClosurePending = $currentTask.PSObject.Properties['closure'] -and
@@ -185,6 +254,7 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
 
     $nextAgentId = $null
     $authorityHandoffPending = $false
+    $reuseVerifiedReviewGate = $false
     if ($currentAgentId -ne 'orchestrator' -and [bool]$config.workflow.orchestration.forwardOutOfScopeComments -and [bool]$config.workflow.orchestration.autoDispatchForwardedComments) {
         $orchestratorBatch = & (Join-Path $PSScriptRoot 'Get-AgentCommentBatch.ps1') -TaskId $TaskId -AgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
         $authorityHandoffPending = @($orchestratorBatch.comments | Where-Object { [string]$_.eventType -in @('agent-routing-request','workflow-input-routed') }).Count -gt 0
@@ -222,7 +292,18 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
         'requirements_analyst' { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
-        'developer' { $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy }
+        'developer' {
+            $reusableReviewChain = Get-ReusableReviewChain -Task $task
+            if ($reusableReviewChain) {
+                $reuseVerifiedReviewGate = $true
+                if (-not $PrepareOnly) {
+                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor orchestrator -Type review-chain-reused -Summary "Reused the already completed Reviewer and Review Verifier artifacts for unchanged revision '$([string]$reusableReviewChain.ReviewedRevision)' and re-evaluated the normal post-verification decision gate without another model run." -Artifact ([string]$reusableReviewChain.VerificationPath) -Evidence @("implementation-result-sha256:$([string]$reusableReviewChain.ImplementationArtifactSha256)", "review-sha256:$([string]$reusableReviewChain.ReviewArtifactSha256)", "verification-sha256:$([string]$reusableReviewChain.VerificationArtifactSha256)", "reviewed-revision:$([string]$reusableReviewChain.ReviewedRevision)") -TargetAgentId review_verifier -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                }
+            }
+            else {
+                $nextAgentId = Get-NextPolicyAgent -AgentId $currentAgentId -Task $task -ExecutionPolicy $executionPolicy
+            }
+        }
         'reviewer' {
             $reviewPath = Join-Path $taskRoot 'review-result.json'
             if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'Reviewer completed without review-result.json.' }
@@ -365,6 +446,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
             }
         }
     }
+    }
+    if ($reuseVerifiedReviewGate) {
+        $currentAgentId = 'review_verifier'
+        continue
     }
     if (-not $nextAgentId) { return [pscustomobject]@{ Status='completed'; StartedAgents=@($started) } }
     $transitionKey = $currentAgentId + '->' + $nextAgentId

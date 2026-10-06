@@ -23,6 +23,14 @@ if (Test-Path -LiteralPath $contextPath -PathType Leaf) {
     try { $existing = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch { $existing = $null }
 }
+$existingSummaries = @{}
+if ($existing -and $existing.PSObject.Properties['artifactSummaries']) {
+    foreach ($item in @($existing.artifactSummaries)) {
+        if ($item.PSObject.Properties['name'] -and $item.PSObject.Properties['sha256']) {
+            $existingSummaries[[string]$item.name] = $item
+        }
+    }
+}
 
 $selectedSkills = [Collections.Generic.List[string]]::new()
 foreach ($skillPath in @($agent.skillPaths)) {
@@ -42,26 +50,34 @@ foreach ($nameValue in @($ArtifactNames | Select-Object -Unique)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Context artifact '$name' is missing." }
     $file = Get-Item -LiteralPath $path
     $sha256 = Get-EcosystemFileSha256 -Path $path
-    $summary = ''
-    if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
-        try {
-            $document = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-            foreach ($propertyName in @('summary','objective','description','rootCause','nextAction')) {
-                if ($document.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$document.$propertyName)) {
-                    $summary = [string]$document.$propertyName
-                    break
+    $priorSummary = if ($existingSummaries.ContainsKey($name) -and [string]$existingSummaries[$name].sha256 -eq $sha256) { $existingSummaries[$name] } else { $null }
+    if ($priorSummary) {
+        $summary = [string]$priorSummary.summary
+        $updatedAtUtc = if ($priorSummary.updatedAtUtc -is [DateTime]) { ([DateTime]$priorSummary.updatedAtUtc).ToUniversalTime().ToString('o') } else { [string]$priorSummary.updatedAtUtc }
+    }
+    else {
+        $summary = ''
+        if ([IO.Path]::GetExtension($name).Equals('.json', [StringComparison]::OrdinalIgnoreCase)) {
+            try {
+                $document = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($propertyName in @('summary','objective','description','rootCause','nextAction')) {
+                    if ($document.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$document.$propertyName)) {
+                        $summary = [string]$document.$propertyName
+                        break
+                    }
                 }
             }
+            catch { throw "Context artifact '$name' is not valid JSON: $($_.Exception.Message)" }
         }
-        catch { throw "Context artifact '$name' is not valid JSON: $($_.Exception.Message)" }
+        if ([string]::IsNullOrWhiteSpace($summary)) { $summary = "Stable task artifact '$name' ($($file.Length) bytes)." }
+        if ($summary.Length -gt 1000) { $summary = $summary.Substring(0, 1000) }
+        $updatedAtUtc = $file.LastWriteTimeUtc.ToString('o')
     }
-    if ([string]::IsNullOrWhiteSpace($summary)) { $summary = "Stable task artifact '$name' ($($file.Length) bytes)." }
-    if ($summary.Length -gt 1000) { $summary = $summary.Substring(0, 1000) }
     $artifactSummaries.Add([pscustomobject][ordered]@{
         name = $name
         sha256 = $sha256
         summary = $summary
-        updatedAtUtc = $file.LastWriteTimeUtc.ToString('o')
+        updatedAtUtc = $updatedAtUtc
     })
     $artifactSources.Add([pscustomobject][ordered]@{
         kind = 'history'
@@ -95,6 +111,33 @@ $pack = [ordered]@{
     openQuestions = @($openQuestions)
     heldScope = @($heldScope)
 }
+
+function ConvertTo-ContextPackIdentityJson {
+    param([Parameter(Mandatory)] $Value)
+
+    ([ordered]@{
+        taskId = [string]$Value.taskId
+        recipient = [string]$Value.recipient
+        sources = @($Value.sources)
+        acceptedKnowledge = @($Value.acceptedKnowledge)
+        artifactSummaries = @($Value.artifactSummaries | ForEach-Object {
+            [ordered]@{ name=[string]$_.name; sha256=[string]$_.sha256; summary=[string]$_.summary }
+        })
+        engineeringGuidance = $Value.engineeringGuidance
+        openQuestions = @($Value.openQuestions)
+        heldScope = @($Value.heldScope)
+    } | ConvertTo-Json -Depth 20 -Compress)
+}
+
+if ($existing -and [string]$existing.recipient -eq $RecipientAgentId -and
+    (ConvertTo-ContextPackIdentityJson -Value $existing) -eq (ConvertTo-ContextPackIdentityJson -Value ([pscustomobject]$pack))) {
+    foreach ($expected in $artifactSummaries) {
+        $actual = @($existing.artifactSummaries | Where-Object { [string]$_.name -eq [string]$expected.name }) | Select-Object -First 1
+        if (-not $actual -or [string]$actual.sha256 -ne [string]$expected.sha256) { throw "Reused context pack fingerprint validation failed for '$([string]$expected.name)'." }
+    }
+    return [pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count; Reused=$true }
+}
+
 Write-Utf8NoBom -Path $contextPath -Content (($pack | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
 $validated = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -106,4 +149,4 @@ foreach ($expected in $artifactSummaries) {
 }
 & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type context-issued -Summary "Validated context pack issued to '$RecipientAgentId' with $($artifactSummaries.Count) stable artifact summary item(s)." -Artifact $contextPath -Evidence @($artifactSummaries | ForEach-Object { "artifact:$([string]$_.name):$([string]$_.sha256)" }) -TargetAgentId $RecipientAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
-[pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count }
+[pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count; Reused=$false }
