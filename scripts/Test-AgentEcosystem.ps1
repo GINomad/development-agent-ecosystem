@@ -1774,6 +1774,7 @@ if ([string]$config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.useByDefault -or [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Health host-compatible execution must be selected by default under standing authorization.' }
 $preservationScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Save-EcosystemRecoveryBaseline.ps1') -Raw -Encoding UTF8
 if ($healthRecoveryScript -notmatch 'Save-EcosystemRecoveryBaseline.ps1' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges' -or $preservationScript -notmatch 'git -C \$resolvedWorkspace add --all -- \.' -or $preservationScript -notmatch 'preservationCommit') { throw 'Health Check recovery does not commit and expose the complete dirty ecosystem baseline before repair.' }
+if ($healthRecoveryScript -notmatch 'recovery-invalidated' -or $healthRecoveryScript -notmatch 'invalidatedAttemptId' -or $healthRecoveryScript -notmatch 'invalidatedAttemptIds\.Contains') { throw 'Health recovery cannot distinguish a durably invalidated stopped run from a genuine retry attempt.' }
 $tailTokens = $null
 $tailParseErrors = $null
 $tailAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1'), [ref]$tailTokens, [ref]$tailParseErrors)
