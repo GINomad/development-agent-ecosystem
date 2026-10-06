@@ -58,7 +58,17 @@ if ($AgentId -eq 'knowledge_keeper') {
         $pipelineResult = Get-Content -LiteralPath $pipelineResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $authorizedNoRunEndpoint = $false
         if ([string]$pipelineResult.overallResult -eq 'no-run' -and @($pipelineResult.runs).Count -eq 0 -and @($pipelineResult.queuedDefinitionIds).Count -eq 0 -and (Test-Path -LiteralPath $routingPath -PathType Leaf)) {
-            $terminalRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
+            # Recovery and orchestration routes may follow the user-authorized terminal route.
+            # Select the latest route that itself proves the narrow no-run endpoint instead of
+            # requiring it to remain the last execution route in the append-only ledger.
+            $terminalRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object {
+                $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] -and
+                [string]$_.executionMode -eq 'knowledge-only' -and
+                @($_.agentSequence).Count -eq 1 -and
+                [string]$_.agentSequence[0] -eq 'knowledge_keeper' -and
+                [string]$_.sourceType -eq 'user-comment' -and
+                [string]$_.rationale -match '(?i)explicitly.*prohibit.*pipeline'
+            }) | Select-Object -Last 1
             $authorizedNoRunEndpoint = $terminalRoute -and [string]$terminalRoute.executionMode -eq 'knowledge-only' -and @($terminalRoute.agentSequence).Count -eq 1 -and [string]$terminalRoute.agentSequence[0] -eq 'knowledge_keeper' -and [string]$terminalRoute.sourceType -eq 'user-comment' -and [string]$terminalRoute.rationale -match '(?i)explicitly.*prohibit.*pipeline'
         }
         if ([string]$pipelineResult.overallResult -ne 'succeeded' -and -not $authorizedNoRunEndpoint) { throw "Knowledge Keeper cannot complete the task while the latest exact-SHA pipeline result is '$([string]$pipelineResult.overallResult)'." }
