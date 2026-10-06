@@ -45,6 +45,7 @@ function New-CoverageMatrix {
             dimension = $_
             status = 'covered'
             evidence = @("direct evidence for $_")
+            falsificationAttempts = @("attempted to disprove $_ coverage")
             notes = "Reviewed $_ against the current revision."
         }
     })
@@ -84,6 +85,7 @@ function New-Review {
         taskId = $taskId
         reviewedRevision = $Revision
         requirementsRevision = 'requirements-v1'
+        reviewScope = [ordered]@{ mode='full-task-diff'; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='base-rev'; targetRevision=$Revision; changedFiles=@('src/example.ps1') }); notes='Synthetic cumulative review boundary.' }
         requirementTraceability = @([ordered]@{
             requirementId = 'REQ-1'
             requirementText = 'Review must use an independent verifier.'
@@ -130,6 +132,7 @@ function New-Verification {
         reviewedRevision = [string]$Review.reviewedRevision
         reviewArtifactSha256 = $reviewSha256
         verificationStatus = $Status
+        scopeVerification = [ordered]@{ verdict='confirmed'; evidence=@('Reconstructed the synthetic cumulative diff.'); falsificationAttempts=@('Compared repository, base, target, and changed file list.'); notes='Scope claim survived independent verification.' }
         coverageVerification = @($Review.reviewCoverage | ForEach-Object {
             [ordered]@{
                 dimension = [string]$_.dimension
@@ -161,6 +164,12 @@ Write-JsonFile -Path $testConfigPath -Value $testConfig
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'synthetic-review-verification' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath | Out-Null
 
 $reviewOne = New-Review -Revision 'rev-1' -LifecycleStatus new
+$firstIncrementalReview = $reviewOne | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$firstIncrementalReview.reviewScope = [pscustomobject][ordered]@{ mode='incremental'; priorReviewArtifactSha256=('0' * 64); repositories=@($firstIncrementalReview.reviewScope.repositories); notes='Synthetic invalid first incremental boundary.' }
+Write-JsonFile -Path $reviewPath -Value $firstIncrementalReview
+Assert-Throws -Pattern 'first persisted review must use full-task-diff' -Action {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $reviewPath -TaskRoot $taskRoot
+}
 Write-JsonFile -Path $reviewPath -Value $reviewOne
 & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $taskId -AgentId reviewer -Summary 'Synthetic first review published.' -ArtifactNames 'review-result.json' -ConfigPath $testConfigPath | Out-Null
 $snapshotOne = & (Join-Path $root 'scripts\Save-ReviewArtifactSnapshot.ps1') -TaskId $taskId -ConfigPath $testConfigPath
@@ -169,8 +178,12 @@ $historyOne = Get-Content -LiteralPath $snapshotOne.IndexPath -Raw -Encoding UTF
 if (@($historyOne.snapshots).Count -ne 1 -or [string]$snapshotOne.ReviewSha256 -ne [string]$snapshotOneRepeat.ReviewSha256) {
     throw 'Review snapshots must be immutable and idempotent for the same artifact hash.'
 }
+$verifiedReviewOne = New-Verification -Review $reviewOne
+Write-JsonFile -Path $verificationPath -Value $verifiedReviewOne
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 
 $reviewTwo = New-Review -Revision 'rev-2' -LifecycleStatus unchanged
+$reviewTwo.reviewScope = [ordered]@{ mode='incremental'; priorReviewArtifactSha256=[string]$snapshotOne.ReviewSha256; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='base-rev'; targetRevision='rev-2'; changedFiles=@('src/example.ps1') }); notes='Synthetic exact-SHA-bound incremental review boundary.' }
 Write-JsonFile -Path $reviewPath -Value $reviewTwo
 & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $reviewPath -TaskRoot $taskRoot
 & (Join-Path $root 'scripts\Save-ReviewArtifactSnapshot.ps1') -TaskId $taskId -ConfigPath $testConfigPath | Out-Null
@@ -209,6 +222,16 @@ Write-JsonFile -Path $verificationPath -Value $emptyFalsificationVerification
 Assert-Throws -Pattern 'lacks a supported verdict or independent evidence' -Action {
     & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 }
+
+$rejectedScopeVerification = $verification | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$rejectedScopeVerification.scopeVerification.verdict = 'rejected'
+Write-JsonFile -Path $verificationPath -Value $rejectedScopeVerification
+Assert-Throws -Pattern "status must be 'review-rework-required'" -Action {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
+}
+$rejectedScopeVerification.verificationStatus = 'review-rework-required'
+Write-JsonFile -Path $verificationPath -Value $rejectedScopeVerification
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 
 $staleVerification = $verification | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $staleVerification.reviewArtifactSha256 = ('0' * 64)
@@ -316,6 +339,8 @@ if (@($verificationFive.findingVerifications).Count -ne 0 -or [string]$verificat
     Snapshots = @((Get-Content -LiteralPath $snapshotOne.IndexPath -Raw -Encoding UTF8 | ConvertFrom-Json).snapshots).Count
     Checks = @(
         'review coverage completeness',
+        'full cumulative scope required before exact-SHA-bound incremental review',
+        'independent scope rejection returns review rework',
         'new/unchanged/resolved/regressed lifecycle',
         'immutable review snapshots',
         'exact review hash binding',

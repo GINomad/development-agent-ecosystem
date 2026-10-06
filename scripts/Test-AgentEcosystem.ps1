@@ -66,6 +66,7 @@ function New-SyntheticReviewResult {
         taskId = $TaskId
         reviewedRevision = $ReviewedRevision
         requirementsRevision = 'synthetic-requirements-v1'
+        reviewScope = [ordered]@{ mode='full-task-diff'; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='synthetic-base-v1'; targetRevision=$ReviewedRevision; changedFiles=@('synthetic.ps1') }); notes='Synthetic cumulative review boundary.' }
         requirementTraceability = @([ordered]@{
             requirementId = 'REQ-SYNTHETIC-1'
             requirementText = 'The synthetic review contract is complete.'
@@ -75,7 +76,7 @@ function New-SyntheticReviewResult {
             notes = 'Synthetic contract evidence.'
         })
         reviewCoverage = @($syntheticReviewDimensions | ForEach-Object {
-            [ordered]@{ dimension=$_; status='covered'; evidence=@("Synthetic evidence for $_."); notes="Synthetic $_ coverage." }
+            [ordered]@{ dimension=$_; status='covered'; evidence=@("Synthetic evidence for $_."); falsificationAttempts=@("Synthetic attempt to disprove $_ coverage."); notes="Synthetic $_ coverage." }
         })
         findings = [object[]]@($ProductFindings)
         heldScopeViolations = @()
@@ -101,6 +102,7 @@ function New-SyntheticReviewVerification {
         reviewedRevision = [string]$review.reviewedRevision
         reviewArtifactSha256 = $sha256
         verificationStatus = 'passed'
+        scopeVerification = [ordered]@{ verdict='confirmed'; evidence=@('Independent synthetic scope evidence.'); falsificationAttempts=@('Compared the exact base, target, repository set, and changed files.'); notes='Scope confirmed independently.' }
         coverageVerification = @($review.reviewCoverage | ForEach-Object {
             [ordered]@{ dimension=[string]$_.dimension; claimedStatus=[string]$_.status; verdict='confirmed'; evidence=@("Independent synthetic evidence for $([string]$_.dimension)."); falsificationAttempts=@("Synthetic falsification of $([string]$_.dimension)."); notes='Claim confirmed independently.' }
         })
@@ -280,13 +282,15 @@ if ($taskDiffScript -notmatch [regex]::Escape('diff-snapshots\dashboard-diff.jso
     throw 'Cleaned task workspaces must retain dashboard index, file patches, and an immutable reviewed-commit patch before deletion.'
 }
 Add-Check -Name 'cleaned-workspace-diff-preservation' -Detail 'Cleanup snapshots both dashboard diff scopes and the reviewed commit patch before deleting a finally closed task workspace'
-if ($taskDiffScript -notmatch "ValidateSet\('reviewed-commit','all-task-changes'\)" -or $taskDiffScript -notmatch [regex]::Escape("reviewedRevision -match '^(?:git:)?") -or $taskDiffScript -notmatch 'Get-GitObjectId' -or $taskDiffScript -notmatch "\^\[0-9a-fA-F\]\{40,64\}\$" -or $taskDiffScript -notmatch '\$diffTarget\^' -or $taskDiffScript -notmatch 'Resolve-TaskWorkspace\.ps1[^\r\n]+-AllowReleased' -or $dashboardClient -notmatch "reviewDiffScope = 'reviewed-commit'" -or $dashboardClient -notmatch 'all-task-changes' -or $dashboardServer -notmatch "Diff scope is not supported") { throw 'Reviewer diff must accept only validated object IDs, read preserved released workspaces, default to the exact reviewed commit against its first parent, and retain an all-task-changes option.' }
-Add-Check -Name 'reviewer-diff-scope' -Detail 'Reviewer diff defaults to reviewed commit versus first parent; dashboard can switch to the complete task-branch diff'
+if ($taskDiffScript -notmatch "ValidateSet\('reviewed-commit','all-task-changes'\)" -or $taskDiffScript -notmatch '\$Scope\s*=\s*''all-task-changes''' -or $taskDiffScript -notmatch [regex]::Escape("reviewedRevision -match '^(?:git:)?") -or $taskDiffScript -notmatch 'Get-GitObjectId' -or $taskDiffScript -notmatch "\^\[0-9a-fA-F\]\{40,64\}\$" -or $taskDiffScript -notmatch '\$diffTarget\^' -or $taskDiffScript -notmatch 'Resolve-TaskWorkspace\.ps1[^\r\n]+-AllowReleased' -or $dashboardClient -notmatch "reviewDiffScope = 'reviewed-commit'" -or $dashboardClient -notmatch 'all-task-changes' -or $dashboardServer -notmatch "Diff scope is not supported") { throw 'Reviewer diff must accept only validated object IDs, read preserved released workspaces, default automation to all task changes, and retain an explicit reviewed-commit UI scope.' }
+Add-Check -Name 'reviewer-diff-scope' -Detail 'Automated review defaults to the cumulative task diff; dashboard can still inspect one reviewed commit explicitly'
 if ($taskDiffScript -notmatch '\(\?:;\|\$\)') { throw 'Reviewer diff must parse extended git revision evidence that also contains its review base.' }
 $reviewResultSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-result.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $reviewVerificationSchema = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-verification.schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if (@($reviewResultSchema.required) -notcontains 'requirementTraceability' -or @($reviewResultSchema.required) -notcontains 'reviewCoverage' -or @($reviewResultSchema.required) -notcontains 'findingLifecycle' -or -not $reviewResultSchema.properties.requirementTraceability -or -not $reviewResultSchema.'$defs'.finding.properties.codeLocation) { throw 'Review result schema must require traceability, the complete review coverage matrix, finding lifecycle, and structured inline code locations.' }
-if (@($reviewVerificationSchema.required) -notcontains 'reviewArtifactSha256' -or @($reviewVerificationSchema.required) -notcontains 'coverageVerification' -or @($reviewVerificationSchema.required) -notcontains 'findingVerifications' -or @($reviewVerificationSchema.required) -notcontains 'lifecycleVerifications') { throw 'Independent review verification must bind coverage, findings, and lifecycle verdicts to the exact review SHA.' }
+if (@($reviewResultSchema.required) -notcontains 'reviewScope' -or @($reviewResultSchema.required) -notcontains 'requirementTraceability' -or @($reviewResultSchema.required) -notcontains 'reviewCoverage' -or @($reviewResultSchema.required) -notcontains 'findingLifecycle' -or -not $reviewResultSchema.properties.requirementTraceability -or -not $reviewResultSchema.'$defs'.reviewCoverageEntry.properties.falsificationAttempts -or -not $reviewResultSchema.'$defs'.finding.properties.codeLocation) { throw 'Review result schema must require cumulative scope, traceability, falsification-backed coverage, finding lifecycle, and structured inline code locations.' }
+$taskDiffScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-TaskDiff.ps1') -Raw -Encoding UTF8
+if ($taskDiffScript -notmatch '\$Scope\s*=\s*''all-task-changes''' -or $reviewerPrompt -notmatch 'full-task-diff' -or $reviewVerifierPrompt -notmatch 'scopeVerification') { throw 'Reviewer and Review Verifier must default to the cumulative task diff and verify the exact published scope.' }
+if (@($reviewVerificationSchema.required) -notcontains 'reviewArtifactSha256' -or @($reviewVerificationSchema.required) -notcontains 'scopeVerification' -or @($reviewVerificationSchema.required) -notcontains 'coverageVerification' -or @($reviewVerificationSchema.required) -notcontains 'findingVerifications' -or @($reviewVerificationSchema.required) -notcontains 'lifecycleVerifications') { throw 'Independent review verification must bind scope, coverage, findings, and lifecycle verdicts to the exact review SHA.' }
 if ($reviewerPrompt -notmatch 'Do not read or write `review-verification.json`' -or $reviewVerifierPrompt -notmatch 'Do not read Reviewer private checkpoints' -or $reviewVerifierPrompt -notmatch 'SHA-256') { throw 'Reviewer and Review Verifier context boundaries are not independent or exact-artifact-bound.' }
 Add-Check -Name 'independent-review-verification-contract' -Detail 'Reviewer publishes candidates, coverage, and lifecycle; a separate read-only verifier falsifies them against the exact artifact SHA'
 $reviewVerificationContract = & (Join-Path $root 'tests\Test-ReviewVerification.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'review-verification-contract')
