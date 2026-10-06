@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$Task
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $reconciled = [Collections.Generic.List[string]]::new()
 $preserved = [Collections.Generic.List[string]]::new()
-$stableTaskStatuses = @('waiting_for_input','held','review_pending','completed','interrupted')
+$stableTaskStatuses = @('waiting_for_input','held','review_pending','completed','interrupted','failed')
 if ([string]$task.status -notin $stableTaskStatuses -or -not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
     return [pscustomobject]@{ TaskId=$TaskId; Reconciled=@(); Preserved=@('orchestrator','health_check'); Reason='Task is active, failed, or has no durable event ledger.' }
 }
@@ -26,6 +26,42 @@ if ([string]$task.status -notin $stableTaskStatuses -or -not (Test-Path -Literal
 $events = @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
 $downstreamAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','knowledge_keeper')
 $downstreamResults = @($events | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -in $downstreamAgentIds } | Sort-Object { [DateTime]$_.timestampUtc })
+
+# A host can report a process failure after the role has already published its exact-bound
+# terminal result. Reconcile only failures that carry the same run and execution-agent binding.
+foreach ($failureEvent in @($events | Where-Object { [string]$_.type -eq 'agent-failure' -and $_.artifact -and (Test-Path -LiteralPath ([string]$_.artifact) -PathType Leaf) } | Sort-Object { [DateTime]$_.timestampUtc })) {
+    try { $failureArtifact = Get-Content -LiteralPath ([string]$failureEvent.artifact) -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+    if (-not $failureArtifact.PSObject.Properties['executionRunId'] -or -not $failureArtifact.executionRunId -or -not $failureArtifact.PSObject.Properties['executionAgentId']) { continue }
+    $executionAgentId = [string]$failureArtifact.executionAgentId
+    $executionRunId = [string]$failureArtifact.executionRunId
+    $laterExactResult = @($events | Where-Object {
+        [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq $executionAgentId -and
+        [DateTime]$_.timestampUtc -gt [DateTime]$failureEvent.timestampUtc -and
+        @($_.evidence) -contains "execution-run:$executionRunId" -and @($_.evidence) -contains "agent:$executionAgentId"
+    } | Sort-Object { [DateTime]$_.timestampUtc } -Descending | Select-Object -First 1)
+    if (-not $laterExactResult) { continue }
+
+    $failedAgentId = [string]$failureArtifact.agentId
+    $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $failedState = if ($task.agentStatuses.PSObject.Properties[$failedAgentId]) { $task.agentStatuses.$failedAgentId } else { $null }
+    if ($failedState -and [string]$failedState.status -eq 'failed') {
+        $priorResult = @($events | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq $failedAgentId -and [DateTime]$_.timestampUtc -lt [DateTime]$failureEvent.timestampUtc } | Select-Object -Last 1)
+        $restoredStatus = if ($failedAgentId -eq $executionAgentId -or $priorResult) { 'completed' } else { 'pending' }
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $failedAgentId -AgentStatus $restoredStatus -Stage stale_failure_reconciled -Message "A stale failure was superseded by exact-bound successful result '$([string]$laterExactResult.eventId)'." -Actor ecosystem -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        $reconciled.Add($failedAgentId)
+    }
+    if ($failedAgentId -ne $executionAgentId) {
+        $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $executionState = if ($task.agentStatuses.PSObject.Properties[$executionAgentId]) { $task.agentStatuses.$executionAgentId } else { $null }
+        if (-not $executionState -or [string]$executionState.status -ne 'completed') {
+            & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $executionAgentId -AgentStatus completed -Stage exact_bound_success_reconciled -Message "Exact-bound terminal success '$([string]$laterExactResult.eventId)' is authoritative." -Actor ecosystem -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $reconciled.Add($executionAgentId)
+        }
+    }
+    if ([string]$task.status -eq 'failed') {
+        & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage stale_failure_reconciled -Message 'A stale host failure was superseded by an exact-bound successful terminal result.' -ClearProcessId -Actor ecosystem -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+}
 
 function Get-LatestEvent {
     param([object[]] $Source)

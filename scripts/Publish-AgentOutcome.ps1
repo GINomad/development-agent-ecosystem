@@ -19,6 +19,14 @@ $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexH
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$executionBindingEvidence = [Collections.Generic.List[string]]::new()
+$executionBindingEvidence.Add("agent:$AgentId")
+if ($task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.executionRunId)) {
+    $executionBindingEvidence.Add("execution-run:$([string]$task.executionRunId)")
+}
+if ($task.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.workspaceLeaseId)) {
+    $executionBindingEvidence.Add("workspace-lease:$([string]$task.workspaceLeaseId)")
+}
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
@@ -95,7 +103,7 @@ if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('or
 
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $continuationEvidence = if ($continuationRequest) { @("continuation-event:$([string]$continuationRequest.eventId)") } else { @() }
-$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($publicationEvidence) + @($Evidence) + $continuationEvidence) -ConfigPath $ConfigPath -CodexHome $CodexHome
+$event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($publicationEvidence) + @($Evidence) + @($executionBindingEvidence) + $continuationEvidence | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
 if (Test-Path -LiteralPath $checkpointPath -PathType Leaf) {
     $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw -Encoding UTF8 | ConvertFrom-Json

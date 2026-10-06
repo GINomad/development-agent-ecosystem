@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory)][string] $Summary,
     [Nullable[int]] $ExitCode,
     [string] $Diagnostic,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $ExecutionAgentId,
     [ValidatePattern('^[A-Za-z0-9._-]{8,128}$')][string] $CorrelationId,
     [string[]] $Evidence = @(),
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
@@ -17,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not @($config.agents | Where-Object { [string]$_.id -eq $AgentId }).Count) { throw "Unknown agent '$AgentId'." }
+if ($ExecutionAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $ExecutionAgentId }).Count) { throw "Unknown execution agent '$ExecutionAgentId'." }
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 
@@ -31,6 +34,17 @@ $rootCauseSha = [Security.Cryptography.SHA256]::Create()
 try { $rootCauseFingerprint = ([BitConverter]::ToString($rootCauseSha.ComputeHash([Text.Encoding]::UTF8.GetBytes($rootCauseText)))).Replace('-','').ToLowerInvariant() } finally { $rootCauseSha.Dispose() }
 if (-not $CorrelationId) { $CorrelationId = "cause-$($rootCauseFingerprint.Substring(0,24))" }
 $occurredAtUtc = [DateTime]::UtcNow.ToString('o')
+$boundExecutionAgentId = if ($ExecutionAgentId) { $ExecutionAgentId } else { $AgentId }
+$staleOutcome = $null
+$ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+if ($ExecutionRunId -and (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
+    $staleOutcome = @(Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object {
+        [string]$_.type -eq 'agent-result' -and
+        [string]$_.actor -eq $boundExecutionAgentId -and
+        @($_.evidence) -contains "execution-run:$ExecutionRunId" -and
+        @($_.evidence) -contains "agent:$boundExecutionAgentId"
+    } | Sort-Object { [DateTime]$_.timestampUtc } -Descending | Select-Object -First 1)
+}
 $failure = [ordered]@{
     failureId = $failureId
     occurrenceId = $occurrenceId
@@ -39,6 +53,9 @@ $failure = [ordered]@{
     rootCauseFingerprint = $rootCauseFingerprint
     taskId = $TaskId
     agentId = $AgentId
+    executionAgentId = $boundExecutionAgentId
+    executionRunId = if ($ExecutionRunId) { $ExecutionRunId } else { $null }
+    disposition = if ($staleOutcome) { 'stale-superseded' } else { 'active' }
     stage = $Stage
     occurredAtUtc = $occurredAtUtc
     summary = $Summary.Trim()
@@ -48,6 +65,11 @@ $failure = [ordered]@{
 }
 $failurePath = Join-Path $taskRoot "agent-failure-$($occurredAtUtc.Replace(':','').Replace('-','').Replace('.',''))-$failureId.json"
 Write-Utf8NoBom -Path $failurePath -Content (($failure | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
-& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-failure -Summary ([string]$failure.summary) -Artifact $failurePath -Evidence @($failure.evidence) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus failed -Stage $Stage -Message ([string]$failure.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-[pscustomobject]@{ FailurePath=$failurePath; Failure=[pscustomobject]$failure }
+$eventEvidence = @($failure.evidence) + @("execution-agent:$boundExecutionAgentId")
+if ($ExecutionRunId) { $eventEvidence += "execution-run:$ExecutionRunId" }
+if ($staleOutcome) { $eventEvidence += "superseded-by-result:$([string]$staleOutcome.eventId)" }
+& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-failure -Summary ([string]$failure.summary) -Artifact $failurePath -Evidence $eventEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+if (-not $staleOutcome) {
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus failed -Stage $Stage -Message ([string]$failure.summary) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+[pscustomobject]@{ FailurePath=$failurePath; Failure=[pscustomobject]$failure; Stale=[bool]$staleOutcome; SupersedingResultEventId=if ($staleOutcome) { [string]$staleOutcome.eventId } else { $null } }
