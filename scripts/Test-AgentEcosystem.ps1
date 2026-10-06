@@ -119,6 +119,7 @@ $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-Agen
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 $reviewVerificationTestScript = Get-Content -LiteralPath (Join-Path $root 'tests\Test-ReviewVerification.ps1') -Raw -Encoding UTF8
 $developerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\developer.md') -Raw -Encoding UTF8
+$reviewVerifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
 if (-not (Resolve-CodexCliPath) -or $workflowCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Foreground and scheduled hosts must share the PATH-independent Codex CLI resolver.' }
 if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckCliScript -notmatch 'New-AgentToml' -or $healthCheckCliScript -notmatch "reason='outdated'") { throw 'Health Check must detect generated-agent content drift, not only missing files.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'" -or $workflowCliScript -notmatch "'exec', '--ignore-user-config'" -or $healthCliScript -notmatch "'exec',\s*'--ignore-user-config'") { throw 'Internal Codex hosts must disable legacy notifications and ignore user configuration so user hooks cannot overflow Windows command lines on long agent turns.' }
@@ -128,6 +129,7 @@ if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sou
 if ($reviewVerificationTestScript -match 'Get-FileHash' -or $reviewVerificationTestScript -notmatch 'Get-EcosystemFileSha256') { throw 'Recovery validation tests must use the module-independent ecosystem SHA-256 helper in long-lived dashboard runspaces.' }
 if ($workflowCliScript -notmatch 'Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId') { throw 'Agent prompts must reserve controller identity fields for the trusted workflow host.' }
 if ($developerPrompt -notmatch 'trusted host has already validated the context pack' -or $developerPrompt -notmatch 'instead of recreating hash validation with a nested PowerShell command') { throw 'Developer instructions must consume host-validated context fingerprints without recreating nested PowerShell hash validation.' }
+if ($reviewVerifierPrompt -notmatch 'Get-ReviewVerificationInput\.ps1' -or $reviewVerifierPrompt -notmatch 'Do not place `foreach`, `ForEach-Object`, `if`' -or $reviewVerifierPrompt -notmatch 'first assign its result to a variable') { throw 'Review Verifier instructions must use the canonical typed lifecycle inspection and forbid control-block pipeline construction.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail 'Workflow, Health Check, and recovery hosts resolve Codex CLI consistently and internal agent runs disable the legacy notify command'
 
 $heartbeatClosure = & {
