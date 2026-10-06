@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [string] $RepositoryId,
     [string] $FilePath,
-    [ValidateSet('reviewed-commit','all-task-changes')][string] $Scope = 'reviewed-commit',
+    [ValidateSet('reviewed-commit','all-task-changes')][string] $Scope = 'all-task-changes',
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )

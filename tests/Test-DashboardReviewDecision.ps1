@@ -48,8 +48,9 @@ function New-ReviewArtifact {
         taskId = $taskId
         reviewedRevision = $Revision
         requirementsRevision = 'requirements-1'
+        reviewScope = [ordered]@{ mode='full-task-diff'; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='base-1'; targetRevision=$Revision; changedFiles=@('src/example.ps1') }); notes='Synthetic cumulative review boundary.' }
         requirementTraceability = @([ordered]@{ requirementId='REQ-1'; requirementText='Synthetic dashboard approval contract.'; implementationStatus='verified'; codeReferences=@([ordered]@{ repositoryId='synthetic'; filePath='src/example.ps1'; startLine=1; evidence='Synthetic fixture.' }); testEvidence=@('Synthetic fixture'); notes='Synthetic fixture.' })
-        reviewCoverage = @($dimensions | ForEach-Object { [ordered]@{ dimension=$_; status='covered'; evidence=@("Evidence for $_"); notes='Synthetic coverage.' } })
+        reviewCoverage = @($dimensions | ForEach-Object { [ordered]@{ dimension=$_; status='covered'; evidence=@("Evidence for $_"); falsificationAttempts=@("Attempted to disprove $_ coverage"); notes='Synthetic coverage.' } })
         findings = @([ordered]@{ id=$FindingId; severity='high'; category='correctness'; location='src/example.ps1:1'; evidence='Synthetic finding.'; impact='Synthetic impact.'; correctionDirection='Synthetic correction.'; decisionStatus='proposed' })
         heldScopeViolations = @()
         agentProcessFindings = @()
@@ -65,6 +66,7 @@ function New-VerificationArtifact {
         reviewedRevision = [string]$Review.reviewedRevision
         reviewArtifactSha256 = $ReviewSha256
         verificationStatus = 'passed'
+        scopeVerification = [ordered]@{ verdict='confirmed'; evidence=@('Synthetic scope evidence.'); falsificationAttempts=@('Compared the cumulative diff boundary.'); notes='Synthetic scope verification.' }
         coverageVerification = @($Review.reviewCoverage | ForEach-Object { [ordered]@{ dimension=[string]$_.dimension; claimedStatus='covered'; verdict='confirmed'; evidence=@('Synthetic independent evidence.'); falsificationAttempts=@('Synthetic falsification attempt.'); notes='Synthetic verification.' } })
         findingVerifications = @([ordered]@{ findingId='REV-101'; findingKind='product'; verdict=$Verdict; evidence=@('Synthetic independent evidence.'); falsificationAttempts=@('Synthetic falsification attempt.'); notes='Synthetic verifier verdict.' })
         lifecycleVerifications = @([ordered]@{ findingId='REV-101'; claimedStatus='new'; verdict='confirmed'; evidence=@('Synthetic independent lifecycle evidence.'); notes='Synthetic lifecycle verification.' })

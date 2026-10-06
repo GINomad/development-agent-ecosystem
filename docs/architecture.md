@@ -254,7 +254,7 @@ Runtime task history is stored outside the repository under `%LOCALAPPDATA%/Code
 - `context-pack.json`: context selected by Knowledge Keeper;
 - `requirements-analysis.json`: ready scope, held scope, gaps, and questions;
 - `implementation-plan.json` and `implementation-result.json`;
-- `review-result.json`: candidate findings, exact requirement traceability, complete ten-dimension `reviewCoverage`, and stable `findingLifecycle` records;
+- `review-result.json`: exact cumulative review scope, candidate findings, exact requirement traceability, complete ten-dimension `reviewCoverage` with falsification attempts, and stable `findingLifecycle` records;
 - `review-history/review-<sha256>.json` plus `review-history-index.json`: immutable prior review artifacts used to validate `new`, `unchanged`, `resolved`, and `regressed` transitions;
 - `review-verification.json`: separate verifier verdicts for every coverage dimension, active finding, and lifecycle record, bound to the exact review SHA and revision;
 - `review-decisions.json` and `tech-debt-items.json`: human decisions and bypass debt bound to that same exact review; a `bypassed` decision is non-resolution and is deliverable only while its linked `TD-REV-NNN` item is open;

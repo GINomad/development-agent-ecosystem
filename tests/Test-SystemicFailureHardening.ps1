@@ -13,7 +13,7 @@ function Assert-True([bool]$Value,[string]$Message) { if (-not $Value) { throw $
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 
 $reviewPath = Join-Path $OutputRoot 'review.json'
-[IO.File]::WriteAllText($reviewPath, (([ordered]@{ reviewedRevision='rev-1'; reviewCoverage=@([ordered]@{ dimension='correctness'; status='covered'; evidence=@('direct') }); findings=@([ordered]@{ id='REV-1' }); findingLifecycle=@([ordered]@{ findingId='REV-1'; status='new'; firstSeenRevision='rev-1'; lastObservedRevision='rev-1' }) } | ConvertTo-Json -Depth 8) + [Environment]::NewLine))
+[IO.File]::WriteAllText($reviewPath, (([ordered]@{ reviewedRevision='rev-1'; reviewScope=[ordered]@{ mode='full-task-diff'; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='base-1'; targetRevision='rev-1'; changedFiles=@('src/example.ps1') }); notes='Synthetic cumulative scope.' }; reviewCoverage=@([ordered]@{ dimension='correctness'; status='covered'; evidence=@('direct'); falsificationAttempts=@('attempted inverse behavior') }); findings=@([ordered]@{ id='REV-1' }); findingLifecycle=@([ordered]@{ findingId='REV-1'; status='new'; firstSeenRevision='rev-1'; lastObservedRevision='rev-1' }) } | ConvertTo-Json -Depth 8) + [Environment]::NewLine))
 $inspection = & (Join-Path $root 'scripts\Get-ReviewVerificationInput.ps1') -ReviewPath $reviewPath
 Assert-True ($inspection.coverage.Count -eq 1 -and $inspection.activeFindingIds[0] -eq 'REV-1' -and $inspection.lifecycle[0].status -eq 'new') 'Canonical review inspection lost typed coverage or lifecycle data.'
 

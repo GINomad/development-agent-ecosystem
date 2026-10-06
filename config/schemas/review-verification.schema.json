@@ -3,12 +3,13 @@
   "title": "Independent review verification",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "reviewedRevision", "reviewArtifactSha256", "verificationStatus", "coverageVerification", "findingVerifications", "lifecycleVerifications", "summary"],
+  "required": ["taskId", "reviewedRevision", "reviewArtifactSha256", "verificationStatus", "scopeVerification", "coverageVerification", "findingVerifications", "lifecycleVerifications", "summary"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "reviewedRevision": { "type": "string", "minLength": 1 },
     "reviewArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "verificationStatus": { "enum": ["passed", "review-rework-required"] },
+    "scopeVerification": { "$ref": "#/$defs/scopeVerification" },
     "coverageVerification": {
       "type": "array",
       "minItems": 10,
@@ -33,6 +34,17 @@
       "type": "array",
       "minItems": 1,
       "items": { "type": "string", "minLength": 1 }
+    },
+    "scopeVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "evidence", "falsificationAttempts", "notes"],
+      "properties": {
+        "verdict": { "enum": ["confirmed", "rejected"] },
+        "evidence": { "$ref": "#/$defs/verificationEvidence" },
+        "falsificationAttempts": { "$ref": "#/$defs/verificationEvidence" },
+        "notes": { "type": "string", "minLength": 1 }
+      }
     },
     "coverageVerification": {
       "type": "object",

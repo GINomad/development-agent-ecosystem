@@ -162,10 +162,27 @@ if ($ArtifactName -eq 'task-summary.json') {
 if ($ArtifactName -eq 'review-result.json') {
     if ($AgentId -ne 'reviewer') { throw 'Only Reviewer may publish review-result.json.' }
     $review = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-RequiredProperties -Document $review -Names @('taskId','reviewedRevision','requirementsRevision','requirementTraceability','reviewCoverage','findings','heldScopeViolations','agentProcessFindings','findingLifecycle','summary') -Label 'review-result.json'
+    Assert-RequiredProperties -Document $review -Names @('taskId','reviewedRevision','requirementsRevision','reviewScope','requirementTraceability','reviewCoverage','findings','heldScopeViolations','agentProcessFindings','findingLifecycle','summary') -Label 'review-result.json'
     if ([string]$review.taskId -ne $TaskId) { throw "review-result.json must identify task '$TaskId'." }
     if ([string]::IsNullOrWhiteSpace([string]$review.reviewedRevision) -or [string]::IsNullOrWhiteSpace([string]$review.requirementsRevision)) { throw 'Review revisions must be non-empty.' }
     if (-not @($review.requirementTraceability).Count) { throw 'review-result.json requires at least one requirementTraceability entry.' }
+
+    Assert-RequiredProperties -Document $review.reviewScope -Names @('mode','repositories','notes') -Label 'reviewScope'
+    $reviewScopeMode = [string]$review.reviewScope.mode
+    if ($reviewScopeMode -notin @('full-task-diff','incremental') -or [string]::IsNullOrWhiteSpace([string]$review.reviewScope.notes)) { throw 'reviewScope requires a supported mode and notes.' }
+    $repositoryScopes = @($review.reviewScope.repositories | Where-Object { $null -ne $_ })
+    if (-not $repositoryScopes.Count) { throw 'reviewScope must identify at least one repository boundary.' }
+    $scopeRepositoryIds = @($repositoryScopes | ForEach-Object { [string]$_.repositoryId })
+    if (@($scopeRepositoryIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -or @($scopeRepositoryIds | Select-Object -Unique).Count -ne $scopeRepositoryIds.Count) { throw 'reviewScope repository IDs must be non-empty and unique.' }
+    foreach ($repositoryScope in $repositoryScopes) {
+        Assert-RequiredProperties -Document $repositoryScope -Names @('repositoryId','baseRevision','targetRevision','changedFiles') -Label "reviewScope repository '$([string]$repositoryScope.repositoryId)'"
+        if ([string]::IsNullOrWhiteSpace([string]$repositoryScope.baseRevision) -or [string]::IsNullOrWhiteSpace([string]$repositoryScope.targetRevision)) { throw "reviewScope repository '$([string]$repositoryScope.repositoryId)' requires exact base and target revisions." }
+        $changedFiles = @($repositoryScope.changedFiles | ForEach-Object { [string]$_ })
+        if (@($changedFiles | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -or @($changedFiles | Select-Object -Unique).Count -ne $changedFiles.Count) { throw "reviewScope repository '$([string]$repositoryScope.repositoryId)' changedFiles must be non-empty strings without duplicates." }
+    }
+    $reviewedScopeCommit = $null
+    if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $reviewedScopeCommit = $Matches[1].ToLowerInvariant() }
+    if ($repositoryScopes.Count -eq 1 -and $reviewedScopeCommit -and [string]$repositoryScopes[0].targetRevision -match '^[0-9a-fA-F]{40,64}$' -and $reviewedScopeCommit -ne ([string]$repositoryScopes[0].targetRevision).ToLowerInvariant()) { throw 'reviewScope target revision must match the exact reviewed revision.' }
 
     $coverage = @($review.reviewCoverage | Where-Object { $null -ne $_ })
     $coverageDimensions = @($coverage | ForEach-Object { [string]$_.dimension })
@@ -173,9 +190,9 @@ if ($ArtifactName -eq 'review-result.json') {
         throw 'reviewCoverage must contain every configured review dimension exactly once.'
     }
     foreach ($entry in $coverage) {
-        Assert-RequiredProperties -Document $entry -Names @('dimension','status','evidence','notes') -Label "reviewCoverage '$([string]$entry.dimension)'"
-        if ([string]$entry.status -notin @('covered','not-applicable','blocked') -or -not (Test-NonEmptyStringArray -Value $entry.evidence) -or [string]::IsNullOrWhiteSpace([string]$entry.notes)) {
-            throw "reviewCoverage '$([string]$entry.dimension)' lacks a supported status, evidence, or notes."
+        Assert-RequiredProperties -Document $entry -Names @('dimension','status','evidence','falsificationAttempts','notes') -Label "reviewCoverage '$([string]$entry.dimension)'"
+        if ([string]$entry.status -notin @('covered','not-applicable','blocked') -or -not (Test-NonEmptyStringArray -Value $entry.evidence) -or -not (Test-NonEmptyStringArray -Value $entry.falsificationAttempts) -or [string]::IsNullOrWhiteSpace([string]$entry.notes)) {
+            throw "reviewCoverage '$([string]$entry.dimension)' lacks a supported status, evidence, falsification attempt, or notes."
         }
     }
 
@@ -252,6 +269,25 @@ if ($ArtifactName -eq 'review-result.json') {
         }
     }
     if ($priorReview) {
+        if ($reviewScopeMode -eq 'incremental') {
+            Assert-RequiredProperties -Document $review.reviewScope -Names @('priorReviewArtifactSha256') -Label 'incremental reviewScope'
+            if ([string]$review.reviewScope.priorReviewArtifactSha256 -ne [string]$priorSnapshot.sha256) { throw 'Incremental reviewScope must bind to the exact immediately preceding review artifact SHA-256.' }
+            if (-not $priorReview.PSObject.Properties['reviewScope']) { throw 'Incremental reviewScope requires a prior scope-aware full review chain.' }
+            if ([string]$priorReview.reviewScope.mode -ne 'full-task-diff') { throw 'Incremental reviewScope must bind directly to a prior full-task-diff review.' }
+            $priorVerificationPath = Join-Path $TaskRoot 'review-verification.json'
+            if (-not (Test-Path -LiteralPath $priorVerificationPath -PathType Leaf)) { throw 'Incremental reviewScope requires an independently passed prior full review.' }
+            $priorVerification = Get-Content -LiteralPath $priorVerificationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ([string]$priorVerification.verificationStatus -ne 'passed' -or [string]$priorVerification.reviewArtifactSha256 -ne [string]$priorSnapshot.sha256 -or [string]$priorVerification.reviewedRevision -ne [string]$priorReview.reviewedRevision) { throw 'Incremental reviewScope requires an independently passed prior full review bound to the exact prior artifact.' }
+            $priorRepositoryScopes = @($priorReview.reviewScope.repositories)
+            $priorRepositoryIds = @($priorRepositoryScopes | ForEach-Object { [string]$_.repositoryId })
+            $scopeRepositoryKey = @($scopeRepositoryIds | Sort-Object) -join '|'
+            $priorRepositoryKey = @($priorRepositoryIds | Sort-Object) -join '|'
+            if ($scopeRepositoryKey -ne $priorRepositoryKey) { throw 'Incremental reviewScope must preserve the prior review repository set.' }
+            foreach ($repositoryScope in $repositoryScopes) {
+                $priorRepositoryScope = @($priorRepositoryScopes | Where-Object { [string]$_.repositoryId -eq [string]$repositoryScope.repositoryId }) | Select-Object -First 1
+                if (-not $priorRepositoryScope -or [string]$repositoryScope.baseRevision -ne [string]$priorRepositoryScope.baseRevision) { throw "Incremental reviewScope must preserve the prior base revision for repository '$([string]$repositoryScope.repositoryId)'." }
+            }
+        }
         $priorLifecycleById = @{}
         foreach ($record in @($priorReview.findingLifecycle)) { $priorLifecycleById[[string]$record.findingId] = $record }
         $priorOutstandingIds = @($priorReview.findingLifecycle | Where-Object { [string]$_.status -ne 'resolved' } | ForEach-Object { [string]$_.findingId })
@@ -284,6 +320,9 @@ if ($ArtifactName -eq 'review-result.json') {
             if (-not $currentRecord -or [string]$currentRecord.status -ne 'resolved' -or [string]$currentRecord.firstSeenRevision -ne [string]$priorRecord.firstSeenRevision -or [string]$currentRecord.lastObservedRevision -ne [string]$priorRecord.lastObservedRevision -or [string]$currentRecord.resolvedRevision -ne [string]$priorRecord.resolvedRevision) { throw "Resolved finding history '$findingId' must be carried forward unchanged." }
         }
     }
+    elseif ($reviewScopeMode -ne 'full-task-diff') {
+        throw 'The first persisted review must use full-task-diff reviewScope.'
+    }
     elseif (@($lifecycle | Where-Object { [string]$_.status -eq 'resolved' }).Count) {
         throw 'Resolved lifecycle records require a prior persisted review snapshot.'
     }
@@ -296,7 +335,7 @@ if ($ArtifactName -eq 'review-result.json') {
 if ($ArtifactName -eq 'review-verification.json') {
     if ($AgentId -ne 'review_verifier') { throw 'Only Review Verifier may publish review-verification.json.' }
     $verification = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-RequiredProperties -Document $verification -Names @('taskId','reviewedRevision','reviewArtifactSha256','verificationStatus','coverageVerification','findingVerifications','lifecycleVerifications','summary') -Label 'review-verification.json'
+    Assert-RequiredProperties -Document $verification -Names @('taskId','reviewedRevision','reviewArtifactSha256','verificationStatus','scopeVerification','coverageVerification','findingVerifications','lifecycleVerifications','summary') -Label 'review-verification.json'
     if ([string]$verification.taskId -ne $TaskId) { throw "review-verification.json must identify task '$TaskId'." }
     $reviewPath = Join-Path $TaskRoot 'review-result.json'
     if (-not (Test-Path -LiteralPath $reviewPath -PathType Leaf)) { throw 'review-verification.json requires review-result.json.' }
@@ -305,6 +344,9 @@ if ($ArtifactName -eq 'review-verification.json') {
     if ([string]$verification.reviewArtifactSha256 -ne $reviewSha256 -or [string]$verification.reviewedRevision -ne [string]$review.reviewedRevision) {
         throw 'review-verification.json is stale for the current review artifact or reviewed revision.'
     }
+
+    Assert-RequiredProperties -Document $verification.scopeVerification -Names @('verdict','evidence','falsificationAttempts','notes') -Label 'scopeVerification'
+    if ([string]$verification.scopeVerification.verdict -notin @('confirmed','rejected') -or -not (Test-NonEmptyStringArray -Value $verification.scopeVerification.evidence) -or -not (Test-NonEmptyStringArray -Value $verification.scopeVerification.falsificationAttempts) -or [string]::IsNullOrWhiteSpace([string]$verification.scopeVerification.notes)) { throw 'scopeVerification lacks a supported verdict or independent evidence.' }
 
     $coverageByDimension = @{}
     foreach ($entry in @($review.reviewCoverage)) { $coverageByDimension[[string]$entry.dimension] = $entry }
@@ -352,7 +394,7 @@ if ($ArtifactName -eq 'review-verification.json') {
             throw "lifecycleVerification '$findingId' does not match the Reviewer lifecycle claim."
         }
     }
-    $requiresReviewRework = @($coverageVerification | Where-Object { [string]$_.verdict -eq 'rejected' }).Count -gt 0 -or @($lifecycleVerifications | Where-Object { [string]$_.verdict -eq 'rejected' }).Count -gt 0
+    $requiresReviewRework = [string]$verification.scopeVerification.verdict -eq 'rejected' -or @($coverageVerification | Where-Object { [string]$_.verdict -eq 'rejected' }).Count -gt 0 -or @($lifecycleVerifications | Where-Object { [string]$_.verdict -eq 'rejected' }).Count -gt 0
     $expectedStatus = if ($requiresReviewRework) { 'review-rework-required' } else { 'passed' }
     if ([string]$verification.verificationStatus -ne $expectedStatus) { throw "review-verification.json status must be '$expectedStatus' for its coverage and lifecycle verdicts." }
     return

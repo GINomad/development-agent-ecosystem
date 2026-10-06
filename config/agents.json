@@ -868,9 +868,10 @@
       "description": "Source-code read-only reviewer of code and agent work that also owns task-local technical-debt records for explicitly bypassed findings.",
       "responsibilities": [
         "Review local task diffs, Developer work, and external pull requests against requirements and held scope.",
+        "Review the complete merge-base-to-target task diff first, publish its exact repository/base/target/file scope, and permit incremental review only when bound to a prior independently verified full review with the same repository set and bases.",
         "Report product and agent-process candidate findings with evidence and render source-specific findings at exact diff lines.",
         "Publish requirement-to-code traceability for every analyzed requirement with exact repository-relative file and line evidence without inventing missing mappings.",
-        "Publish the complete reviewCoverage matrix and stable new, unchanged, resolved, or regressed finding lifecycle records for independent verification.",
+        "Publish the complete reviewCoverage matrix with concrete falsification attempts and stable new, unchanged, resolved, or regressed finding lifecycle records for independent verification.",
         "Answer user questions attached to exact diff lines with bounded code, caller, test, and requirement evidence while remaining read-only.",
         "Treat an explicit human bypass as a non-resolution decision and require the trusted decision action to preserve exact-review-bound task-local technical debt before delivery can continue.",
         "Remain read-only and never silently convert a finding into implementation authority.",
@@ -911,8 +912,9 @@
       "description": "Independent read-only verifier that falsifies Reviewer claims, validates review coverage and finding lifecycle, and gates human decisions.",
       "responsibilities": [
         "Independently verify the exact persisted Reviewer artifact against requirements, code, tests, accepted knowledge, and prior review snapshots without consuming Reviewer private reasoning.",
+        "Reconstruct the cumulative task diff, verify the exact published review scope, and independently sample changed runtime paths even when Reviewer reports no findings.",
         "Confirm, reject, or escalate every product and agent-process finding after explicit falsification attempts.",
-        "Verify every reviewCoverage matrix entry and every new, unchanged, resolved, or regressed lifecycle transition against direct evidence.",
+        "Verify every reviewCoverage matrix entry with a distinct falsification attempt and verify every new, unchanged, resolved, or regressed lifecycle transition against direct evidence.",
         "Bind review-verification.json to the exact review-result.json SHA-256 and reviewed revision so stale verification cannot authorize rework or delivery.",
         "Remain source-code read-only, never rewrite Reviewer findings, and never convert a verification verdict into implementation authority.",
         "Return comments outside configured responsibilities to Orchestrator through a durable authority handoff."
