@@ -43,7 +43,7 @@ function Get-FreePort {
 
 function New-ReviewArtifact {
     param([string] $Revision = 'reviewed-1', [string] $FindingId = 'REV-101')
-    $dimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
+    $dimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation','dependency-injection','data-access','type-layout','disposable-ownership')
     return [ordered]@{
         taskId = $taskId
         reviewedRevision = $Revision
