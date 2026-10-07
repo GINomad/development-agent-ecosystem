@@ -182,6 +182,15 @@ $verifiedReviewOne = New-Verification -Review $reviewOne
 Write-JsonFile -Path $verificationPath -Value $verifiedReviewOne
 & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 
+$invalidCoverageVerification = $verifiedReviewOne | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$invalidCoverageVerification.coverageVerification = @($invalidCoverageVerification.coverageVerification | Select-Object -First 10)
+Write-JsonFile -Path $verificationPath -Value $invalidCoverageVerification
+Assert-Throws -Pattern 'verify every reviewCoverage dimension exactly once' -Action {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
+}
+Write-JsonFile -Path $verificationPath -Value $verifiedReviewOne
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
+
 $reviewTwo = New-Review -Revision 'rev-2' -LifecycleStatus unchanged
 $reviewTwo.reviewScope = [ordered]@{ mode='incremental'; priorReviewArtifactSha256=[string]$snapshotOne.ReviewSha256; repositories=@([ordered]@{ repositoryId='synthetic'; baseRevision='base-rev'; targetRevision='rev-2'; changedFiles=@('src/example.ps1') }); notes='Synthetic exact-SHA-bound incremental review boundary.' }
 Write-JsonFile -Path $reviewPath -Value $reviewTwo
@@ -241,7 +250,7 @@ Assert-Throws -Pattern 'stale' -Action {
 }
 
 $invalidReview = $reviewFour | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-$invalidReview.reviewCoverage = @($invalidReview.reviewCoverage | Select-Object -First 13)
+$invalidReview.reviewCoverage = @($invalidReview.reviewCoverage | Select-Object -First 10)
 Write-JsonFile -Path $reviewPath -Value $invalidReview
 Assert-Throws -Pattern 'every configured review dimension exactly once' -Action {
     & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $reviewPath -TaskRoot $taskRoot
