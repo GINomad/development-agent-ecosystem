@@ -14,4 +14,4 @@ ParserError: Line |
 } | ConvertTo-Json -Compress
 
 Write-Output $failure
-Write-Output (([ordered]@{ type = 'turn.completed' } | ConvertTo-Json -Compress)
+Write-Output (([ordered]@{ type = 'turn.completed' } | ConvertTo-Json -Compress))
