@@ -12,8 +12,8 @@
     "scopeVerification": { "$ref": "#/$defs/scopeVerification" },
     "coverageVerification": {
       "type": "array",
-      "minItems": 10,
-      "maxItems": 10,
+      "minItems": 14,
+      "maxItems": 14,
       "items": { "$ref": "#/$defs/coverageVerification" }
     },
     "findingVerifications": {
