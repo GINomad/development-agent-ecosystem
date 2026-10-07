@@ -169,11 +169,7 @@ $sourceExclusions=@(
     [IO.Path]::GetFullPath((Join-Path $root '.test-output')),
     [IO.Path]::GetFullPath($OutputRoot)
 )|Select-Object -Unique
-$powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object {
-    if($_.Extension -notin @('.ps1','.psm1')){return $false}
-    $candidate=[IO.Path]::GetFullPath($_.FullName)
-    -not @($sourceExclusions|Where-Object{$candidate.StartsWith(($_.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)}).Count
-})
+$powerShellFiles = @(rg --files $root -g '*.ps1' -g '*.psm1' -g '!/.runtime/**' -g '!/.test-output/**' | ForEach-Object { Get-Item -LiteralPath $_ -ErrorAction Stop })
 $parseErrors = [Collections.Generic.List[object]]::new()
 foreach ($file in $powerShellFiles) {
     $tokens = $null
@@ -1062,7 +1058,7 @@ if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postP
 if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 16 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 4 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
 if ([int]$config.workflow.automaticContinuation.maxTransitionRepeats -lt ([int]$config.pipeline.postPush.maxRemediationCycles + 1)) { throw 'Automatic transition repeats must allow the initial delivery pass plus every configured pipeline remediation cycle.' }
 if (-not [bool]$config.workflow.orchestration.outcomeDrivenTransitions -or [string]$config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Successful role outcomes do not return through the canonical Orchestrator control plane.' }
-if (-not $config.pipeline.delivery.PSObject.Properties['autoPushAfterCleanReview'] -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
+if (-not $config.pipeline.delivery.PSObject.Properties['autoPushAfterCleanReview'] -or $config.pipeline.delivery.autoPushAfterCleanReview -isnot [bool] -or [bool]$config.pipeline.delivery.allowForce -or [bool]$config.pipeline.delivery.allowTags -or [int]$config.pipeline.pullRequests.pollIntervalMinutes -ne 120) { throw 'Guarded delivery or two-hour PR lifecycle polling configuration is invalid.' }
 if ([bool]$config.review.excludeSelfAuthored) { throw 'Review Monitor must include PRs authored by the configured reviewer as well as assigned PRs.' }
 $pipelineOwnership = $config.pipeline.ownership
 $pipelineOwnershipContract = @(
@@ -1076,9 +1072,13 @@ $pipelineOwnershipContract = @(
 ) -join ','
 if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,review_verifier,orchestrator,health_check,knowledge_keeper') { throw 'Pipeline ownership must explicitly preserve monitoring, remediation, independent review verification, exception, ecosystem recovery, and completion responsibilities.' }
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
-if (([bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and (@($excelPipeline.autoQueueDefinitionIds) -join ',') -ne '814,892') -or (-not [bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and @($excelPipeline.autoQueueDefinitionIds).Count -ne 0) -or (@($excelPipeline.skipOnMissingYamlDefinitionIds) -join ',') -ne '892' -or @($config.pipeline.repositories.autoQueueDefinitionIds) -contains 891) { throw 'Build queue policy must match explicit authorization; deployment 891 is forbidden.' }
+$excelQueueIds = @(if ($excelPipeline.PSObject.Properties['autoQueueDefinitionIds']) { @($excelPipeline.autoQueueDefinitionIds) } else { @() })
+$excelSkipIds = @(if ($excelPipeline.PSObject.Properties['skipOnMissingYamlDefinitionIds']) { @($excelPipeline.skipOnMissingYamlDefinitionIds) } else { @() })
+$allQueueIds = @($config.pipeline.repositories | ForEach-Object { if ($_.PSObject.Properties['autoQueueDefinitionIds']) { @($_.autoQueueDefinitionIds) } })
+if (([bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and ($excelQueueIds -join ',') -ne '814,892') -or (-not [bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and $excelQueueIds.Count -ne 0) -or ($excelSkipIds -join ',') -ne '892' -or $allQueueIds -contains 891) { throw 'Build queue policy must match explicit authorization; deployment 891 is forbidden.' }
 $delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
-if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or @($delfiPipeline.autoQueueDefinitionIds).Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
+$delfiQueueIds = @(if ($delfiPipeline.PSObject.Properties['autoQueueDefinitionIds']) { @($delfiPipeline.autoQueueDefinitionIds) } else { @() })
+if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or $delfiQueueIds.Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count); pipelineOwners=$pipelineOwnershipContract"
 
 $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
@@ -1341,6 +1341,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not configure the reviewed-branch delive
 $deliveryConfigPath = Join-Path $deliveryTestRoot 'agents.json'
 $deliveryConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $deliveryConfig.runtime.stateRoot = (Join-Path $deliveryTestRoot 'state')
+# This isolated fixture uses PrepareOnly and a synthetic invalid remote; enable its delivery path without changing the caller's external-write policy.
+$deliveryConfig.pipeline.delivery.autoPushAfterCleanReview = $true
 $deliveryRepositoryId = 'azure-planningspace-ps-excel-agent'
 $deliveryRepository = @($deliveryConfig.repositories | Where-Object id -eq $deliveryRepositoryId) | Select-Object -First 1
 $deliveryRepository.localWorkspace = $deliveryWorkspace
@@ -1826,7 +1828,7 @@ if (-not $workflowScript.Contains("foreach(`$tool in @('Bash','PowerShell')){`$c
 if (-not $workflowScript.Contains('$writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock') -or ([regex]::Matches($workflowScript, '(?m)^\s*& \$writeUtf8NoBomAtomic -Path')).Count -lt 6) { throw 'Workflow atomic writer must remain callable after child scripts re-import AgentEcosystem with -Force.' }
 Add-Check -Name 'ecosystem-product-workspace-isolation' -Detail 'Ecosystem-repair runs automatically switch to the ecosystem root, exclude product clones from writable directories, and retain a hard stop for copied launchers nested in product repositories'
 if (-not [bool]$config.health.automaticRecovery.allowEcosystemSourceChanges -or -not [bool]$config.health.automaticRecovery.preserveDirtyWorktreeChanges -or -not [bool]$config.health.automaticRecovery.commitVerifiedRepairs -or $healthRecoveryScript -notmatch 'health_recovery_commit' -or $healthRecoveryScript -notmatch 'git -C \$workspace commit') { throw 'Validated ecosystem source repairs are not preservation- and repair-commit capable through the trusted host.' }
-if (-not [bool]$config.health.automaticRecovery.pushVerifiedRepairs -or [string]$config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Verified Health repair delivery is not bound to the exact canonical ecosystem origin.' }
+if (-not $config.health.automaticRecovery.PSObject.Properties['pushVerifiedRepairs'] -or $config.health.automaticRecovery.pushVerifiedRepairs -isnot [bool] -or [string]$config.health.automaticRecovery.pushRemote -ne 'origin' -or [string]$config.health.automaticRecovery.pushRemoteUrl -ne 'https://github.com/GINomad/development-agent-ecosystem.git') { throw 'Verified Health repair delivery policy is not bound to the exact canonical ecosystem origin.' }
 if ($healthRecoveryScript -notmatch 'Publish-VerifiedHealthRepair' -or $healthRecoveryScript -notmatch 'remote get-url \$remote' -or $healthRecoveryScript -notmatch '\$pushRef = ''\{0\}:refs/heads/\{1\}''' -or $healthRecoveryScript -notmatch 'push --set-upstream \$remote \$pushRef' -or $healthRecoveryScript -notmatch 'ls-remote --heads \$remote' -or $healthRecoveryScript -notmatch 'merge-base --is-ancestor \$Commit \$remoteCommit' -or $healthRecoveryScript -notmatch 'deliveredCommit = \$remoteCommit' -or $healthRecoveryScript -notmatch 'remainingValidatedChanges' -or $healthRecoveryScript -notmatch '\$branch -in @\(''main'',''master''\)' -or $healthRecoveryScript -notmatch 'health_recovery_push') { throw 'Trusted-host Health delivery lacks exact remote, branch, validated-commit push, descendant containment, or activity gates.' }
 if ($healthRecoveryScript -match '(?i)git[^\r\n]*push[^\r\n]*(--force|\s-f\s|refs/tags/)') { throw 'Health repair delivery must never force-push or publish tags.' }
 $healthPushAuthorization = @($config.gates.externalWrites.standingAuthorizations | Where-Object { [string]$_.operation -eq 'git-push' -and [string]$_.policy -eq 'health.automaticRecovery.pushVerifiedRepairs' })
