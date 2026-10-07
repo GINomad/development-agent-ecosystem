@@ -34,7 +34,7 @@ foreach ($invalidDeliveryBranch in $invalidDeliveryBranches) {
 }
 Add-Check -Name 'human-readable-task-branches' -Detail 'Implementation tasks use features/<task-name>; bugs use bugfix/<bug-name>'
 
-$syntheticReviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
+$syntheticReviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation','dependency-injection','data-access','type-layout','disposable-ownership')
 
 function New-SyntheticReviewFinding {
     param(
@@ -1890,7 +1890,7 @@ $knowledgeSkill = Get-Content -LiteralPath (Join-Path $root 'plugins\development
 $globalStandardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw 'Configured global coding standards file is missing.' }
 $globalStandards = Get-Content -LiteralPath $globalStandardsPath -Raw -Encoding UTF8
-if ($knowledgeResponsibilities -notmatch 'every confirmed review comment about code organization' -or $knowledgeResponsibilities -notmatch 'business, domain, API, integration' -or $knowledgePrompt -notmatch 'every confirmed human review comment about code organization' -or $knowledgePrompt -notmatch 'Business rules, domain behavior, API contracts' -or $knowledgePrompt -notmatch 'always add the configured global coding standards file to `acceptedKnowledge`' -or $knowledgePrompt -notmatch 'configured versioned knowledge roots' -or $knowledgePrompt -notmatch 'bypassed, deferred, rejected, unresolved' -or $knowledgeSkill -notmatch 'global or technology-scoped standard' -or $knowledgeSkill -notmatch 'business, domain, API, integration' -or $developerPrompt -notmatch 'global coding standards to every repository' -or $reviewerPrompt -notmatch 'global coding standards in every repository' -or $workflowRunner -notmatch 'Global coding standards \(apply to every repository\)' -or $workflowRunner -notmatch 'GlobalStandardsPath') { throw 'Knowledge scope classification or global standards delivery is incomplete.' }
+if ($knowledgeResponsibilities -notmatch 'every confirmed review comment about code organization' -or $knowledgeResponsibilities -notmatch 'business, domain, API, integration' -or $knowledgePrompt -notmatch 'every confirmed human review comment about code organization' -or $knowledgePrompt -notmatch 'business rules, domain behavior, API contracts' -or $knowledgePrompt -notmatch 'always add the configured global coding standards file and mandatory apply-engineering-principles skill context' -or $knowledgePrompt -notmatch 'Requirements Analyst, Developer, Reviewer, and Review Verifier' -or $knowledgePrompt -notmatch 'configured versioned knowledge roots' -or $knowledgePrompt -notmatch 'bypassed, deferred, rejected, unresolved' -or $knowledgeSkill -notmatch 'global or technology-scoped standard' -or $knowledgeSkill -notmatch 'business, domain, API, integration' -or $developerPrompt -notmatch 'global coding standards to every repository' -or $reviewerPrompt -notmatch 'global coding standards in every repository' -or $workflowRunner -notmatch 'Global coding standards \(apply to every repository\)' -or $workflowRunner -notmatch 'GlobalStandardsPath') { throw 'Knowledge scope classification or global standards delivery is incomplete.' }
 if ($globalStandards -notmatch 'Use braces for every `if`' -or $globalStandards -notmatch '`public static`' -or $globalStandards -notmatch '`private static`' -or $globalStandards -notmatch 'f806355b73d3493fbcd171d51fa352ca' -or $globalStandards -notmatch 'a5bae0d26ac94b8e8f1984ce8b361d7c' -or $globalStandards -notmatch 'Business rules, domain behavior, API contracts') { throw 'Global review-derived style standards or their evidence are incomplete.' }
 Add-Check -Name 'review-derived-coding-standards' -Detail 'Every confirmed code-organization/style comment is promoted globally or by technology after implementation and clean review; business/domain/API behavior remains repository-scoped'
 
@@ -1942,6 +1942,28 @@ foreach ($file in $skillFiles) {
     $metadata = Get-Content -LiteralPath $openAiYaml -Raw -Encoding UTF8
     if ($metadata -notmatch '(?m)^interface:' -or $metadata -notmatch '(?m)^\s+display_name:' -or $metadata -notmatch '(?m)^\s+default_prompt:') { throw "Skill UI metadata is incomplete: $openAiYaml" }
 }
+
+$mandatoryEngineeringSkill = Join-Path $root 'plugins\development-agent-ecosystem\skills\apply-engineering-principles\SKILL.md'
+$mandatoryEngineeringText = Get-Content -LiteralPath $mandatoryEngineeringSkill -Raw -Encoding UTF8
+$mandatoryEngineeringPath = '${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md'
+foreach ($agentId in @('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','review_verifier')) {
+    $agent = @($config.agents | Where-Object { [string]$_.id -eq $agentId }) | Select-Object -First 1
+    if (-not $agent -or $mandatoryEngineeringPath -notin @($agent.skillPaths)) { throw "Mandatory engineering skill is not configured for '$agentId'." }
+}
+$mandatoryDimensions = @('dependency-injection','data-access','type-layout','disposable-ownership')
+$mandatorySkillSections = @('Dependency injection','Data access','Type layout','Stream and disposable ownership')
+$reviewResultSchemaText = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-result.schema.json') -Raw -Encoding UTF8
+$reviewVerificationSchemaText = Get-Content -LiteralPath (Join-Path $root 'config\schemas\review-verification.schema.json') -Raw -Encoding UTF8
+for ($index = 0; $index -lt $mandatoryDimensions.Count; $index++) {
+    $dimension = $mandatoryDimensions[$index]
+    if ($dimension -notin $syntheticReviewDimensions -or $mandatoryEngineeringText -notmatch [regex]::Escape($mandatorySkillSections[$index]) -or $reviewResultSchemaText -notmatch [regex]::Escape($dimension) -or $reviewVerificationSchemaText -notmatch [regex]::Escape($dimension)) { throw "Mandatory engineering review dimension '$dimension' is not wired through skill, synthetic validation, and both review schemas." }
+}
+$orchestratorPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\orchestrator.md') -Raw -Encoding UTF8
+$analystPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requirements-analyst.md') -Raw -Encoding UTF8
+$reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
+$verifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
+if ($orchestratorPrompt -notmatch 'not keyword-triggered' -or $analystPrompt -notmatch 'mandatory engineering checks' -or $developerPrompt -notmatch 'mandatory engineering checks' -or $reviewerPrompt -notmatch 'disposable-ownership' -or $verifierPrompt -notmatch 'unapproved exception' -or $knowledgePrompt -notmatch 'dependency-injection, data-access, type-layout, and disposable-ownership') { throw 'Mandatory engineering skill consumption is not enforced across routing, analysis, implementation, review, verification, and knowledge context.' }
+Add-Check -Name 'mandatory-engineering-skill-and-review-gates' -Detail 'Every new or resumed task routes mandatory DI, data-access, type-layout, and disposable-ownership evidence through analysis, implementation, review, and independent verification'
 Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 
 $setupPromptPath = Join-Path $root 'SETUP_WITH_LLM.md'

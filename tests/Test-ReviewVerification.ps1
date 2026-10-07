@@ -16,7 +16,7 @@ $testConfigPath = Join-Path $runRoot 'agents.json'
 $taskRoot = Join-Path $stateRoot "tasks\$taskId"
 $reviewPath = Join-Path $taskRoot 'review-result.json'
 $verificationPath = Join-Path $taskRoot 'review-verification.json'
-$dimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
+$dimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation','dependency-injection','data-access','type-layout','disposable-ownership')
 
 function Write-JsonFile {
     param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)] $Value)
@@ -241,7 +241,7 @@ Assert-Throws -Pattern 'stale' -Action {
 }
 
 $invalidReview = $reviewFour | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-$invalidReview.reviewCoverage = @($invalidReview.reviewCoverage | Select-Object -First 9)
+$invalidReview.reviewCoverage = @($invalidReview.reviewCoverage | Select-Object -First 13)
 Write-JsonFile -Path $reviewPath -Value $invalidReview
 Assert-Throws -Pattern 'every configured review dimension exactly once' -Action {
     & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $reviewPath -TaskRoot $taskRoot

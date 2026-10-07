@@ -28,7 +28,7 @@
   },
   "$defs": {
     "reviewDimension": {
-      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation"]
+      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation", "dependency-injection", "data-access", "type-layout", "disposable-ownership"]
     },
     "verificationEvidence": {
       "type": "array",

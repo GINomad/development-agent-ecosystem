@@ -727,7 +727,8 @@
         "${REPO_ROOT}/prompts/roles/orchestrator.md"
       ],
       "skillPaths": [
-        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md"
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/coordinate-delivery/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md"
       ],
       "handoffs": [
         "knowledge_keeper",
@@ -809,7 +810,8 @@
         "${REPO_ROOT}/prompts/roles/requirements-analyst.md"
       ],
       "skillPaths": [
-        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md"
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md",
+        "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/apply-engineering-principles/SKILL.md"
       ],
       "handoffs": [
         "orchestrator",

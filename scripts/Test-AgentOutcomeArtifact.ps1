@@ -62,7 +62,7 @@ function Test-NonEmptyStringArray {
     return $items.Count -gt 0 -and @($items | Where-Object { [string]::IsNullOrWhiteSpace([string]$_) }).Count -eq 0
 }
 
-$reviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation')
+$reviewDimensions = @('requirements','correctness','security','regression','testing','maintainability','performance','concurrency','configuration-deployment','documentation','dependency-injection','data-access','type-layout','disposable-ownership')
 
 function Assert-DocumentationUpdates {
     param(

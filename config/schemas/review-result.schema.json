@@ -16,8 +16,8 @@
     },
     "reviewCoverage": {
       "type": "array",
-      "minItems": 10,
-      "maxItems": 10,
+      "minItems": 14,
+      "maxItems": 14,
       "items": { "$ref": "#/$defs/reviewCoverageEntry" }
     },
     "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
@@ -28,7 +28,7 @@
   },
   "$defs": {
     "reviewDimension": {
-      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation"]
+      "enum": ["requirements", "correctness", "security", "regression", "testing", "maintainability", "performance", "concurrency", "configuration-deployment", "documentation", "dependency-injection", "data-access", "type-layout", "disposable-ownership"]
     },
     "reviewScope": {
       "type": "object",
