@@ -54,7 +54,7 @@ $copilot=Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CopilotRole.p
 $installer=Get-Content -LiteralPath (Join-Path $root 'scripts\Install-AgentEcosystem.ps1') -Raw -Encoding UTF8
 $dashboard=Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardHost=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
-foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-','AutomaticLimitFallback','provider_limit_fallback')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
+foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-','AutomaticLimitFallback','provider_limit_fallback','individual spend limit','spend(?:ing)? limit')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
 foreach($token in @('$codexSelected','if($codexSelected)','-not $SkipPlugin -and $codexSelected')){if($installer -notmatch [regex]::Escape($token)){throw "Installer does not support a no-Codex role selection ('$token')."}}
 foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgentProvider.ps1','/provider')){if(($dashboard+$dashboardHost) -notmatch [regex]::Escape($token)){throw "Dashboard provider switching is missing '$token'."}}
 
