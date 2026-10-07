@@ -58,7 +58,7 @@ function Get-FailureFingerprint {
     if ([string]::IsNullOrWhiteSpace($detail)) { return $null }
     $hasPowerShellParserDiagnostic = $detail -match '(?m)^\s*ParserError\s*:\s*(?:[^\r\n]*\r?\n)?\s*(?:Line\s*\||\d+\s*\|)'
     $hasPowerShellReadonlyPidDiagnostic = $detail -match '(?m)^\s*(?:ParserError|WriteError)\s*:\s*(?:[^\r\n]*\r?\n){0,4}[^\r\n]*\bCannot overwrite variable PID\b'
-    $kind = if ($hasPowerShellParserDiagnostic) { 'command-parse-failure' } else { 'execution-failure' }
+    $kind = 'execution-failure'
     $canonical = if ($detail -match 'CreateProcessWithLogonW failed:\s*1260') { 'windows-sandbox-create-process-1260' } elseif ($hasPowerShellReadonlyPidDiagnostic) { 'powershell-readonly-pid' } else { (($detail -replace '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', '<timestamp>') -replace '\s+', ' ').Trim() }
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
@@ -129,9 +129,9 @@ try {
             if ($failure) {
                 if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
                 $lastFailure = $failure
-                if ($failure.Kind -in @('command-parse-failure','provider-failure') -or $identicalFailureCount -ge $MaxIdenticalFailures) {
+                if ($failure.Kind -eq 'provider-failure' -or $identicalFailureCount -ge $MaxIdenticalFailures) {
                     $guardTriggered = $true
-                    $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } elseif ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
+                    $guardReason = if ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
                     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
                     break
                 }
@@ -163,9 +163,9 @@ finally {
         if ($failure) {
             if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
             $lastFailure = $failure
-            if ($failure.Kind -in @('command-parse-failure','provider-failure') -or $identicalFailureCount -ge $MaxIdenticalFailures) {
+            if ($failure.Kind -eq 'provider-failure' -or $identicalFailureCount -ge $MaxIdenticalFailures) {
                 $guardTriggered = $true
-                $guardReason = if ($failure.Kind -eq 'command-parse-failure') { 'Non-retryable command parse failure: {0}' -f $failure.Canonical } elseif ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
+                $guardReason = if ($failure.Kind -eq 'provider-failure') { 'Provider failure: {0}' -f $failure.Canonical } else { 'Execution retry limit reached after {0} identical failures: {1}' -f $identicalFailureCount,$failure.Canonical }
             }
         }
     }

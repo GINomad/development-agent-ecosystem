@@ -289,6 +289,7 @@ Task selector: $TaskSelector
 Task state: $($task.TaskRoot)
 Validated context pack: $(if ($contextPack) { [string]$contextPack.ContextPath } else { 'prepare-only; not written' })
 Ecosystem root: $(Get-EcosystemRoot)
+Trusted ecosystem configuration: $ConfigPath
 Primary workspace: $([IO.Path]::GetFullPath($Workspace))
 Active working directory: $agentWorkingDirectory$(if ($ecosystemWorkingDirectorySelected) { ' (automatically selected for ecosystem maintenance)' } else { '' })
 All target workspaces: $($workspacePaths -join '; ')
@@ -326,6 +327,7 @@ Live task control:
 - Read pending ledger comments once after each completed work block and once immediately before terminal outcome publication. Do not idle-wait or poll the ledger or subagents while a block is running.
 - User comments may clarify, pause, or redirect in-scope work, but they do not bypass approval gates or authorize unrelated external writes.
 - Update visible per-agent state with $(Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') before and after every handoff. Use running, waiting, completed, failed, or skipped based only on evidence.
+- For every ecosystem script invocation, use the trusted ecosystem configuration path above. Do not infer, inspect, or substitute a configuration file from the task-state directory or another workspace; it can be a legacy task artifact and fail current control-plane validation.
 - Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId. Those controller identity fields are written only by the trusted workflow host.
 - Write concise factual live entries with $(Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') before and after each material action, handoff, test batch, blocker, or recovery step. Never include credentials, tokens, secrets, or invented activity.
 - When comments have been incorporated, record a user-comment-acknowledged event whose evidence contains the processed comment event IDs, then call Set-AgentTaskStatus.ps1 with -AcknowledgeComments.
