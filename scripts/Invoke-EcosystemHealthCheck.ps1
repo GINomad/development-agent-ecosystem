@@ -57,7 +57,8 @@ try {
     }
 
     try {
-        $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -OutputRoot $ValidationOutputRoot
+        $validation = @(& (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome -OutputRoot $ValidationOutputRoot)
+        if ($validation.Count -ne 1 -or -not [bool]$validation[0].Passed) { throw 'Complete ecosystem validation did not return exactly one Passed=true result.' }
         Add-HealthCheck -Id 'ecosystem-validation' -Status passed -Summary "Complete ecosystem validation passed with $(@($validation.Checks).Count) checks."
     }
     catch {

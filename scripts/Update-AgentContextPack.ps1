@@ -100,13 +100,17 @@ if (Test-Path -LiteralPath $requirementsAnalysisPath -PathType Leaf) {
     foreach ($requirement in @($requirementsAnalysis.requirements | Where-Object { [string]$_.status -eq 'held' })) {
         $id = [string]$requirement.id
         $text = [string]$requirement.text
-        if ($id) { $analysisHeldScope.Add((if ($text) { "${id}: $text" } else { $id })) }
+        if ($id) {
+            $heldRequirement = if ($text) { "${id}: $text" } else { $id }
+            $analysisHeldScope.Add($heldRequirement)
+        }
     }
     foreach ($planItem in @($requirementsAnalysis.plan | Where-Object { [string]$_.status -eq 'held' })) {
         $id = [string]$planItem.id
         if ($id) {
             $requirementIds = @($planItem.requirementIds | ForEach-Object { [string]$_ } | Where-Object { $_ })
-            $analysisHeldScope.Add((if ($requirementIds.Count) { "$id (requirements: $($requirementIds -join ', '))" } else { $id }))
+            $heldPlan = if ($requirementIds.Count) { "$id (requirements: $($requirementIds -join ', '))" } else { $id }
+            $analysisHeldScope.Add($heldPlan)
         }
     }
     foreach ($question in @($requirementsAnalysis.questions | Where-Object { [string]$_.status -eq 'open' })) {

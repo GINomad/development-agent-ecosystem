@@ -28,6 +28,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$continuationInProgress = $false
 if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 if ($TargetAgentId -and -not @($config.agents | Where-Object { [string]$_.id -eq $TargetAgentId }).Count) { throw "Unknown target agent '$TargetAgentId'." }
 $executionMode = if ($ElevatedApproved) { 'elevated-approved' } else { 'sandboxed' }
@@ -520,7 +521,7 @@ try {
         try{
             $agentDefinition=@($config.agents|Where-Object{[string]$_.id -eq $executedAgentId}|Select-Object -First 1)
             if(-not $agentDefinition){throw 'Agent definition is unavailable for artifact validation.'}
-            foreach($artifactName in @($agentDefinition.requiredArtifacts)){$artifactPath=Join-Path $task.TaskRoot ([string]$artifactName);if(-not(Test-Path -LiteralPath $artifactPath -PathType Leaf)){throw "Required artifact '$artifactName' is missing."};if([IO.Path]::GetExtension([string]$artifactName) -eq '.json'){& (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId $executedAgentId -ArtifactName ([string]$artifactName) -Path $artifactPath -TaskRoot $task.TaskRoot|Out-Null}}
+            foreach($artifactName in @($agentDefinition.requiredArtifacts)){$artifactPath=Join-Path $task.TaskRoot ([string]$artifactName);if(-not(Test-Path -LiteralPath $artifactPath -PathType Leaf)){throw "Required artifact '$artifactName' is missing."};if([IO.Path]::GetExtension([string]$artifactName) -eq '.json'){& (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId $executedAgentId -ArtifactName ([string]$artifactName) -Path $artifactPath -TaskRoot $task.TaskRoot -ConfigPath $ConfigPath -CodexHome $CodexHome|Out-Null}}
             $qualityEvidence=[Nullable[int]]1
         }catch{$qualityEvidence=[Nullable[int]]0;$mcpTerminalOutcome=[pscustomobject]@{Succeeded=$false;MetricStatus='failed';QualityProxy=0;Reason=('artifact-validation: '+$_.Exception.Message)}}
     }
@@ -678,7 +679,9 @@ try {
         if (-not $manualClosure -and [string]$chainTask.agentStatuses.$executedAgentId.status -eq 'completed') {
             $continuationStartedAtUtc=[DateTime]::UtcNow
             try {
+                $continuationInProgress = $true
                 & (Join-Path $PSScriptRoot 'Invoke-OrchestratorContinuation.ps1') -TaskId $TaskId -CompletedAgentId $executedAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ElevatedApproved:$ElevatedApproved -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                $continuationInProgress = $false
                 & (Join-Path $PSScriptRoot 'Write-WorkflowContinuationMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AttemptId $roleAttemptId -RunId ([string]$workspaceLease.RunId) -AgentId $executedAgentId -Status succeeded -DurationMs ([int]([DateTime]::UtcNow-$continuationStartedAtUtc).TotalMilliseconds) | Out-Null
             }
             catch {
@@ -692,7 +695,7 @@ catch {
     if ((Get-Variable -Name mcpExecution -ErrorAction SilentlyContinue) -and -not $mcpCanaryCompletionRecorded) { Complete-CurrentMcpCanary $false }
     Write-CurrentMcpRoleMetric 'failed' 0
     $failureMessage = $_.Exception.Message
-    $failureAgentId = if ((Get-Variable -Name executedAgentId -ErrorAction SilentlyContinue) -and $executedAgentId) { [string]$executedAgentId } elseif ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
+    $failureAgentId = if ($continuationInProgress) { 'orchestrator' } elseif ((Get-Variable -Name executedAgentId -ErrorAction SilentlyContinue) -and $executedAgentId) { [string]$executedAgentId } elseif ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
     $isProviderLimit = $failureMessage -match '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit'
     if ($isProviderLimit) {
         $alternativeProviders=@($config.providerRouting.providers.PSObject.Properties.Name|Where-Object{$_ -ne [string]$providerRoute.provider})
@@ -729,12 +732,16 @@ catch {
         foreach($serverName in $recoveryServers){if(-not @($mcpJsonlFailedServers).Count){& (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature $mcpSignature -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null;$diagnosticPath=New-McpFailureDiagnostic $serverName $failureMessage;& (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature $mcpSignature -TaskId $TaskId -AgentId $failureAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null};& (Join-Path $PSScriptRoot 'Write-McpMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AgentId $failureAgentId -Server $serverName -Status failed -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -AttemptId $roleAttemptId -ErrorClass 'transport-or-protocol' -FallbackUsed | Out-Null}
         if ($TargetAgentId) { return & $PSCommandPath -Mode $Mode -TaskId $TaskId -TaskSelector $TaskSelector -RepositoryIds $RepositoryIds -Resume -TargetAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -HealthRecoveryRetry -SkipChainContinuation -ConfigPath $ConfigPath -CodexHome $CodexHome }
     }
-    & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $failureEvidence = @($codexLogPath, $finalResponsePath, $guardArtifactPath, (Join-Path $task.TaskRoot ('provider-limit-'+$failureAgentId+'.json'))) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
     $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and [bool]$guardResult.guardTriggered) { [string]$guardResult.failureDetail } elseif (Test-Path -LiteralPath $codexLogPath -PathType Leaf) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureMessage }
     $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
     $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -ExecutionAgentId $failureAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
+    if ([bool]$failureHandoff.Stale -and -not $continuationInProgress) {
+        & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level warning -Stage stale_failure_ignored -Summary "Ignored a stale failure superseded by a completed '$failureAgentId' outcome." -Evidence @([string]$failureHandoff.FailurePath, "superseded-by-result:$([string]$failureHandoff.SupersedingResultEventId)") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        return [pscustomobject]@{ Status='stale-superseded'; TaskId=$TaskId; AgentId=$failureAgentId; FailurePath=[string]$failureHandoff.FailurePath; SupersedingResultEventId=[string]$failureHandoff.SupersedingResultEventId }
+    }
+    & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $hostCompatibilityReady = $false
     $automaticTargetedResume = $null
     if (-not $HealthRecoveryRetry -and [bool]$config.health.enabled -and [bool]$config.health.checkOnWorkflowFailure) {

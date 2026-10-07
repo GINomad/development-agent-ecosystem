@@ -356,7 +356,8 @@ try {
     $recoveryPush = $null
 
     if ([string]$recovery.status -eq 'repaired') {
-        $validation = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+        $validation = @(& (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome)
+        if ($validation.Count -ne 1 -or -not [bool]$validation[0].Passed) { throw 'Complete ecosystem validation did not return exactly one Passed=true result.' }
         if ([bool]$config.health.automaticRecovery.commitVerifiedRepairs) {
             $postValidationChanges = @(git -C $workspace status --porcelain)
             if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the validated ecosystem repair before commit.' }

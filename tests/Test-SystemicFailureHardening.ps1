@@ -59,6 +59,19 @@ $suppressedFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskI
 $suppressedState = Get-Content -LiteralPath (Join-Path $suppressedTask.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-True ([bool]$suppressedFailure.Stale -and [string]$suppressedFailure.Failure.disposition -eq 'stale-superseded' -and [string]$suppressedState.agentStatuses.developer.status -ne 'failed') 'The failure writer overwrote a newer exact-bound terminal success.'
 
+$continuationFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $suppressedTaskId -AgentId orchestrator -ExecutionAgentId orchestrator -ExecutionRunId $staleRunId -Stage continuation -Summary 'Synthetic Reviewer context generation failed after Developer completion.' -ConfigPath $fixtureConfigPath
+Assert-True (-not [bool]$continuationFailure.Stale -and [string]$continuationFailure.Failure.disposition -eq 'active') 'A post-result continuation failure was incorrectly suppressed as a stale Developer failure.'
+
+$orchestratorPass = [ordered]@{ eventId=[guid]::NewGuid().ToString('N'); taskId=$suppressedTaskId; timestampUtc=[DateTime]::UtcNow.ToString('o'); actor='orchestrator'; type='agent-result'; summary='Orchestrator completed the synthetic routing step.'; artifact=$null; evidence=@("execution-run:$staleRunId",'agent:orchestrator'); targetAgentId=$null }
+[IO.File]::AppendAllText($suppressedLedgerPath,(($orchestratorPass | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
+$sameRunContinuationFailure = & (Join-Path $root 'scripts\Write-AgentFailure.ps1') -TaskId $suppressedTaskId -AgentId orchestrator -ExecutionAgentId orchestrator -ExecutionRunId $staleRunId -Stage continuation -Summary 'Synthetic downstream Reviewer context generation failed after completed Orchestrator routing.' -ConfigPath $fixtureConfigPath
+Assert-True ([bool]$sameRunContinuationFailure.Stale -and [string]$sameRunContinuationFailure.Failure.disposition -eq 'stale-superseded') 'The fixture did not reproduce a same-run completed-Orchestrator continuation failure.'
+
+$workflowSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
+$staleFailureGuard = [regex]::Match($workflowSource, '(?s)\$failureHandoff\s*=\s*& \(Join-Path \$PSScriptRoot ''Write-AgentFailure\.ps1''\).*?if \(\[bool\]\$failureHandoff\.Stale\s+-and\s+-not\s+\$continuationInProgress\).*?return \[pscustomobject\]@\{ Status=''stale-superseded''.*?& \$statusScript -TaskId \$TaskId -AgentId \$failureAgentId -AgentStatus failed')
+$continuationAttribution = [regex]::Match($workflowSource, '(?s)\$continuationInProgress\s*=\s*\$false.*?\$continuationInProgress\s*=\s*\$true.*?Invoke-OrchestratorContinuation.*?\$failureAgentId\s*=\s*if \(\$continuationInProgress\) \{ ''orchestrator'' \}')
+Assert-True ($staleFailureGuard.Success -and $continuationAttribution.Success) 'Workflow must suppress only stale terminal failures and attribute post-result continuation failures to the control plane.'
+
 $safeForeachPipeline = @'
 $results = foreach ($path in @('first', 'second')) {
     [pscustomobject]@{ Path = $path }
@@ -110,4 +123,4 @@ New-Item -ItemType Directory -Path $marked,$unmarked -Force | Out-Null
 $removed = @(& (Join-Path $root 'scripts\Remove-StaleTestOutput.ps1') -OutputRoot $retentionRoot -RetentionDays 14)
 Assert-True ($removed.Count -eq 1 -and -not (Test-Path -LiteralPath $marked) -and (Test-Path -LiteralPath $unmarked)) 'Retention did not remove only marked stale output.'
 
-[pscustomobject]@{ Status='passed'; Checks=@('typed review inspection','failure correlation','stale exact-bound terminal reconciliation','safe foreach collection formatting','dispatch contract','safe test retention') }
+[pscustomobject]@{ Status='passed'; Checks=@('typed review inspection','failure correlation','stale exact-bound terminal reconciliation','stale workflow failure suppression','active continuation failure attribution','safe foreach collection formatting','dispatch contract','safe test retention') }
