@@ -70,7 +70,9 @@ if($codexSelected){
 }
 $validationParameters=@{ConfigPath=$ConfigPath;CodexHome=$CodexHome}
 if($ValidationOutputRoot){$validationParameters.OutputRoot=$ValidationOutputRoot}
-$tests = & (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') @validationParameters
+$tests = @(& (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') @validationParameters)
+if ($tests.Count -ne 1 -or -not [bool]$tests[0].Passed) { throw 'Complete ecosystem validation did not return exactly one Passed=true result.' }
+$tests = $tests[0]
 
 $pluginResult = $null
 if (-not $SkipPlugin -and $codexSelected) {

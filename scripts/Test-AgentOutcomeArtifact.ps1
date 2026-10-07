@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $AgentId,
     [Parameter(Mandatory)][string] $ArtifactName,
     [Parameter(Mandatory)][string] $Path,
-    [Parameter(Mandatory)][string] $TaskRoot
+    [Parameter(Mandatory)][string] $TaskRoot,
+    [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
+    [string] $CodexHome
 )
 
 Set-StrictMode -Version Latest

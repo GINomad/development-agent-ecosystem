@@ -935,10 +935,12 @@ $resumeScopeConfig.runtime.stateRoot = Join-Path $resumeScopeRoot 'state'
 $resumeScopeConfig.workflow.workspaceScheduling.coordinatorStatePath = Join-Path $resumeScopeRoot 'state\workspace-coordinator.json'
 $resumeScopeConfig.workflow.workspaceScheduling.workspaceRoot = Join-Path $resumeScopeRoot 'state\workspaces'
 $resumeScopeConfig.workflow.workspaceScheduling.maxActiveTasks = 4
+$resumeScopeConfig.runtime.defaultBaseBranch = $integrationBaseBranch
 foreach ($resumeScopeRepositoryId in @('planning-space-excel-variable-poc','azure-planningspace-ps-excel-agent','azure-planningspace-ps-bicep')) {
     $resumeScopeRepository = @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -eq $resumeScopeRepositoryId }) | Select-Object -First 1
     $resumeScopeRepository.url = $schedulerRemote
     $resumeScopeRepository.localWorkspace = $schedulerSource
+    $resumeScopeRepository | Add-Member -NotePropertyName baseBranch -NotePropertyValue $integrationBaseBranch -Force
 }
 $resumeScopeConfig.repositories = @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -eq 'planning-space-excel-variable-poc' }) + @($resumeScopeConfig.repositories | Where-Object { [string]$_.id -ne 'planning-space-excel-variable-poc' })
 New-Item -ItemType Directory -Path $resumeScopeRoot -Force | Out-Null
@@ -1695,18 +1697,18 @@ $validImplementation = [ordered]@{
 }
 $implementationPath = Join-Path $outcomeTask.TaskRoot 'implementation-result.json'
 Write-Utf8NoBom -Path $implementationPath -Content (($validImplementation | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
-& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot -ConfigPath $outcomeConfigPath
 $contradictoryCount = $validImplementation | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $contradictoryCount.tests[0].result = 'passed 6/6'
 Write-Utf8NoBom -Path $implementationPath -Content (($contradictoryCount | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $countRejected = $false
-try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot }
+try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot -ConfigPath $outcomeConfigPath }
 catch { $countRejected = $_.Exception.Message -match 'contradictory result/evidence counts' }
 $contradictoryBranch = $validImplementation | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $contradictoryBranch.commitState = "clean worktree; branch is $([int]$liveParts[1] + 1) local commits ahead"
 Write-Utf8NoBom -Path $implementationPath -Content (($contradictoryBranch | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 $branchRejected = $false
-try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot }
+try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId 'synthetic-outcome-validation' -AgentId developer -ArtifactName 'implementation-result.json' -Path $implementationPath -TaskRoot $outcomeTask.TaskRoot -ConfigPath $outcomeConfigPath }
 catch { $branchRejected = $_.Exception.Message -match 'contradictory branch-divergence evidence' }
 if (-not $countRejected -or -not $branchRejected) { throw 'Developer outcome validation accepted contradictory Pester-count or branch-divergence fields.' }
 Add-Check -Name 'developer-outcome-final-command-evidence' -Detail 'Valid final-command evidence passes; contradictory Pester counts and branch divergence are rejected deterministically'
@@ -1878,6 +1880,7 @@ foreach ($healthScript in @('Invoke-EcosystemHealthCheck.ps1','Write-AgentFailur
 }
 $healthCheckScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 if ($healthCheckScript -notmatch 'ValidationOutputRoot' -or $healthCheckScript -notmatch "GetTempPath\(\).+?'dae'.+?'health-validation-'" -or $healthCheckScript -notmatch 'NewGuid' -or $healthCheckScript -notmatch '-OutputRoot \$ValidationOutputRoot') { throw 'Health Check validation output must use a short unique temporary root to remain compatible with Windows path limits and repeated runs.' }
+if ($healthCheckScript -notmatch 'validation\.Count\s*-ne\s*1' -or $healthCheckScript -notmatch 'validation\[0\]\.Passed' -or $healthRecoveryScript -notmatch 'validation\.Count\s*-ne\s*1' -or $healthRecoveryScript -notmatch 'validation\[0\]\.Passed') { throw 'Trusted Health validation must reject a missing or non-passing Test-AgentEcosystem result.' }
 Add-Check -Name 'health-recovery-contract' -Detail "automatic=$($config.health.automaticRecovery.enabled); ecosystemWrites=$($config.health.automaticRecovery.allowEcosystemSourceChanges); preservationCommit=$($config.health.automaticRecovery.preserveDirtyWorktreeChanges); repairCommit=$($config.health.automaticRecovery.commitVerifiedRepairs); exactOriginPush=$($config.health.automaticRecovery.pushVerifiedRepairs); attempts=$($config.health.automaticRecovery.maxAttemptsPerFailureSignature); targetedAttempts=$($targetedResumeConfig.maxAttemptsPerFailureSignature); failedAgentOnly=true; elevated=standing-default; productWrites=false; modelExternalWrites=false"
 
 $knowledgeAgent = @($config.agents | Where-Object id -eq 'knowledge_keeper') | Select-Object -First 1
