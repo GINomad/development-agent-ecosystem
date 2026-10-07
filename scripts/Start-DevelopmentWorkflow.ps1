@@ -502,7 +502,7 @@ try {
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     $providerFailureDetail = (@([string]$guardResult.failureDetail,[string]$guardResult.reason) | Where-Object { $_ }) -join ' '
-    if ($providerFailureDetail -match '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit|individual spend limit|spend(?:ing)? limit') { throw $providerFailureDetail }
+    if (& (Join-Path $PSScriptRoot 'Test-ProviderLimitDiagnostic.ps1') -Diagnostic $providerFailureDetail) { throw $providerFailureDetail }
     if ($codexExitCode -ne 0) { throw "$($providerRoute.provider) exited with code $codexExitCode. See $codexLogPath" }
     # Codex can return exit 0 while its JSONL transcript contains a rejected MCP tool call.
     # Treat that as a transport failure before accepting the agent's terminal artifact.
@@ -698,7 +698,7 @@ catch {
     Write-CurrentMcpRoleMetric 'failed' 0
     $failureMessage = $_.Exception.Message
     $failureAgentId = if ($continuationInProgress) { 'orchestrator' } elseif ((Get-Variable -Name executedAgentId -ErrorAction SilentlyContinue) -and $executedAgentId) { [string]$executedAgentId } elseif ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
-    $isProviderLimit = $failureMessage -match '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit|individual spend limit|spend(?:ing)? limit'
+    $isProviderLimit = [bool](& (Join-Path $PSScriptRoot 'Test-ProviderLimitDiagnostic.ps1') -Diagnostic $failureMessage)
     if ($isProviderLimit) {
         $alternativeProviders=@($config.providerRouting.providers.PSObject.Properties.Name|Where-Object{$_ -ne [string]$providerRoute.provider})
         $limitFallbackProvider=[string]$config.providerRouting.limitFallback.provider

@@ -56,10 +56,16 @@ $dashboard=Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -E
 $dashboardHost=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $healthRecovery=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 foreach($token in @('configured providerRouting.limitFallback','status=repaired with requiresUserInput=false','do not request a provider administrator')){if($healthRecovery -notmatch [regex]::Escape($token)){throw "Health recovery prompt is missing configured provider-limit fallback precedence: '$token'."}}
-foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-','AutomaticLimitFallback','provider_limit_fallback','individual spend limit','spend(?:ing)? limit')){if(($workflow+$copilot) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
+$providerLimitClassifierSource=Get-Content -LiteralPath (Join-Path $root 'scripts\Test-ProviderLimitDiagnostic.ps1') -Raw -Encoding UTF8
+foreach($token in @('Get-CodexMcpOverrides.ps1','additional-mcp-config','--mcp-config','--enable-mcp-server=','mcp get','McpServers','provider-limit-','AutomaticLimitFallback','provider_limit_fallback','individual spend limit','spend(?:ing)? limit')){if(($workflow+$copilot+$providerLimitClassifierSource) -notmatch [regex]::Escape($token)){throw "Provider runtime is missing '$token'."}}
 foreach($token in @('$codexSelected','if($codexSelected)','-not $SkipPlugin -and $codexSelected')){if($installer -notmatch [regex]::Escape($token)){throw "Installer does not support a no-Codex role selection ('$token')."}}
 foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgentProvider.ps1','/provider')){if(($dashboard+$dashboardHost) -notmatch [regex]::Escape($token)){throw "Dashboard provider switching is missing '$token'."}}
 
+$providerLimitClassifier=Join-Path $root 'scripts\Test-ProviderLimitDiagnostic.ps1'
+foreach($token in @('Test-ProviderLimitDiagnostic.ps1','individual spend limit','execution retry limit reached')){if(($workflow+$providerLimitClassifierSource) -notmatch [regex]::Escape($token)){throw "Provider-limit classifier integration is missing '$token'."}}
+if([bool](& $providerLimitClassifier -Diagnostic 'Execution retry limit reached after 3 identical failures: Get-Help -Full -LiteralPath is invalid.')){throw 'Execution retry exhaustion was misclassified as a provider capacity limit.'}
+if(-not [bool](& $providerLimitClassifier -Diagnostic 'Provider rate limit reached.')){throw 'Provider rate-limit diagnostic was not classified for configured fallback.'}
+if(-not [bool](& $providerLimitClassifier -Diagnostic 'Individual spend limit reached.')){throw 'Provider spend-limit diagnostic was not classified for configured fallback.'}
 $emptyMcpSession=& (Join-Path $root 'scripts\New-McpSession.ps1') -TaskId $taskId -AgentId reviewer -RunId 'run-provider-test' -LeaseId 'lease-provider-test' -TaskRoot $taskRoot -Workspaces @($root) -AllowedTools @() -Config $config -AttemptId 'attempt-provider-test'
 if(@($emptyMcpSession.Session.allowedTools).Count){throw 'An external-only MCP policy was repopulated with local ecosystem-read tools.'}
 
