@@ -88,10 +88,36 @@ foreach ($nameValue in @($ArtifactNames | Select-Object -Unique)) {
 }
 
 $taskView = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
-$openQuestions = @($taskView.Tasks[0].openQuestions | ForEach-Object {
+$ledgerOpenQuestions = @($taskView.Tasks[0].openQuestions | ForEach-Object {
     if ($_.PSObject.Properties['question']) { [string]$_.question } elseif ($_.PSObject.Properties['summary']) { [string]$_.summary }
 } | Where-Object { $_ })
-$heldScope = if ($existing -and $existing.PSObject.Properties['heldScope']) { @($existing.heldScope | ForEach-Object { [string]$_ }) } else { @() }
+$analysisOpenQuestions = [Collections.Generic.List[string]]::new()
+$analysisHeldScope = [Collections.Generic.List[string]]::new()
+$requirementsAnalysisPath = Join-Path $taskRoot 'requirements-analysis.json'
+if (Test-Path -LiteralPath $requirementsAnalysisPath -PathType Leaf) {
+    try { $requirementsAnalysis = Get-Content -LiteralPath $requirementsAnalysisPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw "Requirements analysis context source is not valid JSON: $($_.Exception.Message)" }
+    foreach ($requirement in @($requirementsAnalysis.requirements | Where-Object { [string]$_.status -eq 'held' })) {
+        $id = [string]$requirement.id
+        $text = [string]$requirement.text
+        if ($id) { $analysisHeldScope.Add((if ($text) { "${id}: $text" } else { $id })) }
+    }
+    foreach ($planItem in @($requirementsAnalysis.plan | Where-Object { [string]$_.status -eq 'held' })) {
+        $id = [string]$planItem.id
+        if ($id) {
+            $requirementIds = @($planItem.requirementIds | ForEach-Object { [string]$_ } | Where-Object { $_ })
+            $analysisHeldScope.Add((if ($requirementIds.Count) { "$id (requirements: $($requirementIds -join ', '))" } else { $id }))
+        }
+    }
+    foreach ($question in @($requirementsAnalysis.questions | Where-Object { [string]$_.status -eq 'open' })) {
+        $id = [string]$question.id
+        $text = [string]$question.question
+        if ($id -and $text) { $analysisOpenQuestions.Add("${id}: $text") }
+    }
+}
+$openQuestions = @($ledgerOpenQuestions + @($analysisOpenQuestions) | Select-Object -Unique)
+$existingHeldScope = if ($existing -and $existing.PSObject.Properties['heldScope']) { @($existing.heldScope | ForEach-Object { [string]$_ }) } else { @() }
+$heldScope = @($existingHeldScope + @($analysisHeldScope) | Select-Object -Unique)
 $detectedStack = if ($existing -and $existing.PSObject.Properties['engineeringGuidance']) { @($existing.engineeringGuidance.detectedStack | ForEach-Object { [string]$_ }) } else { @() }
 $acceptedKnowledge = if ($existing -and $existing.PSObject.Properties['acceptedKnowledge']) { @($existing.acceptedKnowledge) } else { @() }
 $preservedSources = if ($existing -and $existing.PSObject.Properties['sources']) { @($existing.sources | Where-Object { [string]$_.kind -eq 'knowledge' }) } else { @() }
@@ -146,6 +172,12 @@ if (-not $validated.PSObject.Properties['artifactSummaries'] -or -not $validated
 foreach ($expected in $artifactSummaries) {
     $actual = @($validated.artifactSummaries | Where-Object { [string]$_.name -eq [string]$expected.name }) | Select-Object -First 1
     if (-not $actual -or [string]$actual.sha256 -ne [string]$expected.sha256) { throw "Context pack fingerprint validation failed for '$([string]$expected.name)'." }
+}
+foreach ($expected in @($analysisOpenQuestions)) {
+    if ($validated.openQuestions -notcontains $expected) { throw "Context pack omitted requirements-analysis open question '$expected'." }
+}
+foreach ($expected in @($analysisHeldScope)) {
+    if ($validated.heldScope -notcontains $expected) { throw "Context pack omitted requirements-analysis held scope '$expected'." }
 }
 & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type context-issued -Summary "Validated context pack issued to '$RecipientAgentId' with $($artifactSummaries.Count) stable artifact summary item(s)." -Artifact $contextPath -Evidence @($artifactSummaries | ForEach-Object { "artifact:$([string]$_.name):$([string]$_.sha256)" }) -TargetAgentId $RecipientAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 

@@ -1671,6 +1671,14 @@ $outcomeConfig.runtime.stateRoot = Join-Path $outcomeValidationRoot 'state'
 Write-Utf8NoBom -Path $outcomeConfigPath -Content (($outcomeConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
 $outcomeTaskId = 'synthetic-outcome-validation'
 $outcomeTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $outcomeTaskId -TaskSelector synthetic-outcome-validation -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $outcomeConfigPath
+$outcomeManifestRoot = Join-Path $outcomeTask.TaskRoot 'workspaces'
+New-Item -ItemType Directory -Path $outcomeManifestRoot -Force | Out-Null
+$outcomeBaseCommit = ([string](& git -C $outcomeGitRoot rev-parse 'HEAD^')).Trim()
+$outcomeManifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$outcomeTaskId; repositoryId='azure-planningspace-ps-excel-agent'; clonePath=[IO.Path]::GetFullPath($outcomeGitRoot); canonicalOrigin=$outcomeRemoteRoot; baseSha=$outcomeBaseCommit; branch=([string](& git -C $outcomeGitRoot branch --show-current)).Trim(); lifecycle='active'; runId=('a' * 32); leaseId=('b' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=(Join-Path $outcomeManifestRoot 'azure-planningspace-ps-excel-agent.json') }
+Write-Utf8NoBom -Path $outcomeManifest.manifestPath -Content (($outcomeManifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$outcomeTaskDiff = & (Join-Path $root 'scripts\Get-TaskDiff.ps1') -TaskId $outcomeTaskId -Scope all-task-changes -ConfigPath $outcomeConfigPath
+if ([string]$outcomeTaskDiff.Repositories[0].diffBase -ne $outcomeBaseCommit -or [string]$outcomeTaskDiff.Repositories[0].baseRef -ne "manifest-baseSha:$outcomeBaseCommit") { throw 'Task diff did not use the immutable workspace manifest baseSha.' }
+Add-Check -Name 'manifest-base-task-diff' -Detail 'All-task diff uses the verified immutable workspace manifest baseSha instead of an unrelated configured remote branch'
 $generatedEvidence = & (Join-Path $root 'scripts\New-DeveloperPublicationEvidence.ps1') -TaskId $outcomeTaskId -Workspace $outcomeGitRoot -PesterPath @('tests\Synthetic.Tests.ps1') -ConfigPath $outcomeConfigPath
 $publicationEvidencePath = [string]$generatedEvidence.EvidencePath
 $publicationEvidence = Get-Content -LiteralPath $publicationEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -1682,7 +1690,7 @@ $validImplementation = [ordered]@{
     taskId='synthetic-outcome-validation'; branch=$liveBranch; commit=$liveHead; commitState="clean worktree; branch is $([int]$liveParts[1]) local commits ahead"
     tests=@(
         [ordered]@{ command=[string]$pesterRecord.command; result=[string]$pesterRecord.result; evidence="Passed $([int]$pesterRecord.passedCount)/$([int]$pesterRecord.totalCount) from the final command."; publicationEvidenceId=[string]$pesterRecord.evidenceId },
-        [ordered]@{ command='git status --porcelain and git rev-list'; result='passed'; evidence="Branch is $([int]$liveParts[1]) local commits ahead."; publicationEvidenceId='git-branch-divergence' }
+        [ordered]@{ command='git status --porcelain and git rev-list'; result='passed'; evidence="Branch is $([int]$liveParts[1]) local commits ahead."; publicationEvidenceId='git-task-base-divergence' }
     )
 }
 $implementationPath = Join-Path $outcomeTask.TaskRoot 'implementation-result.json'
@@ -1714,6 +1722,7 @@ $null = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerpri
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-plan.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"scope`":[]}$([Environment]::NewLine)"
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'developer-publication-evidence.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"synthetic`"}$([Environment]::NewLine)"
 Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'implementation-result.json') -Content "{`"taskId`":`"$fingerprintTaskId`",`"status`":`"implemented`"}$([Environment]::NewLine)"
+Write-Utf8NoBom -Path (Join-Path $fingerprintTask.TaskRoot 'requirements-analysis.json') -Content (([ordered]@{ taskId=$fingerprintTaskId; requirements=@([ordered]@{ id='R-held'; text='Synthetic held requirement'; status='held' }); plan=@([ordered]@{ id='P-held'; status='held'; requirementIds=@('R-held') }); questions=@([ordered]@{ id='Q-held'; question='Synthetic open question'; status='open' }) } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $fingerprintTaskId -AgentId developer -AgentStatus completed -Stage developer-completed -Message 'Synthetic Developer outcome changed its implementation artifacts.' -ConfigPath $fingerprintConfigPath | Out-Null
 $postDeveloperBookkeepingPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -PreserveArtifactIndex -ConfigPath $fingerprintConfigPath
 $reviewerStartupPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $fingerprintTaskId -TargetAgentId reviewer -ConfigPath $fingerprintConfigPath
@@ -1723,6 +1732,9 @@ if (@($developerArtifacts | Where-Object { $_ -notin @($postDeveloperBookkeeping
 Add-Check -Name 'developer-reviewer-resume-fingerprints' -Detail 'Post-Developer bookkeeping preserves the fingerprint baseline; Reviewer startup receives changed implementation artifacts and then advances the index once'
 $firstContextPack = & (Join-Path $root 'scripts\Update-AgentContextPack.ps1') -TaskId $fingerprintTaskId -RecipientAgentId reviewer -ArtifactNames $developerArtifacts -ConfigPath $fingerprintConfigPath
 $firstContextSha256 = Get-EcosystemFileSha256 -Path ([string]$firstContextPack.ContextPath)
+$firstContextDocument = Get-Content -LiteralPath ([string]$firstContextPack.ContextPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+if (@($firstContextDocument.heldScope) -notcontains 'R-held: Synthetic held requirement' -or @($firstContextDocument.heldScope) -notcontains 'P-held (requirements: R-held)' -or @($firstContextDocument.openQuestions) -notcontains 'Q-held: Synthetic open question') { throw 'Context pack omitted held requirements, held plan scope, or open questions from requirements analysis.' }
+Add-Check -Name 'requirements-context-holds' -Detail 'Context packs carry held requirement and plan identifiers plus open requirements-analysis questions to every recipient'
 $secondContextPack = & (Join-Path $root 'scripts\Update-AgentContextPack.ps1') -TaskId $fingerprintTaskId -RecipientAgentId reviewer -ArtifactNames $developerArtifacts -ConfigPath $fingerprintConfigPath
 $secondContextSha256 = Get-EcosystemFileSha256 -Path ([string]$secondContextPack.ContextPath)
 $contextEvents = @(Get-Content -LiteralPath (Join-Path $fingerprintTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { [string]$_.type -eq 'context-issued' -and [string]$_.targetAgentId -eq 'reviewer' })

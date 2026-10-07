@@ -432,11 +432,18 @@ if (-not (Test-Path -LiteralPath $workspace -PathType Container)) { throw "Publi
 $liveBranch = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()
 $liveHead = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
 $liveUpstream = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}') | Select-Object -First 1).Trim()
-$liveDivergence = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-list','--left-right','--count',"$liveUpstream...HEAD") | Select-Object -First 1).Trim()
-$liveParts = @($liveDivergence -split '\s+' | Where-Object { $_ -ne '' })
+$taskWorkspaces = @(& (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome)
+$taskWorkspace = @($taskWorkspaces | Where-Object { [IO.Path]::GetFullPath([string]$_.Path).TrimEnd('\') -eq [IO.Path]::GetFullPath($workspace).TrimEnd('\') }) | Select-Object -First 1
+if (-not $taskWorkspace -or -not [string]$taskWorkspace.BaseSha) { throw 'Developer publication evidence requires the workspace manifest baseSha.' }
+$taskBaseCommit = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-parse','--verify',("{0}^{{commit}}" -f [string]$taskWorkspace.BaseSha)) | Select-Object -First 1).Trim()
+$liveTaskDivergence = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-list','--left-right','--count',"$taskBaseCommit...HEAD") | Select-Object -First 1).Trim()
+$liveTaskParts = @($liveTaskDivergence -split '\s+' | Where-Object { $_ -ne '' })
+$liveUpstreamDivergence = (Invoke-GitReadOnly -Workspace $workspace -Arguments @('rev-list','--left-right','--count',"$liveUpstream...HEAD") | Select-Object -First 1).Trim()
+$liveUpstreamParts = @($liveUpstreamDivergence -split '\s+' | Where-Object { $_ -ne '' })
 $liveStatus = @(Invoke-GitReadOnly -Workspace $workspace -Arguments @('status','--porcelain'))
 if ($liveBranch -ne [string]$publication.branch -or $liveHead -ne [string]$publication.headCommit -or $liveUpstream -ne [string]$publication.upstream) { throw 'Developer publication evidence is stale for the live branch, head, or upstream.' }
-if ($liveParts.Count -ne 2 -or [int]$liveParts[0] -ne [int]$publication.branchDivergence.behindCount -or [int]$liveParts[1] -ne [int]$publication.branchDivergence.aheadCount) { throw 'Developer publication evidence is stale for live branch divergence.' }
+if (-not $publication.branchDivergence.PSObject.Properties['baseRef'] -or [string]$publication.branchDivergence.baseRef -ne "manifest-baseSha:$taskBaseCommit" -or $liveTaskParts.Count -ne 2 -or [int]$liveTaskParts[0] -ne [int]$publication.branchDivergence.behindCount -or [int]$liveTaskParts[1] -ne [int]$publication.branchDivergence.aheadCount) { throw 'Developer publication evidence is stale for task manifest base divergence.' }
+if (-not $publication.PSObject.Properties['upstreamDivergence'] -or $liveUpstreamParts.Count -ne 2 -or [int]$liveUpstreamParts[0] -ne [int]$publication.upstreamDivergence.behindCount -or [int]$liveUpstreamParts[1] -ne [int]$publication.upstreamDivergence.aheadCount) { throw 'Developer publication evidence is stale for upstream divergence.' }
 if ($liveStatus.Count -ne 0) { throw 'Developer worktree changed after final publication evidence was generated.' }
 
 $aheadCounts = [Collections.Generic.List[int]]::new()
@@ -454,8 +461,8 @@ foreach ($count in $aheadCounts) {
 
 $gitTests = @($tests | Where-Object { [string]$_.command -match '(?i)\bgit\s+(?:status|rev-list)\b' })
 foreach ($test in $gitTests) {
-    if (-not $test.PSObject.Properties['publicationEvidenceId'] -or [string]$test.publicationEvidenceId -ne 'git-branch-divergence') {
-        throw 'Git publication test evidence must reference git-branch-divergence.'
+    if (-not $test.PSObject.Properties['publicationEvidenceId'] -or [string]$test.publicationEvidenceId -ne 'git-task-base-divergence') {
+        throw 'Git publication test evidence must reference git-task-base-divergence.'
     }
 }
 
