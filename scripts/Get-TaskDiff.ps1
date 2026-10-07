@@ -77,9 +77,11 @@ function Get-RepositoryDiffState {
     param([Parameter(Mandatory)] $Repository)
     $snapshotRepository = if ($diffSnapshot) { @($diffSnapshot.repositories | Where-Object { [string]$_.id -eq [string]$Repository.id }) | Select-Object -First 1 } else { $null }
     $snapshotScope = if ($snapshotRepository -and $snapshotRepository.scopes -and $snapshotRepository.scopes.PSObject.Properties[$Scope]) { $snapshotRepository.scopes.PSObject.Properties[$Scope].Value } else { $null }
+    $manifestBaseSha = $null
     try {
         $resolvedWorkspace = & (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryId ([string]$Repository.id) -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome
         $workspace = [IO.Path]::GetFullPath([string]$resolvedWorkspace.Path)
+        $manifestBaseSha = [string]$resolvedWorkspace.BaseSha
         if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) { throw "Task workspace is not a Git repository: $workspace" }
     }
     catch {
@@ -121,16 +123,26 @@ function Get-RepositoryDiffState {
         $baseRef = "$diffTarget^"
     }
     else {
-        $baseBranch = if ($Repository.PSObject.Properties['baseBranch'] -and -not [string]::IsNullOrWhiteSpace([string]$Repository.baseBranch)) { [string]$Repository.baseBranch } else { [string]$config.runtime.defaultBaseBranch }
-        $baseRef = $null
-        foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
-            $null = Invoke-GitText -Workspace $workspace -Arguments @('show-ref','--verify','--quiet',$candidate) -AllowedExitCodes @(0,1)
-            if ($LASTEXITCODE -eq 0) { $baseRef = $candidate; break }
+        if ($manifestBaseSha) {
+            $manifestCommit = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('rev-parse','--verify',"$manifestBaseSha^{commit}") -AllowedExitCodes @(0,128))
+            if (-not $manifestCommit) { throw "Workspace manifest baseSha '$manifestBaseSha' is not a commit in '$workspace'." }
+            $mergeBase = Get-GitObjectId -Output @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$manifestCommit,'HEAD') -AllowedExitCodes @(0,1))
+            if ($mergeBase -ne $manifestCommit) { throw "Workspace manifest baseSha '$manifestCommit' is not an ancestor of task HEAD '$head'." }
+            $baseRef = "manifest-baseSha:$manifestCommit"
+            $diffBase = $manifestCommit
         }
-        if (-not $baseRef) { $baseRef = 'HEAD' }
-        $mergeBaseOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$baseRef,'HEAD') -AllowedExitCodes @(0,1))
-        $mergeBase = Get-GitObjectId -Output $mergeBaseOutput
-        $diffBase = if ($mergeBase) { $mergeBase } else { 'HEAD' }
+        else {
+            $baseBranch = if ($Repository.PSObject.Properties['baseBranch'] -and -not [string]::IsNullOrWhiteSpace([string]$Repository.baseBranch)) { [string]$Repository.baseBranch } else { [string]$config.runtime.defaultBaseBranch }
+            $baseRef = $null
+            foreach ($candidate in @("refs/remotes/origin/$baseBranch", "refs/heads/$baseBranch")) {
+                $null = Invoke-GitText -Workspace $workspace -Arguments @('show-ref','--verify','--quiet',$candidate) -AllowedExitCodes @(0,1)
+                if ($LASTEXITCODE -eq 0) { $baseRef = $candidate; break }
+            }
+            if (-not $baseRef) { $baseRef = 'HEAD' }
+            $mergeBaseOutput = @(Invoke-GitText -Workspace $workspace -Arguments @('merge-base',$baseRef,'HEAD') -AllowedExitCodes @(0,1))
+            $mergeBase = Get-GitObjectId -Output $mergeBaseOutput
+            $diffBase = if ($mergeBase) { $mergeBase } else { 'HEAD' }
+        }
     }
 
     $files = [Collections.Generic.List[object]]::new()

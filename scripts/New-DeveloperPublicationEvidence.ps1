@@ -30,12 +30,29 @@ if ([IO.Path]::GetFullPath($repositoryRoot).TrimEnd('\') -ne $resolvedWorkspace.
 $branch = (Invoke-GitChecked -Arguments @('rev-parse','--abbrev-ref','HEAD') | Select-Object -First 1).Trim()
 $headCommit = (Invoke-GitChecked -Arguments @('rev-parse','HEAD') | Select-Object -First 1).Trim()
 $upstream = (Invoke-GitChecked -Arguments @('rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}') | Select-Object -First 1).Trim()
-$divergenceText = (Invoke-GitChecked -Arguments @('rev-list','--left-right','--count',"$upstream...HEAD") | Select-Object -First 1).Trim()
-$divergenceParts = @($divergenceText -split '\s+' | Where-Object { $_ -ne '' })
-if ($divergenceParts.Count -ne 2) { throw "Unexpected git divergence result: $divergenceText" }
-$behindCount = [int]$divergenceParts[0]
-$aheadCount = [int]$divergenceParts[1]
+$upstreamDivergenceText = (Invoke-GitChecked -Arguments @('rev-list','--left-right','--count',"$upstream...HEAD") | Select-Object -First 1).Trim()
+$upstreamDivergenceParts = @($upstreamDivergenceText -split '\s+' | Where-Object { $_ -ne '' })
+if ($upstreamDivergenceParts.Count -ne 2) { throw "Unexpected git upstream divergence result: $upstreamDivergenceText" }
+$upstreamBehindCount = [int]$upstreamDivergenceParts[0]
+$upstreamAheadCount = [int]$upstreamDivergenceParts[1]
 $statusLines = @(Invoke-GitChecked -Arguments @('status','--porcelain'))
+
+$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
+if (-not (Test-Path -LiteralPath $taskRoot -PathType Container)) { throw "Task '$TaskId' was not found." }
+$taskWorkspaces = @(& (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome)
+$taskWorkspace = @($taskWorkspaces | Where-Object { [IO.Path]::GetFullPath([string]$_.Path).TrimEnd('\') -eq $resolvedWorkspace.TrimEnd('\') }) | Select-Object -First 1
+if (-not $taskWorkspace) { throw "Workspace '$resolvedWorkspace' is not the persisted task workspace for '$TaskId'." }
+$taskBaseSha = [string]$taskWorkspace.BaseSha
+if (-not $taskBaseSha) { throw "Task workspace manifest for '$TaskId' does not record baseSha." }
+$taskBaseCommit = (Invoke-GitChecked -Arguments @('rev-parse','--verify',"$taskBaseSha^{commit}") | Select-Object -First 1).Trim()
+$taskMergeBase = (Invoke-GitChecked -Arguments @('merge-base',$taskBaseCommit,'HEAD') | Select-Object -First 1).Trim()
+if ($taskMergeBase -ne $taskBaseCommit) { throw "Task workspace manifest baseSha '$taskBaseCommit' is not an ancestor of HEAD '$headCommit'." }
+$taskDivergenceText = (Invoke-GitChecked -Arguments @('rev-list','--left-right','--count',"$taskBaseCommit...HEAD") | Select-Object -First 1).Trim()
+$taskDivergenceParts = @($taskDivergenceText -split '\s+' | Where-Object { $_ -ne '' })
+if ($taskDivergenceParts.Count -ne 2) { throw "Unexpected task-base divergence result: $taskDivergenceText" }
+$taskBehindCount = [int]$taskDivergenceParts[0]
+$taskAheadCount = [int]$taskDivergenceParts[1]
 
 $pesterResults = [Collections.Generic.List[object]]::new()
 $pesterCommand = Get-Command Invoke-Pester -ErrorAction Stop
@@ -66,9 +83,6 @@ foreach ($path in @($PesterPath)) {
     })
 }
 
-$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
-$taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
-if (-not (Test-Path -LiteralPath $taskRoot -PathType Container)) { throw "Task '$TaskId' was not found." }
 $evidencePath = Join-Path $taskRoot 'developer-publication-evidence.json'
 $evidence = [ordered]@{
     taskId = $TaskId
@@ -79,11 +93,19 @@ $evidence = [ordered]@{
     headCommit = $headCommit
     worktreeClean = ($statusLines.Count -eq 0)
     branchDivergence = [ordered]@{
-        evidenceId = 'git-branch-divergence'
+        evidenceId = 'git-task-base-divergence'
+        baseRef = "manifest-baseSha:$taskBaseCommit"
+        command = "git rev-list --left-right --count $taskBaseCommit...HEAD"
+        behindCount = $taskBehindCount
+        aheadCount = $taskAheadCount
+        rawResult = $taskDivergenceText
+    }
+    upstreamDivergence = [ordered]@{
+        evidenceId = 'git-upstream-divergence'
         command = "git rev-list --left-right --count $upstream...HEAD"
-        behindCount = $behindCount
-        aheadCount = $aheadCount
-        rawResult = $divergenceText
+        behindCount = $upstreamBehindCount
+        aheadCount = $upstreamAheadCount
+        rawResult = $upstreamDivergenceText
     }
     pester = @($pesterResults)
 }
@@ -97,8 +119,8 @@ if ($failedPester.Count) { throw "Final Pester verification failed for: $(@($fai
     EvidencePath = $evidencePath
     Branch = $branch
     HeadCommit = $headCommit
-    BehindCount = $behindCount
-    AheadCount = $aheadCount
+    BehindCount = $taskBehindCount
+    AheadCount = $taskAheadCount
     WorktreeClean = ($statusLines.Count -eq 0)
     Pester = @($pesterResults)
 }
