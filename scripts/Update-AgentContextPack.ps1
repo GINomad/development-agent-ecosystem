@@ -94,12 +94,14 @@ $ledgerOpenQuestions = @($taskView.Tasks[0].openQuestions | ForEach-Object {
 $analysisOpenQuestions = [Collections.Generic.List[string]]::new()
 $analysisHeldScope = [Collections.Generic.List[string]]::new()
 $requirementsAnalysisPath = Join-Path $taskRoot 'requirements-analysis.json'
+$analysisScopeIds = @()
 if (Test-Path -LiteralPath $requirementsAnalysisPath -PathType Leaf) {
     try { $requirementsAnalysis = Get-Content -LiteralPath $requirementsAnalysisPath -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch { throw "Requirements analysis context source is not valid JSON: $($_.Exception.Message)" }
+    $analysisScopeIds = @(@($requirementsAnalysis.requirements | ForEach-Object { [string]$_.id }) + @($requirementsAnalysis.plan | ForEach-Object { [string]$_.id }) | Where-Object { $_ } | Select-Object -Unique)
     foreach ($requirement in @($requirementsAnalysis.requirements | Where-Object { [string]$_.status -eq 'held' })) {
         $id = [string]$requirement.id
-        $text = [string]$requirement.text
+        $text = if ($requirement.PSObject.Properties['text']) { [string]$requirement.text } else { '' }
         if ($id) {
             $heldRequirement = if ($text) { "${id}: $text" } else { $id }
             $analysisHeldScope.Add($heldRequirement)
@@ -121,7 +123,11 @@ if (Test-Path -LiteralPath $requirementsAnalysisPath -PathType Leaf) {
 }
 $openQuestions = @($ledgerOpenQuestions + @($analysisOpenQuestions) | Select-Object -Unique)
 $existingHeldScope = if ($existing -and $existing.PSObject.Properties['heldScope']) { @($existing.heldScope | ForEach-Object { [string]$_ }) } else { @() }
-$heldScope = @($existingHeldScope + @($analysisHeldScope) | Select-Object -Unique)
+$manualHeldScope = @($existingHeldScope | Where-Object {
+    $scopeIdMatch = [regex]::Match([string]$_, '^(?<id>[^:\s(]+)(?::|\s+\(|$)')
+    -not $scopeIdMatch.Success -or $scopeIdMatch.Groups['id'].Value -notin $analysisScopeIds
+})
+$heldScope = @($manualHeldScope + @($analysisHeldScope) | Select-Object -Unique)
 $detectedStack = if ($existing -and $existing.PSObject.Properties['engineeringGuidance']) { @($existing.engineeringGuidance.detectedStack | ForEach-Object { [string]$_ }) } else { @() }
 $acceptedKnowledge = if ($existing -and $existing.PSObject.Properties['acceptedKnowledge']) { @($existing.acceptedKnowledge) } else { @() }
 $preservedSources = if ($existing -and $existing.PSObject.Properties['sources']) { @($existing.sources | Where-Object { [string]$_.kind -eq 'knowledge' }) } else { @() }
