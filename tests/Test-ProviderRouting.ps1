@@ -107,4 +107,15 @@ if(-not(Test-Path -LiteralPath $providerLimitPath -PathType Leaf)){throw 'Automa
 $fallbackRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
 if([string]$fallbackRoute.provider -ne 'codex'){throw 'Provider routing did not honor the automatic Codex fallback override.'}
 
+$staleRouteTaskId='provider-route-stale-command-'+[guid]::NewGuid().ToString('N')
+& (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $staleRouteTaskId -TaskSelector 'Synthetic stale Codex executable route.' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath|Out-Null
+$initialCodexRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $staleRouteTaskId -AgentId health_check -Tier standard -ConfigPath $testConfigPath
+if(-not(Test-Path -LiteralPath ([string]$initialCodexRoute.command) -PathType Leaf)){throw 'Initial Codex provider route did not resolve an executable.'}
+$staleRoutePath=Join-Path $config.runtime.stateRoot "tasks\$staleRouteTaskId\provider-routing.json"
+$staleRouteDocument=Get-Content -LiteralPath $staleRoutePath -Raw -Encoding UTF8|ConvertFrom-Json
+$staleRouteDocument.decisions[-1].command=Join-Path $OutputRoot 'missing-codex.exe'
+Write-Utf8NoBom -Path $staleRoutePath -Content (($staleRouteDocument|ConvertTo-Json -Depth 20)+[Environment]::NewLine)
+$refreshedCodexRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $staleRouteTaskId -AgentId health_check -Tier standard -ConfigPath $testConfigPath
+$refreshedRouteDocument=Get-Content -LiteralPath $staleRoutePath -Raw -Encoding UTF8|ConvertFrom-Json
+if($refreshedCodexRoute.PSObject.Properties['reused'] -or -not(Test-Path -LiteralPath ([string]$refreshedCodexRoute.command) -PathType Leaf) -or @($refreshedRouteDocument.decisions).Count -ne 2){throw 'Stale provider-route executable was reused instead of being refreshed.'}
 [pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$developerRoute.provider;OverrideProvider=[string]$overrideRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}
