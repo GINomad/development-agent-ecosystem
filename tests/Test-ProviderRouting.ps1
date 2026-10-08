@@ -36,10 +36,14 @@ if([IO.Path]::GetFullPath($ConfigPath) -eq $canonicalConfigPath){
 $taskId='provider-route-'+[guid]::NewGuid().ToString('N')
 & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'Synthetic provider routing test.' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath|Out-Null
 $taskRoot=Join-Path $config.runtime.stateRoot ('tasks\'+$taskId)
-$claudeRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
-if([string]$claudeRoute.provider -ne 'claude' -or [string]$claudeRoute.model -ne 'sonnet' -or [string]$claudeRoute.reasoningEffort -ne 'none'){throw 'Claude provider tier mapping failed.'}
+$developerProvider=[string]$expected.developer
+$developerTier=$config.providerRouting.providers.$developerProvider.models.standard
+$developerRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
+if([string]$developerRoute.provider -ne $developerProvider -or [string]$developerRoute.model -ne [string]$developerTier.model -or [string]$developerRoute.reasoningEffort -ne [string]$developerTier.reasoningEffort){throw 'Developer provider tier mapping failed.'}
 $reviewerRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId reviewer -Tier complex -ConfigPath $testConfigPath
-if([string]$reviewerRoute.provider -ne 'claude' -or [string]$reviewerRoute.model -ne 'sonnet' -or [string]$reviewerRoute.reasoningEffort -ne 'none'){throw 'Claude reviewer complex tier mapping failed.'}
+$reviewerProvider=[string]$expected.reviewer
+$reviewerTier=$config.providerRouting.providers.$reviewerProvider.models.complex
+if([string]$reviewerRoute.provider -ne $reviewerProvider -or [string]$reviewerRoute.model -ne [string]$reviewerTier.model -or [string]$reviewerRoute.reasoningEffort -ne [string]$reviewerTier.reasoningEffort){throw 'Reviewer provider tier mapping failed.'}
 & (Join-Path $root 'scripts\Switch-TaskAgentProvider.ps1') -TaskId $taskId -AgentId developer -Provider copilot -ConfigPath $testConfigPath|Out-Null
 $overrideRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
 if([string]$overrideRoute.provider -ne 'copilot' -or [string]$overrideRoute.model -ne 'gpt-4.1' -or [string]$overrideRoute.reasoningEffort -ne 'medium'){throw 'Task-scoped Copilot override or tier mapping failed.'}
@@ -103,4 +107,4 @@ if(-not(Test-Path -LiteralPath $providerLimitPath -PathType Leaf)){throw 'Automa
 $fallbackRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $taskId -AgentId developer -Tier standard -ConfigPath $testConfigPath
 if([string]$fallbackRoute.provider -ne 'codex'){throw 'Provider routing did not honor the automatic Codex fallback override.'}
 
-[pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$claudeRoute.provider;OverrideProvider=[string]$overrideRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}
+[pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$developerRoute.provider;OverrideProvider=[string]$overrideRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}
