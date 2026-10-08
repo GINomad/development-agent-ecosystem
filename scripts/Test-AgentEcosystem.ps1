@@ -1976,6 +1976,14 @@ $analystPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requir
 $reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
 $verifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
 if ($orchestratorPrompt -notmatch 'not keyword-triggered' -or $analystPrompt -notmatch 'mandatory engineering checks' -or $developerPrompt -notmatch 'mandatory engineering checks' -or $reviewerPrompt -notmatch 'disposable-ownership' -or $verifierPrompt -notmatch 'unapproved exception' -or $knowledgePrompt -notmatch 'dependency-injection, data-access, type-layout, and disposable-ownership') { throw 'Mandatory engineering skill consumption is not enforced across routing, analysis, implementation, review, verification, and knowledge context.' }
+foreach ($requiredTypeLayoutText in @('Interfaces','Implementations','Models','Enums','DTOs','request models','response models','view models','domain data holders','services, providers, factories, stores, builders, and readers','explicit recorded user approval')) {
+    if ($mandatoryEngineeringText -notmatch [regex]::Escape($requiredTypeLayoutText)) { throw "Mandatory type-layout standard is missing: $requiredTypeLayoutText" }
+}
+foreach ($rolePrompt in @($analystPrompt,$developerPrompt,$reviewerPrompt,$verifierPrompt)) {
+    foreach ($requiredFolder in @('Interfaces','Implementations','Models','Enums')) {
+        if ($rolePrompt -notmatch [regex]::Escape($requiredFolder)) { throw "A delivery role prompt is missing mandatory type-layout folder '$requiredFolder'." }
+    }
+}
 Add-Check -Name 'mandatory-engineering-skill-and-review-gates' -Detail 'Every new or resumed task routes mandatory DI, data-access, type-layout, and disposable-ownership evidence through analysis, implementation, review, and independent verification'
 Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 
