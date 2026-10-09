@@ -59,6 +59,7 @@ function ConvertTo-WorkspaceResult {
 }
 $workspaceRoot = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.workspaceRoot) -Config $config -CodexHome $CodexHome
 $results = [Collections.Generic.List[object]]::new()
+$preservedBrokenClonePath = $null
 foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Select-Object -Unique)) {
     $repository = @($config.repositories | Where-Object { [string]$_.id -eq $repositoryId -and [bool]$_.enabled }) | Select-Object -First 1
     if (-not $repository) { throw "Enabled repository '$repositoryId' was not found." }
@@ -67,8 +68,10 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ([string]$manifest.taskId -ne $TaskId -or [string]$manifest.repositoryId -ne $repositoryId) { throw "Workspace manifest identity mismatch: $manifestPath" }
         $cloneExists = Test-Path -LiteralPath (Join-Path ([string]$manifest.clonePath) '.git') -PathType Container
-        $cleanedWorkspaceNeedsProvisioning = [string]$manifest.lifecycle -eq 'cleaned' -and -not $cloneExists
-        if (-not $cleanedWorkspaceNeedsProvisioning) {
+        # Preserve a non-Git released directory as evidence; provision a new run-specific clone instead of deleting it.
+        $recoverableWorkspaceNeedsProvisioning = [string]$manifest.lifecycle -in @('cleaned','released') -and -not $cloneExists
+        if ($recoverableWorkspaceNeedsProvisioning -and [string]$manifest.lifecycle -eq 'released') { $preservedBrokenClonePath = [string]$manifest.clonePath }
+        if (-not $recoverableWorkspaceNeedsProvisioning) {
             if (-not $cloneExists) { throw "Workspace clone is missing: $($manifest.clonePath)" }
             $ownedByAnotherRun = [string]$manifest.lifecycle -in @('provisioning','active') -and ([string]$manifest.leaseId -ne $LeaseId -or [string]$manifest.runId -ne $RunId)
             if ($ownedByAnotherRun) { throw "Task '$TaskId' already owns a different active workspace run for '$repositoryId'." }
@@ -84,6 +87,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
     $branchName = if ($task.PSObject.Properties['branchName']) { [string]$task.branchName } else { '' }
     $layout = Get-TaskWorkspaceLayout -WorkspaceRoot $workspaceRoot -TaskId $TaskId -RepositoryId $repositoryId -RunId $RunId -BranchName $branchName
     $clonePath = [IO.Path]::GetFullPath([string]$layout.ClonePath)
+    if ($preservedBrokenClonePath) { $clonePath = [IO.Path]::GetFullPath("$clonePath-recovery-$RunId") }
     $workspaceRootPrefix = [IO.Path]::GetFullPath($workspaceRoot).TrimEnd([char[]]@('\','/')) + [IO.Path]::DirectorySeparatorChar
     if (-not $clonePath.StartsWith($workspaceRootPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to provision a task workspace outside '$workspaceRoot': $clonePath" }
     $branch = [string]$layout.Branch
@@ -121,6 +125,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         $cloneCreatedByThisRun = Test-Path -LiteralPath $clonePath
         if ($LASTEXITCODE -ne 0) { throw "git clone failed for repository '$repositoryId': $($cloneOutput -join [Environment]::NewLine)" }
         if ($cloneSource) { Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('remote','set-url','origin',([string]$repository.url)) | Out-Null }
+        if ($preservedBrokenClonePath) { Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('fetch','origin',"refs/heads/${branch}:refs/remotes/origin/${branch}") | Out-Null }
         $canonicalOrigin = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('remote','get-url','origin') | Select-Object -First 1).Trim()
         if (-not $canonicalOrigin -or -not (Test-EquivalentGitRemoteUrl -Left $canonicalOrigin -Right ([string]$repository.url))) { throw "Clone for '$repositoryId' does not retain the configured origin URL." }
         if ($cloneSource) {
@@ -130,8 +135,10 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
             $baseRef = "origin/$baseBranch"
             $baseSha = (Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('rev-parse',$baseRef) | Select-Object -First 1).Trim()
         }
-        Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('checkout','-b',$branch,$baseSha) | Out-Null
-        $manifest = [pscustomobject][ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId=$repositoryId; clonePath=$clonePath; canonicalOrigin=$canonicalOrigin; cloneSource=$cloneSource; baseBranch=$baseBranch; baseSha=$baseSha; branch=$branch; lifecycle='provisioned'; runId=$RunId; leaseId=$LeaseId; createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
+        $checkoutStart = $baseSha
+        if ($preservedBrokenClonePath -and (Test-TaskWorkspaceGitRef -WorkingDirectory $clonePath -Reference "refs/remotes/origin/$branch")) { $checkoutStart = "origin/$branch" }
+        Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('checkout','-B',$branch,$checkoutStart) | Out-Null
+        $manifest = [pscustomobject][ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId=$repositoryId; clonePath=$clonePath; canonicalOrigin=$canonicalOrigin; cloneSource=$cloneSource; baseBranch=$baseBranch; baseSha=$baseSha; branch=$branch; lifecycle='provisioned'; runId=$RunId; leaseId=$LeaseId; createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); recoveredFromPath=if ($preservedBrokenClonePath) { $preservedBrokenClonePath } else { $null }; manifestPath=$manifestPath }
         Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
         $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest))
     }
