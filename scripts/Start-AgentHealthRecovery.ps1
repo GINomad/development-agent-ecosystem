@@ -344,7 +344,18 @@ try {
         if ($execIndex -lt 0) { throw 'Recovery arguments are missing the exec command.' }
         $arguments = @($arguments[0..$execIndex] + @('--ignore-user-config') + $arguments[($execIndex + 1)..($arguments.Count - 1)])
     }
+    $tokenRunId=if($ExecutionRunId){$ExecutionRunId}else{[string]$attempt.attemptId}
+    $tokenState=Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8|ConvertFrom-Json
+    $tokenRevision=if($tokenState.PSObject.Properties['revision']){[Nullable[int]][int]$tokenState.revision}else{$null}
+    $tokenHeader=[ordered]@{type='ecosystem-workflow-run';taskId=$TaskId;attemptId=[string]$attempt.attemptId;provider='codex';model=[string]$healthAgentDefinition.model;startedAtUtc=[DateTime]::UtcNow.ToString('o')}
+    [IO.File]::AppendAllText($logPath,($tokenHeader|ConvertTo-Json -Compress)+[Environment]::NewLine,(New-Object Text.UTF8Encoding($false)))
+    try {
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
+    } finally {
+        try {
+            & (Join-Path $PSScriptRoot 'Write-AgentTokenUsage.ps1') -TaskRoot $taskRoot -TaskId $TaskId -AgentId health_check -RunId $tokenRunId -AttemptId ([string]$attempt.attemptId) -Provider codex -Model ([string]$healthAgentDefinition.model) -LogPath $logPath -TaskRevision $tokenRevision|Out-Null
+        } catch { Write-Warning "Health recovery token usage persistence failed: $($_.Exception.Message)" }
+    }
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
     if ($codexExitCode -ne 0) { throw "Health recovery Codex exited with code $codexExitCode. See $logPath" }

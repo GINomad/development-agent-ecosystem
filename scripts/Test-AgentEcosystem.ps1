@@ -2108,6 +2108,9 @@ Add-Check -Name 'mcp-resilience' -Detail 'Session integrity, task isolation, quo
 & (Join-Path $root 'tests\Test-ProviderRouting.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'provider-routing') -CodexHome $CodexHome | Out-Null
 Add-Check -Name 'multi-provider-routing' -Detail 'Per-agent defaults, provider tier maps, task override, MCP adapters, quota artifacts, dashboard switching, chat-only packs, and clean daily no-op'
 
+& (Join-Path $root 'tests/Test-AgentTokenUsage.ps1') -OutputRoot (Join-Path $OutputRoot 'token-usage') | Out-Null
+Add-Check -Name 'agent-token-usage' -Detail 'Per-task iteration/agent usage, actual Claude models, partial messages, fallback attribution and idempotence'
+
 [pscustomobject]@{
     Passed = $true
     CheckedAtUtc = [DateTime]::UtcNow.ToString('o')

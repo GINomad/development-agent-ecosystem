@@ -35,6 +35,10 @@ function Invoke-Attempt {
         HeartbeatIntervalSeconds = $HeartbeatIntervalSeconds
     }
     if ($HeartbeatAction) { $attemptParameters.HeartbeatAction = $HeartbeatAction }
+    $modelIndex=[array]::IndexOf($AttemptArguments,'--model')
+    $selectedModel=if($modelIndex -ge 0 -and $modelIndex+1 -lt $AttemptArguments.Count){$AttemptArguments[$modelIndex+1]}else{'unknown'}
+    $marker=[ordered]@{type='ecosystem-provider-attempt';providerAttemptId=[guid]::NewGuid().ToString('N');provider='codex';model=$selectedModel;startedAtUtc=[DateTime]::UtcNow.ToString('o')}
+    [IO.File]::AppendAllText($LogPath,($marker|ConvertTo-Json -Compress)+[Environment]::NewLine,(New-Object Text.UTF8Encoding($false)))
     & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') @attemptParameters
 }
 
