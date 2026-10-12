@@ -13,7 +13,8 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $agent = @($config.agents | Where-Object { [string]$_.id -eq $RecipientAgentId }) | Select-Object -First 1
 if (-not $agent) { throw "Unknown context-pack recipient '$RecipientAgentId'." }
-$taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
+$stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
+$taskRoot = Join-Path $stateRoot "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 
@@ -131,14 +132,48 @@ $heldScope = @($manualHeldScope + @($analysisHeldScope) | Select-Object -Unique)
 $detectedStack = if ($existing -and $existing.PSObject.Properties['engineeringGuidance']) { @($existing.engineeringGuidance.detectedStack | ForEach-Object { [string]$_ }) } else { @() }
 $acceptedKnowledge = if ($existing -and $existing.PSObject.Properties['acceptedKnowledge']) { @($existing.acceptedKnowledge) } else { @() }
 $preservedSources = if ($existing -and $existing.PSObject.Properties['sources']) { @($existing.sources | Where-Object { [string]$_.kind -eq 'knowledge' }) } else { @() }
+$repositoryMaps = [Collections.Generic.List[object]]::new()
+$repositoryMapSources = [Collections.Generic.List[object]]::new()
+$repositoryMapRoot = Join-Path $stateRoot 'repository-maps'
+try {
+    $taskWorkspaces = @(& (Join-Path $PSScriptRoot 'Resolve-TaskWorkspace.ps1') -TaskId $TaskId -AllowReleased -ConfigPath $ConfigPath -CodexHome $CodexHome)
+}
+catch {
+    $taskWorkspaces = @()
+}
+foreach ($taskWorkspace in $taskWorkspaces) {
+    $repositoryId = [string]$taskWorkspace.RepositoryId
+    $workspacePath = [string]$taskWorkspace.Path
+    if (-not $repositoryId -or -not $workspacePath -or -not (Test-Path -LiteralPath $workspacePath -PathType Container)) { continue }
+    $mapResult = & (Join-Path $PSScriptRoot 'Update-RepositoryKnowledgeMap.ps1') -RepositoryId $repositoryId -Workspace $workspacePath -OutputRoot $repositoryMapRoot
+    $map = Get-Content -LiteralPath $mapResult.MapPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $mapSha = Get-EcosystemFileSha256 -Path $mapResult.MapPath
+    $repositoryMaps.Add([ordered]@{
+        repositoryId = $repositoryId
+        path = [string]$mapResult.MapPath
+        sha256 = $mapSha
+        revision = [string]$map.revision
+        sourceFingerprint = [string]$map.sourceFingerprint
+        fileCount = [int]$map.summary.fileCount
+        componentCount = [int]$map.summary.componentCount
+        recommendedStart = @($map.recommendedStart | ForEach-Object { [string]$_ })
+    })
+    $repositoryMapSources.Add([ordered]@{
+        kind = 'code'
+        location = [string]$mapResult.MapPath
+        revision = $mapSha
+        reason = "Revision-bound repository graph for targeted discovery in '$repositoryId'."
+    })
+}
 
 $pack = [ordered]@{
     taskId = $TaskId
     recipient = $RecipientAgentId
     createdAtUtc = [DateTime]::UtcNow.ToString('o')
-    sources = @($preservedSources) + @($artifactSources)
+    sources = @($preservedSources) + @($repositoryMapSources) + @($artifactSources)
     acceptedKnowledge = @($acceptedKnowledge)
     artifactSummaries = @($artifactSummaries)
+    repositoryMaps = @($repositoryMaps)
     engineeringGuidance = [ordered]@{
         detectedStack = @($detectedStack)
         selectedSkills = @($selectedSkills)
@@ -159,6 +194,9 @@ function ConvertTo-ContextPackIdentityJson {
         artifactSummaries = @($Value.artifactSummaries | ForEach-Object {
             [ordered]@{ name=[string]$_.name; sha256=[string]$_.sha256; summary=[string]$_.summary }
         })
+        repositoryMaps = @($Value.repositoryMaps | ForEach-Object {
+            [ordered]@{ repositoryId=[string]$_.repositoryId; sha256=[string]$_.sha256; revision=[string]$_.revision; sourceFingerprint=[string]$_.sourceFingerprint; recommendedStart=@($_.recommendedStart) }
+        })
         engineeringGuidance = $Value.engineeringGuidance
         openQuestions = @($Value.openQuestions)
         heldScope = @($Value.heldScope)
@@ -178,7 +216,7 @@ Write-Utf8NoBom -Path $contextPath -Content (($pack | ConvertTo-Json -Depth 20) 
 
 $validated = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$validated.taskId -ne $TaskId -or [string]$validated.recipient -ne $RecipientAgentId) { throw 'Context pack identity validation failed.' }
-if (-not $validated.PSObject.Properties['artifactSummaries'] -or -not $validated.PSObject.Properties['engineeringGuidance'] -or -not @($validated.engineeringGuidance.selectedSkills).Count) { throw 'Context pack required presentation or skill fields are missing.' }
+if (-not $validated.PSObject.Properties['artifactSummaries'] -or -not $validated.PSObject.Properties['repositoryMaps'] -or -not $validated.PSObject.Properties['engineeringGuidance'] -or -not @($validated.engineeringGuidance.selectedSkills).Count) { throw 'Context pack required presentation, repository map, or skill fields are missing.' }
 foreach ($expected in $artifactSummaries) {
     $actual = @($validated.artifactSummaries | Where-Object { [string]$_.name -eq [string]$expected.name }) | Select-Object -First 1
     if (-not $actual -or [string]$actual.sha256 -ne [string]$expected.sha256) { throw "Context pack fingerprint validation failed for '$([string]$expected.name)'." }
@@ -189,6 +227,7 @@ foreach ($expected in @($analysisOpenQuestions)) {
 foreach ($expected in @($analysisHeldScope)) {
     if ($validated.heldScope -notcontains $expected) { throw "Context pack omitted requirements-analysis held scope '$expected'." }
 }
-& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type context-issued -Summary "Validated context pack issued to '$RecipientAgentId' with $($artifactSummaries.Count) stable artifact summary item(s)." -Artifact $contextPath -Evidence @($artifactSummaries | ForEach-Object { "artifact:$([string]$_.name):$([string]$_.sha256)" }) -TargetAgentId $RecipientAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$contextEvidence = @($artifactSummaries | ForEach-Object { "artifact:$([string]$_.name):$([string]$_.sha256)" }) + @($repositoryMaps | ForEach-Object { "repository-map:$([string]$_.repositoryId):$([string]$_.sha256)" })
+& (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type context-issued -Summary "Validated context pack issued to '$RecipientAgentId' with $($artifactSummaries.Count) stable artifact summary item(s) and $($repositoryMaps.Count) repository map(s)." -Artifact $contextPath -Evidence $contextEvidence -TargetAgentId $RecipientAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
 [pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count; Reused=$false }

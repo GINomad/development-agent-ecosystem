@@ -17,6 +17,10 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$pipelinePolicySetup = & (Join-Path $PSScriptRoot 'Get-PipelinePolicySetup.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([bool]$pipelinePolicySetup.requiresDecision) {
+    throw 'Pipeline policy is unconfigured. Choose disabled, observe-only, or guarded-delivery through the LLM setup interview before installation.'
+}
 
 if($ChatOnly){
     $parameters=@{Provider=$ChatProvider;ConfigPath=$ConfigPath;CodexHome=$CodexHome}

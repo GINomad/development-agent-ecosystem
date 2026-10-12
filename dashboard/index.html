@@ -377,9 +377,50 @@
       </section>
     </section>
 
+    <section class="card insights-card">
+      <div class="section-heading">
+        <div>
+          <p class="step">03 - ANALYTICS AND KNOWLEDGE</p>
+          <h2>Delivery telemetry and project knowledge</h2>
+          <p class="muted" id="insightsScope">Loading insights for the selected project...</p>
+        </div>
+        <div class="monitor-controls">
+          <div class="segmented" role="tablist" aria-label="Insights view">
+            <button type="button" class="active" data-insights-tab="analytics">Analytics</button>
+            <button type="button" data-insights-tab="knowledge">Project knowledge</button>
+          </div>
+          <button class="button secondary compact-button" id="refreshInsights" type="button">Refresh insights</button>
+        </div>
+      </div>
+
+      <div id="analyticsWorkspace" class="insights-workspace">
+        <div class="metric-grid" id="analyticsSummary"></div>
+        <div class="insights-columns">
+          <section class="insight-panel">
+            <h3>Tokens by model</h3>
+            <p class="hint">Reported and partial provider usage only. Unavailable records are shown separately.</p>
+            <div class="insight-table-wrap"><table class="insight-table"><thead><tr><th>Provider / model</th><th>Total</th><th>Input</th><th>Output</th><th>Cache</th><th>Agents</th></tr></thead><tbody id="tokensByModel"></tbody></table></div>
+          </section>
+          <section class="insight-panel">
+            <h3>Tokens and reliability by agent</h3>
+            <div class="insight-table-wrap"><table class="insight-table"><thead><tr><th>Agent</th><th>Tokens</th><th>Attempts</th><th>Failed</th><th>Error rate</th><th>Models</th></tr></thead><tbody id="tokensByAgent"></tbody></table></div>
+          </section>
+        </div>
+        <section class="insight-panel error-panel">
+          <div class="insight-panel-heading"><h3>Recent errors</h3><span id="errorSummary"></span></div>
+          <div class="recent-error-list" id="recentErrors"></div>
+        </section>
+      </div>
+
+      <div id="knowledgeWorkspace" class="insights-workspace hidden">
+        <div class="metric-grid" id="knowledgeSummary"></div>
+        <div class="knowledge-outcome-list" id="knowledgeOutcomes"></div>
+      </div>
+    </section>
+
     <div class="grid">
       <section class="card">
-        <p class="step">03 - REVIEWER NOTE</p>
+        <p class="step">04 - REVIEWER NOTE</p>
         <h2>Send a note to the Reviewer agent</h2>
         <p class="muted">The note is added to the next review context together with active PR discussions.</p>
         <label>
@@ -397,7 +438,7 @@
       </section>
 
       <section class="card">
-        <p class="step">04 - TASK INBOX</p>
+        <p class="step">05 - TASK INBOX</p>
         <h2>Assigned tasks</h2>
         <div id="taskInbox" class="inbox empty">Select "Show assigned tasks" to load the inbox.</div>
       </section>

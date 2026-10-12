@@ -357,7 +357,7 @@ $reviewFollowUpAnswer = & (Join-Path $root 'scripts\Add-ReviewQuestionResponse.p
 & (Join-Path $root 'scripts\Acknowledge-AgentCommentBatch.ps1') -TaskId $reviewReplyTaskId -AgentId reviewer -EventIds @([string]$reviewFollowUp.CommentId) -ConfigPath $reviewReplyConfigPath | Out-Null
 if ($dashboardClient -notmatch 'review-question-opened' -or $dashboardClient -notmatch 'review-question-answered' -or $dashboardClient -notmatch 'createInlineReviewQuestion' -or $dashboardClient -notmatch 'renderReviewQuestionThreads' -or $dashboardClient -notmatch 'sendReviewQuestionFollowUp' -or $dashboardClient -notmatch 'parentReviewQuestionId' -or $reviewerPrompt -notmatch 'Add-ReviewQuestionResponse.ps1') { throw 'Reviewer question threads, visible answers, or follow-up replies are not wired end to end.' }
 Add-Check -Name 'reviewer-line-question-answers' -Detail 'Line questions and follow-ups remain response-gated, Reviewer persists cited answers, and dashboard renders a visible replyable thread plus exact-line context'
-foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Remove-CompletedTaskWorkspaces.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Repair-LegacyTaskWorkspaceBranches.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Save-ReviewArtifactSnapshot.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Save-TaskDiffSnapshot.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1','Write-RoleAttemptMetric.ps1','Write-WorkflowContinuationMetric.ps1','Get-McpTranscriptSummary.ps1')) {
+foreach ($scriptName in @('Get-AgentTasks.ps1','Get-AgentActivity.ps1','Get-AgentResumePlan.ps1','Get-AgentCommentBatch.ps1','Acknowledge-AgentCommentBatch.ps1','Add-ReviewQuestionResponse.ps1','Request-OrchestratorCommentRouting.ps1','Set-WorkflowInputRoute.ps1','Update-AgentContextPack.ps1','Provision-TaskWorkspace.ps1','Resolve-TaskWorkspace.ps1','Release-TaskWorkspaceLease.ps1','Remove-CompletedTaskWorkspaces.ps1','Update-TaskWorkspaceLeaseHeartbeat.ps1','Repair-StaleTaskWorkspaceLeases.ps1','Repair-LegacyTaskWorkspaceBranches.ps1','Switch-TaskWorkspace.ps1','Start-NextQueuedTask.ps1','Write-AgentActivity.ps1','Add-TaskComment.ps1','Open-AgentQuestion.ps1','Resolve-StaleAgentQuestions.ps1','Resolve-RecoveredControlPlaneStatuses.ps1','Assert-TargetAgentTerminalState.ps1','Set-AgentTaskStatus.ps1','Save-AgentCheckpoint.ps1','Publish-AgentOutcome.ps1','Save-ReviewArtifactSnapshot.ps1','New-DeveloperPublicationEvidence.ps1','Test-AgentOutcomeArtifact.ps1','Start-HealthTargetedResume.ps1','Invoke-OrchestratorContinuation.ps1','Continue-AgentChain.ps1','Repair-AgentContinuations.ps1','Start-AgentContinuationRecoveryHost.ps1','New-WeeklyKnowledgeReport.ps1','Get-TaskDiff.ps1','Save-TaskDiffSnapshot.ps1','Set-ReviewDecision.ps1','New-ReviewTechDebtItem.ps1','Request-TaskClosure.ps1','Reopen-AgentTask.ps1','Invoke-ReviewedBranchDelivery.ps1','Refresh-TaskPipelineResult.ps1','Sync-TaskPullRequestStatus.ps1','Sync-ActiveTaskPullRequests.ps1','Classify-PipelineFailure.ps1','Request-PipelineRemediation.ps1','Invoke-PostPushPipeline.ps1','Get-PipelinePolicySetup.ps1','Get-DashboardInsights.ps1','Write-RoleAttemptMetric.ps1','Write-WorkflowContinuationMetric.ps1','Get-McpTranscriptSummary.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "scripts\$scriptName") -PathType Leaf)) { throw "Task-monitor script is missing: $scriptName" }
 }
 if ($dashboardClient -notmatch 'selectedAgentId' -or $dashboardClient -notmatch 'loadAgentLog' -or $dashboardClient -notmatch 'agentLogRefreshSeconds \* 1000') { throw 'Dashboard per-agent live log polling is incomplete.' }
@@ -1055,6 +1055,10 @@ $pipelineWatcherScript = Get-Content -LiteralPath (Join-Path $root 'plugins\deve
 if ($pipelineWatcherScript -notmatch 'azdo-.*NewGuid' -or $pipelineWatcherScript -notmatch 'finally\s*\{\s*if\s*\(Test-Path -LiteralPath \$logFile') { throw 'Pipeline failed-log retrieval must use a unique non-existing temp path and guarantee cleanup.' }
 Add-Check -Name 'pipeline-log-temp-files' -Detail 'Every Azure failed-log download uses a unique path and removes it after bounded extraction'
 if (-not [bool]$config.pipeline.postPush.enabled -or [int]$config.pipeline.postPush.maxRemediationCycles -ne 3 -or [int]$config.pipeline.postPush.activityHeartbeatSeconds -ne 60) { throw 'Post-push monitoring must be enabled with a 60-second activity heartbeat and three-cycle remediation ceiling.' }
+$pipelinePolicySetup = & (Join-Path $root 'scripts\Get-PipelinePolicySetup.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([string]$pipelinePolicySetup.configurationStatus -ne 'configured' -or [string]$pipelinePolicySetup.mode -ne 'guarded-delivery' -or [bool]$pipelinePolicySetup.requiresDecision -or (@($pipelinePolicySetup.options | ForEach-Object { [string]$_.mode }) -join ',') -ne 'disabled,observe-only,guarded-delivery') { throw 'Pipeline policy setup does not expose the three required developer choices or the configured mode.' }
+$pipelineInstallerScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Install-AgentEcosystem.ps1') -Raw -Encoding UTF8
+if ($healthCheckCliScript -notmatch 'Get-PipelinePolicySetup\.ps1' -or $healthCheckCliScript -notmatch 'requiredInformation' -or $healthCheckCliScript -notmatch "-Id 'pipeline-policy'" -or $pipelineInstallerScript -notmatch 'Pipeline policy is unconfigured') { throw 'First Health Check does not present pipeline policy choices and required information, or installation does not block a pending decision.' }
 if (-not [bool]$config.workflow.automaticContinuation.enabled -or [int]$config.workflow.automaticContinuation.maxChainSteps -ne 16 -or [int]$config.workflow.automaticContinuation.maxTransitionRepeats -ne 4 -or -not [bool]$config.workflow.automaticContinuation.useElevatedExecution) { throw 'Automatic targeted continuation configuration is incomplete.' }
 if ([int]$config.workflow.automaticContinuation.maxTransitionRepeats -lt ([int]$config.pipeline.postPush.maxRemediationCycles + 1)) { throw 'Automatic transition repeats must allow the initial delivery pass plus every configured pipeline remediation cycle.' }
 if (-not [bool]$config.workflow.orchestration.outcomeDrivenTransitions -or [string]$config.workflow.orchestration.transitionEntryPoint -ne '${REPO_ROOT}/scripts/Invoke-OrchestratorContinuation.ps1') { throw 'Successful role outcomes do not return through the canonical Orchestrator control plane.' }
@@ -1074,11 +1078,41 @@ if ($pipelineOwnershipContract -ne 'pipeline_monitor,developer,reviewer,review_v
 $excelPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-planningspace-ps-excel-agent') | Select-Object -First 1
 $excelQueueIds = @(if ($excelPipeline.PSObject.Properties['autoQueueDefinitionIds']) { @($excelPipeline.autoQueueDefinitionIds) } else { @() })
 $excelSkipIds = @(if ($excelPipeline.PSObject.Properties['skipOnMissingYamlDefinitionIds']) { @($excelPipeline.skipOnMissingYamlDefinitionIds) } else { @() })
-$allQueueIds = @($config.pipeline.repositories | ForEach-Object { if ($_.PSObject.Properties['autoQueueDefinitionIds']) { @($_.autoQueueDefinitionIds) } })
-if (([bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and ($excelQueueIds -join ',') -ne '814,892') -or (-not [bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and $excelQueueIds.Count -ne 0) -or ($excelSkipIds -join ',') -ne '892' -or $allQueueIds -contains 891) { throw 'Build queue policy must match explicit authorization; deployment 891 is forbidden.' }
+$pipelineDefinitionOverlaps = @(
+    foreach ($repositoryPolicy in @($config.pipeline.repositories)) {
+        foreach ($queueDefinitionId in @($repositoryPolicy.autoQueueDefinitionIds)) {
+            if ($queueDefinitionId -in @($repositoryPolicy.deploymentDefinitionIds)) { "$([string]$repositoryPolicy.repositoryId):$queueDefinitionId" }
+        }
+    }
+)
+$allPipelineDefinitionsDisjoint = $pipelineDefinitionOverlaps.Count -eq 0
+if (([bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and ($excelQueueIds -join ',') -ne '814,892') -or (-not [bool]$config.pipeline.postPush.autoQueueApprovedBuilds -and $excelQueueIds.Count -ne 0) -or ($excelSkipIds -join ',') -ne '892' -or -not $allPipelineDefinitionsDisjoint) { throw 'Build queue policy must match explicit authorization and remain disjoint from configured deployment definitions.' }
 $delfiPipeline = @($config.pipeline.repositories | Where-Object repositoryId -eq 'azure-palantirplugins-ps-app-delfi') | Select-Object -First 1
 $delfiQueueIds = @(if ($delfiPipeline.PSObject.Properties['autoQueueDefinitionIds']) { @($delfiPipeline.autoQueueDefinitionIds) } else { @() })
 if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or $delfiQueueIds.Count -ne 0) { throw 'ps-app-delfi definition 17 must be observed passively and must never be auto-queued.' }
+$pipelinePolicyTestRoot = Join-Path $OutputRoot 'pipeline-policy'
+New-Item -ItemType Directory -Path $pipelinePolicyTestRoot -Force | Out-Null
+$overlapConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$overlapConfig.pipeline.repositories[0].deploymentDefinitionIds = @($overlapConfig.pipeline.repositories[0].autoQueueDefinitionIds[0])
+$overlapConfigPath = Join-Path $pipelinePolicyTestRoot 'overlap.json'
+Write-Utf8NoBom -Path $overlapConfigPath -Content (($overlapConfig | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
+$overlapRejected = $false
+try { Get-EcosystemConfig -ConfigPath $overlapConfigPath -CodexHome $CodexHome | Out-Null } catch { $overlapRejected = $_.Exception.Message -match 'deployment definition' }
+if (-not $overlapRejected) { throw 'Pipeline policy accepted a deployment definition in the auto-queue allowlist.' }
+$pendingConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$pendingConfig.pipeline.policy.configurationStatus = 'unconfigured'
+$pendingConfig.pipeline.policy.mode = 'disabled'
+$pendingConfig.pipeline.enabled = $false
+$pendingConfig.pipeline.delivery.autoPushAfterCleanReview = $false
+$pendingConfig.pipeline.pullRequests.enabled = $false
+$pendingConfig.pipeline.postPush.enabled = $false
+$pendingConfig.pipeline.postPush.autoQueueApprovedBuilds = $false
+foreach ($repositoryPolicy in @($pendingConfig.pipeline.repositories)) { $repositoryPolicy.autoQueueDefinitionIds = @() }
+$pendingConfigPath = Join-Path $pipelinePolicyTestRoot 'pending.json'
+Write-Utf8NoBom -Path $pendingConfigPath -Content (($pendingConfig | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
+$pendingSetup = & (Join-Path $root 'scripts\Get-PipelinePolicySetup.ps1') -ConfigPath $pendingConfigPath -CodexHome $CodexHome
+if (-not [bool]$pendingSetup.requiresDecision -or [string]$pendingSetup.mode -ne 'disabled') { throw 'A safe unconfigured pipeline policy did not request the developer decision.' }
+Add-Check -Name 'pipeline-policy-configuration' -Detail 'First check exposes disabled, observe-only, and guarded-delivery; pending policy stays disabled; deployment definitions cannot enter auto-queue'
 Add-Check -Name 'configuration-semantics' -Detail "mode=$($config.operation.mode); repositories=$(@($config.repositories).Count); agents=$(@($config.agents).Count); pipelineOwners=$pipelineOwnershipContract"
 
 $pipelineTestRoot = Join-Path $OutputRoot 'pipeline-monitor'
@@ -1990,7 +2024,7 @@ Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 $setupPromptPath = Join-Path $root 'SETUP_WITH_LLM.md'
 if (-not (Test-Path -LiteralPath $setupPromptPath -PathType Leaf)) { throw 'The interactive LLM setup prompt is missing.' }
 $setupPrompt = Get-Content -LiteralPath $setupPromptPath -Raw -Encoding UTF8
-foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','Projects and repositories: define a stable ecosystem project ID','Never ask the developer to paste passwords','az devops login','redacted summary','Start-DevelopmentWorkflow.ps1 -PrepareOnly','separate confirmation before running `scripts/Install-AgentEcosystem.ps1`')) {
+foreach ($requiredSetupContract in @('Mandatory reading','Interview protocol','Projects and repositories: define a stable ecosystem project ID','Get-PipelinePolicySetup.ps1','disabled','observe-only','guarded-delivery','Never infer whether a definition is a build or deployment','Never ask the developer to paste passwords','az devops login','redacted summary','Start-DevelopmentWorkflow.ps1 -PrepareOnly','separate confirmation before running `scripts/Install-AgentEcosystem.ps1`')) {
     if ($setupPrompt -notmatch [regex]::Escape($requiredSetupContract)) { throw "The interactive LLM setup prompt is missing contract text: $requiredSetupContract" }
 }
 Add-Check -Name 'llm-guided-installation' -Detail 'The branch contains a provider-aware interactive setup interview with secret handling, preview, validation, prepare-only smoke, and separate installation approval'
@@ -2110,6 +2144,12 @@ Add-Check -Name 'multi-provider-routing' -Detail 'Per-agent defaults, provider t
 
 & (Join-Path $root 'tests/Test-AgentTokenUsage.ps1') -OutputRoot (Join-Path $OutputRoot 'token-usage') | Out-Null
 Add-Check -Name 'agent-token-usage' -Detail 'Per-task iteration/agent usage, actual Claude models, partial messages, fallback attribution and idempotence'
+
+& (Join-Path $root 'tests/Test-RepositoryKnowledgeMap.ps1') -OutputRoot (Join-Path $OutputRoot 'repository-knowledge-map') | Out-Null
+Add-Check -Name 'repository-knowledge-map' -Detail 'Revision-bound structural graph indexes files, components, entry points and dependencies, reuses unchanged fingerprints, and invalidates on source changes'
+
+& (Join-Path $root 'tests/Test-DashboardInsights.ps1') -OutputRoot (Join-Path $OutputRoot 'dashboard-insights') | Out-Null
+Add-Check -Name 'dashboard-insights' -Detail 'Dashboard aggregates task errors, role attempts, model/agent token usage, and task-bound Knowledge Keeper outcomes'
 
 [pscustomobject]@{
     Passed = $true

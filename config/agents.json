@@ -415,6 +415,10 @@
   },
   "pipeline": {
     "enabled": true,
+    "policy": {
+      "configurationStatus": "configured",
+      "mode": "guarded-delivery"
+    },
     "monitorSkillRoot": "${REPO_ROOT}/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor",
     "ownership": {
       "monitorAgentId": "pipeline_monitor",
@@ -462,6 +466,7 @@
           814,
           892
         ],
+        "deploymentDefinitionIds": [],
         "skipOnMissingYamlDefinitionIds": [
           892
         ]
@@ -469,14 +474,16 @@
       {
         "repositoryId": "azure-planningspace-ps-bicep",
         "definitionIds": [],
-        "autoQueueDefinitionIds": []
+        "autoQueueDefinitionIds": [],
+        "deploymentDefinitionIds": []
       },
       {
         "repositoryId": "azure-palantirplugins-ps-app-delfi",
         "definitionIds": [
           17
         ],
-        "autoQueueDefinitionIds": []
+        "autoQueueDefinitionIds": [],
+        "deploymentDefinitionIds": []
       }
     ]
   },
@@ -750,6 +757,7 @@
       "description": "On-demand knowledge service that selects verified context, records completed task history, maintains evidence-backed knowledge, and publishes documentation-style human-readable outcomes.",
       "responsibilities": [
         "Provide bounded verified code, domain, decision, and skill context when another agent requests it.",
+        "Build and maintain revision-bound repository knowledge maps so agents can navigate components, entry points, tests, and dependency edges without repeated full-project scans.",
         "Ingest only successful final agent outcomes and decide what verified knowledge must be updated.",
         "Evaluate every confirmed review comment about code organization, formatting, naming, access modifiers, member ordering, braces, testing style, maintainability, or engineering principles and promote it into a global or technology-scoped standard only after independent verification, successful implementation when applicable, a clean review, and passing exact-SHA verification; keep business, domain, API, integration, and product-behavior knowledge repository-scoped; exclude verifier-rejected, bypassed, deferred, rejected, unresolved, speculative, and task-only comments.",
         "Maintain per-task history and publish the final task summary after delivery completion.",

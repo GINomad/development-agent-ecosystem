@@ -17,6 +17,8 @@ For a guided developer-specific installation, give the repository directory to a
 
 Open `config/agents.json` and verify:
 
+- `pipeline.policy.configurationStatus` and `pipeline.policy.mode`; run `scripts/Get-PipelinePolicySetup.ps1` and choose `disabled`, `observe-only`, or `guarded-delivery` before installation;
+
 - each canonical repository URL, its operator/reference `repositories[].localWorkspace`, and the Azure organization, project, repository, and reviewer; task execution uses only isolated clones under `workflow.workspaceScheduling.workspaceRoot`;
 - `taskSources[]` for assigned work items;
 - `credentialProfiles[]`, which must contain only CLI or environment authentication strategy, never tokens or passwords;
@@ -25,7 +27,7 @@ Open `config/agents.json` and verify:
 - `knowledge.technicalRoot`, `knowledge.globalStandardsPath`, and project-tagged `knowledge.seedSources[]`;
 - `workflow.workspaceScheduling`: `maxActiveTasks` is at least two, `queueWhenBusy=true`, `maxActiveAgentsPerTask=1`, and `workspaceRoot` plus `coordinatorStatePath` resolve outside every `repositories[].localWorkspace`;
 - `leaseHeartbeatSeconds` and `staleLeaseGraceSeconds`; stale grace must be at least three heartbeat intervals and no more than one hour;
-- `pipeline.ownership` and every `pipeline.repositories[]` definition/auto-queue allowlist; compare them with the [pipeline monitoring matrix](pipeline-monitoring.md).
+- `pipeline.ownership` and every `pipeline.repositories[]` observed, auto-queue, and deployment definition list; compare them with the [pipeline monitoring matrix](pipeline-monitoring.md).
 - the separate read-only `reviewer` and `review_verifier` roles, the mandatory ten-dimension `reviewCoverage` matrix, exact review-SHA binding, and `new`/`unchanged`/`resolved`/`regressed` lifecycle contract.
 
 ## 2. Install the plugin and agents

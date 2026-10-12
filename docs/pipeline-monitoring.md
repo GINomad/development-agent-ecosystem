@@ -2,6 +2,20 @@
 
 This page is the operator view of the pipeline contract. The machine-readable source of truth is `pipeline` in `config/agents.json`; `config/schemas/agents.schema.json`, semantic validation in `scripts/AgentEcosystem.psm1`, and `scripts/Test-AgentEcosystem.ps1` fail closed when the contract drifts.
 
+## Policy setup
+
+Run `scripts/Get-PipelinePolicySetup.ps1` during the first configuration check. The same three choices must be presented by the LLM-guided setup:
+
+| Mode | Behavior | Required developer input |
+|---|---|---|
+| `disabled` | No pipeline monitoring, PR lifecycle, push, or queueing | Explicit confirmation that pipelines are not applicable |
+| `observe-only` | Exact-SHA observation and optional PR lifecycle; no push or queueing | Repository IDs, optional observed definition IDs, deployment definition IDs, and PR-monitoring preference |
+| `guarded-delivery` | Reviewed branch delivery plus ordered allowlisted build queueing | Observe-only inputs plus the allowed remote, protected branches, ordered build-only queue IDs, and deployment IDs |
+
+`pipeline.policy.configurationStatus` remains `unconfigured` until the developer supplies the required non-secret information. An unconfigured policy must use `mode=disabled` with all pipeline switches off. Installation refuses that pending state, while Health Check reports the choices and required action. An explicit opt-out uses `configurationStatus=disabled` and `mode=disabled`.
+
+Every `pipeline.repositories[]` item separates `definitionIds`, `autoQueueDefinitionIds`, and `deploymentDefinitionIds`. A definition may be observed and classified as a deployment, but any overlap between deployment and auto-queue lists fails validation. The setup assistant must never infer a build/deployment classification from a name or an existing run.
+
 ## Agent ownership
 
 `pipeline.ownership` assigns every pipeline transition to one configured agent. Task text, comments, and similarly named repositories cannot override this map.
@@ -50,7 +64,8 @@ For an existing managed repository, edit its matching object in `pipeline.reposi
 {
   "repositoryId": "azure-project-repository",
   "definitionIds": [123],
-  "autoQueueDefinitionIds": []
+  "autoQueueDefinitionIds": [],
+  "deploymentDefinitionIds": []
 }
 ```
 

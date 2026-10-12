@@ -352,6 +352,18 @@ try {
                     Send-Json -Response $response -Value @{ tasks=@($result.Tasks); scheduler=$result.Scheduler; generatedAtUtc=[string]$result.GeneratedAtUtc }
                     continue
                 }
+                if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/insights') {
+                    $insightParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    $requestedProjectId = [string]$request.QueryString['projectId']
+                    if ($requestedProjectId) {
+                        if ($requestedProjectId -notmatch '^[a-z0-9][a-z0-9-]*$') { throw 'Project ID contains unsupported characters.' }
+                        if (-not @($config.projects | Where-Object { [string]$_.id -eq $requestedProjectId -and [bool]$_.enabled }).Count) { throw 'Project is not enabled or does not exist.' }
+                        $insightParameters.ProjectId = $requestedProjectId
+                    }
+                    $insights = & (Join-Path $PSScriptRoot 'Get-DashboardInsights.ps1') @insightParameters
+                    Send-Json -Response $response -Value $insights
+                    continue
+                }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/external-reviews') {
                     $monitorDataRoot = Resolve-EcosystemPath -Value ([string]$config.review.monitorDataRoot) -Config $config -CodexHome $CodexHome
                     $reviewRoot = [IO.Path]::GetFullPath((Join-Path $monitorDataRoot 'reports'))

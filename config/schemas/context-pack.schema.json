@@ -24,6 +24,24 @@
         }
       }
     },
+    "repositoryMaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repositoryId", "path", "sha256", "revision", "sourceFingerprint", "fileCount", "componentCount", "recommendedStart"],
+        "properties": {
+          "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "revision": { "type": "string", "minLength": 1 },
+          "sourceFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "fileCount": { "type": "integer", "minimum": 0 },
+          "componentCount": { "type": "integer", "minimum": 0 },
+          "recommendedStart": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "maxItems": 30 }
+        }
+      }
+    },
     "engineeringGuidance": {
       "type": "object",
       "additionalProperties": false,
