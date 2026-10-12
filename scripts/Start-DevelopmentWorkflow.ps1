@@ -398,6 +398,8 @@ $mcpCanaryCompletionRecorded = $false
 $mcpJsonlFailedServers = @()
 $mcpSession = $null
 $roleAttemptId = [guid]::NewGuid().ToString('N')
+$tokenTaskState=Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$tokenTaskRevision=if($tokenTaskState.PSObject.Properties['revision']){[Nullable[int]][int]$tokenTaskState.revision}else{$null}
 function Complete-CurrentMcpCanary([bool]$Succeeded) {
     if (-not $mcpExecution -or [string]$mcpExecution.Mode -ne 'mcp') { return }
     foreach($candidate in @($mcpExecution.Servers)){
@@ -460,6 +462,7 @@ try {
     [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
     & $leaseHeartbeatAction | Out-Null
+    try {
     if ([string]$providerRoute.provider -eq 'copilot') {
         $copilotParams=@{ Prompt=$prompt; WorkingDirectory=$agentWorkingDirectory; LogPath=$codexLogPath; FinalResponsePath=$finalResponsePath; GuardArtifactPath=$guardArtifactPath; Model=[string]$providerRoute.model; ReasoningEffort=[string]$providerRoute.reasoningEffort; MaxIdenticalFailures=[int]$config.runtime.executionGuard.maxIdenticalFailures; MaxRunMinutes=[int]$config.runtime.executionGuard.maxRunMinutes; PollMilliseconds=[int]$config.runtime.executionGuard.pollMilliseconds; HeartbeatAction=$leaseHeartbeatAction; HeartbeatIntervalSeconds=[int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds; CliPath=[string]$providerRoute.command; AdditionalDirectories=$additionalDirectories; ReadOnly=([string]$activeAgent.sandboxMode -eq 'read-only'); McpServers=@($mcpExecution.Servers) }
         if ($mcpSession) { $copilotParams.McpSessionPath=[string]$mcpSession.Path }
@@ -498,6 +501,13 @@ try {
     $codexCliPath = [string]$providerRoute.command
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+    }
+    } finally {
+        $tokenUsagePath=$null
+        if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and $guardResult -and $guardResult.PSObject.Properties['usagePath']) { $tokenUsagePath=[string]$guardResult.usagePath }
+        try {
+            & (Join-Path $PSScriptRoot 'Write-AgentTokenUsage.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AgentId $executedAgentId -RunId ([string]$workspaceLease.RunId) -AttemptId $roleAttemptId -Provider ([string]$providerRoute.provider) -Model ([string]$providerRoute.model) -LogPath $codexLogPath -UsagePath $tokenUsagePath -TaskRevision $tokenTaskRevision | Out-Null
+        } catch { Write-Warning "Token usage persistence failed: $($_.Exception.Message)" }
     }
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
