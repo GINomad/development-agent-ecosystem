@@ -44,6 +44,15 @@ try {
     }
 
     Add-HealthCheck -Id 'configuration' -Status passed -Summary 'Canonical ecosystem configuration loaded and passed semantic validation.' -Evidence @($ConfigPath)
+    $pipelinePolicySetup = & (Join-Path $PSScriptRoot 'Get-PipelinePolicySetup.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
+    if ([bool]$pipelinePolicySetup.requiresDecision) {
+        $optionSummary = @($pipelinePolicySetup.options | ForEach-Object { [string]$_.mode }) -join ', '
+        $optionEvidence = @($pipelinePolicySetup.options | ForEach-Object { "$([string]$_.mode): $([string]$_.description) Required: $(@($_.requiredInformation) -join ' ')" })
+        Add-HealthCheck -Id 'pipeline-policy' -Status failed -Summary "Pipeline policy requires a developer decision. Choose one of: $optionSummary; provide the requested non-secret repository/definition information, or choose disabled." -Evidence $optionEvidence
+    }
+    else {
+        Add-HealthCheck -Id 'pipeline-policy' -Status passed -Summary "Pipeline policy is $([string]$pipelinePolicySetup.configurationStatus) in mode '$([string]$pipelinePolicySetup.mode)'."
+    }
 
     $codexCliPath = if($codexSelected){Resolve-CodexCliPath}else{$null}
     if ($codexSelected -and $codexCliPath) {

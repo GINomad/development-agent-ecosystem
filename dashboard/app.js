@@ -28,6 +28,8 @@ let selectedOutcomeArtifactName = null;
 let agentLogRequestInFlight = false;
 let agentLogRefreshSeconds = 30;
 let taskRefreshInFlight = false;
+let insightsRequestInFlight = false;
+let insightsTab = 'analytics';
 let taskStateRevision = 0;
 let schedulerState = { capacity: 0, activeTaskCount: 0, queuedTaskCount: 0 };
 let reviewDiffIndex = null;
@@ -106,6 +108,215 @@ function formatDate(value) {
   if (!value) return 'not reported';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatCount(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? new Intl.NumberFormat().format(number) : '0';
+}
+
+function appendMetric(container, label, value, detail = '') {
+  const card = document.createElement('article');
+  card.className = 'metric-card';
+  const caption = document.createElement('span');
+  caption.textContent = label;
+  const amount = document.createElement('strong');
+  amount.textContent = value;
+  card.append(caption, amount);
+  if (detail) {
+    const note = document.createElement('small');
+    note.textContent = detail;
+    card.append(note);
+  }
+  container.append(card);
+}
+
+function appendInsightCell(row, value, className = '') {
+  const cell = document.createElement('td');
+  cell.textContent = value;
+  if (className) cell.className = className;
+  row.append(cell);
+}
+
+function renderAnalytics(analytics = {}) {
+  const summary = analytics.summary || {};
+  const summaryGrid = document.querySelector('#analyticsSummary');
+  summaryGrid.replaceChildren();
+  appendMetric(summaryGrid, 'Tasks', formatCount(summary.taskCount), `${formatCount(summary.activeTaskCount)} active · ${formatCount(summary.completedTaskCount)} completed`);
+  appendMetric(summaryGrid, 'Recorded errors', formatCount(summary.errorCount), `${formatCount(summary.failedAttemptCount)} failed role attempts`);
+  appendMetric(summaryGrid, 'Reported tokens', formatCount(summary.totalTokens), `${formatCount(summary.unavailableTokenRecordCount)} usage records unavailable`);
+  appendMetric(summaryGrid, 'Knowledge outcomes', formatCount(summary.knowledgeOutcomeCount), 'Tasks with persisted Knowledge Keeper results');
+
+  const modelBody = document.querySelector('#tokensByModel');
+  modelBody.replaceChildren();
+  const models = Array.isArray(analytics.tokensByModel) ? analytics.tokensByModel : [];
+  if (!models.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = 'empty-table-cell';
+    cell.textContent = 'No reported model token usage yet.';
+    row.append(cell);
+    modelBody.append(row);
+  } else models.forEach(item => {
+    const row = document.createElement('tr');
+    appendInsightCell(row, `${item.provider || 'provider'} / ${item.model || 'unknown model'}`, 'primary-cell');
+    appendInsightCell(row, formatCount(item.totalTokens));
+    appendInsightCell(row, formatCount(item.inputTokens));
+    appendInsightCell(row, formatCount(item.outputTokens));
+    appendInsightCell(row, formatCount(Number(item.cacheReadTokens || 0) + Number(item.cacheWriteTokens || 0)));
+    appendInsightCell(row, formatCount(item.agentCount));
+    modelBody.append(row);
+  });
+
+  const attemptMap = new Map((Array.isArray(analytics.attemptsByAgent) ? analytics.attemptsByAgent : []).map(item => [item.agentId, item]));
+  const tokenAgents = Array.isArray(analytics.tokensByAgent) ? analytics.tokensByAgent : [];
+  const agentIds = new Set([...tokenAgents.map(item => item.agentId), ...attemptMap.keys()]);
+  const agentBody = document.querySelector('#tokensByAgent');
+  agentBody.replaceChildren();
+  if (!agentIds.size) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = 'empty-table-cell';
+    cell.textContent = 'No agent metrics have been persisted yet.';
+    row.append(cell);
+    agentBody.append(row);
+  } else Array.from(agentIds).sort().forEach(agentId => {
+    const tokens = tokenAgents.find(item => item.agentId === agentId) || {};
+    const attempts = attemptMap.get(agentId) || {};
+    const row = document.createElement('tr');
+    appendInsightCell(row, agentLabels[agentId] || agentId, 'primary-cell');
+    appendInsightCell(row, formatCount(tokens.totalTokens));
+    appendInsightCell(row, formatCount(attempts.attempts));
+    appendInsightCell(row, formatCount(attempts.failed), Number(attempts.failed || 0) ? 'error-value' : '');
+    appendInsightCell(row, `${(Number(attempts.errorRate || 0) * 100).toFixed(1)}%`);
+    appendInsightCell(row, Array.isArray(tokens.models) && tokens.models.length ? tokens.models.join(', ') : 'not reported');
+    agentBody.append(row);
+  });
+
+  const errors = Array.isArray(analytics.recentErrors) ? analytics.recentErrors : [];
+  document.querySelector('#errorSummary').textContent = `${formatCount(summary.errorCount)} recorded error${Number(summary.errorCount) === 1 ? '' : 's'}`;
+  const errorList = document.querySelector('#recentErrors');
+  errorList.replaceChildren();
+  if (!errors.length) {
+    errorList.className = 'recent-error-list empty-insight';
+    errorList.textContent = 'No agent-failure events were recorded for this scope.';
+  } else {
+    errorList.className = 'recent-error-list';
+    errors.forEach(error => {
+      const item = document.createElement('article');
+      item.className = 'recent-error';
+      const heading = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `${error.taskId} · ${agentLabels[error.agentId] || error.agentId || 'agent'}`;
+      const time = document.createElement('time');
+      time.textContent = formatDate(error.timestampUtc);
+      heading.append(title, time);
+      const message = document.createElement('p');
+      message.textContent = error.summary || 'Failure details were not recorded.';
+      item.append(heading, message);
+      errorList.append(item);
+    });
+  }
+}
+
+function renderKnowledge(knowledge = {}) {
+  const summaryGrid = document.querySelector('#knowledgeSummary');
+  summaryGrid.replaceChildren();
+  appendMetric(summaryGrid, 'Task outcomes', formatCount(knowledge.outcomeCount), 'Tasks with persisted knowledge results');
+  appendMetric(summaryGrid, 'Verified entries', formatCount(knowledge.verifiedEntryCount));
+  appendMetric(summaryGrid, 'Proposed entries', formatCount(knowledge.proposedEntryCount));
+  appendMetric(summaryGrid, 'Superseded entries', formatCount(knowledge.supersededEntryCount));
+  const list = document.querySelector('#knowledgeOutcomes');
+  list.replaceChildren();
+  const outcomes = Array.isArray(knowledge.outcomes) ? knowledge.outcomes : [];
+  if (!outcomes.length) {
+    list.className = 'knowledge-outcome-list empty-insight';
+    list.textContent = 'Knowledge Keeper has not published an outcome for this project yet.';
+    return;
+  }
+  list.className = 'knowledge-outcome-list';
+  outcomes.forEach(outcome => {
+    const card = document.createElement('article');
+    card.className = 'project-knowledge-card';
+    const heading = document.createElement('div');
+    heading.className = 'project-knowledge-heading';
+    const titleGroup = document.createElement('div');
+    const task = document.createElement('strong');
+    task.textContent = outcome.taskId;
+    const selector = document.createElement('span');
+    selector.textContent = outcome.selector || 'Task description unavailable';
+    titleGroup.append(task, selector);
+    const time = document.createElement('time');
+    time.textContent = formatDate(outcome.updatedAtUtc);
+    heading.append(titleGroup, time);
+    card.append(heading);
+    const keeperOutcomes = Array.isArray(outcome.keeperOutcomes) ? outcome.keeperOutcomes : [];
+    keeperOutcomes.forEach(text => {
+      const overview = document.createElement('p');
+      overview.className = 'keeper-outcome';
+      overview.textContent = text;
+      card.append(overview);
+    });
+    const entries = Array.isArray(outcome.entries) ? outcome.entries : [];
+    const entryList = document.createElement('div');
+    entryList.className = 'knowledge-entry-list';
+    entries.forEach(entry => {
+      const item = document.createElement('article');
+      item.className = 'knowledge-entry';
+      const identity = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = `${entry.id || 'knowledge'} · ${entry.kind || 'fact'}`;
+      const status = document.createElement('span');
+      status.className = `mini-status ${statusClass(entry.status)}`;
+      status.textContent = entry.status || 'unknown';
+      identity.append(name, status);
+      const statement = document.createElement('p');
+      statement.textContent = entry.statement || 'No statement recorded.';
+      const meta = document.createElement('small');
+      meta.textContent = `${entry.scope || 'task scope'} · ${entry.targetPath || 'target not recorded'} · ${entry.revision || 'revision not recorded'}`;
+      item.append(identity, statement, meta);
+      entryList.append(item);
+    });
+    if (entries.length) card.append(entryList);
+    else {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'The task summary records a Knowledge Keeper outcome without structured knowledge entries.';
+      card.append(empty);
+    }
+    list.append(card);
+  });
+}
+
+async function loadInsights({ silent = false } = {}) {
+  if (insightsRequestInFlight) return;
+  insightsRequestInFlight = true;
+  const button = document.querySelector('#refreshInsights');
+  if (!silent) { button.disabled = true; button.textContent = 'Refreshing...'; }
+  try {
+    const projectId = projectPicker.value;
+    const result = await api(`/api/insights${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`);
+    const project = configuredProjects.find(item => item.id === projectId);
+    document.querySelector('#insightsScope').textContent = `${project?.name || 'All projects'} · updated ${formatDate(result.generatedAtUtc)}`;
+    renderAnalytics(result.analytics);
+    renderKnowledge(result.knowledge);
+  } catch (error) {
+    document.querySelector('#insightsScope').textContent = `Insights unavailable: ${error.message}`;
+    if (!silent) log(`Error: ${error.message}`);
+  } finally {
+    insightsRequestInFlight = false;
+    button.disabled = false;
+    button.textContent = 'Refresh insights';
+  }
+}
+
+function selectInsightsTab(tab) {
+  insightsTab = tab === 'knowledge' ? 'knowledge' : 'analytics';
+  document.querySelector('#analyticsWorkspace').classList.toggle('hidden', insightsTab !== 'analytics');
+  document.querySelector('#knowledgeWorkspace').classList.toggle('hidden', insightsTab !== 'knowledge');
+  document.querySelectorAll('[data-insights-tab]').forEach(button => button.classList.toggle('active', button.dataset.insightsTab === insightsTab));
 }
 
 function statusClass(value) {
@@ -2279,6 +2490,8 @@ document.querySelector('#startWorkflow').addEventListener('click', async () => {
 });
 
 document.querySelector('#refreshTaskStatus').addEventListener('click', () => loadTaskList());
+document.querySelector('#refreshInsights').addEventListener('click', () => loadInsights());
+document.querySelectorAll('[data-insights-tab]').forEach(button => button.addEventListener('click', () => selectInsightsTab(button.dataset.insightsTab)));
 document.querySelectorAll('[data-review-tab]').forEach(button => button.addEventListener('click', () => selectReviewTab(button.dataset.reviewTab).catch(error => log('Error: ' + error.message))));
 document.querySelector('#refreshExternalReviews').addEventListener('click', () => loadExternalReviews().catch(error => log('Error: ' + error.message)));
 
@@ -2706,16 +2919,21 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
       });
       updateRepositorySummary();
     };
-    projectPicker.addEventListener('change', renderProjectRepositories);
+    projectPicker.addEventListener('change', () => {
+      renderProjectRepositories();
+      void loadInsights();
+    });
     renderProjectRepositories();
     document.querySelector(`[data-mode="${config.mode}"]`).click();
     document.querySelector('#connectionStatus').textContent = 'Local - ready';
     document.querySelector('#connectionStatus').classList.add('online');
     await loadTaskList();
+    await loadInsights();
     const refreshMilliseconds = Math.max(2, Number(config.taskRefreshSeconds) || 5) * 1000;
     agentLogRefreshSeconds = Math.max(2, Number(config.agentLogRefreshSeconds) || 30);
     window.setInterval(() => loadTaskList({ silent: true }), refreshMilliseconds);
     window.setInterval(() => loadAgentLog({ silent: true }), agentLogRefreshSeconds * 1000);
+    window.setInterval(() => loadInsights({ silent: true }), Math.max(refreshMilliseconds * 6, 30000));
   } catch (error) {
     document.querySelector('#connectionStatus').textContent = 'Connection error';
     log(`Error: ${error.message}`);

@@ -228,6 +228,14 @@ function Assert-EcosystemConfig {
     foreach ($seed in @($Config.knowledge.seedSources)) {
         if (-not $projectIds.ContainsKey([string]$seed.projectId)) { throw "Knowledge seed '$($seed.id)' references unknown project '$($seed.projectId)'." }
     }
+    $pipelinePolicyStatus = [string]$Config.pipeline.policy.configurationStatus
+    $pipelinePolicyMode = [string]$Config.pipeline.policy.mode
+    if ($pipelinePolicyStatus -eq 'disabled' -and $pipelinePolicyMode -ne 'disabled') { throw 'Disabled pipeline policy status requires mode=disabled.' }
+    if ($pipelinePolicyStatus -eq 'configured' -and $pipelinePolicyMode -eq 'disabled') { throw 'Pipeline mode=disabled requires configurationStatus=disabled.' }
+    if ($pipelinePolicyStatus -eq 'unconfigured' -and $pipelinePolicyMode -ne 'disabled') { throw 'An unconfigured pipeline policy must remain disabled until the developer chooses a mode.' }
+    if ($pipelinePolicyMode -eq 'disabled' -and ([bool]$Config.pipeline.enabled -or [bool]$Config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$Config.pipeline.pullRequests.enabled -or [bool]$Config.pipeline.postPush.enabled -or [bool]$Config.pipeline.postPush.autoQueueApprovedBuilds)) { throw 'Disabled or unconfigured pipeline policy requires every pipeline execution, delivery, PR, and queue switch to be false.' }
+    if ($pipelinePolicyMode -eq 'observe-only' -and (-not [bool]$Config.pipeline.enabled -or [bool]$Config.pipeline.delivery.autoPushAfterCleanReview -or [bool]$Config.pipeline.postPush.autoQueueApprovedBuilds)) { throw 'Observe-only pipeline policy requires monitoring enabled with delivery and auto-queue disabled.' }
+    if ($pipelinePolicyMode -eq 'guarded-delivery' -and (-not [bool]$Config.pipeline.enabled -or -not [bool]$Config.pipeline.postPush.enabled)) { throw 'Guarded-delivery pipeline policy requires pipeline and post-push monitoring enabled.' }
     if ([int]$Config.pipeline.postPush.maxRemediationCycles -lt 1 -or [int]$Config.pipeline.postPush.maxRemediationCycles -gt 3) { throw 'pipeline.postPush.maxRemediationCycles must be between 1 and 3.' }
     if ([bool]$Config.pipeline.delivery.allowForce -or [bool]$Config.pipeline.delivery.allowTags -or [string]$Config.pipeline.delivery.remote -ne 'origin') { throw 'Pipeline delivery permits only a normal branch push to origin.' }
     if (-not [bool]$Config.pipeline.delivery.requireCleanWorktree) { throw 'Pipeline delivery requires a clean worktree.' }
@@ -239,7 +247,10 @@ function Assert-EcosystemConfig {
         if (-not $repositoryIds.ContainsKey($pipelineRepositoryId)) { throw "Pipeline configuration references unknown repository '$pipelineRepositoryId'." }
         if ($pipelineRepositoryIds.ContainsKey($pipelineRepositoryId)) { throw "Pipeline configuration repeats repository '$pipelineRepositoryId'." }
         $pipelineRepositoryIds[$pipelineRepositoryId] = $true
-        if (@($pipelineRepository.autoQueueDefinitionIds) -contains 891) { throw 'Deployment definition 891 must never be auto-queued.' }
+        $deploymentDefinitionIds = @($pipelineRepository.deploymentDefinitionIds)
+        $autoQueueDefinitionIds = @($pipelineRepository.autoQueueDefinitionIds)
+        if (@($autoQueueDefinitionIds | Where-Object { $_ -in $deploymentDefinitionIds }).Count) { throw "Pipeline configuration for '$pipelineRepositoryId' attempts to auto-queue a configured deployment definition." }
+        if ($pipelinePolicyMode -ne 'guarded-delivery' -and $autoQueueDefinitionIds.Count) { throw "Pipeline mode '$pipelinePolicyMode' does not permit auto-queue definitions for '$pipelineRepositoryId'." }
         if (-not [bool]$Config.pipeline.postPush.autoQueueApprovedBuilds -and @($pipelineRepository.autoQueueDefinitionIds).Count) { throw 'Auto-queue definition IDs require pipeline.postPush.autoQueueApprovedBuilds=true.' }
         if (@($pipelineRepository.autoQueueDefinitionIds | Select-Object -Unique).Count -ne @($pipelineRepository.autoQueueDefinitionIds).Count) { throw "Pipeline auto-queue sequence for '$pipelineRepositoryId' contains duplicate definition IDs." }
     }
