@@ -22,11 +22,11 @@ The normal remediation loop is `pipeline_monitor -> developer -> reviewer -> rev
 
 | Repository ID | Azure DevOps location | Observed definitions | Auto-queue order | Monitor |
 |---|---|---|---|---|
-| `azure-planningspace-ps-excel-agent` | `Aucerna / PlanningSpace / ps-excel-agent` | Exact-SHA runs; an empty `definitionIds` list permits discovery | `814`, then a newly queued `892` only after 814 succeeds | `pipeline_monitor` |
+| `azure-planningspace-ps-excel-agent` | Configured locally | Exact-SHA runs; an empty `definitionIds` list permits discovery | Ordered local build allowlist | `pipeline_monitor` |
 | `azure-planningspace-ps-bicep` | `Aucerna / PlanningSpace / ps-bicep` | Triggered exact-SHA runs; empty `definitionIds` means discovery is not restricted to one definition | None; observation only | `pipeline_monitor` |
 | `azure-palantirplugins-ps-app-delfi` | `palantir-consulting / PalantirPlugins / ps-app-delfi` | Definition `17` for the exact SHA | None; definition 17 is observation only | `pipeline_monitor` |
 
-Deployment definition `891` is forbidden by semantic validation and must never appear in `autoQueueDefinitionIds`. An empty auto-queue list is not permission to infer or queue a pipeline.
+Deployment definition IDs are local configuration and must never be inferred. An empty auto-queue list is not permission to queue a pipeline.
 
 ## Exact-SHA lifecycle
 

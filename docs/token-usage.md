@@ -11,9 +11,9 @@ Claude total tokens include input, output, cache read and cache creation counter
 Query totals with:
 
 ```powershell
-./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-1869322' -GroupBy agent
-./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-1869322' -GroupBy iteration
-./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-1869322' -GroupBy attempt
+./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-id' -GroupBy agent
+./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-id' -GroupBy iteration
+./scripts/Get-AgentTokenUsage.ps1 -TaskRoot 'path/to/state/tasks/task-id' -GroupBy attempt
 ```
 
 The result exposes raw `Records` and grouped `Summary`. Summary totals remain null if any member lacks that counter; `knownInputTokens` and other `known*` fields expose only observed counts. Partial and unavailable record counts make incompleteness visible. No historical usage is synthesized. Older executions are not automatically backfilled.
