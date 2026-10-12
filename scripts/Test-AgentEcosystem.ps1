@@ -644,10 +644,17 @@ $localPocSummary = [ordered]@{
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'knowledge-update.json') -Content (($localPocKnowledge | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'context-pack.json') -Content (([ordered]@{ taskId=$localPocTaskId; artifacts=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'task-summary.json') -Content (($localPocSummary | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$localPocNoRun = [ordered]@{
+    taskId=$localPocTaskId; repositoryId='planning-space-excel-variable-poc'; observedAtUtc=[DateTime]::UtcNow.ToString('o'); branch='features/synthetic-local-poc'; commit=('0' * 40)
+    queuedDefinitionIds=@(); runs=@(); overallResult='no-run'; failureClassification=[ordered]@{ category='none'; developerEligible=$false; matchedSignals=@() }
+    remediation=[ordered]@{ status='not-applicable'; cycle=0; maxCycles=3; failureSignature=$null; targetAgentId=$null; reason='Pipeline execution is excluded by local-poc-delivery.' }
+    summary='No pipeline was run because the selected local-poc-delivery route excludes Pipeline Monitor.'
+}
+Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'pipeline-result.json') -Content (($localPocNoRun | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 $localPocPublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $localPocTaskId -AgentId knowledge_keeper -Summary 'Synthetic local POC final publication completed.' -ConfigPath $routingConfigPath
 $publishedLocalPocTask = Get-Content -LiteralPath $localPocTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ([string]$localPocRoute.Routing.executionMode -ne 'local-poc-delivery' -or [string]$publishedLocalPocTask.agentStatuses.pipeline_monitor.status -ne 'skipped' -or [string]$localPocPublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLocalPocTask.agentStatuses.knowledge_keeper.status -ne 'completed') { throw 'Local POC final publication did not honor the selected execution mode or excluded Pipeline Monitor state.' }
-Add-Check -Name 'execution-mode-aware-final-publication' -Detail 'Knowledge Keeper final publication requires successful outcomes only from roles selected by the latest persisted execution mode'
+if ([string]$localPocRoute.Routing.executionMode -ne 'local-poc-delivery' -or [string]$publishedLocalPocTask.agentStatuses.pipeline_monitor.status -ne 'skipped' -or [string]$localPocPublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLocalPocTask.agentStatuses.knowledge_keeper.status -ne 'completed' -or [string]$localPocNoRun.overallResult -ne 'no-run') { throw 'Local POC final publication did not accept the execution-mode-authorized no-run result while Pipeline Monitor was excluded.' }
+Add-Check -Name 'execution-mode-aware-final-publication' -Detail 'Knowledge Keeper accepts an explicit no-run only when the latest persisted execution mode excludes Pipeline Monitor'
 
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
 $schedulerSource = Join-Path $schedulerRoot 'source'

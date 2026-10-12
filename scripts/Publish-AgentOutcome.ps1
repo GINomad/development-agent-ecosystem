@@ -23,6 +23,13 @@ if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
     $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -in @('knowledge-update-pending','completed')
+    $routingArtifact = [string]$config.workflow.orchestration.routingArtifact
+    $routingPath = Join-Path $taskRoot $routingArtifact
+    $latestExecutionRoute = @()
+    if (Test-Path -LiteralPath $routingPath -PathType Leaf) {
+        $latestExecutionRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
+    }
+    $pipelineRequired = -not $latestExecutionRoute -or 'pipeline_monitor' -in @($latestExecutionRoute.agentSequence | ForEach-Object { [string]$_ })
     if ($completedPrClosure) {
         $pullRequestStatusPath = Join-Path $taskRoot 'pull-request-status.json'
         if (-not (Test-Path -LiteralPath $pullRequestStatusPath -PathType Leaf)) { throw 'Knowledge Keeper cannot publish a completed-PR closure without persisted pull-request-status.json evidence.' }
@@ -32,13 +39,8 @@ if ($AgentId -eq 'knowledge_keeper') {
     if (-not $manualClosure -and -not $completedPrClosure) {
         $deliveryAgentIds = @('requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')
         $requiredDeliveryAgentIds = @($deliveryAgentIds)
-        $routingArtifact = [string]$config.workflow.orchestration.routingArtifact
-        $routingPath = Join-Path $taskRoot $routingArtifact
-        if (Test-Path -LiteralPath $routingPath -PathType Leaf) {
-            $latestExecutionRoute = @(Get-Content -LiteralPath $routingPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { } } | Where-Object { $_.PSObject.Properties['executionMode'] -and $_.PSObject.Properties['agentSequence'] }) | Select-Object -Last 1
-            if ($latestExecutionRoute) {
-                $requiredDeliveryAgentIds = @($latestExecutionRoute.agentSequence | ForEach-Object { [string]$_ } | Where-Object { $_ -in $deliveryAgentIds })
-            }
+        if ($latestExecutionRoute) {
+            $requiredDeliveryAgentIds = @($latestExecutionRoute.agentSequence | ForEach-Object { [string]$_ } | Where-Object { $_ -in $deliveryAgentIds })
         }
         foreach ($deliveryAgentId in $requiredDeliveryAgentIds) {
             $deliveryState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$deliveryAgentId]) { [string]$task.agentStatuses.$deliveryAgentId.status } else { 'pending' }
@@ -48,7 +50,8 @@ if ($AgentId -eq 'knowledge_keeper') {
     $pipelineResultPath = Join-Path $taskRoot 'pipeline-result.json'
     if (Test-Path -LiteralPath $pipelineResultPath -PathType Leaf) {
         $pipelineResult = Get-Content -LiteralPath $pipelineResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ([string]$pipelineResult.overallResult -ne 'succeeded') { throw "Knowledge Keeper cannot complete the task while the latest exact-SHA pipeline result is '$([string]$pipelineResult.overallResult)'." }
+        $authorizedNoRun = -not $pipelineRequired -and [string]$pipelineResult.overallResult -eq 'no-run'
+        if ([string]$pipelineResult.overallResult -ne 'succeeded' -and -not $authorizedNoRun) { throw "Knowledge Keeper cannot complete the task while the latest exact-SHA pipeline result is '$([string]$pipelineResult.overallResult)'." }
     }
 }
 $required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
