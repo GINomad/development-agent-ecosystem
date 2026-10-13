@@ -2103,6 +2103,20 @@ foreach ($githubRepository in $configuredGitHubRepositories) {
     }
 }
 Add-Check -Name 'review-monitor-github-optional-fields' -Detail 'GitHub repositories remain valid when Azure-only organizationUrl and project fields are absent'
+$reviewFindingCommonPath = Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pr-review-monitor\scripts\review_findings_common.ps1'
+. $reviewFindingCommonPath
+$neutralReviewFinding = [pscustomobject][ordered]@{
+    Severity = 'HIGH'; Title = 'Handle failed requests'; Comment = 'The failure path loses the original result.'
+    Why = 'Callers can continue with incomplete state.'; Recommendation = 'Return the failure before updating state.'; FindingId = 'RVW-123456789ABC'
+}
+$neutralPublishedComment = Format-ReviewFindingComment -Finding $neutralReviewFinding
+$expectedNeutralComment = "**[HIGH] Handle failed requests**`n`nThe failure path loses the original result.`n`n**Why it matters:** Callers can continue with incomplete state.`n`n**Recommendation:** Return the failure before updating state.`n`nFinding ID: ``RVW-123456789ABC``"
+$reviewFindingManager = Get-Content -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pr-review-monitor\scripts\manage_review_findings.ps1') -Raw -Encoding UTF8
+if ($neutralPublishedComment -ne $expectedNeutralComment -or $neutralPublishedComment -match '(?i)\b(?:codex|openai|bot)\b|\b(?:ai|automated|agent)\s+(?:review|reviewer|generated)\b|\bgenerated\s+by\b') {
+    throw 'Published PR comments must contain the finding without tool, model, bot, or agent attribution.'
+}
+if ($reviewFindingManager -notmatch 'Format-ReviewFindingComment\s+-Finding\s+\$finding' -or $reviewFindingManager -match '\*\*Codex review') { throw 'Finding publication does not use the neutral comment formatter.' }
+Add-Check -Name 'neutral-pr-review-publication' -Detail 'Published provider comments retain finding evidence and ID without tool, model, bot, or agent attribution'
 $reviewWrapper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EnhancedReview.ps1') -Raw -Encoding UTF8
 $reviewContextPacker = Get-Content -LiteralPath (Join-Path $root 'scripts\New-PrReviewContextPack.ps1') -Raw -Encoding UTF8
 $commentCollector = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-ActivePullRequestComments.ps1') -Raw -Encoding UTF8

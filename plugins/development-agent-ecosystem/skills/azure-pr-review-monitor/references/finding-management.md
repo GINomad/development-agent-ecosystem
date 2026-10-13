@@ -16,6 +16,8 @@ $manager = "$HOME/.codex/skills/azure-pr-review-monitor/scripts/manage_review_fi
 
 Publication resolves the provider from the sidecar and dispatches to Azure DevOps or GitHub. It is never automatic and a local record blocks accidental duplicates unless `-ForcePublish` is explicit.
 
+The published comment contains the finding content and stable finding ID without adding tool, model, bot, or agent attribution. The authenticated provider account remains the comment author, while technical provenance stays in local review artifacts and publication records.
+
 Local files under `%LOCALAPPDATA%\Codex\azure-pr-review-monitor`:
 
 - `finding-dispositions.json`: bypass and false-positive decisions.

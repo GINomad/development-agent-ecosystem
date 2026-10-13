@@ -51,6 +51,11 @@ function Get-ReviewFindings {
     return @($results)
 }
 
+function Format-ReviewFindingComment {
+    param([Parameter(Mandatory)] $Finding)
+    return "**[$($Finding.Severity)] $($Finding.Title)**`n`n$($Finding.Comment)`n`n**Why it matters:** $($Finding.Why)`n`n**Recommendation:** $($Finding.Recommendation)`n`nFinding ID: ``$($Finding.FindingId)``"
+}
+
 function Read-ReviewDispositions {
     param([Parameter(Mandatory)][string] $Path)
     if (-not (Test-Path -LiteralPath $Path)) { return @() }
