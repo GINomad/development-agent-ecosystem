@@ -12,7 +12,9 @@ $failedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::Or
 $insideAttempt = $false
 if (Test-Path -LiteralPath $Path -PathType Leaf) {
     foreach ($line in [IO.File]::ReadLines($Path)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try { $entry = $line | ConvertFrom-Json } catch { continue }
+        if ($null -eq $entry) { continue }
         $entryType = if ($entry.PSObject.Properties['type']) { [string]$entry.type } else { '' }
         if ($entryType -eq 'ecosystem-workflow-run') {
             $entryAttemptId = if ($entry.PSObject.Properties['attemptId']) { [string]$entry.attemptId } else { '' }
@@ -25,6 +27,7 @@ if (Test-Path -LiteralPath $Path -PathType Leaf) {
         elseif (
             $entryType -eq 'item.completed' -and
             $entry.PSObject.Properties['item'] -and
+            $null -ne $entry.item -and
             $entry.item.PSObject.Properties['type'] -and
             [string]$entry.item.type -eq 'mcp_tool_call'
         ) { $call = $entry.item }
