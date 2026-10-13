@@ -14,14 +14,21 @@ $reviewSkill = Resolve-EcosystemPath -Value '${REPO_ROOT}/plugins/development-ag
 New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $promptRoot -Force | Out-Null
 
+function Get-OptionalRepositoryValue {
+    param([Parameter(Mandatory)] $Repository, [Parameter(Mandatory)][string] $Name)
+    $property = $Repository.PSObject.Properties[$Name]
+    if ($null -eq $property) { return '' }
+    return [string]$property.Value
+}
+
 $repositories = foreach ($repository in @($config.repositories | Where-Object { [string]$_.provider -ne 'local-git' })) {
     [pscustomobject][ordered]@{
         id = [string]$repository.id
         enabled = [bool]$repository.enabled
         provider = [string]$repository.provider
         url = [string]$repository.url
-        organizationUrl = [string]$repository.organizationUrl
-        project = [string]$repository.project
+        organizationUrl = Get-OptionalRepositoryValue -Repository $repository -Name 'organizationUrl'
+        project = Get-OptionalRepositoryValue -Repository $repository -Name 'project'
         repository = [string]$repository.repository
         reviewer = [string]$repository.reviewer
         credentialProfile = [string]$repository.credentialProfile

@@ -2092,6 +2092,17 @@ Add-Check -Name 'knowledge-import-conflict-preservation' -Detail 'Repeated impor
 
 $reviewConfig = & (Join-Path $PSScriptRoot 'Sync-ReviewMonitorConfig.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $reviewConfig.ConfigPath -PathType Leaf)) { throw 'Derived review monitor configuration was not generated.' }
+$derivedReviewConfig = Get-Content -LiteralPath $reviewConfig.ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$configuredGitHubRepositories = @($config.repositories | Where-Object { [string]$_.provider -eq 'github' -and [bool]$_.enabled })
+$derivedGitHubRepositories = @($derivedReviewConfig.repositories | Where-Object { [string]$_.provider -eq 'github' -and [bool]$_.enabled })
+if ($derivedGitHubRepositories.Count -ne $configuredGitHubRepositories.Count) { throw 'Derived review monitor configuration did not preserve every enabled GitHub repository.' }
+foreach ($githubRepository in $configuredGitHubRepositories) {
+    $derivedGitHub = @($derivedGitHubRepositories | Where-Object { [string]$_.id -eq [string]$githubRepository.id }) | Select-Object -First 1
+    if (-not $derivedGitHub -or [string]$derivedGitHub.url -ne [string]$githubRepository.url -or [string]$derivedGitHub.credentialProfile -ne [string]$githubRepository.credentialProfile -or [string]$derivedGitHub.organizationUrl -ne '' -or [string]$derivedGitHub.project -ne '') {
+        throw "Derived review monitor configuration corrupted optional provider fields for GitHub repository '$([string]$githubRepository.id)'."
+    }
+}
+Add-Check -Name 'review-monitor-github-optional-fields' -Detail 'GitHub repositories remain valid when Azure-only organizationUrl and project fields are absent'
 $reviewWrapper = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EnhancedReview.ps1') -Raw -Encoding UTF8
 $commentCollector = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-ActivePullRequestComments.ps1') -Raw -Encoding UTF8
 $reviewRunner = Get-Content -LiteralPath (Join-Path $root 'plugins\development-agent-ecosystem\skills\azure-pr-review-monitor\scripts\run_pr_review_monitor.ps1') -Raw -Encoding UTF8
