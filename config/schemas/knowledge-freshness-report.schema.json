@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Knowledge freshness report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAtUtc", "summary", "entries"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryCount", "currentCount", "staleCount", "metadataMissingCount"],
+      "properties": {
+        "entryCount": { "type": "integer", "minimum": 0 },
+        "currentCount": { "type": "integer", "minimum": 0 },
+        "staleCount": { "type": "integer", "minimum": 0 },
+        "metadataMissingCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "knowledgeId", "owner", "status", "reasons", "sourceBindings", "revalidationTriggers"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "knowledgeId": { "type": "string" },
+          "owner": { "type": "string" },
+          "status": { "enum": ["current", "stale", "contract-metadata-missing"] },
+          "reasons": { "type": "array", "items": { "type": "string" } },
+          "sourceBindings": { "type": "array", "items": { "type": "object" } },
+          "revalidationTriggers": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

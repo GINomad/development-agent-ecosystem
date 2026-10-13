@@ -4,6 +4,8 @@ The hybrid runtime supports Codex, GitHub Copilot, and Claude per agent, includi
 
 An evidence-first local multi-provider ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, candidate code review, independent review verification, and Azure Pipelines monitoring.
 
+Harness quality is measured from the same task artifacts that drive delivery. Requirements publish stable acceptance scenarios; implementation and review bind every verdict to evidence and the exact commit. `New-HarnessEvaluationReport.ps1` compares completed criteria, false completions, human interventions, recovery, elapsed time, and reported tokens only within cohorts using the same provider/model/reasoning signature and configured context budgets. `Get-KnowledgeFreshnessReport.ps1` reports knowledge whose bound source changed, whose scheduled review is due, or whose owner/source/revalidation metadata is missing.
+
 The canonical configuration is [`config/agents.json`](config/agents.json). Every workflow start reloads and validates this JSON file, then compiles it into native Codex agent TOML definitions. Do not edit generated TOML files manually.
 
 ## Included components

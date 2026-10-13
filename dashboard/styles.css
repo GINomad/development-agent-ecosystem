@@ -366,6 +366,7 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 
 .insights-card { overflow: hidden; }
 .insights-workspace { display: grid; gap: 16px; }
+.insights-workspace.hidden { display: none; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; }
 .metric-card { display: grid; gap: 5px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
 .metric-card span { color: var(--muted); font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }

@@ -158,7 +158,7 @@
     "requirementTrace": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requirementId", "requirementText", "implementationStatus", "codeReferences", "testEvidence", "notes"],
+      "required": ["requirementId", "requirementText", "implementationStatus", "codeReferences", "testEvidence", "scenarioResults", "notes"],
       "properties": {
         "requirementId": { "type": "string", "minLength": 1 },
         "requirementText": { "type": "string", "minLength": 1 },
@@ -171,7 +171,23 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
+        "scenarioResults": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scenarioVerification" }
+        },
         "notes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scenarioVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "verdict", "evidence", "commit"],
+      "properties": {
+        "scenarioId": { "type": "string", "pattern": "^SCN-[A-Za-z0-9._-]+$" },
+        "verdict": { "enum": ["verified", "failed", "blocked"] },
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40,64}$" }
       }
     }
   }

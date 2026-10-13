@@ -36,6 +36,14 @@ function Get-LongValue {
     $null
 }
 
+function Get-ObjectValue {
+    param($Object, [Parameter(Mandatory)][string] $Name, $Default = $null)
+    if ($null -eq $Object) { return $Default }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $Default }
+    $property.Value
+}
+
 function Get-Sum {
     param([object[]] $Records, [Parameter(Mandatory)][string] $Property)
     $sum = 0L
@@ -51,7 +59,7 @@ function Get-Sum {
 function New-TokenAggregate {
     param([Parameter(Mandatory)] $Group, [Parameter(Mandatory)][string] $Dimension)
     $records = @($Group.Group)
-    $reported = @($records | Where-Object { [string]$_.availability -in @('reported','partial') -and $null -ne (Get-LongValue -Value $_.totalTokens) })
+    $reported = @($records | Where-Object { [string](Get-ObjectValue $_ 'availability' '') -in @('reported','partial') -and $null -ne (Get-LongValue -Value (Get-ObjectValue $_ 'totalTokens')) })
     $first = $records | Select-Object -First 1
     $value = [ordered]@{
         recordCount = $records.Count
@@ -62,16 +70,16 @@ function New-TokenAggregate {
         cacheReadTokens = Get-Sum -Records $reported -Property cacheReadTokens
         cacheWriteTokens = Get-Sum -Records $reported -Property cacheWriteTokens
         totalTokens = Get-Sum -Records $reported -Property totalTokens
-        taskCount = @($records.taskId | Select-Object -Unique).Count
+        taskCount = @($records | ForEach-Object { [string](Get-ObjectValue $_ 'taskId' '') } | Select-Object -Unique).Count
     }
     if ($Dimension -eq 'model') {
-        $value.model = [string]$first.model
-        $value.provider = [string]$first.provider
-        $value.agentCount = @($records.agentId | Select-Object -Unique).Count
+        $value.model = [string](Get-ObjectValue $first 'model' 'unknown')
+        $value.provider = [string](Get-ObjectValue $first 'provider' 'unknown')
+        $value.agentCount = @($records | ForEach-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | Select-Object -Unique).Count
     }
     else {
-        $value.agentId = [string]$first.agentId
-        $value.models = @($records.model | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
+        $value.agentId = [string](Get-ObjectValue $first 'agentId' 'unknown')
+        $value.models = @($records | ForEach-Object { [string](Get-ObjectValue $_ 'model' '') } | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
     }
     [pscustomobject]$value
 }
@@ -96,7 +104,10 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
             $tokenRecords.Add($record)
         }
-        foreach ($record in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'role-metrics.jsonl') | Where-Object { [string]$_.eventType -eq 'role-attempt-completed' })) {
+        foreach ($record in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'role-metrics.jsonl'))) {
+            $eventType = [string](Get-ObjectValue $record 'eventType' '')
+            $legacyRoleAttempt = -not $eventType -and -not [string]::IsNullOrWhiteSpace([string](Get-ObjectValue $record 'agentId' '')) -and [string](Get-ObjectValue $record 'status' '') -in @('succeeded','failed')
+            if ($eventType -ne 'role-attempt-completed' -and -not $legacyRoleAttempt) { continue }
             $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
             $attemptRecords.Add($record)
         }
@@ -151,15 +162,15 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
     }
 }
 
-$modelGroups = @($tokenRecords | Group-Object { "$([string]$_.provider)|$([string]$_.model)" } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension model } | Sort-Object totalTokens -Descending)
-$agentGroups = @($tokenRecords | Group-Object { [string]$_.agentId } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension agent } | Sort-Object totalTokens -Descending)
-$failedAttempts = @($attemptRecords | Where-Object { [string]$_.status -eq 'failed' })
-$attemptsByAgent = @($attemptRecords | Group-Object { [string]$_.agentId } | ForEach-Object {
-    $records = @($_.Group); $failed = @($records | Where-Object { [string]$_.status -eq 'failed' }).Count
+$modelGroups = @($tokenRecords | Group-Object { "$([string](Get-ObjectValue $_ 'provider' 'unknown'))|$([string](Get-ObjectValue $_ 'model' 'unknown'))" } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension model } | Sort-Object totalTokens -Descending)
+$agentGroups = @($tokenRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension agent } | Sort-Object totalTokens -Descending)
+$failedAttempts = @($attemptRecords | Where-Object { [string](Get-ObjectValue $_ 'status' '') -eq 'failed' })
+$attemptsByAgent = @($attemptRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object {
+    $records = @($_.Group); $failed = @($records | Where-Object { [string](Get-ObjectValue $_ 'status' '') -eq 'failed' }).Count
     [pscustomobject]@{ agentId=[string]$_.Name; attempts=$records.Count; failed=$failed; succeeded=$records.Count-$failed; errorRate=if($records.Count){[Math]::Round($failed/$records.Count,4)}else{0} }
 } | Sort-Object @{Expression='failed';Descending=$true}, agentId)
 $errorsByAgent = @($errorRecords | Group-Object agentId | ForEach-Object { [pscustomobject]@{ agentId=[string]$_.Name; count=$_.Count } } | Sort-Object @{Expression='count';Descending=$true}, agentId)
-$reportedTokens = @($tokenRecords | Where-Object { [string]$_.availability -in @('reported','partial') -and $null -ne (Get-LongValue -Value $_.totalTokens) })
+$reportedTokens = @($tokenRecords | Where-Object { [string](Get-ObjectValue $_ 'availability' '') -in @('reported','partial') -and $null -ne (Get-LongValue -Value (Get-ObjectValue $_ 'totalTokens')) })
 $allKnowledgeEntries = @($knowledgeOutcomes | ForEach-Object { @($_.entries) })
 
 [pscustomobject][ordered]@{

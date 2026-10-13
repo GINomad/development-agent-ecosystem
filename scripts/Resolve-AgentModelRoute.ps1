@@ -19,6 +19,17 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $routing = $config.modelRouting
 if (-not [bool]$routing.enabled) { throw 'modelRouting must be enabled for workflow execution.' }
+$contextBudget = [ordered]@{
+    maxSourceFiles = [int]$config.runtime.contextLimits.maxSourceFiles
+    maxCommandOutputLines = [int]$config.runtime.contextLimits.maxCommandOutputLines
+    maxCommandOutputBytes = [int]$config.runtime.contextLimits.maxCommandOutputBytes
+    workflowLogTailLines = [int]$config.runtime.contextLimits.workflowLogTailLines
+    ledgerTailLines = [int]$config.runtime.contextLimits.ledgerTailLines
+}
+$contextBudgetJson = $contextBudget | ConvertTo-Json -Compress
+$budgetSha = [Security.Cryptography.SHA256]::Create()
+try { $contextBudgetSignature = ([BitConverter]::ToString($budgetSha.ComputeHash([Text.Encoding]::UTF8.GetBytes($contextBudgetJson)))).Replace('-', '').ToLowerInvariant() }
+finally { $budgetSha.Dispose() }
 
 $agent = @($config.agents | Where-Object { [string]$_.id -eq $AgentId }) | Select-Object -First 1
 if (-not $agent) { throw "Unknown model-routing agent '$AgentId'." }
@@ -128,6 +139,7 @@ $fingerprintMaterial = @(
     ($ChangedArtifactNames -join ','),
     [string][bool]$HealthRecoveryRetry,
     ($routing | ConvertTo-Json -Depth 20 -Compress),
+    $contextBudgetJson,
     $evidence.ToString(),
     $priorAgentStatus
 ) -join "`n"
@@ -142,7 +154,7 @@ if (Test-Path -LiteralPath $artifactPath -PathType Leaf) {
     catch { throw "Existing model-routing artifact is invalid: $($_.Exception.Message)" }
 }
 $existing = [object[]]@()
-if ($document) { $existing = [object[]]@($document.decisions | Where-Object { [string]$_.agentId -eq $AgentId -and [string]$_.inputFingerprint -eq $inputFingerprint } | Select-Object -Last 1) }
+if ($document) { $existing = [object[]]@($document.decisions | Where-Object { [string]$_.agentId -eq $AgentId -and [string]$_.inputFingerprint -eq $inputFingerprint -and $_.PSObject.Properties['contextBudgetSignature'] -and [string]$_.contextBudgetSignature -eq $contextBudgetSignature } | Select-Object -Last 1) }
 $existingCount = [int](($existing | Measure-Object).Count)
 if ($existingCount) {
     return [pscustomobject][ordered]@{
@@ -170,6 +182,8 @@ $decision = [pscustomobject][ordered]@{
     confidence = $confidence
     signals = @($signals)
     inputFingerprint = $inputFingerprint
+    contextBudgetSignature = $contextBudgetSignature
+    contextBudget = [pscustomobject]$contextBudget
     evidenceCharacterCount = [int]$evidence.Length
     repositoryCount = $repositoryCount
     changedArtifactCount = $changedArtifactCount
