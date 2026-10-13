@@ -11,7 +11,7 @@ description: Analyze assigned development tasks and comments against code, tests
 4. Map every requirement to evidence and current code alignment.
 5. Mark unsupported or contradictory scope as `held` and create focused blocking questions.
 6. Keep independent, supported scope `ready`.
-7. Write output conforming to `config/schemas/requirements-analysis.schema.json`.
+7. Write output conforming to `config/schemas/requirements-analysis.schema.json`. Give every acceptance criterion a stable `SCN-*` scenario linked to requirement IDs, executable steps, expected outcome, required evidence, and no inferred pass state.
 8. Populate the required `humanReadable` presentation with plain-language requirements and acceptance criteria, the ordered role workflow, and the implementation plan. Reflect the selected execution mode and do not show excluded delivery work.
 9. Request missing knowledge or skills from Knowledge Keeper only when needed. If waiting or failed, save a private checkpoint and publish no shared outcome.
 10. After successful validation, publish the artifact and one concise evidence summary through `Publish-AgentOutcome.ps1`.

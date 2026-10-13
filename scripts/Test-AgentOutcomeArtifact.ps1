@@ -118,6 +118,26 @@ function Get-EligibleKnowledgeEntries {
     return @($entries | Where-Object { [string]$_.status -in @('verified','superseded') })
 }
 
+if ($ArtifactName -eq 'requirements-analysis.json') {
+    if ($AgentId -ne 'requirements_analyst') { throw 'Only Requirements Analyst may publish requirements-analysis.json.' }
+    $requirements = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-RequiredProperties -Document $requirements -Names @('taskId','requirements','verificationScenarios') -Label 'requirements-analysis.json'
+    if ([string]$requirements.taskId -ne $TaskId) { throw "requirements-analysis.json must identify task '$TaskId'." }
+    $requirementIds = @($requirements.requirements | ForEach-Object { [string]$_.id })
+    $scenarioIds = @($requirements.verificationScenarios | ForEach-Object { [string]$_.id })
+    if (-not $scenarioIds.Count -or @($scenarioIds | Where-Object { $_ -notmatch '^SCN-[A-Za-z0-9._-]+$' }).Count -or @($scenarioIds | Select-Object -Unique).Count -ne $scenarioIds.Count) { throw 'requirements-analysis.json requires unique stable SCN-* verification scenarios.' }
+    foreach ($scenario in @($requirements.verificationScenarios)) {
+        Assert-RequiredProperties -Document $scenario -Names @('requirementIds','acceptanceCriterion','preconditions','steps','expectedOutcome','evidenceRequired') -Label "verification scenario '$([string]$scenario.id)'"
+        if (-not (Test-NonEmptyStringArray -Value $scenario.requirementIds) -or @($scenario.requirementIds | Where-Object { [string]$_ -notin $requirementIds }).Count -or -not (Test-NonEmptyStringArray -Value $scenario.steps) -or -not (Test-NonEmptyStringArray -Value $scenario.evidenceRequired)) { throw "Verification scenario '$([string]$scenario.id)' has incomplete or unknown requirement links." }
+    }
+    foreach ($requirement in @($requirements.requirements)) {
+        Assert-RequiredProperties -Document $requirement -Names @('acceptanceScenarioIds') -Label "requirement '$([string]$requirement.id)'"
+        $linked = @($requirement.acceptanceScenarioIds)
+        if (-not $linked.Count -or @($linked | Where-Object { [string]$_ -notin $scenarioIds }).Count) { throw "Requirement '$([string]$requirement.id)' does not link only to known verification scenarios." }
+    }
+    return
+}
+
 if ($ArtifactName -eq 'knowledge-update.json') {
     if ($AgentId -ne 'knowledge_keeper') { throw 'Only Knowledge Keeper may publish knowledge-update.json.' }
     $knowledge = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -168,6 +188,21 @@ if ($ArtifactName -eq 'review-result.json') {
     if ([string]$review.taskId -ne $TaskId) { throw "review-result.json must identify task '$TaskId'." }
     if ([string]::IsNullOrWhiteSpace([string]$review.reviewedRevision) -or [string]::IsNullOrWhiteSpace([string]$review.requirementsRevision)) { throw 'Review revisions must be non-empty.' }
     if (-not @($review.requirementTraceability).Count) { throw 'review-result.json requires at least one requirementTraceability entry.' }
+    $requirementsPath = Join-Path $TaskRoot 'requirements-analysis.json'
+    if (Test-Path -LiteralPath $requirementsPath -PathType Leaf) {
+        $requirements = Get-Content -LiteralPath $requirementsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($requirements.PSObject.Properties['verificationScenarios']) {
+            $expectedScenarioIds = @($requirements.verificationScenarios | ForEach-Object { [string]$_.id })
+            $scenarioResults = @($review.requirementTraceability | ForEach-Object { if ($_.PSObject.Properties['scenarioResults']) { @($_.scenarioResults) } })
+            $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
+            if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count) { throw 'review-result.json must verify every acceptance scenario exactly once.' }
+            $reviewCommit = if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1] } else { [string]$review.reviewedRevision }
+            foreach ($scenarioResult in $scenarioResults) {
+                Assert-RequiredProperties -Document $scenarioResult -Names @('verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)'"
+                if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne $reviewCommit) { throw "Review scenario '$([string]$scenarioResult.scenarioId)' lacks evidence or is not bound to the reviewed commit." }
+            }
+        }
+    }
 
     Assert-RequiredProperties -Document $review.reviewScope -Names @('mode','repositories','notes') -Label 'reviewScope'
     $reviewScopeMode = [string]$review.reviewScope.mode
@@ -407,6 +442,22 @@ $artifact = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Jso
 if ([string]$artifact.taskId -ne $TaskId) { throw "$ArtifactName must identify task '$TaskId'." }
 if ($AgentId -ne 'developer') { return }
 if ($ArtifactName -eq 'developer-publication-evidence.json') { return }
+
+$requirementsPath = Join-Path $TaskRoot 'requirements-analysis.json'
+if (Test-Path -LiteralPath $requirementsPath -PathType Leaf) {
+    $requirements = Get-Content -LiteralPath $requirementsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($requirements.PSObject.Properties['verificationScenarios']) {
+        $readyRequirementIds = @($requirements.requirements | Where-Object { [string]$_.status -in @('ready','already-satisfied') } | ForEach-Object { [string]$_.id })
+        $expectedScenarioIds = @($requirements.verificationScenarios | Where-Object { @($_.requirementIds | Where-Object { [string]$_ -in $readyRequirementIds }).Count } | ForEach-Object { [string]$_.id })
+        $scenarioResults = if ($artifact.PSObject.Properties['scenarioResults']) { @($artifact.scenarioResults) } else { @() }
+        $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
+        if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count) { throw 'implementation-result.json must report every ready acceptance scenario exactly once.' }
+        foreach ($scenarioResult in $scenarioResults) {
+            Assert-RequiredProperties -Document $scenarioResult -Names @('status','evidence','commit') -Label "implementation scenario '$([string]$scenarioResult.scenarioId)'"
+            if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne [string]$artifact.headCommit) { throw "Implementation scenario '$([string]$scenarioResult.scenarioId)' lacks evidence or is not bound to the final commit." }
+        }
+    }
+}
 
 $tests = @($artifact.tests)
 foreach ($test in $tests) {

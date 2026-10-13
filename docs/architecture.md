@@ -276,6 +276,12 @@ The shared runtime state stores content-addressed repository knowledge maps unde
 
 Schemas are stored under `config/schemas`. Knowledge Keeper may publish only evidence-backed claims with all required evidence fields.
 
+Acceptance traceability remains inside the existing task artifact chain. `requirements-analysis.json` owns stable `SCN-*` scenarios and their requirement links; `implementation-result.json` records execution evidence at the final commit; `review-result.json` independently verifies the same scenario IDs at the reviewed commit. No parallel acceptance database or mutable completion flag is introduced. A completed status without verified scenario coverage is observable as a false completion in the harness evaluation report.
+
+Harness evaluations are read-only projections of persisted task state. `New-HarnessEvaluationReport.ps1` derives criteria completion, false completion, human intervention, failure/recovery, duration, and token metrics, then forms comparable cohorts only for identical provider/model/reasoning selections and the same configured context-limit signature. Tasks created before the scenario contract remain visible as `contract-metadata-missing` and are excluded from evidence-backed completion claims.
+
+Knowledge freshness also remains artifact-derived. Each new knowledge entry names its owner, repository-relative source bindings with exact revisions, and revalidation triggers. `Get-KnowledgeFreshnessReport.ps1` compares those bindings with current source workspaces and scheduled review dates, reporting `current`, `stale`, or `contract-metadata-missing` without rewriting knowledge automatically.
+
 ## Resilient MCP context path
 
 ```text

@@ -24,12 +24,14 @@ $task = [ordered]@{ taskId='insight-task'; projectId='planning-space'; selector=
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'task.json') -Content (($task | ConvertTo-Json) + [Environment]::NewLine)
 $tokens = @(
     [ordered]@{ taskId='insight-task'; agentId='developer'; provider='codex'; model='gpt-test'; availability='reported'; inputTokens=100; outputTokens=50; cacheReadTokens=20; cacheWriteTokens=0; totalTokens=150 },
-    [ordered]@{ taskId='insight-task'; agentId='reviewer'; provider='copilot'; model='copilot-test'; availability='unavailable'; inputTokens=$null; outputTokens=$null; cacheReadTokens=$null; cacheWriteTokens=$null; totalTokens=$null }
+    [ordered]@{ taskId='insight-task'; agentId='reviewer'; provider='copilot'; model='copilot-test'; availability='unavailable'; inputTokens=$null; outputTokens=$null; cacheReadTokens=$null; cacheWriteTokens=$null; totalTokens=$null },
+    [ordered]@{ taskId='insight-task'; agentId='knowledge_keeper'; provider='legacy'; model='legacy-test' }
 )
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'token-usage.jsonl') -Content ((@($tokens | ForEach-Object { $_ | ConvertTo-Json -Compress }) -join [Environment]::NewLine) + [Environment]::NewLine)
 $metrics = @(
     [ordered]@{ eventType='role-attempt-completed'; agentId='developer'; status='failed' },
-    [ordered]@{ eventType='role-attempt-completed'; agentId='reviewer'; status='succeeded' }
+    [ordered]@{ eventType='role-attempt-completed'; agentId='reviewer'; status='succeeded' },
+    [ordered]@{ agentId='knowledge_keeper'; status='succeeded'; durationMs=25 }
 )
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'role-metrics.jsonl') -Content ((@($metrics | ForEach-Object { $_ | ConvertTo-Json -Compress }) -join [Environment]::NewLine) + [Environment]::NewLine)
 $archivedRevisionRoot = Join-Path $taskRoot 'revisions\revision-1'
@@ -48,13 +50,15 @@ $summary = [ordered]@{ outcomes=@([ordered]@{ agentId='knowledge_keeper'; summar
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'task-summary.json') -Content (($summary | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 
 $result = & (Join-Path $root 'scripts\Get-DashboardInsights.ps1') -ProjectId planning-space -ConfigPath $configPath
-if ([int]$result.analytics.summary.taskCount -ne 1 -or [long]$result.analytics.summary.totalTokens -ne 150 -or [int]$result.analytics.summary.reportedTokenRecordCount -ne 1 -or [int]$result.analytics.summary.unavailableTokenRecordCount -ne 1 -or [int]$result.analytics.summary.attemptCount -ne 2) { throw 'Dashboard analytics did not aggregate cumulative task metrics exactly once.' }
+if ([int]$result.analytics.summary.taskCount -ne 1 -or [long]$result.analytics.summary.totalTokens -ne 150 -or [int]$result.analytics.summary.reportedTokenRecordCount -ne 1 -or [int]$result.analytics.summary.unavailableTokenRecordCount -ne 2 -or [int]$result.analytics.summary.attemptCount -ne 3) { throw 'Dashboard analytics did not aggregate cumulative and legacy task metrics exactly once.' }
 if ([int]$result.analytics.summary.errorCount -ne 1 -or [int]$result.analytics.summary.failedAttemptCount -ne 1 -or [string]$result.analytics.recentErrors[0].agentId -ne 'developer') { throw 'Dashboard analytics did not aggregate failures.' }
 if ([int]$result.knowledge.outcomeCount -ne 1 -or [int]$result.knowledge.verifiedEntryCount -ne 1 -or [string]$result.knowledge.outcomes[0].entries[0].id -ne 'KN-1' -or [string]$result.knowledge.outcomes[0].keeperOutcomes[0] -notmatch 'verified fact') { throw 'Dashboard knowledge outcomes are not bound to the source task.' }
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
+$dashboardStyles = Get-Content -LiteralPath (Join-Path $root 'dashboard\styles.css') -Raw -Encoding UTF8
 if ($dashboardServer -notmatch "'/api/insights'" -or $dashboardServer -notmatch 'Get-DashboardInsights\.ps1' -or $dashboardHtml -notmatch 'id="analyticsWorkspace"' -or $dashboardHtml -notmatch 'id="knowledgeWorkspace"' -or $dashboardClient -notmatch '/api/insights' -or $dashboardClient -notmatch 'renderAnalytics' -or $dashboardClient -notmatch 'renderKnowledge') { throw 'Dashboard insights endpoint or analytics/knowledge views are not wired end to end.' }
+if ($dashboardStyles -notmatch '\.insights-workspace\.hidden\s*\{\s*display:\s*none;\s*\}') { throw 'Dashboard insights tab panels can override the shared hidden utility and remain visible together.' }
 $stdout = Join-Path $fixtureRoot 'dashboard.out.log'
 $stderr = Join-Path $fixtureRoot 'dashboard.err.log'
 $dashboardProcess = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @('-NoProfile','-File',(Join-Path $root 'scripts\Start-AgentDashboard.ps1'),'-NoOpen','-MaxRequests','1','-ConfigPath',$configPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
@@ -77,4 +81,4 @@ finally {
     if (-not $dashboardProcess.HasExited) { Stop-Process -Id $dashboardProcess.Id -Force -ErrorAction SilentlyContinue }
 }
 
-[pscustomobject]@{ Status='passed'; Checks=5; OutputRoot=$fixtureRoot }
+[pscustomobject]@{ Status='passed'; Checks=6; OutputRoot=$fixtureRoot }

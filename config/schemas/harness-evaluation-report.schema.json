@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Repeatable harness evaluation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAtUtc", "projectId", "comparisonPolicy", "summary", "tasks", "cohorts"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "projectId": { "type": ["string", "null"] },
+    "comparisonPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelSignature", "budgetSignature", "minimumCohortSize"],
+      "properties": {
+        "modelSignature": { "const": "exact provider/model/reasoning per role" },
+        "budgetSignature": { "const": "configured context limits" },
+        "minimumCohortSize": { "type": "integer", "minimum": 2 }
+      }
+    },
+    "summary": { "$ref": "#/$defs/metrics" },
+    "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+    "cohorts": { "type": "array", "items": { "$ref": "#/$defs/cohort" } }
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskCount", "evaluableTaskCount", "criteriaTotal", "criteriaVerified", "criteriaCompletionRate", "falseCompletionCount", "humanInterventionCount", "failureCount", "recoveryCount", "totalDurationMs", "averageDurationMs", "totalTokens", "unavailableUsageRecordCount"],
+      "properties": {
+        "taskCount": { "type": "integer", "minimum": 0 },
+        "evaluableTaskCount": { "type": "integer", "minimum": 0 },
+        "criteriaTotal": { "type": "integer", "minimum": 0 },
+        "criteriaVerified": { "type": "integer", "minimum": 0 },
+        "criteriaCompletionRate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "falseCompletionCount": { "type": "integer", "minimum": 0 },
+        "humanInterventionCount": { "type": "integer", "minimum": 0 },
+        "failureCount": { "type": "integer", "minimum": 0 },
+        "recoveryCount": { "type": "integer", "minimum": 0 },
+        "totalDurationMs": { "type": "integer", "minimum": 0 },
+        "averageDurationMs": { "type": ["integer", "null"], "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "unavailableUsageRecordCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "projectId", "status", "evaluationStatus", "criteriaTotal", "criteriaVerified", "falseCompletion", "humanInterventions", "failures", "recoveries", "durationMs", "totalTokens", "unavailableUsageRecords", "modelSignature", "budgetSignature", "evidence"],
+      "properties": {
+        "taskId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string" },
+        "status": { "type": "string" },
+        "evaluationStatus": { "enum": ["evaluable", "contract-metadata-missing"] },
+        "criteriaTotal": { "type": "integer", "minimum": 0 },
+        "criteriaVerified": { "type": "integer", "minimum": 0 },
+        "falseCompletion": { "type": "boolean" },
+        "humanInterventions": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 },
+        "recoveries": { "type": "integer", "minimum": 0 },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "unavailableUsageRecords": { "type": "integer", "minimum": 0 },
+        "modelSignature": { "type": "string" },
+        "budgetSignature": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "comparable", "taskIds", "metrics"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "comparable": { "type": "boolean" },
+        "taskIds": { "type": "array", "items": { "type": "string" } },
+        "metrics": { "$ref": "#/$defs/metrics" }
+      }
+    }
+  }
+}
