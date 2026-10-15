@@ -200,7 +200,8 @@ function Test-HealthRecoveryOwnsCurrentRun {
     if ($ExpectedRunId -and $ExpectedLeaseId) {
         return ([string]$current.executionRunId -eq $ExpectedRunId -and [string]$current.workspaceLeaseId -eq $ExpectedLeaseId)
     }
-    if ($ExpectedRevision.HasValue -and $current.PSObject.Properties['revision'] -and [int]$current.revision -ne $ExpectedRevision.Value) {
+    $expectedRevisionValue = if ($null -ne $ExpectedRevision) { [int]$ExpectedRevision } else { $null }
+    if ($null -ne $expectedRevisionValue -and $current.PSObject.Properties['revision'] -and [int]$current.revision -ne $expectedRevisionValue) {
         return $false
     }
     foreach ($property in @($current.agentStatuses.PSObject.Properties)) {
@@ -535,7 +536,7 @@ try {
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
-    elseif ($routedAgentId) {
+    elseif (-not $SuppressTargetedResume -and $routedAgentId) {
         $routingPath = Join-Path $taskRoot 'health-repair-routing.json'
         $taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $repositoryIds = if ($taskSnapshot.PSObject.Properties['repositoryIds']) { @($taskSnapshot.repositoryIds) } elseif ($taskSnapshot.PSObject.Properties['repositoryId']) { @([string]$taskSnapshot.repositoryId) } else { @() }

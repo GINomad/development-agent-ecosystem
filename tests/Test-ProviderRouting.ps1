@@ -12,8 +12,13 @@ $OutputRoot=Join-Path $OutputRoot ('run-'+[guid]::NewGuid().ToString('N'))
 Import-Module (Join-Path $root 'scripts\AgentEcosystem.psm1') -Force
 New-Item -ItemType Directory -Path $OutputRoot -Force|Out-Null
 $testConfigPath=Join-Path $OutputRoot 'agents.json'
+$inputConfigSha256=(Get-FileHash -LiteralPath $ConfigPath -Algorithm SHA256).Hash
 $config=Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8|ConvertFrom-Json
 $config.runtime.stateRoot=Join-Path $OutputRoot 'state'
+$config.providerRouting.limitFallback.enabled=$true
+$config.providerRouting.limitFallback.provider='codex'
+$syntheticClaudeAgentIds=@('orchestrator','knowledge_keeper','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor')
+foreach($agent in @($config.agents|Where-Object{[string]$_.id -in $syntheticClaudeAgentIds})){$agent.provider='claude'}
 $hostCli=(Get-Command powershell.exe -ErrorAction Stop).Source
 $config.providerRouting.providers.copilot.command=$hostCli
 $config.providerRouting.providers.claude.command=$hostCli
@@ -118,4 +123,6 @@ Write-Utf8NoBom -Path $staleRoutePath -Content (($staleRouteDocument|ConvertTo-J
 $refreshedCodexRoute=& (Join-Path $root 'scripts\Resolve-AgentProviderRoute.ps1') -TaskId $staleRouteTaskId -AgentId health_check -Tier standard -ConfigPath $testConfigPath
 $refreshedRouteDocument=Get-Content -LiteralPath $staleRoutePath -Raw -Encoding UTF8|ConvertFrom-Json
 if($refreshedCodexRoute.PSObject.Properties['reused'] -or -not(Test-Path -LiteralPath ([string]$refreshedCodexRoute.command) -PathType Leaf) -or @($refreshedRouteDocument.decisions).Count -ne 2){throw 'Stale provider-route executable was reused instead of being refreshed.'}
+if((Get-FileHash -LiteralPath $ConfigPath -Algorithm SHA256).Hash -ne $inputConfigSha256){throw 'Provider-routing fixture modified its input configuration.'}
+
 [pscustomobject]@{Passed=$true;TaskId=$taskId;DefaultAssignments=$expected;InitialProvider=[string]$developerRoute.provider;OverrideProvider=[string]$overrideRoute.provider;ChatOnlyProviders=@('codex','copilot','claude');CleanDailyScan=[string]$daily.status;IncidentDailyScan=[string]$incidentScan.status}

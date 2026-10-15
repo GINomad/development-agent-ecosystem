@@ -1141,7 +1141,8 @@ if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or $delfiQueueIds.Coun
 $pipelinePolicyTestRoot = Join-Path $OutputRoot 'pipeline-policy'
 New-Item -ItemType Directory -Path $pipelinePolicyTestRoot -Force | Out-Null
 $overlapConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$overlapConfig.pipeline.repositories[0].deploymentDefinitionIds = @($overlapConfig.pipeline.repositories[0].autoQueueDefinitionIds[0])
+$overlapConfig.pipeline.repositories[0].autoQueueDefinitionIds = @(814)
+$overlapConfig.pipeline.repositories[0].deploymentDefinitionIds = @(814)
 $overlapConfigPath = Join-Path $pipelinePolicyTestRoot 'overlap.json'
 Write-Utf8NoBom -Path $overlapConfigPath -Content (($overlapConfig | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
 $overlapRejected = $false
@@ -1928,6 +1929,51 @@ $tailTokens = $null
 $tailParseErrors = $null
 $tailAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1'), [ref]$tailTokens, [ref]$tailParseErrors)
 if ($tailParseErrors.Count) { throw 'Health recovery bounded-tail helper contains a PowerShell syntax error.' }
+$ownershipFunction = $tailAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-HealthRecoveryOwnsCurrentRun' }, $true)
+if (-not $ownershipFunction) { throw 'Health recovery ownership guard function is missing.' }
+$ownershipTestRoot = Join-Path $OutputRoot 'health-recovery-ownership'
+New-Item -ItemType Directory -Path $ownershipTestRoot -Force | Out-Null
+$ownershipTaskPath = Join-Path $ownershipTestRoot 'task.json'
+$ownershipState = [ordered]@{
+    revision = 1
+    executionRunId = 'active-run'
+    workspaceLeaseId = 'active-lease'
+    agentStatuses = [ordered]@{
+        health_check = [ordered]@{ status='waiting' }
+        developer = [ordered]@{ status='waiting' }
+    }
+}
+function Write-OwnershipTaskFixture {
+    [IO.File]::WriteAllText($ownershipTaskPath, ($ownershipState | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+}
+$ownershipFunctionBlock = [scriptblock]::Create($ownershipFunction.Extent.Text)
+. $ownershipFunctionBlock
+Write-OwnershipTaskFixture
+$matchingRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$missingExpectedRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath
+$ownershipState.revision = 2
+Write-OwnershipTaskFixture
+$mismatchedRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$ownershipState.revision = 1
+$ownershipState.agentStatuses.developer.status = 'running'
+Write-OwnershipTaskFixture
+$activeOtherAgent = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$ownershipState.revision = 2
+Write-OwnershipTaskFixture
+$matchingRunAndLease = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRunId 'active-run' -ExpectedLeaseId 'active-lease' -ExpectedRevision ([Nullable[int]]1)
+if (-not $matchingRevision -or -not $missingExpectedRevision -or $mismatchedRevision -or $activeOtherAgent -or -not $matchingRunAndLease) { throw 'Health recovery ownership guard does not safely handle populated or missing expected revisions while preserving run, lease, revision, and active-agent protections.' }
+Add-Check -Name 'health-recovery-ownership-guard' -Detail 'Extracted production guard accepts populated and missing revisions, rejects stale revision or active work, and preserves exact run/lease ownership'
+$routedClauses = @(
+    foreach ($statement in $tailAst.FindAll({ param($node) $node -is [System.Management.Automation.Language.IfStatementAst] }, $true)) {
+        foreach ($clause in $statement.Clauses) {
+            if ($clause.Item1.Extent.Text.Contains('$routedAgentId') -and $clause.Item2.Extent.Text.Contains("Join-Path `$PSScriptRoot 'Start-DevelopmentWorkflow.ps1'")) { $clause }
+        }
+    }
+)
+if ($routedClauses.Count -ne 1) { throw 'Expected exactly one Health recovery routed-owner dispatch condition.' }
+$routedCondition = [scriptblock]::Create('param($SuppressTargetedResume,$routedAgentId) ' + $routedClauses[0].Item1.Extent.Text)
+if (-not (& $routedCondition $false 'developer') -or (& $routedCondition $true 'developer') -or (& $routedCondition $false '')) { throw 'Health recovery routed-owner suppression guard does not preserve the dispatch truth table.' }
+Add-Check -Name 'health-recovery-routed-owner-suppression' -Detail 'Suppressed recovery never dispatches a routed owner; unsuppressed routed recovery still can; empty routes cannot dispatch'
 $tailFunction = $tailAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-BoundedTextTail' }, $true)
 if (-not $tailFunction -or $tailFunction.Extent.Text -match 'Get-Content\s+-LiteralPath\s+\$Path\s+-Tail' -or $tailFunction.Extent.Text -notmatch '\[IO\.File\]::Open' -or $tailFunction.Extent.Text -notmatch 'FileShare\]::ReadWrite') { throw 'Health recovery bounded-tail helper can still materialize a large workflow log or cannot read a live log safely.' }
 $tailTestRoot = Join-Path $OutputRoot 'health-bounded-tail'
