@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
+$OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $codexSelected = @($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
 $checks = [Collections.Generic.List[object]]::new()
