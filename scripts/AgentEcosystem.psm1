@@ -389,8 +389,19 @@ function Write-Utf8NoBomAtomic {
     $backupPath = $temporaryPath + '.bak'
     try {
         [IO.File]::WriteAllText($temporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
-        if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
-        else { [IO.File]::Move($temporaryPath, $Path) }
+        $attempt = 0
+        while ($true) {
+            try {
+                if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
+                else { [IO.File]::Move($temporaryPath, $Path) }
+                break
+            }
+            catch [IO.IOException] {
+                $attempt++
+                if ($attempt -ge 20) { throw }
+                Start-Sleep -Milliseconds 75
+            }
+        }
     }
     finally {
         foreach ($transientPath in @($temporaryPath, $backupPath)) {

@@ -21,6 +21,36 @@ function Add-Check {
     param([string] $Name, [string] $Detail)
     $checks.Add([pscustomobject]@{ Name=$Name; Status='passed'; Detail=$Detail })
 }
+$atomicWriteFixture = Join-Path $OutputRoot ('atomic-write-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $atomicWriteFixture -Force | Out-Null
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+public static class AtomicWriteTestHelper {
+    public static Timer DisposeAfter(FileStream stream, int milliseconds) {
+        return new Timer(_ => stream.Dispose(), null, milliseconds, Timeout.Infinite);
+    }
+}
+'@
+try {
+    $atomicWriteTarget = Join-Path $atomicWriteFixture 'target.json'
+    Write-Utf8NoBom -Path $atomicWriteTarget -Content 'before'
+    $atomicWriteLock = [IO.File]::Open($atomicWriteTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $atomicWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($atomicWriteLock, 150)
+    try {
+        Write-Utf8NoBomAtomic -Path $atomicWriteTarget -Content 'after'
+    }
+    finally {
+        $atomicWriteReleaseTimer.Dispose()
+        try { $atomicWriteLock.Dispose() } catch [ObjectDisposedException] { }
+    }
+    if ((Get-Content -LiteralPath $atomicWriteTarget -Raw -Encoding UTF8) -ne 'after') { throw 'Atomic writer did not retry and replace a transiently locked file.' }
+}
+finally {
+    if (Test-Path -LiteralPath $atomicWriteFixture) { Remove-Item -LiteralPath $atomicWriteFixture -Recurse -Force }
+}
+Add-Check -Name 'atomic-writer-transient-lock-retry' -Detail 'Atomic writes retry transient sharing violations before failing.'
 $featureBranchName = New-TaskBranchName -TaskName 'Implement FDPlan sensitivity resultsets' -TaskType 'Product Backlog Item'
 $bugfixBranchName = New-TaskBranchName -TaskName 'Fix FDPlan sensitivity / resultsets' -TaskType 'Bug'
 if ($featureBranchName -ne 'features/implement-fdplan-sensitivity-resultsets' -or $bugfixBranchName -ne 'bugfix/fix-fdplan-sensitivity-resultsets') { throw 'Human-readable task branch naming does not distinguish implementation tasks from bug fixes.' }
