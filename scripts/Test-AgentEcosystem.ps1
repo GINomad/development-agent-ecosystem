@@ -2186,6 +2186,9 @@ if ([string]$readonlyPidGuardTest.failureCanonical -ne 'powershell-readonly-pid'
 Add-Check -Name 'readonly-pid-guard' -Detail 'A real readonly PID diagnostic remains classified without treating source text as an error'
 $capacityRunner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CapacityAwareCodex.ps1') -Raw -Encoding UTF8
 if ($workflowRunner -notmatch 'Invoke-CapacityAwareCodex.ps1' -or $capacityRunner -notmatch 'model-capacity' -or $capacityRunner -notmatch 'MaxCapacityFallbackAttempts' -or -not [bool]$config.modelRouting.capacityFallback.enabled -or [int]$config.modelRouting.capacityFallback.maxAttempts -ne 1) { throw 'Capacity fallback is not restricted to one exact model-capacity retry.' }
+if ($capacityRunner -notmatch 'Add-EcosystemUtf8Line' -or $capacityRunner -match '\[IO\.File\]::AppendAllText\(\$LogPath') { throw 'Capacity-aware Codex provider markers must use the serialized workflow-log append helper.' }
+$taskEventWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Add-TaskEvent.ps1') -Raw -Encoding UTF8
+if ($taskEventWriter -notmatch 'Add-EcosystemUtf8Line' -or $taskEventWriter -match '\[IO\.File\]::Open\(\$ledgerPath') { throw 'Task ledger events must use the serialized append helper shared by independent hosts.' }
 if ($healthRecoverySchema -match '"allOf"' -or $healthRecoverySchema -match '"if"' -or $healthRecoverySchema -notmatch '"humanIntervention"') { throw 'Health recovery schema is not Structured Outputs compatible.' }
 Add-Check -Name 'capacity-fallback-and-health-schema' -Detail 'One capacity-only retry uses the configured fallback tier; Health Recovery schema contains no unsupported conditionals'
 

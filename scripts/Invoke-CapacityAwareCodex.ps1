@@ -19,6 +19,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 
 function Invoke-Attempt {
     param([string[]] $AttemptArguments, [string] $AttemptGuardPath)
@@ -38,7 +39,7 @@ function Invoke-Attempt {
     $modelIndex=[array]::IndexOf($AttemptArguments,'--model')
     $selectedModel=if($modelIndex -ge 0 -and $modelIndex+1 -lt $AttemptArguments.Count){$AttemptArguments[$modelIndex+1]}else{'unknown'}
     $marker=[ordered]@{type='ecosystem-provider-attempt';providerAttemptId=[guid]::NewGuid().ToString('N');provider='codex';model=$selectedModel;startedAtUtc=[DateTime]::UtcNow.ToString('o')}
-    [IO.File]::AppendAllText($LogPath,($marker|ConvertTo-Json -Compress)+[Environment]::NewLine,(New-Object Text.UTF8Encoding($false)))
+    Add-EcosystemUtf8Line -Path $LogPath -Line ($marker | ConvertTo-Json -Compress)
     & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') @attemptParameters
 }
 
