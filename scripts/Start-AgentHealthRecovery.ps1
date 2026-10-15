@@ -221,10 +221,41 @@ foreach ($record in @($attempts | Where-Object { [string]$_.type -eq 'recovery-i
         [void]$invalidatedAttemptIds.Add([string]$record.invalidatedAttemptId)
     }
 }
+$terminalAttemptIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($record in @($attempts | Where-Object {
+    $_.failureSignature -eq $signature -and [string]$_.type -in @('recovery-completed','recovery-failed')
+})) {
+    if ($record.PSObject.Properties['attemptId'] -and -not [string]::IsNullOrWhiteSpace([string]$record.attemptId)) {
+        [void]$terminalAttemptIds.Add([string]$record.attemptId)
+    }
+}
+$existingRepairedResult = $null
+$resultPath = Join-Path $taskRoot 'health-recovery-result.json'
+if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+    try {
+        $candidateResult = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$candidateResult.failureSignature -eq $signature -and [string]$candidateResult.status -eq 'repaired') {
+            $existingRepairedResult = $candidateResult
+        }
+    }
+    catch { }
+}
+$unfinalizedRepairedAttempts = @($attempts | Where-Object {
+    $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
+    $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
+    -not $invalidatedAttemptIds.Contains([string]$_.attemptId) -and
+    -not $terminalAttemptIds.Contains([string]$_.attemptId) -and
+    ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
+})
+# A recovered result may be written before the host records its terminal attempt.
+# Reuse exactly one such result to finish host-side validation; do not consume a
+# second model attempt or treat this interrupted finalization as a retry.
+$reuseExistingRepairedResult = $null -ne $existingRepairedResult -and $unfinalizedRepairedAttempts.Count -eq 1
 $attemptCount = @($attempts | Where-Object {
     $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
     $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
     -not $invalidatedAttemptIds.Contains([string]$_.attemptId) -and
+    -not ($reuseExistingRepairedResult -and [string]$_.attemptId -eq [string]$unfinalizedRepairedAttempts[0].attemptId) -and
     ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
 }).Count
 if ($attemptCount -ge $maximumAttempts) {
@@ -235,15 +266,24 @@ if ($attemptCount -ge $maximumAttempts) {
 }
 
 $preservationPath = Join-Path $taskRoot 'health-recovery-preservation.json'
-$preservation = & (Join-Path $PSScriptRoot 'Save-EcosystemRecoveryBaseline.ps1') -Workspace $workspace -TaskId $TaskId -FailureSignature $signature -ArtifactPath $preservationPath -RepairBranchPrefix ([string]$config.health.automaticRecovery.repairBranchPrefix)
+if ($reuseExistingRepairedResult) {
+    $preservation = if (Test-Path -LiteralPath $preservationPath -PathType Leaf) {
+        Get-Content -LiteralPath $preservationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    else { [pscustomobject]@{ Files=@(); Commit=$null } }
+    $attempt = $unfinalizedRepairedAttempts[0]
+}
+else {
+    $preservation = & (Join-Path $PSScriptRoot 'Save-EcosystemRecoveryBaseline.ps1') -Workspace $workspace -TaskId $TaskId -FailureSignature $signature -ArtifactPath $preservationPath -RepairBranchPrefix ([string]$config.health.automaticRecovery.repairBranchPrefix)
+    $attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
+    [IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+}
 $dirtyFiles = @($preservation.Files)
 $preservationCommit = if ($preservation.Commit) { [string]$preservation.Commit } else { $null }
 if ($preservationCommit) {
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_preservation -Summary "Committed the complete pre-recovery ecosystem worktree as $preservationCommit." -Details 'The trusted host preserved tracked and untracked non-ignored files in a separate commit before Health Check repair.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
-$attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
-[IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_recovery -Message "Health Check Agent is repairing failure $signature." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
 $contextLimits = $config.runtime.contextLimits
@@ -334,6 +374,10 @@ $arguments = @(
 $recoveryWasValidated = $false
 $repairTerminalRecorded = $false
 try {
+    if ($reuseExistingRepairedResult) {
+        $recovery = $existingRepairedResult
+    }
+    else {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     if ($SuppressExternalDelivery -or [string]$env:ECOSYSTEM_MCP_DISABLED -eq 'true') {
@@ -362,6 +406,7 @@ try {
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$recovery.failureSignature -ne $signature) { throw 'Health recovery result has the wrong failure signature.' }
+    }
     $routedAgentId = ''
     $recoveryCommit = $preservationCommit
     $recoveryPush = $null
