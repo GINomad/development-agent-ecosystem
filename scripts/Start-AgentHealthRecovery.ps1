@@ -278,8 +278,8 @@ else {
     $attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
     [IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
 }
-$dirtyFiles = @($preservation.Files)
-$preservationCommit = if ($preservation.Commit) { [string]$preservation.Commit } else { $null }
+$dirtyFiles = if ($preservation.PSObject.Properties['Files']) { @($preservation.Files) } elseif ($preservation.PSObject.Properties['files']) { @($preservation.files) } else { @() }
+$preservationCommit = if ($preservation.PSObject.Properties['Commit'] -and $preservation.Commit) { [string]$preservation.Commit } elseif ($preservation.PSObject.Properties['preservationCommit'] -and $preservation.preservationCommit) { [string]$preservation.preservationCommit } else { $null }
 if ($preservationCommit) {
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_preservation -Summary "Committed the complete pre-recovery ecosystem worktree as $preservationCommit." -Details 'The trusted host preserved tracked and untracked non-ignored files in a separate commit before Health Check repair.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
