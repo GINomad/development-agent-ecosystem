@@ -27,6 +27,38 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock
+function New-WorkflowHostErrorEvidence {
+    param(
+        [Parameter(Mandatory)][System.Management.Automation.ErrorRecord] $ErrorRecord,
+        [AllowNull()][string] $TaskId,
+        [AllowNull()][string] $RunId,
+        [AllowNull()][string] $LeaseId
+    )
+
+    # Select metadata explicitly: InvocationInfo.Line and PositionMessage can contain commands.
+    $boundedText = {
+        param([AllowNull()][string] $Value, [int] $Limit)
+        if ($null -eq $Value) { return $null }
+        if ($Value.Length -gt $Limit) { return $Value.Substring(0, $Limit) }
+        return $Value
+    }
+    $invocation = $ErrorRecord.InvocationInfo
+    [pscustomobject][ordered]@{
+        schemaVersion = 1
+        timestampUtc = [DateTime]::UtcNow.ToString('o')
+        taskId = & $boundedText $TaskId 128
+        executionRunId = & $boundedText $RunId 128
+        workspaceLeaseId = & $boundedText $LeaseId 128
+        message = & $boundedText ([string]$ErrorRecord.Exception.Message) 2048
+        exceptionType = & $boundedText ($ErrorRecord.Exception.GetType().FullName) 512
+        fullyQualifiedErrorId = & $boundedText ([string]$ErrorRecord.FullyQualifiedErrorId) 1024
+        scriptName = if ($null -ne $invocation) { & $boundedText ([string]$invocation.ScriptName) 1024 } else { $null }
+        scriptLineNumber = if ($null -ne $invocation) { [int]$invocation.ScriptLineNumber } else { $null }
+        scriptStackTrace = & $boundedText ([string]$ErrorRecord.ScriptStackTrace) 8192
+    }
+}
+
+
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $continuationInProgress = $false
 if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
@@ -704,9 +736,26 @@ try {
     }
 }
 catch {
-    if ((Get-Variable -Name mcpExecution -ErrorAction SilentlyContinue) -and -not $mcpCanaryCompletionRecorded) { Complete-CurrentMcpCanary $false }
-    Write-CurrentMcpRoleMetric 'failed' 0
-    $failureMessage = $_.Exception.Message
+    $workflowHostError = $_
+    $workflowHostErrorPath = $null
+    $workflowHostErrorEvidence = $null
+    try {
+        $hostRunId = if ((Get-Variable -Name workspaceLease -ErrorAction SilentlyContinue) -and $null -ne $workspaceLease -and $workspaceLease.PSObject.Properties['RunId']) { [string]$workspaceLease.RunId } else { $ExecutionRunId }
+        $hostLeaseId = if ((Get-Variable -Name workspaceLease -ErrorAction SilentlyContinue) -and $null -ne $workspaceLease -and $workspaceLease.PSObject.Properties['LeaseId']) { [string]$workspaceLease.LeaseId } else { $WorkspaceLeaseId }
+        $workflowHostErrorEvidence = New-WorkflowHostErrorEvidence -ErrorRecord $workflowHostError -TaskId $TaskId -RunId $hostRunId -LeaseId $hostLeaseId
+        $workflowHostErrorPath = Join-Path $task.TaskRoot ('workflow-host-error-' + [guid]::NewGuid().ToString('N') + '.json')
+        & $writeUtf8NoBomAtomic -Path $workflowHostErrorPath -Content (($workflowHostErrorEvidence | ConvertTo-Json -Depth 4) + [Environment]::NewLine)
+    }
+    catch {
+        $workflowHostErrorPath = $null
+        Write-Warning 'Workflow host-error evidence could not be persisted; retaining the original workflow exception.'
+    }
+    try {
+        if ((Get-Variable -Name mcpExecution -ErrorAction SilentlyContinue) -and -not $mcpCanaryCompletionRecorded) { Complete-CurrentMcpCanary $false }
+        Write-CurrentMcpRoleMetric 'failed' 0
+    }
+    catch { Write-Warning 'Workflow failure metrics could not be persisted; retaining the original workflow exception.' }
+    $failureMessage = [string]$workflowHostError.Exception.Message
     $failureAgentId = if ($continuationInProgress) { 'orchestrator' } elseif ((Get-Variable -Name executedAgentId -ErrorAction SilentlyContinue) -and $executedAgentId) { [string]$executedAgentId } elseif ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
     $isProviderLimit = [bool](& (Join-Path $PSScriptRoot 'Test-ProviderLimitDiagnostic.ps1') -Diagnostic $failureMessage)
     if ($isProviderLimit) {
@@ -744,8 +793,17 @@ catch {
         foreach($serverName in $recoveryServers){if(-not @($mcpJsonlFailedServers).Count){& (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature $mcpSignature -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null;$diagnosticPath=New-McpFailureDiagnostic $serverName $failureMessage;& (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature $mcpSignature -TaskId $TaskId -AgentId $failureAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null};& (Join-Path $PSScriptRoot 'Write-McpMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AgentId $failureAgentId -Server $serverName -Status failed -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -AttemptId $roleAttemptId -ErrorClass 'transport-or-protocol' -FallbackUsed | Out-Null}
         if ($TargetAgentId) { return & $PSCommandPath -Mode $Mode -TaskId $TaskId -TaskSelector $TaskSelector -RepositoryIds $RepositoryIds -Resume -TargetAgentId $TargetAgentId -ElevatedApproved:$ElevatedApproved -HealthRecoveryRetry -SkipChainContinuation -ConfigPath $ConfigPath -CodexHome $CodexHome }
     }
-    $failureEvidence = @($codexLogPath, $finalResponsePath, $guardArtifactPath, (Join-Path $task.TaskRoot ('provider-limit-'+$failureAgentId+'.json'))) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
-    $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and [bool]$guardResult.guardTriggered) { [string]$guardResult.failureDetail } elseif (Test-Path -LiteralPath $codexLogPath -PathType Leaf) { (Get-Content -LiteralPath $codexLogPath -Tail 1 -Encoding UTF8 | Out-String).Trim() } else { $failureMessage }
+    $failureEvidence = @($workflowHostErrorPath, $codexLogPath, $finalResponsePath, $guardArtifactPath, (Join-Path $task.TaskRoot ('provider-limit-'+$failureAgentId+'.json'))) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+    $hostDiagnostic = if ($null -ne $workflowHostErrorEvidence) {
+        [ordered]@{
+            exceptionType = $workflowHostErrorEvidence.exceptionType
+            fullyQualifiedErrorId = $workflowHostErrorEvidence.fullyQualifiedErrorId
+            scriptName = $workflowHostErrorEvidence.scriptName
+            scriptLineNumber = $workflowHostErrorEvidence.scriptLineNumber
+            scriptStackTrace = $workflowHostErrorEvidence.scriptStackTrace
+        } | ConvertTo-Json -Depth 4 -Compress
+    } else { [string]$workflowHostError.Exception.Message }
+    $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and $null -ne $guardResult -and [bool]$guardResult.guardTriggered -and -not [string]::IsNullOrWhiteSpace([string]$guardResult.failureDetail)) { [string]$guardResult.failureDetail } else { $hostDiagnostic }
     $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
     $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -ExecutionAgentId $failureAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
     if ([bool]$failureHandoff.Stale -and -not $continuationInProgress) {
@@ -790,7 +848,7 @@ catch {
     if ($automaticTargetedResume -and [string]$automaticTargetedResume.Status -in @('completed','waiting','interrupted')) {
         return $automaticTargetedResume
     }
-    throw
+    throw $workflowHostError
 }
 }
 finally {

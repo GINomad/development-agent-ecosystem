@@ -2058,6 +2058,100 @@ if ($knowledgeResponsibilities -notmatch 'every confirmed review comment about c
 if ($globalStandards -notmatch 'Use braces for every `if`' -or $globalStandards -notmatch '`public static`' -or $globalStandards -notmatch '`private static`' -or $globalStandards -notmatch 'f806355b73d3493fbcd171d51fa352ca' -or $globalStandards -notmatch 'a5bae0d26ac94b8e8f1984ce8b361d7c' -or $globalStandards -notmatch 'Business rules, domain behavior, API contracts') { throw 'Global review-derived style standards or their evidence are incomplete.' }
 Add-Check -Name 'review-derived-coding-standards' -Detail 'Every confirmed code-organization/style comment is promoted globally or by technology after implementation and clean review; business/domain/API behavior remains repository-scoped'
 
+# JSON protocol drift must not make the host's failure classifier fail under StrictMode.
+$guardSourcePath = Join-Path $root 'scripts/Invoke-GuardedCodex.ps1'
+$guardAst = [Management.Automation.Language.Parser]::ParseFile($guardSourcePath, [ref]$null, [ref]$null)
+$fingerprintFunction = $guardAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-FailureFingerprint' }, $true)
+if (-not $fingerprintFunction) { throw 'Production failure classifier function is missing.' }
+& {
+    Set-StrictMode -Version Latest
+    $Provider = 'codex'
+    . ([scriptblock]::Create($fingerprintFunction.Extent.Text))
+    foreach ($line in @('{}', '{"message":"x"}', '42', 'null', '[]', '[{"message":"x"}]', '[{"type":"turn.completed"},{"type":"error"}]', '"text"', 'true', '{"type":"item.completed","item":null}', '{"type":"item.completed","item":42}', '{"type":"item.completed","item":[]}', '{"type":"item.completed","item":{"other":"x"}}', '{"type":"turn.started"}')) {
+        if ($null -ne (Get-FailureFingerprint -Line $line)) { throw "Unsupported JSON unexpectedly classified: $line" }
+    }
+    $commandFailure = Get-FailureFingerprint -Line '{"type":"item.completed","item":{"status":"failed","aggregated_output":"compile failed"}}'
+    $capacityFailure = Get-FailureFingerprint -Line '{"type":"error","message":"Selected model is at capacity"}'
+    $quotaFailure = Get-FailureFingerprint -Line 'quota limit reached'
+    if ($commandFailure.Kind -ne 'execution-failure' -or $capacityFailure.Kind -ne 'model-capacity' -or $quotaFailure.Kind -ne 'provider-failure') { throw 'Typed failures or plain-text quota classification changed.' }
+}
+Add-Check -Name 'guard-unsupported-json-shapes' -Detail 'Actual classifier under StrictMode ignores unsupported JSON and nested item shapes while preserving typed failures and quota classification'
+
+$unknownJsonRoot = Join-Path $OutputRoot ('unknown-json-guard-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $unknownJsonRoot -Force | Out-Null
+$unknownJsonCli = Join-Path $unknownJsonRoot 'emit-json.ps1'
+[IO.File]::WriteAllText($unknownJsonCli, @'
+param([int] $NativeCode)
+foreach ($line in @('{}', '{"message":"x"}', '42', 'null', '[]', '[{"type":"turn.completed"},{"type":"error"}]', '{"type":"item.completed","item":null}')) { [Console]::Out.WriteLine($line) }
+Start-Sleep -Milliseconds 250
+exit $NativeCode
+'@, [Text.UTF8Encoding]::new($false))
+foreach ($nativeCode in @(0, 7)) {
+    $caseRoot = Join-Path $unknownJsonRoot ([string]$nativeCode)
+    New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+    $guardPath = Join-Path $caseRoot 'guard.json'
+    $unknownResult = & $guardSourcePath -FilePath (Get-Process -Id $PID).Path -Arguments @('-NoProfile','-File',$unknownJsonCli,'-NativeCode',[string]$nativeCode) -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $caseRoot 'events.jsonl') -GuardArtifactPath $guardPath -MaxRunMinutes 1 -PollMilliseconds 100
+    $persistedGuard = Get-Content -LiteralPath $guardPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($unknownResult.guardTriggered -or $unknownResult.exitCode -ne $nativeCode -or $persistedGuard.exitCode -ne $nativeCode -or $persistedGuard.exitCodeSource -ne 'native' -or $null -ne $persistedGuard.failureKind) { throw "Unsupported JSON lost native exit/artifact behavior for exit $nativeCode." }
+}
+Add-Check -Name 'guard-unsupported-json-native-exits' -Detail 'Actual guard writes artifacts and retains native exits 0 and 7 without a completed event or classifier exception'
+
+$workflowSourcePath = Join-Path $root 'scripts/Start-DevelopmentWorkflow.ps1'
+$workflowAst = [Management.Automation.Language.Parser]::ParseFile($workflowSourcePath, [ref]$null, [ref]$null)
+$hostEvidenceFunction = $workflowAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-WorkflowHostErrorEvidence' }, $true)
+if (-not $hostEvidenceFunction) { throw 'Production host-error evidence function is missing.' }
+$hostFailureCatch = $workflowAst.Find({ param($node) $node -is [Management.Automation.Language.CatchClauseAst] -and $node.Body.Statements.Count -gt 0 -and $node.Body.Statements[0].Extent.Text -eq '$workflowHostError = $_' }, $true)
+if (-not $hostFailureCatch) { throw 'Workflow catch does not capture the original error first.' }
+$prefixEnd = @($hostFailureCatch.Body.Statements | Where-Object { $_.Extent.Text -match '^\$failureMessage\s*=' }) | Select-Object -First 1
+if (-not $prefixEnd) { throw 'Workflow catch message boundary is missing.' }
+$prefixText = $workflowAst.Extent.Text.Substring($hostFailureCatch.Body.Statements[0].Extent.StartOffset, $prefixEnd.Extent.EndOffset - $hostFailureCatch.Body.Statements[0].Extent.StartOffset)
+$diagnosticStatements = @($hostFailureCatch.Body.Statements | Where-Object { $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -in @('$hostDiagnostic', '$lastDiagnostic') })
+if ($diagnosticStatements.Count -ne 2) { throw 'Workflow diagnostic assignments are missing.' }
+$diagnosticScript = [scriptblock]::Create(($diagnosticStatements.Extent.Text -join [Environment]::NewLine))
+& {
+    Set-StrictMode -Version Latest
+    . ([scriptblock]::Create($hostEvidenceFunction.Extent.Text))
+    $TaskId = 'synthetic-task'; $ExecutionRunId = 'synthetic-run'; $WorkspaceLeaseId = 'synthetic-lease'
+    $task = [pscustomobject]@{ TaskRoot = $unknownJsonRoot }
+    $workspaceLease = $null
+    $writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock
+    function Write-CurrentMcpRoleMetric { throw 'secondary metric failure' }
+    $syntheticThrowPath = Join-Path $unknownJsonRoot 'throw-host.ps1'
+    [IO.File]::WriteAllText($syntheticThrowPath, "throw ('synthetic host failure') # COMMAND_TEXT_MARKER", [Text.UTF8Encoding]::new($false))
+    $prefixScript = [scriptblock]::Create($prefixText)
+    try { & $syntheticThrowPath } catch { . $prefixScript }
+    $firstEvidencePath = $workflowHostErrorPath
+    $firstEvidenceContent = [IO.File]::ReadAllText($firstEvidencePath)
+    $persistedHost = $firstEvidenceContent | ConvertFrom-Json
+    if ($failureMessage -ne 'synthetic host failure' -or $workflowHostError.Exception.Message -ne 'synthetic host failure' -or -not $persistedHost.exceptionType -or -not $persistedHost.fullyQualifiedErrorId -or -not $persistedHost.scriptStackTrace -or $persistedHost.scriptLineNumber -ne 1 -or $persistedHost.scriptName -ne $syntheticThrowPath -or $persistedHost.executionRunId -ne $ExecutionRunId -or $persistedHost.workspaceLeaseId -ne $WorkspaceLeaseId -or $persistedHost.taskId -ne $TaskId) { throw 'Actual catch prefix lost original error identity or did not persist run-bound evidence before metric failure.' }
+    if (($persistedHost | ConvertTo-Json -Depth 4) -match 'COMMAND_TEXT_MARKER|providerPayload|commandText|PositionMessage') { throw 'Host evidence included raw invocation text or provider payload.' }
+    $guardResult = $null
+    . $diagnosticScript
+    if ($lastDiagnostic -match 'synthetic-task|synthetic-run|synthetic-lease|timestampUtc|executionRunId|workspaceLeaseId|taskId' -or $lastDiagnostic -notmatch 'fullyQualifiedErrorId|scriptStackTrace') { throw 'Host diagnostic fingerprint contains volatile identity metadata or lacks captured host facts.' }
+    $guardResult = [pscustomobject]@{ guardTriggered=$true; failureDetail='stable provider failure detail' }
+    . $diagnosticScript
+    if ($lastDiagnostic -ne 'stable provider failure detail') { throw 'Recognized guard/provider diagnostic changed.' }
+    $longHostMessage = 'z' * 3000
+    try { throw $longHostMessage } catch { . $prefixScript }
+    $longHostEvidence = Get-Content -LiteralPath $workflowHostErrorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($failureMessage -ne $longHostMessage -or $failureMessage.Length -ne 3000 -or $longHostEvidence.message.Length -ne 2048) { throw 'Catch prefix truncated the original failure summary or failed to bound the artifact message.' }
+    if ($workflowHostErrorPath -eq $firstEvidencePath -or [IO.File]::ReadAllText($firstEvidencePath) -cne $firstEvidenceContent) { throw 'A later exception overwrote the earlier host-error evidence.' }
+    $longError = [Management.Automation.ErrorRecord]::new([Exception]::new(('x' * 3000)), ('f' * 2000), [Management.Automation.ErrorCategory]::NotSpecified, $null)
+    $boundedHost = New-WorkflowHostErrorEvidence -ErrorRecord $longError -TaskId $null -RunId $null -LeaseId $null
+    if ($boundedHost.message.Length -ne 2048 -or $boundedHost.fullyQualifiedErrorId.Length -ne 1024 -or $null -ne $boundedHost.scriptName -or $null -ne $boundedHost.scriptLineNumber -or $boundedHost.scriptStackTrace.Length -gt 8192) { throw 'Host evidence bounds or null invocation metadata handling failed.' }
+    function Invoke-LongHostFailure([int] $Depth) { if ($Depth -eq 0) { throw 'synthetic deep host error' }; Invoke-LongHostFailure ($Depth - 1) }
+    try { Invoke-LongHostFailure 220 } catch { $deepError = $_ }
+    $deepEvidence = New-WorkflowHostErrorEvidence -ErrorRecord $deepError -TaskId ('t' * 200) -RunId ('r' * 200) -LeaseId ('l' * 200)
+    if ($deepError.ScriptStackTrace.Length -le 8192 -or $deepEvidence.scriptStackTrace.Length -ne 8192 -or $deepEvidence.taskId.Length -ne 128 -or $deepEvidence.executionRunId.Length -ne 128 -or $deepEvidence.workspaceLeaseId.Length -ne 128) { throw 'Host evidence failed to bound a real long stack or run identity.' }
+    $originalAtomicWriter = $writeUtf8NoBomAtomic
+    $writeUtf8NoBomAtomic = { throw 'secondary persistence failure' }
+    try { & $syntheticThrowPath } catch { . $prefixScript }
+    if ($workflowHostError.Exception.Message -ne 'synthetic host failure' -or $failureMessage -ne 'synthetic host failure' -or $null -ne $workflowHostErrorPath) { throw 'Evidence persistence failure replaced the original workflow exception.' }
+    $writeUtf8NoBomAtomic = $originalAtomicWriter
+}
+Add-Check -Name 'workflow-host-error-evidence' -Detail 'Actual helper and catch prefix persist bounded original error metadata with task/run/lease identity before fallible metrics and retain the original error if evidence persistence fails'
+
+
 $guardTestRoot = Join-Path $OutputRoot 'execution-guard'
 if (Test-Path -LiteralPath $guardTestRoot) { Remove-Item -LiteralPath $guardTestRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $guardTestRoot -Force | Out-Null

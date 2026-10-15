@@ -34,6 +34,7 @@ function Get-FailureFingerprint {
         try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
         return [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$Line; Kind='provider-failure' }
     }
+    if ($null -eq $event -or $event -isnot [pscustomobject] -or -not $event.PSObject.Properties['type']) { return $null }
     if ($Provider -eq 'claude' -and [string]$event.type -eq 'result' -and $event.PSObject.Properties['is_error'] -and [bool]$event.is_error) {
         $detail = if ($event.PSObject.Properties['result']) { [string]$event.result } else { ($event | ConvertTo-Json -Depth 12 -Compress) }
         $canonical = (($detail -replace '\s+', ' ').Trim())
@@ -53,6 +54,7 @@ function Get-FailureFingerprint {
     }
     if ([string]$event.type -ne 'item.completed' -or -not $event.PSObject.Properties['item']) { return $null }
     $item = $event.item
+    if ($null -eq $item -or $item -isnot [pscustomobject]) { return $null }
     if (-not $item.PSObject.Properties['status']) { return $null }
     if ([string]$item.status -ne 'failed') { return $null }
     $detail = if ($item.PSObject.Properties['aggregated_output']) { [string]$item.aggregated_output } elseif ($item.PSObject.Properties['error']) { [string]$item.error } else { ($item | ConvertTo-Json -Depth 12 -Compress) }
@@ -101,7 +103,7 @@ foreach ($temporaryPath in @($stdoutPath,$stderrPath)) {
 }
 $argumentLine = (@($Arguments | ForEach-Object { ConvertTo-WindowsArgument -Value ([string]$_) }) -join ' ')
 $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -RedirectStandardInput $promptPath -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -NoNewWindow -PassThru
-$process = Get-Process -Id $process.Id -ErrorAction Stop
+# Keep Start-Process's owned process handle so ExitCode remains available after exit.
 $processId = $process.Id
 $startedAtUtc = [DateTime]::UtcNow
 $lastHeartbeatAtUtc = $startedAtUtc
@@ -183,6 +185,7 @@ if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
     foreach ($outputLine in @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8)) {
         try {
             $outputEvent = $outputLine | ConvertFrom-Json
+            if ($null -eq $outputEvent -or $outputEvent -isnot [pscustomobject] -or -not $outputEvent.PSObject.Properties['type']) { continue }
             if ([string]$outputEvent.type -eq 'turn.completed') { $completedProviderRun = $true; break }
             if (
                 $Provider -eq 'claude' -and
