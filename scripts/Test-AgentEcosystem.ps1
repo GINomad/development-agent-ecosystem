@@ -2160,7 +2160,9 @@ if ($reviewWrapper -notmatch 'VerifiedContextPath' -or $reviewWrapper -notmatch 
 $argvProbe = [Diagnostics.ProcessStartInfo]::new()
 $argvProbe.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
 $argvProbe.UseShellExecute = $false; $argvProbe.CreateNoWindow = $true; $argvProbe.RedirectStandardOutput = $true
-$argvProbe.ArgumentList.Add('-NoProfile'); $argvProbe.ArgumentList.Add('-Command'); $argvProbe.ArgumentList.Add('$args[0]')
+$argvProbeScript = Join-Path $OutputRoot 'argv-probe.ps1'
+[IO.File]::WriteAllText($argvProbeScript, 'param([string]$Value) [Console]::Out.Write($Value)', (New-Object Text.UTF8Encoding($false)))
+$argvProbe.ArgumentList.Add('-NoProfile'); $argvProbe.ArgumentList.Add('-File'); $argvProbe.ArgumentList.Add($argvProbeScript)
 $argvOverride = 'mcp_servers.ecosystem-read.args=["-NoProfile","-File","C:\\Repos\\development-agent-ecosystem\\scripts\\Start-EcosystemReadMcpServer.ps1"]'
 $argvProbe.ArgumentList.Add($argvOverride)
 $argvProcess = [Diagnostics.Process]::Start($argvProbe)
