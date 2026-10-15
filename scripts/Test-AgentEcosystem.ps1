@@ -37,7 +37,9 @@ try {
     $atomicWriteTarget = Join-Path $atomicWriteFixture 'target.json'
     Write-Utf8NoBom -Path $atomicWriteTarget -Content 'before'
     $atomicWriteLock = [IO.File]::Open($atomicWriteTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-    $atomicWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($atomicWriteLock, 150)
+    # Exceed the former 20 x 75ms retry window so this verifies recovery from a
+    # realistic, bounded task-artifact sharing violation.
+    $atomicWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($atomicWriteLock, 2000)
     try {
         Write-Utf8NoBomAtomic -Path $atomicWriteTarget -Content 'after'
     }

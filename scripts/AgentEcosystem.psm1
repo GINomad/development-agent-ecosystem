@@ -389,7 +389,11 @@ function Write-Utf8NoBomAtomic {
     $backupPath = $temporaryPath + '.bak'
     try {
         [IO.File]::WriteAllText($temporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
-        $attempt = 0
+        # Task-state readers can legitimately hold a handle while an agent exits or
+        # a health-recovery snapshot is collected.  Retry for the same bounded
+        # interval used by the ecosystem's file-lock helper instead of treating a
+        # short sharing violation as a terminal workflow failure.
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ($true) {
             try {
                 if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
@@ -397,8 +401,7 @@ function Write-Utf8NoBomAtomic {
                 break
             }
             catch [IO.IOException] {
-                $attempt++
-                if ($attempt -ge 20) { throw }
+                if ([DateTime]::UtcNow -ge $deadline) { throw }
                 Start-Sleep -Milliseconds 75
             }
         }
