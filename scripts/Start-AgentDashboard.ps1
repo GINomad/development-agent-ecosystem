@@ -346,7 +346,7 @@ try {
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/tasks') {
-                    $taskParameters = @{ ConfigPath=$ConfigPath; IncludeCompleted=($request.QueryString['includeCompleted'] -eq 'true') }
+                    $taskParameters = @{ ConfigPath=$ConfigPath; IncludeCompleted=($request.QueryString['includeCompleted'] -eq 'true'); Summary=$true }
                     if (-not [string]::IsNullOrWhiteSpace($CodexHome)) { $taskParameters.CodexHome = $CodexHome }
                     $result = & (Join-Path $PSScriptRoot 'Get-AgentTasks.ps1') @taskParameters
                     Send-Json -Response $response -Value @{ tasks=@($result.Tasks); scheduler=$result.Scheduler; generatedAtUtc=[string]$result.GeneratedAtUtc }

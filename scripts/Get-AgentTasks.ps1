@@ -2,6 +2,10 @@
 param(
     [ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [switch] $IncludeCompleted,
+    # The task-list endpoint renders only card fields.  Keeping the expensive
+    # event/artifact projection opt-in prevents one large historical task from
+    # delaying every card until its details have been selected.
+    [switch] $Summary,
     [int] $EventLimit = 200,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
@@ -27,6 +31,35 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         $taskPath = Join-Path $directory.FullName 'task.json'
         if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { continue }
         try { $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+        $repositoryIds = @()
+        if ($task.PSObject.Properties['repositoryIds']) { $repositoryIds = @($task.repositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ }) }
+        elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { $repositoryIds = @([string]$task.repositoryId) }
+        $status = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'created' }
+        if (-not $TaskId -and -not $IncludeCompleted -and $status -notin $activeStatuses) { continue }
+        $activeLease = @($coordinatorLeases | Where-Object { [string]$_.taskId -eq [string]$task.taskId } | Select-Object -First 1)
+        $scheduler = [pscustomobject][ordered]@{ capacity=$capacity; activeTaskCount=$coordinatorLeases.Count; queuePosition=$null; lease=if ($activeLease.Count) { [pscustomobject][ordered]@{ runId=[string]$activeLease[0].runId; leaseId=[string]$activeLease[0].leaseId; lifecycle=[string]$activeLease[0].lifecycle; acquiredAtUtc=[string]$activeLease[0].acquiredAtUtc; heartbeatAtUtc=[string]$activeLease[0].heartbeatAtUtc; controllerProcessId=if ($activeLease[0].PSObject.Properties['controllerProcessId']) { [int]$activeLease[0].controllerProcessId } else { $null }; controllerStartedAtUtc=if ($activeLease[0].PSObject.Properties['controllerStartedAtUtc']) { [string]$activeLease[0].controllerStartedAtUtc } else { $null } } } else { $null } }
+        if ($Summary) {
+            $items.Add([pscustomobject][ordered]@{
+                taskId = [string]$task.taskId
+                selector = [string]$task.selector
+                mode = [string]$task.mode
+                repositoryId = if ($repositoryIds.Count) { $repositoryIds[0] } else { '' }
+                repositoryIds = @($repositoryIds)
+                status = $status
+                isActive = ($status -in $activeStatuses)
+                currentStage = if ($task.PSObject.Properties['currentStage']) { [string]$task.currentStage } else { '' }
+                lastMessage = if ($task.PSObject.Properties['lastMessage']) { [string]$task.lastMessage } else { '' }
+                createdAtUtc = [string]$task.createdAtUtc
+                updatedAtUtc = if ($task.PSObject.Properties['updatedAtUtc']) { [string]$task.updatedAtUtc } else { [string]$task.createdAtUtc }
+                workflowProcessId = if ($task.PSObject.Properties['workflowProcessId']) { [int]$task.workflowProcessId } else { $null }
+                executionRunId = if ($task.PSObject.Properties['executionRunId']) { [string]$task.executionRunId } else { $null }
+                workspaceLeaseId = if ($task.PSObject.Properties['workspaceLeaseId']) { [string]$task.workspaceLeaseId } else { $null }
+                workflowHeartbeatAtUtc = if ($task.PSObject.Properties['workflowHeartbeatAtUtc']) { [string]$task.workflowHeartbeatAtUtc } else { $null }
+                revision = if ($task.PSObject.Properties['revision']) { [int]$task.revision } else { 1 }
+                scheduler = $scheduler
+            })
+            continue
+        }
         $events = [Collections.Generic.List[object]]::new()
         $ledgerPath = Join-Path $directory.FullName 'task-ledger.jsonl'
         if (Test-Path -LiteralPath $ledgerPath -PathType Leaf) {
@@ -35,9 +68,6 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
                 try { $events.Add(($line | ConvertFrom-Json)) } catch { }
             }
         }
-        $repositoryIds = @()
-        if ($task.PSObject.Properties['repositoryIds']) { $repositoryIds = @($task.repositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ }) }
-        elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { $repositoryIds = @([string]$task.repositoryId) }
         $resolvedQuestionIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($resolvedEvent in @($events | Where-Object { $_.type -eq 'question-resolved' })) {
             foreach ($evidenceValue in @($resolvedEvent.evidence)) { if ($evidenceValue) { $null = $resolvedQuestionIds.Add([string]$evidenceValue) } }
@@ -52,8 +82,6 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         $openQuestions = @($latestQuestionByAgent.Values | Where-Object {
             -not $resolvedQuestionIds.Contains([string]$_.eventId)
         } | Sort-Object timestampUtc)
-        $status = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'created' }
-        if (-not $TaskId -and -not $IncludeCompleted -and $status -notin $activeStatuses) { continue }
         $lastEvent = @($events | Sort-Object timestampUtc -Descending | Select-Object -First 1)
         $lastUpdated = if ($lastEvent.Count) { [string]$lastEvent[0].timestampUtc } elseif ($task.PSObject.Properties['updatedAtUtc']) { [string]$task.updatedAtUtc } else { [string]$task.createdAtUtc }
         $acknowledgedCommentIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -104,8 +132,6 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             }
             catch { }
         }
-        $activeLease = @($coordinatorLeases | Where-Object { [string]$_.taskId -eq [string]$task.taskId } | Select-Object -First 1)
-        $scheduler = [pscustomobject][ordered]@{ capacity=$capacity; activeTaskCount=$coordinatorLeases.Count; queuePosition=$null; lease=if ($activeLease.Count) { [pscustomobject][ordered]@{ runId=[string]$activeLease[0].runId; leaseId=[string]$activeLease[0].leaseId; lifecycle=[string]$activeLease[0].lifecycle; acquiredAtUtc=[string]$activeLease[0].acquiredAtUtc; heartbeatAtUtc=[string]$activeLease[0].heartbeatAtUtc; controllerProcessId=if ($activeLease[0].PSObject.Properties['controllerProcessId']) { [int]$activeLease[0].controllerProcessId } else { $null }; controllerStartedAtUtc=if ($activeLease[0].PSObject.Properties['controllerStartedAtUtc']) { [string]$activeLease[0].controllerStartedAtUtc } else { $null } } } else { $null } }
         $artifacts = @(Get-ChildItem -LiteralPath $directory.FullName -File | Where-Object { $_.Name -notin @('task.json','task-ledger.jsonl') -and $_.Name -notlike '*.lock' } | ForEach-Object { [pscustomobject]@{ name=$_.Name; path=$_.FullName; lastWriteTimeUtc=$_.LastWriteTimeUtc.ToString('o'); length=$_.Length } })
         $eventSlice = if ($EventLimit -gt 0) { @($events | Sort-Object timestampUtc -Descending | Select-Object -First $EventLimit) } else { @($events | Sort-Object timestampUtc -Descending) }
         if ($EventLimit -gt 0) {
