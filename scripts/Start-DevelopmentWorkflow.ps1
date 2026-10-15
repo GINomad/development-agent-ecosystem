@@ -459,7 +459,7 @@ foreach ($argument in @('-s', $workflowSandboxMode, '--json', '-o', $finalRespon
 $workflowStartedAtUtc = [DateTime]::UtcNow
 try {
     $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; attemptId=$roleAttemptId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner=([string]$providerRoute.provider + ' cli'); provider=[string]$providerRoute.provider; providerRouteDecisionId=[string]$providerRoute.decisionId; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$providerRoute.model; reasoningEffort=[string]$providerRoute.reasoningEffort } | ConvertTo-Json -Compress
-    [IO.File]::AppendAllText($codexLogPath, $runHeader + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+    Add-EcosystemUtf8Line -Path $codexLogPath -Line $runHeader
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
     & $leaseHeartbeatAction | Out-Null
     try {

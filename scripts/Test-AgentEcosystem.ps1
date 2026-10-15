@@ -54,6 +54,26 @@ finally {
     if (Test-Path -LiteralPath $atomicWriteFixture) { Remove-Item -LiteralPath $atomicWriteFixture -Recurse -Force }
 }
 Add-Check -Name 'atomic-writer-transient-lock-retry' -Detail 'Atomic writes retry transient sharing violations before failing.'
+$appendWriteFixture = Join-Path $OutputRoot ('append-write-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $appendWriteFixture -Force | Out-Null
+try {
+    $appendWriteTarget = Join-Path $appendWriteFixture 'workflow-codex.jsonl'
+    [IO.File]::WriteAllText($appendWriteTarget, '', [Text.UTF8Encoding]::new($false))
+    $appendWriteLock = [IO.File]::Open($appendWriteTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $appendWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($appendWriteLock, 2000)
+try {
+    Add-EcosystemUtf8Line -Path $appendWriteTarget -Line 'recovered-log-line'
+}
+finally {
+    $appendWriteReleaseTimer.Dispose()
+    try { $appendWriteLock.Dispose() } catch [ObjectDisposedException] { }
+}
+if ((Get-Content -LiteralPath $appendWriteTarget -Raw -Encoding UTF8) -ne ('recovered-log-line' + [Environment]::NewLine)) { throw 'Serialized log appender did not retry a transient sharing violation.' }
+}
+finally {
+    if (Test-Path -LiteralPath $appendWriteFixture) { Remove-Item -LiteralPath $appendWriteFixture -Recurse -Force }
+}
+Add-Check -Name 'workflow-log-transient-lock-retry' -Detail 'Workflow log appends serialize writers and retry transient sharing violations.'
 $featureBranchName = New-TaskBranchName -TaskName 'Implement FDPlan sensitivity resultsets' -TaskType 'Product Backlog Item'
 $bugfixBranchName = New-TaskBranchName -TaskName 'Fix FDPlan sensitivity / resultsets' -TaskType 'Bug'
 if ($featureBranchName -ne 'features/implement-fdplan-sensitivity-resultsets' -or $bugfixBranchName -ne 'bugfix/fix-fdplan-sensitivity-resultsets') { throw 'Human-readable task branch naming does not distinguish implementation tasks from bug fixes.' }

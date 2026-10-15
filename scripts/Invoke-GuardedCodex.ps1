@@ -16,6 +16,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 
 function ConvertTo-WindowsArgument {
     param([AllowEmptyString()][string] $Value)
@@ -124,7 +125,7 @@ try {
         if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { [array]$lines = @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) }
         while ($lineIndex -lt $lines.Count) {
             $line = [string]$lines[$lineIndex++]
-            [IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine, $encoding)
+            Add-EcosystemUtf8Line -Path $LogPath -Line $line
             $failure = Get-FailureFingerprint -Line $line
             if ($failure) {
                 if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
@@ -158,7 +159,7 @@ finally {
     if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { [array]$remainingLines = @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) }
     while ($lineIndex -lt $remainingLines.Count) {
         $line = [string]$remainingLines[$lineIndex++]
-        [IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine, $encoding)
+        Add-EcosystemUtf8Line -Path $LogPath -Line $line
         $failure = Get-FailureFingerprint -Line $line
         if ($failure) {
             if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
@@ -172,7 +173,7 @@ finally {
     if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
         foreach ($stderrLine in @(Get-Content -LiteralPath $stderrPath -Encoding UTF8)) {
             $record = [ordered]@{ type=($Provider + '-stderr'); provider=$Provider; text=[string]$stderrLine } | ConvertTo-Json -Compress
-            [IO.File]::AppendAllText($LogPath, $record + [Environment]::NewLine, $encoding)
+            Add-EcosystemUtf8Line -Path $LogPath -Line $record
         }
     }
 }

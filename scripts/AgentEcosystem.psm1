@@ -432,6 +432,30 @@ function Invoke-EcosystemFileLock {
     finally { $stream.Dispose() }
 }
 
+function Add-EcosystemUtf8Line {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Line,
+        [int] $TimeoutSeconds = 30
+    )
+    # Workflow output is written by the runner, its guarded child, and recovery
+    # hosts.  Keep a sibling lock so those independent processes cannot race the
+    # short exclusive handle opened by AppendAllText on Windows.
+    Invoke-EcosystemFileLock -LockPath ($Path + '.append.lock') -TimeoutSeconds $TimeoutSeconds -Action {
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        while ($true) {
+            try {
+                [IO.File]::AppendAllText($Path, $Line + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+                break
+            }
+            catch [IO.IOException] {
+                if ([DateTime]::UtcNow -ge $deadline) { throw }
+                Start-Sleep -Milliseconds 75
+            }
+        }
+    } | Out-Null
+}
+
 function New-WorkspaceLeaseHeartbeatAction {
     param(
         [Parameter(Mandatory)][string] $HeartbeatScriptPath,
@@ -539,4 +563,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

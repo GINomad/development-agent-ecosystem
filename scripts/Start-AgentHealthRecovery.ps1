@@ -420,7 +420,7 @@ try {
     $tokenState=Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $tokenRevision=if($tokenState.PSObject.Properties['revision']){[Nullable[int]][int]$tokenState.revision}else{$null}
     $tokenHeader=[ordered]@{type='ecosystem-workflow-run';taskId=$TaskId;attemptId=[string]$attempt.attemptId;provider='codex';model=[string]$healthAgentDefinition.model;startedAtUtc=[DateTime]::UtcNow.ToString('o')}
-    [IO.File]::AppendAllText($logPath,($tokenHeader|ConvertTo-Json -Compress)+[Environment]::NewLine,(New-Object Text.UTF8Encoding($false)))
+    Add-EcosystemUtf8Line -Path $logPath -Line ($tokenHeader|ConvertTo-Json -Compress)
     try {
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     } finally {
