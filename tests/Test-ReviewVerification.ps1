@@ -97,6 +97,7 @@ function New-Review {
                 evidence = 'The gate is represented at this line.'
             })
             testEvidence = @('Targeted review verification test')
+            scenarioResults = @()
             notes = 'Synthetic contract fixture.'
         })
         reviewCoverage = @(New-CoverageMatrix)
