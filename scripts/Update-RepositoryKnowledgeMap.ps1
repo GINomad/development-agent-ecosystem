@@ -36,6 +36,16 @@ function Get-FilePurpose {
     return 'asset'
 }
 
+function Get-RepositoryRelativeDirectory {
+    param([Parameter(Mandatory)][string] $Path)
+    # Git tree entries use POSIX separators and may contain characters that are
+    # not valid in a Windows filesystem path. Treat them as Git-relative IDs.
+    $normalized = $Path.Replace('\','/')
+    $separatorIndex = $normalized.LastIndexOf('/')
+    if ($separatorIndex -lt 0) { return '' }
+    return $normalized.Substring(0, $separatorIndex)
+}
+
 function Get-NormalizedRelativePath {
     param([Parameter(Mandatory)][string] $BaseDirectory, [Parameter(Mandatory)][string] $Candidate)
     $absolute = [IO.Path]::GetFullPath((Join-Path $BaseDirectory $Candidate))
@@ -81,10 +91,10 @@ $excluded = '(?i)(^|/)(\.git|node_modules|packages|bin|obj|dist|build|coverage|\
 $files = @(Invoke-GitMapCommand -Arguments @('ls-files','-co','--exclude-standard') | ForEach-Object { $_.Replace('\','/') } | Where-Object { $_ -and $_ -notmatch $excluded } | Sort-Object -Unique)
 $directories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($file in $files) {
-    $directory = [IO.Path]::GetDirectoryName($file).Replace('\','/')
+    $directory = Get-RepositoryRelativeDirectory -Path $file
     while ($directory) {
         [void]$directories.Add($directory)
-        $parent = [IO.Path]::GetDirectoryName($directory).Replace('\','/')
+        $parent = Get-RepositoryRelativeDirectory -Path $directory
         if ($parent -eq $directory) { break }
         $directory = $parent
     }
@@ -95,12 +105,12 @@ $edges = [Collections.Generic.List[object]]::new()
 $nodes.Add([ordered]@{ id='repository'; kind='repository'; path=''; purpose='repository-root' })
 foreach ($directory in @($directories | Sort-Object)) {
     $nodes.Add([ordered]@{ id="directory:$directory"; kind='directory'; path=$directory; purpose='source-tree' })
-    $parent = [IO.Path]::GetDirectoryName($directory).Replace('\','/')
+    $parent = Get-RepositoryRelativeDirectory -Path $directory
     $edges.Add([ordered]@{ from=if($parent){"directory:$parent"}else{'repository'}; to="directory:$directory"; kind='contains' })
 }
 foreach ($file in $files) {
     $nodes.Add([ordered]@{ id="file:$file"; kind='file'; path=$file; purpose=(Get-FilePurpose -Path $file) })
-    $directory = [IO.Path]::GetDirectoryName($file).Replace('\','/')
+    $directory = Get-RepositoryRelativeDirectory -Path $file
     $edges.Add([ordered]@{ from=if($directory){"directory:$directory"}else{'repository'}; to="file:$file"; kind='contains' })
 }
 

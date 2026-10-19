@@ -46,4 +46,18 @@ Set-Content -LiteralPath (Join-Path $workspace 'src/Core/NewService.cs') -Value 
 $fourth = & (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Update-RepositoryKnowledgeMap.ps1') -RepositoryId 'fixture-repository' -Workspace $workspace -OutputRoot $maps
 if ($fourth.Reused -or [string]$fourth.SourceFingerprint -eq [string]$third.SourceFingerprint -or [string]$fourth.MapPath -eq [string]$third.MapPath) { throw 'A content-only untracked-file change did not create a new content-addressed map.' }
 
-[pscustomobject]@{ Status='passed'; Checks=6; OutputRoot=$root }
+# A Git tree can contain names that are legal Git-relative paths but illegal
+# Windows paths. The mapper must not pass those identifiers to System.IO.Path.
+$invalidPathBlob = 'repository-map-invalid-path' | & git -C $workspace hash-object -w --stdin
+if ($LASTEXITCODE -ne 0) { throw 'Fixture blob creation failed.' }
+& git -C $workspace config core.protectNTFS false
+if ($LASTEXITCODE -ne 0) { throw 'Fixture NTFS protection override failed.' }
+& git -C $workspace update-index --add --cacheinfo "100644,$($invalidPathBlob.Trim()),src/invalid:entry.cs"
+if ($LASTEXITCODE -ne 0) { throw 'Fixture index update failed.' }
+& git -C $workspace commit -m 'add git-only invalid Windows path' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Fixture invalid-path commit failed.' }
+$invalidPathMap = & (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Update-RepositoryKnowledgeMap.ps1') -RepositoryId 'fixture-repository' -Workspace $workspace -OutputRoot $maps
+$invalidPathDocument = Get-Content -LiteralPath $invalidPathMap.MapPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($invalidPathMap.Reused -or $invalidPathDocument.nodes.path -notcontains 'src/invalid:entry.cs') { throw 'Git-relative invalid Windows path was not mapped safely.' }
+
+[pscustomobject]@{ Status='passed'; Checks=7; OutputRoot=$root }
