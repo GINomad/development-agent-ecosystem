@@ -6,7 +6,7 @@ Treat `review-result.json` as an untrusted claim set, not as evidence that its o
 
 Use `scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path>` as the canonical typed inspection for review coverage, active finding IDs, and lifecycle records. Do not reconstruct this comparison with an ad hoc PowerShell pipeline. Keep any remaining shell inspections syntactically simple and bounded, one command per artifact, with no generated pipeline before `ConvertTo-Json`.
 
-Do not use `Get-Command -LiteralPath` to inspect a script: PowerShell binds that form through `ArgumentList` and it can fail before the verification begins. Prefer the documented direct script invocations. If script metadata is essential, use `Get-Command -Name <absolute-script-path>` for exactly one script.
+Do not use `Get-Help -LiteralPath` to inspect a script: `Get-Help` does not support that parameter and the invocation fails before verification begins. Prefer the documented direct script invocations. If help is essential, use `Get-Help <absolute-script-path> -Full` for exactly one script.
 
 Compute the SHA-256 of the exact current `review-result.json` and bind `review-verification.json` to that lowercase hash and its `reviewedRevision`. A stale or mismatched hash is a failed outcome.
 
