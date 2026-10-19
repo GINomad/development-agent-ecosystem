@@ -103,7 +103,10 @@ foreach ($temporaryPath in @($stdoutPath,$stderrPath)) {
 }
 $argumentLine = (@($Arguments | ForEach-Object { ConvertTo-WindowsArgument -Value ([string]$_) }) -join ' ')
 $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -RedirectStandardInput $promptPath -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -NoNewWindow -PassThru
-# Keep Start-Process's owned process handle so ExitCode remains available after exit.
+# PowerShell 5.1 can lose the native handle when a short-lived child exits before
+# Process.Handle has ever been requested. Force handle acquisition immediately so
+# ExitCode remains available after the process terminates.
+$null = $process.Handle
 $processId = $process.Id
 $startedAtUtc = [DateTime]::UtcNow
 $lastHeartbeatAtUtc = $startedAtUtc

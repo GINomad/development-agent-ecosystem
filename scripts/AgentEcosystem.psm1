@@ -365,14 +365,51 @@ function New-AgentToml {
 
 function Write-Utf8NoBom {
     param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
-    $parent = Split-Path -Parent $Path
-    New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $parent = [IO.Path]::GetDirectoryName($fullPath)
+    if ([string]::IsNullOrWhiteSpace($parent)) { throw "UTF-8 write target has no parent directory: $Path" }
+    [IO.Directory]::CreateDirectory((ConvertTo-EcosystemIoPath -Path $parent)) | Out-Null
+    [IO.File]::WriteAllText((ConvertTo-EcosystemIoPath -Path $fullPath), $Content, (New-Object Text.UTF8Encoding($false)))
+}
+
+function ConvertTo-EcosystemIoPath {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or $fullPath.StartsWith('\\?\', [StringComparison]::Ordinal)) {
+        return $fullPath
+    }
+    if ($fullPath.StartsWith('\\', [StringComparison]::Ordinal)) {
+        return '\\?\UNC\' + $fullPath.Substring(2)
+    }
+    return '\\?\' + $fullPath
+}
+
+function Get-EcosystemRelativePath {
+    param(
+        [Parameter(Mandatory)][string] $BasePath,
+        [Parameter(Mandatory)][string] $Path
+    )
+
+    $baseFullPath = [IO.Path]::GetFullPath($BasePath).TrimEnd([char[]]@('\','/')) + [IO.Path]::DirectorySeparatorChar
+    $targetFullPath = [IO.Path]::GetFullPath($Path)
+    $getRelativePath = [IO.Path].GetMethod('GetRelativePath', [type[]]@([string],[string]))
+    if ($null -ne $getRelativePath) {
+        return [string]$getRelativePath.Invoke($null, @($baseFullPath, $targetFullPath))
+    }
+
+    # System.IO.Path.GetRelativePath is unavailable on .NET Framework hosts
+    # used by Windows PowerShell 5.1. URI relative resolution preserves spaces
+    # and Unicode while remaining independent of the current working directory.
+    $baseUri = [Uri]::new($baseFullPath)
+    $targetUri = [Uri]::new($targetFullPath)
+    if ($baseUri.Scheme -ne $targetUri.Scheme -or $baseUri.Host -ne $targetUri.Host) { return $targetFullPath }
+    return [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString()).Replace('/', [IO.Path]::DirectorySeparatorChar)
 }
 
 function Get-EcosystemFileSha256 {
     param([Parameter(Mandatory)][string] $Path)
-    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $stream = [IO.File]::Open((ConvertTo-EcosystemIoPath -Path $Path), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
     $algorithm = [Security.Cryptography.SHA256]::Create()
     try { $hash = $algorithm.ComputeHash($stream) }
     finally {
@@ -383,12 +420,20 @@ function Get-EcosystemFileSha256 {
 }
 function Write-Utf8NoBomAtomic {
     param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
-    $parent = Split-Path -Parent $Path
-    New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $temporaryPath = Join-Path $parent ('.' + [IO.Path]::GetFileName($Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
-    $backupPath = $temporaryPath + '.bak'
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $parent = [IO.Path]::GetDirectoryName($fullPath)
+    if ([string]::IsNullOrWhiteSpace($parent)) { throw "Atomic write target has no parent directory: $Path" }
+    [IO.Directory]::CreateDirectory((ConvertTo-EcosystemIoPath -Path $parent)) | Out-Null
+    # Do not repeat the target leaf in transient names. Deep task-state paths can
+    # otherwise exceed MAX_PATH under supported Windows PowerShell 5.1 hosts.
+    $transientId = [guid]::NewGuid().ToString('N').Substring(0,16)
+    $temporaryPath = Join-Path $parent ("~$transientId.tmp")
+    $backupPath = Join-Path $parent ("~$transientId.bak")
+    $ioPath = ConvertTo-EcosystemIoPath -Path $fullPath
+    $ioTemporaryPath = ConvertTo-EcosystemIoPath -Path $temporaryPath
+    $ioBackupPath = ConvertTo-EcosystemIoPath -Path $backupPath
     try {
-        [IO.File]::WriteAllText($temporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::WriteAllText($ioTemporaryPath, $Content, (New-Object Text.UTF8Encoding($false)))
         # Task-state readers can legitimately hold a handle while an agent exits or
         # a health-recovery snapshot is collected.  Retry for the same bounded
         # interval used by the ecosystem's file-lock helper instead of treating a
@@ -396,8 +441,8 @@ function Write-Utf8NoBomAtomic {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ($true) {
             try {
-                if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($temporaryPath, $Path, $backupPath, $true) }
-                else { [IO.File]::Move($temporaryPath, $Path) }
+                if ([IO.File]::Exists($ioPath)) { [IO.File]::Replace($ioTemporaryPath, $ioPath, $ioBackupPath, $true) }
+                else { [IO.File]::Move($ioTemporaryPath, $ioPath) }
                 break
             }
             catch [IO.IOException] {
@@ -407,8 +452,8 @@ function Write-Utf8NoBomAtomic {
         }
     }
     finally {
-        foreach ($transientPath in @($temporaryPath, $backupPath)) {
-            if (Test-Path -LiteralPath $transientPath -PathType Leaf) { Remove-Item -LiteralPath $transientPath -Force -ErrorAction SilentlyContinue }
+        foreach ($transientPath in @($ioTemporaryPath, $ioBackupPath)) {
+            try { if ([IO.File]::Exists($transientPath)) { [IO.File]::Delete($transientPath) } } catch { }
         }
     }
 }
@@ -563,4 +608,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Get-EcosystemRelativePath, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

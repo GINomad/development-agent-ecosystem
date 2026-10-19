@@ -128,7 +128,7 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         foreach ($knowledgeFile in @(Get-ChildItem -LiteralPath $taskDirectory.FullName -Recurse -File -Filter 'knowledge-update.json' -ErrorAction SilentlyContinue)) {
             $document = Read-JsonDocument -Path $knowledgeFile.FullName
             if (-not $document) { continue }
-            $relativeArtifact = [IO.Path]::GetRelativePath($taskDirectory.FullName, $knowledgeFile.FullName).Replace('\','/')
+            $relativeArtifact = (Get-EcosystemRelativePath -BasePath $taskDirectory.FullName -Path $knowledgeFile.FullName).Replace('\','/')
             foreach ($entry in @($document.entries)) {
                 $knowledgeEntries.Add([pscustomobject][ordered]@{
                     id=[string]$entry.id; status=[string]$entry.status; kind=if($entry.PSObject.Properties['kind']){[string]$entry.kind}else{''}

@@ -54,6 +54,35 @@ finally {
     if (Test-Path -LiteralPath $atomicWriteFixture) { Remove-Item -LiteralPath $atomicWriteFixture -Recurse -Force }
 }
 Add-Check -Name 'atomic-writer-transient-lock-retry' -Detail 'Atomic writes retry transient sharing violations before failing.'
+$longAtomicWriteFixture = [IO.Path]::GetFullPath((Join-Path $OutputRoot ('atomic-write-long-path-' + [guid]::NewGuid().ToString('N'))))
+$longAtomicWriteParent = $longAtomicWriteFixture
+$longAtomicWriteLeaf = ('d' * 40) + '.patch'
+while ((Join-Path $longAtomicWriteParent $longAtomicWriteLeaf).Length -lt 300) {
+    $longAtomicWriteParent = Join-Path $longAtomicWriteParent ('p' * 40)
+}
+$longAtomicWriteTarget = Join-Path $longAtomicWriteParent $longAtomicWriteLeaf
+$longPlainWriteTarget = Join-Path $longAtomicWriteParent (('u' * 40) + '.json')
+$longAtomicWriteIoRoot = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteFixture } else { $longAtomicWriteFixture }
+$longAtomicWriteIoParent = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteParent } else { $longAtomicWriteParent }
+$longAtomicWriteIoTarget = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteTarget } else { $longAtomicWriteTarget }
+$longPlainWriteIoTarget = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longPlainWriteTarget } else { $longPlainWriteTarget }
+try {
+    [IO.Directory]::CreateDirectory($longAtomicWriteIoParent) | Out-Null
+    Write-Utf8NoBom -Path $longPlainWriteTarget -Content 'long-plain-content'
+    if (-not [IO.File]::Exists($longPlainWriteIoTarget) -or [IO.File]::ReadAllText($longPlainWriteIoTarget) -ne 'long-plain-content') {
+        throw 'UTF-8 writer did not persist content at an extended-length path.'
+    }
+    Write-Utf8NoBomAtomic -Path $longAtomicWriteTarget -Content 'long-path-content'
+    if (-not [IO.File]::Exists($longAtomicWriteIoTarget) -or [IO.File]::ReadAllText($longAtomicWriteIoTarget) -ne 'long-path-content') {
+        throw 'Atomic writer did not persist content at an extended-length path.'
+    }
+    $longAtomicWriteHash = Get-EcosystemFileSha256 -Path $longAtomicWriteTarget
+    if ($longAtomicWriteHash -notmatch '^[a-f0-9]{64}$') { throw 'Extended-length atomic output could not be hashed.' }
+}
+finally {
+    if ([IO.Directory]::Exists($longAtomicWriteIoRoot)) { [IO.Directory]::Delete($longAtomicWriteIoRoot, $true) }
+}
+Add-Check -Name 'utf8-writers-extended-path' -Detail 'Plain and atomic UTF-8 writes plus SHA-256 reads support extended-length task artifact paths on Windows PowerShell 5.1.'
 $appendWriteFixture = Join-Path $OutputRoot ('append-write-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $appendWriteFixture -Force | Out-Null
 try {
@@ -2346,12 +2375,27 @@ $argvProbe.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
 $argvProbe.UseShellExecute = $false; $argvProbe.CreateNoWindow = $true; $argvProbe.RedirectStandardOutput = $true
 $argvProbeScript = Join-Path $OutputRoot 'argv-probe.ps1'
 [IO.File]::WriteAllText($argvProbeScript, 'param([string]$Value) [Console]::Out.Write($Value)', (New-Object Text.UTF8Encoding($false)))
-$argvProbe.ArgumentList.Add('-NoProfile'); $argvProbe.ArgumentList.Add('-File'); $argvProbe.ArgumentList.Add($argvProbeScript)
 $argvOverride = 'mcp_servers.ecosystem-read.args=["-NoProfile","-File","C:\\Repos\\development-agent-ecosystem\\scripts\\Start-EcosystemReadMcpServer.ps1"]'
-$argvProbe.ArgumentList.Add($argvOverride)
+$argvProbeArguments = @('-NoProfile','-File',$argvProbeScript,$argvOverride)
+if ($argvProbe.PSObject.Properties['ArgumentList']) {
+    foreach ($argument in $argvProbeArguments) { $argvProbe.ArgumentList.Add([string]$argument) }
+}
+else {
+    # .NET Framework's ProcessStartInfo (Windows PowerShell 5.1) predates
+    # ArgumentList. Apply the same Windows quoting contract so the TOML array
+    # remains one argv element while the compatibility suite exercises it.
+    $argvProbe.Arguments = (@($argvProbeArguments | ForEach-Object {
+        $value = [string]$_
+        if ($value.Length -and $value -notmatch '\s' -and -not $value.Contains([char]34)) { $value }
+        else {
+            $quote = [string][char]34
+            $quote + $value.Replace($quote, ('\' + $quote)) + $quote
+        }
+    }) -join ' ')
+}
 $argvProcess = [Diagnostics.Process]::Start($argvProbe)
 $argvOutput = $argvProcess.StandardOutput.ReadToEnd(); $argvProcess.WaitForExit(); $argvProcess.Dispose()
-if ($argvOutput.Trim() -ne $argvOverride) { throw 'ProcessStartInfo.ArgumentList did not preserve the MCP TOML array as one argv element.' }
+if ($argvOutput.Trim() -ne $argvOverride) { throw 'ProcessStartInfo did not preserve the MCP TOML array as one argv element.' }
 $reviewContextFixture = Join-Path $OutputRoot 'verified-review-context-fixture'; New-Item -ItemType Directory -Path $reviewContextFixture -Force | Out-Null
 $reviewKnowledgeSource = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
 $validContext = & (Join-Path $root 'scripts\New-PrReviewContextPack.ps1') -RepositoryId azure-planningspace-planningspace -PullRequestId 24065 -SourceCommit 'abcdef0123456789abcdef0123456789abcdef01' -KnowledgePath $reviewKnowledgeSource -OutputPath (Join-Path $reviewContextFixture 'valid.json') -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -2384,7 +2428,7 @@ $pollSelectionRejected = $false; try { & (Join-Path $root 'scripts\Invoke-Enhanc
 Add-Check -Name 'review-monitor-config' -Detail $reviewConfig.ConfigPath
 Add-Check -Name 'per-pr-review-invalidation' -Detail 'Only the changed PR is forced; unprocessed and failed AI review state remains visible'
 Add-Check -Name 'verified-pr-review-context' -Detail 'Prepared managed knowledge/public-artifact context remains distinct from untrusted provider discussion and is retained with SHA-256 provenance'
-Add-Check -Name 'review-monitor-atomic-mcp-argv' -Detail 'MCP TOML array override remains one ProcessStartInfo.ArgumentList argument'
+Add-Check -Name 'review-monitor-atomic-mcp-argv' -Detail 'MCP TOML array override remains one process argument on PowerShell 5.1 and 7'
 Add-Check -Name 'verified-pr-review-context-validation' -Detail 'Executable digest, source-hash, missing, no-key, multi-entry, outside-source, injected-content, private-source, and Poll selection rejection fixtures passed'
 
 $controlPlaneRoot = Join-Path $OutputRoot ('control-plane-request-' + [guid]::NewGuid().ToString('N'))

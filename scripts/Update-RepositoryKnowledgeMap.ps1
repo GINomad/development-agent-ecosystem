@@ -49,7 +49,7 @@ function Get-RepositoryRelativeDirectory {
 function Get-NormalizedRelativePath {
     param([Parameter(Mandatory)][string] $BaseDirectory, [Parameter(Mandatory)][string] $Candidate)
     $absolute = [IO.Path]::GetFullPath((Join-Path $BaseDirectory $Candidate))
-    [IO.Path]::GetRelativePath($script:resolvedWorkspace, $absolute).Replace('\','/')
+    (Get-EcosystemRelativePath -BasePath $script:resolvedWorkspace -Path $absolute).Replace('\','/')
 }
 
 $resolvedWorkspace = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Workspace -ErrorAction Stop).Path)

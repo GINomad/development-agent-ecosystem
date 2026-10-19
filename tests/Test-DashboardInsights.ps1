@@ -61,7 +61,8 @@ if ($dashboardServer -notmatch "'/api/insights'" -or $dashboardServer -notmatch 
 if ($dashboardStyles -notmatch '\.insights-workspace\.hidden\s*\{\s*display:\s*none;\s*\}') { throw 'Dashboard insights tab panels can override the shared hidden utility and remain visible together.' }
 $stdout = Join-Path $fixtureRoot 'dashboard.out.log'
 $stderr = Join-Path $fixtureRoot 'dashboard.err.log'
-$dashboardProcess = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @('-NoProfile','-File',(Join-Path $root 'scripts\Start-AgentDashboard.ps1'),'-NoOpen','-MaxRequests','1','-ConfigPath',$configPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
+$pwshPath = (Get-Command pwsh.exe -ErrorAction Stop | Select-Object -First 1).Source
+$dashboardProcess = Start-Process -FilePath $pwshPath -ArgumentList @('-NoProfile','-File',(Join-Path $root 'scripts\Start-AgentDashboard.ps1'),'-NoOpen','-MaxRequests','1','-ConfigPath',$configPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     $sessionToken = $null
