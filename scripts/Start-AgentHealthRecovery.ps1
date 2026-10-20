@@ -22,12 +22,44 @@ if ([bool]$config.health.automaticRecovery.elevatedFallback.useByDefault) { $Ele
 function Get-BoundedTextTail {
     param([string] $Path, [int] $TailLines, [int] $MaximumBytes)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    $text = (@(Get-Content -LiteralPath $Path -Tail $TailLines -Encoding UTF8) -join [Environment]::NewLine)
     $encoding = New-Object Text.UTF8Encoding($false, $false)
+    # Get-Content -Tail still materializes large JSONL files on some PowerShell
+    # hosts. Read a small suffix directly so Health recovery can always prepare
+    # its bounded diagnostic context before it starts the repair agent.
+    $fileLength = ([IO.FileInfo]$Path).Length
+    if ($fileLength -eq 0) { return '' }
+    $readBudget = [Math]::Min([int64]$fileLength, [int64][Math]::Max(65536, ($MaximumBytes * 2)))
+    $buffer = New-Object byte[] ([int]$readBudget)
+    $read = 0
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try {
+        if ($readBudget -lt $fileLength) { [void]$stream.Seek(-$readBudget, [IO.SeekOrigin]::End) }
+        while ($read -lt $buffer.Length) {
+            $count = $stream.Read($buffer, $read, $buffer.Length - $read)
+            if ($count -le 0) { break }
+            $read += $count
+        }
+    }
+    finally { $stream.Dispose() }
+    $start = 0
+    $discardedPartialLine = $readBudget -lt $fileLength
+    if ($discardedPartialLine) {
+        while ($start -lt $read -and $buffer[$start] -ne 10) { $start++ }
+        if ($start -lt $read) { $start++ }
+    }
+    $suffix = if ($start -lt $read) { $encoding.GetString($buffer, $start, $read - $start) } else { '' }
+    $lines = [Collections.Generic.List[string]]::new()
+    foreach ($line in @($suffix -split "`r?`n")) { $lines.Add([string]$line) }
+    while ($lines.Count -gt 0 -and [string]::IsNullOrEmpty($lines[$lines.Count - 1])) { $lines.RemoveAt($lines.Count - 1) }
+    $text = (@($lines | Select-Object -Last $TailLines) -join [Environment]::NewLine)
+    if ($discardedPartialLine) { $text = '[truncated to bounded line tail]' + [Environment]::NewLine + $text }
     $bytes = $encoding.GetBytes($text)
     if ($bytes.Length -le $MaximumBytes) { return $text }
-    $offset = $bytes.Length - $MaximumBytes
-    return '[truncated to configured byte tail]' + [Environment]::NewLine + $encoding.GetString($bytes, $offset, $MaximumBytes)
+    $prefix = '[truncated to configured byte tail]' + [Environment]::NewLine
+    $payloadLimit = [Math]::Max(0, $MaximumBytes - $encoding.GetByteCount($prefix))
+    $offset = $bytes.Length - $payloadLimit
+    while ($offset -lt $bytes.Length -and (($bytes[$offset] -band 0xC0) -eq 0x80)) { $offset++ }
+    return $prefix + $encoding.GetString($bytes, $offset, $bytes.Length - $offset)
 }
 
 function Publish-VerifiedHealthRepair {

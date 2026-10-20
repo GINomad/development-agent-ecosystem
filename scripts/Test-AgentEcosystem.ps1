@@ -1774,6 +1774,30 @@ if ([string]$config.runtime.elevatedFallback.sandboxMode -ne 'danger-full-access
 if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'danger-full-access' -or -not [bool]$config.health.automaticRecovery.elevatedFallback.useByDefault -or [bool]$config.health.automaticRecovery.elevatedFallback.requiresDashboardApproval) { throw 'Health host-compatible execution must be selected by default under standing authorization.' }
 $preservationScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Save-EcosystemRecoveryBaseline.ps1') -Raw -Encoding UTF8
 if ($healthRecoveryScript -notmatch 'Save-EcosystemRecoveryBaseline.ps1' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges' -or $preservationScript -notmatch 'git -C \$resolvedWorkspace add --all -- \.' -or $preservationScript -notmatch 'preservationCommit') { throw 'Health Check recovery does not commit and expose the complete dirty ecosystem baseline before repair.' }
+$tailTokens = $null
+$tailParseErrors = $null
+$tailAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1'), [ref]$tailTokens, [ref]$tailParseErrors)
+if ($tailParseErrors.Count) { throw 'Health recovery bounded-tail helper contains a PowerShell syntax error.' }
+$tailFunction = $tailAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-BoundedTextTail' }, $true)
+if (-not $tailFunction -or $tailFunction.Extent.Text -match 'Get-Content\s+-LiteralPath\s+\$Path\s+-Tail' -or $tailFunction.Extent.Text -notmatch '\[IO\.File\]::Open' -or $tailFunction.Extent.Text -notmatch 'FileShare\]::ReadWrite') { throw 'Health recovery bounded-tail helper can still materialize a large workflow log or cannot read a live log safely.' }
+$tailTestRoot = Join-Path $OutputRoot 'health-bounded-tail'
+New-Item -ItemType Directory -Path $tailTestRoot -Force | Out-Null
+$largeWorkflowLog = Join-Path $tailTestRoot 'workflow-codex.jsonl'
+$largeLine = [Text.Encoding]::UTF8.GetBytes((('x' * (1024 * 1024 - 2)) + "`n"))
+$largeStream = [IO.File]::Open($largeWorkflowLog, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+try {
+    for ($largeLineIndex = 0; $largeLineIndex -lt 82; $largeLineIndex++) { $largeStream.Write($largeLine, 0, $largeLine.Length) }
+    $terminalLine = [Text.Encoding]::UTF8.GetBytes('{"type":"terminal-marker","value":"✓"}' + "`n")
+    $largeStream.Write($terminalLine, 0, $terminalLine.Length)
+}
+finally { $largeStream.Dispose() }
+$tailFunctionBlock = [scriptblock]::Create($tailFunction.Extent.Text)
+. $tailFunctionBlock
+$tailStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$largeTail = Get-BoundedTextTail -Path $largeWorkflowLog -TailLines 1 -MaximumBytes 4096
+$tailStopwatch.Stop()
+if ($largeTail -notmatch 'terminal-marker' -or ([Text.Encoding]::UTF8.GetByteCount($largeTail) -gt 4096) -or $tailStopwatch.Elapsed.TotalSeconds -gt 20) { throw 'Health recovery bounded-tail helper did not return the terminal UTF-8 line within the configured bound for an 82 MiB workflow log.' }
+Add-Check -Name 'health-recovery-bounded-log-tail' -Detail ('82 MiB workflow log read in {0:N3}s with a 4 KiB UTF-8-bounded tail' -f $tailStopwatch.Elapsed.TotalSeconds)
 $preservationFixture = Join-Path $OutputRoot ('health-preservation-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $preservationFixture -Force | Out-Null
 & git -C $preservationFixture init -b main | Out-Null
