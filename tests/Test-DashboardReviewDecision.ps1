@@ -21,6 +21,32 @@ function Write-JsonFile {
     [IO.File]::WriteAllText($Path, (($Value | ConvertTo-Json -Depth 30) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
 }
 
+function ConvertTo-TestIoPath {
+    param([Parameter(Mandatory)][string] $Path)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or $fullPath.StartsWith('\\?\', [StringComparison]::Ordinal)) { return $fullPath }
+    if ($fullPath.StartsWith('\\', [StringComparison]::Ordinal)) { return '\\?\UNC\' + $fullPath.Substring(2) }
+    return '\\?\' + $fullPath
+}
+
+function Copy-TestDirectoryTree {
+    param(
+        [Parameter(Mandatory)][string] $Source,
+        [Parameter(Mandatory)][string] $Destination
+    )
+    $sourceRoot = [IO.Path]::GetFullPath($Source).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $destinationRoot = [IO.Path]::GetFullPath($Destination).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    [IO.Directory]::CreateDirectory((ConvertTo-TestIoPath -Path $destinationRoot)) | Out-Null
+    foreach ($directory in [IO.Directory]::EnumerateDirectories($sourceRoot, '*', [IO.SearchOption]::AllDirectories)) {
+        $relativePath = $directory.Substring($sourceRoot.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        [IO.Directory]::CreateDirectory((ConvertTo-TestIoPath -Path ([IO.Path]::Combine($destinationRoot, $relativePath)))) | Out-Null
+    }
+    foreach ($file in [IO.Directory]::EnumerateFiles($sourceRoot, '*', [IO.SearchOption]::AllDirectories)) {
+        $relativePath = $file.Substring($sourceRoot.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+        [IO.File]::Copy((ConvertTo-TestIoPath -Path $file), (ConvertTo-TestIoPath -Path ([IO.Path]::Combine($destinationRoot, $relativePath))), $true)
+    }
+}
+
 function Assert-Equal {
     param($Actual, $Expected, [string] $Message)
     if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
@@ -86,7 +112,8 @@ function Start-FixtureDashboard {
     Write-JsonFile -Path $fixtureConfigPath -Value $config
     $stdout = Join-Path $runRoot ("dashboard-$port.out.log")
     $stderr = Join-Path $runRoot ("dashboard-$port.err.log")
-    $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @('-NoProfile','-File',(Join-Path $fixtureRoot 'scripts\Start-AgentDashboard.ps1'),'-NoOpen','-MaxRequests',$Requests,'-ConfigPath',$fixtureConfigPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
+    $pwshPath = (Get-Command pwsh.exe -ErrorAction Stop | Select-Object -First 1).Source
+    $process = Start-Process -FilePath $pwshPath -ArgumentList @('-NoProfile','-File',(Join-Path $fixtureRoot 'scripts\Start-AgentDashboard.ps1'),'-NoOpen','-MaxRequests',$Requests,'-ConfigPath',$fixtureConfigPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
         if (Test-Path -LiteralPath $stdout) {
@@ -118,11 +145,9 @@ function Invoke-FixtureApi {
 }
 
 New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $root 'scripts') -Destination $fixtureRoot -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $root 'config') -Destination $fixtureRoot -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $root 'dashboard') -Destination $fixtureRoot -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $root 'knowledge') -Destination $fixtureRoot -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $root 'plugins') -Destination $fixtureRoot -Recurse -Force
+foreach ($fixtureDirectory in @('scripts','config','dashboard','knowledge','plugins')) {
+    Copy-TestDirectoryTree -Source (Join-Path $root $fixtureDirectory) -Destination (Join-Path $fixtureRoot $fixtureDirectory)
+}
 # Production configuration rightly rejects this policy combination under the standing host policy.
 # The copied module relaxes only that startup invariant so the production endpoint's otherwise unreachable
 # approval-required branch can be exercised without changing the real configuration.
@@ -132,7 +157,7 @@ $policyInvariant = "if (-not [bool]`$Config.runtime.elevatedFallback.useByDefaul
 if ($fixtureModule.IndexOf($policyInvariant) -lt 0) { throw 'Fixture module policy invariant was not found.' }
 $fixtureModule = $fixtureModule.Replace($policyInvariant, 'if ($false) { throw ''fixture-only policy invariant'' }')
 [IO.File]::WriteAllText($fixtureModulePath, $fixtureModule, [Text.UTF8Encoding]::new($false))
-Copy-Item -LiteralPath (Join-Path $root 'prompts') -Destination $fixtureRoot -Recurse -Force
+Copy-TestDirectoryTree -Source (Join-Path $root 'prompts') -Destination (Join-Path $fixtureRoot 'prompts')
 
 # The fixture executes the production route and targeted-resume helper unchanged. Only runspace launch is replaced,
 # so the scheduled branch writes ordinary task status and ledger evidence without starting a workflow.

@@ -58,7 +58,7 @@ $records = [Collections.Generic.List[object]]::new()
 $includedFiles = [Collections.Generic.List[string]]::new()
 $excludedFiles = [Collections.Generic.List[object]]::new()
 foreach ($file in @(Get-ChildItem -LiteralPath $resolvedMetricsRoot -Recurse -File -Filter 'role-metrics.jsonl' -ErrorAction SilentlyContinue)) {
-    $relativePath = [IO.Path]::GetRelativePath($resolvedMetricsRoot, $file.FullName)
+    $relativePath = Get-EcosystemRelativePath -BasePath $resolvedMetricsRoot -Path $file.FullName
     $segments = @($relativePath -split '[\\/]')
     $reason = $null
     if ($segments -contains 'revisions') { $reason = 'archived-revision' }

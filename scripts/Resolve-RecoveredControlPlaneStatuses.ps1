@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
+    [switch] $ReconcileActive,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedLeaseId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -14,11 +17,32 @@ $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexH
 $taskPath = Join-Path $taskRoot 'task.json'
 $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+if ([bool]$ExpectedRunId -xor [bool]$ExpectedLeaseId) { throw 'ExpectedRunId and ExpectedLeaseId must be supplied together.' }
 
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $reconciled = [Collections.Generic.List[string]]::new()
 $preserved = [Collections.Generic.List[string]]::new()
 $stableTaskStatuses = @('waiting_for_input','held','review_pending','completed','interrupted','failed')
+if ($ReconcileActive -and [string]$task.status -in @('running','interrupted','failed') -and $ExpectedRunId -and $ExpectedLeaseId) {
+    $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+    $coordinator = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) { Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+    $lease = @($coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.runId -eq $ExpectedRunId -and [string]$_.leaseId -eq $ExpectedLeaseId -and [string]$_.lifecycle -eq 'active' } | Select-Object -First 1)
+    if (-not $lease.Count -or [string]$task.executionRunId -ne $ExpectedRunId -or [string]$task.workspaceLeaseId -ne $ExpectedLeaseId) { throw 'The requested active reconciliation no longer owns the live task lease.' }
+    $controllerId = if ($lease[0].PSObject.Properties['controllerProcessId']) { [int]$lease[0].controllerProcessId } else { 0 }
+    if ($controllerId -le 0 -or -not (Get-Process -Id $controllerId -ErrorAction SilentlyContinue)) { throw 'The requested active reconciliation has no live controller process.' }
+    $runningAgents = @($task.agentStatuses.PSObject.Properties | Where-Object { [string]$_.Name -ne 'health_check' -and [string]$_.Value.status -eq 'running' })
+    if ($runningAgents.Count -ne 1) { throw 'The requested active reconciliation requires exactly one non-Health running agent.' }
+    $activeAgentId = [string]$runningAgents[0].Name
+    $stageByAgent = @{ requirements_analyst='requirements_analysis'; developer='implementation'; reviewer='review'; review_verifier='verification'; pipeline_monitor='pipeline'; knowledge_keeper='knowledge' }
+    $stage = [string]$stageByAgent[$activeAgentId]
+    if ([string]::IsNullOrWhiteSpace($stage)) { throw "No active-stage mapping exists for '$activeAgentId'." }
+    $statusScript = Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1'
+    if ($task.agentStatuses.PSObject.Properties['health_check'] -and [string]$task.agentStatuses.health_check.status -in @('running','waiting')) {
+        & $statusScript -TaskId $TaskId -AgentId health_check -AgentStatus completed -Message 'A newer live workflow superseded this Health Check; recovery evidence remains in task history.' -Actor ecosystem -ExpectedExecutionRunId $ExpectedRunId -ExpectedWorkspaceLeaseId $ExpectedLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    }
+    & $statusScript -TaskId $TaskId -Status running -Stage $stage -Message "Live '$activeAgentId' workflow owns the current task lease." -Actor ecosystem -ExpectedExecutionRunId $ExpectedRunId -ExpectedWorkspaceLeaseId $ExpectedLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+    return [pscustomobject]@{ TaskId=$TaskId; Reconciled=@('health_check'); Preserved=@(); Reason="Live '$activeAgentId' status was restored from the exact active lease and controller." }
+}
 if ([string]$task.status -notin $stableTaskStatuses -or -not (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
     return [pscustomobject]@{ TaskId=$TaskId; Reconciled=@(); Preserved=@('orchestrator','health_check'); Reason='Task is active, failed, or has no durable event ledger.' }
 }

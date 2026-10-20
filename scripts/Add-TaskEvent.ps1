@@ -52,10 +52,5 @@ $event = [ordered]@{
     targetAgentId = if ($TargetAgentId) { $TargetAgentId } else { $null }
 }
 if ($null -ne $HumanIntervention) { $event.humanIntervention = $HumanIntervention }
-$line = ($event | ConvertTo-Json -Depth 8 -Compress) + [Environment]::NewLine
-$bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($line)
-$null = Invoke-EcosystemFileLock -LockPath ($ledgerPath + '.lock') -TimeoutSeconds 30 -Action {
-    $stream = [IO.File]::Open($ledgerPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
-    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
-}
+Add-EcosystemUtf8Line -Path $ledgerPath -Line ($event | ConvertTo-Json -Depth 8 -Compress)
 [pscustomobject]$event

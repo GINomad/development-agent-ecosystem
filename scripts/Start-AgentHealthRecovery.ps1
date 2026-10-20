@@ -187,6 +187,28 @@ $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $taskRoot = Join-Path $stateRoot "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+
+function Test-HealthRecoveryOwnsCurrentRun {
+    param(
+        [Parameter(Mandatory)][string] $TaskPath,
+        [string] $ExpectedRunId,
+        [string] $ExpectedLeaseId,
+        [Nullable[int]] $ExpectedRevision
+    )
+
+    $current = Get-Content -LiteralPath $TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($ExpectedRunId -and $ExpectedLeaseId) {
+        return ([string]$current.executionRunId -eq $ExpectedRunId -and [string]$current.workspaceLeaseId -eq $ExpectedLeaseId)
+    }
+    $expectedRevisionValue = if ($null -ne $ExpectedRevision) { [int]$ExpectedRevision } else { $null }
+    if ($null -ne $expectedRevisionValue -and $current.PSObject.Properties['revision'] -and [int]$current.revision -ne $expectedRevisionValue) {
+        return $false
+    }
+    foreach ($property in @($current.agentStatuses.PSObject.Properties)) {
+        if ([string]$property.Name -ne 'health_check' -and [string]$property.Value.status -eq 'running') { return $false }
+    }
+    return $true
+}
 $failure = Get-Content -LiteralPath $FailurePath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$failure.taskId -ne $TaskId) { throw 'Failure artifact task ID does not match the requested task.' }
 $signature = [string]$failure.failureSignature
@@ -221,10 +243,41 @@ foreach ($record in @($attempts | Where-Object { [string]$_.type -eq 'recovery-i
         [void]$invalidatedAttemptIds.Add([string]$record.invalidatedAttemptId)
     }
 }
+$terminalAttemptIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($record in @($attempts | Where-Object {
+    $_.failureSignature -eq $signature -and [string]$_.type -in @('recovery-completed','recovery-failed')
+})) {
+    if ($record.PSObject.Properties['attemptId'] -and -not [string]::IsNullOrWhiteSpace([string]$record.attemptId)) {
+        [void]$terminalAttemptIds.Add([string]$record.attemptId)
+    }
+}
+$existingRepairedResult = $null
+$resultPath = Join-Path $taskRoot 'health-recovery-result.json'
+if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+    try {
+        $candidateResult = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]$candidateResult.failureSignature -eq $signature -and [string]$candidateResult.status -eq 'repaired') {
+            $existingRepairedResult = $candidateResult
+        }
+    }
+    catch { }
+}
+$unfinalizedRepairedAttempts = @($attempts | Where-Object {
+    $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
+    $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
+    -not $invalidatedAttemptIds.Contains([string]$_.attemptId) -and
+    -not $terminalAttemptIds.Contains([string]$_.attemptId) -and
+    ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
+})
+# A recovered result may be written before the host records its terminal attempt.
+# Reuse exactly one such result to finish host-side validation; do not consume a
+# second model attempt or treat this interrupted finalization as a retry.
+$reuseExistingRepairedResult = $null -ne $existingRepairedResult -and $unfinalizedRepairedAttempts.Count -eq 1
 $attemptCount = @($attempts | Where-Object {
     $recordExecutionMode = if ($_.PSObject.Properties['executionMode']) { [string]$_.executionMode } else { 'sandboxed' }
     $_.failureSignature -eq $signature -and $_.type -eq 'recovery-started' -and
     -not $invalidatedAttemptIds.Contains([string]$_.attemptId) -and
+    -not ($reuseExistingRepairedResult -and [string]$_.attemptId -eq [string]$unfinalizedRepairedAttempts[0].attemptId) -and
     ($(if ($ElevatedApproved) { $recordExecutionMode -eq 'elevated-approved' } else { $recordExecutionMode -ne 'elevated-approved' }))
 }).Count
 if ($attemptCount -ge $maximumAttempts) {
@@ -235,15 +288,30 @@ if ($attemptCount -ge $maximumAttempts) {
 }
 
 $preservationPath = Join-Path $taskRoot 'health-recovery-preservation.json'
-$preservation = & (Join-Path $PSScriptRoot 'Save-EcosystemRecoveryBaseline.ps1') -Workspace $workspace -TaskId $TaskId -FailureSignature $signature -ArtifactPath $preservationPath -RepairBranchPrefix ([string]$config.health.automaticRecovery.repairBranchPrefix)
-$dirtyFiles = @($preservation.Files)
-$preservationCommit = if ($preservation.Commit) { [string]$preservation.Commit } else { $null }
+if ($reuseExistingRepairedResult) {
+    $preservation = if (Test-Path -LiteralPath $preservationPath -PathType Leaf) {
+        Get-Content -LiteralPath $preservationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    else { [pscustomobject]@{ Files=@(); Commit=$null } }
+    $attempt = $unfinalizedRepairedAttempts[0]
+}
+else {
+    $preservation = & (Join-Path $PSScriptRoot 'Save-EcosystemRecoveryBaseline.ps1') -Workspace $workspace -TaskId $TaskId -FailureSignature $signature -ArtifactPath $preservationPath -RepairBranchPrefix ([string]$config.health.automaticRecovery.repairBranchPrefix)
+    $attemptTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; taskRevision=if($attemptTask.PSObject.Properties['revision']){[int]$attemptTask.revision}else{$null}; executionRunId=$ExecutionRunId; workspaceLeaseId=$WorkspaceLeaseId; timestampUtc=[DateTime]::UtcNow.ToString('o') }
+    [IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+}
+$dirtyFiles = if ($preservation.PSObject.Properties['Files']) { @($preservation.Files) } elseif ($preservation.PSObject.Properties['files']) { @($preservation.files) } else { @() }
+$preservationCommit = if ($preservation.PSObject.Properties['Commit'] -and $preservation.Commit) { [string]$preservation.Commit } elseif ($preservation.PSObject.Properties['preservationCommit'] -and $preservation.preservationCommit) { [string]$preservation.preservationCommit } else { $null }
 if ($preservationCommit) {
     & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_preservation -Summary "Committed the complete pre-recovery ecosystem worktree as $preservationCommit." -Details 'The trusted host preserved tracked and untracked non-ignored files in a separate commit before Health Check repair.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
 
-$attempt = [ordered]@{ type='recovery-started'; attemptId=[guid]::NewGuid().ToString('N'); failureSignature=$signature; executionMode=$executionMode; sandboxMode=$recoverySandboxMode; timestampUtc=[DateTime]::UtcNow.ToString('o') }
-[IO.File]::AppendAllText($attemptsPath, ($attempt | ConvertTo-Json -Compress) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+if (-not (Test-HealthRecoveryOwnsCurrentRun -TaskPath $taskPath -ExpectedRunId $ExecutionRunId -ExpectedLeaseId $WorkspaceLeaseId -ExpectedRevision $(if($attempt.PSObject.Properties['taskRevision']){[Nullable[int]][int]$attempt.taskRevision}else{$null}))) {
+    [IO.File]::AppendAllText($attemptsPath, (([ordered]@{ type='recovery-superseded'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); reason='A newer task revision or active workflow owns the task state.' } | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+    return [pscustomobject]@{ Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false }
+}
+
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_recovery -Message "Health Check Agent is repairing failure $signature." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 
 $contextLimits = $config.runtime.contextLimits
@@ -335,6 +403,10 @@ $arguments = @(
 $recoveryWasValidated = $false
 $repairTerminalRecorded = $false
 try {
+    if ($reuseExistingRepairedResult) {
+        $recovery = $existingRepairedResult
+    }
+    else {
     $codexCliPath = Resolve-CodexCliPath
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
     if ($SuppressExternalDelivery -or [string]$env:ECOSYSTEM_MCP_DISABLED -eq 'true') {
@@ -349,7 +421,7 @@ try {
     $tokenState=Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $tokenRevision=if($tokenState.PSObject.Properties['revision']){[Nullable[int]][int]$tokenState.revision}else{$null}
     $tokenHeader=[ordered]@{type='ecosystem-workflow-run';taskId=$TaskId;attemptId=[string]$attempt.attemptId;provider='codex';model=[string]$healthAgentDefinition.model;startedAtUtc=[DateTime]::UtcNow.ToString('o')}
-    [IO.File]::AppendAllText($logPath,($tokenHeader|ConvertTo-Json -Compress)+[Environment]::NewLine,(New-Object Text.UTF8Encoding($false)))
+    Add-EcosystemUtf8Line -Path $logPath -Line ($tokenHeader|ConvertTo-Json -Compress)
     try {
     $guardResult = & (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -FilePath $codexCliPath -Arguments $arguments -Prompt $healthPrompt -WorkingDirectory $workspace -LogPath $logPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds)
     } finally {
@@ -363,9 +435,15 @@ try {
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) { throw 'Health recovery did not produce its required result artifact.' }
     $recovery = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$recovery.failureSignature -ne $signature) { throw 'Health recovery result has the wrong failure signature.' }
+    }
     $routedAgentId = ''
     $recoveryCommit = $preservationCommit
     $recoveryPush = $null
+
+    if (-not (Test-HealthRecoveryOwnsCurrentRun -TaskPath $taskPath -ExpectedRunId $ExecutionRunId -ExpectedLeaseId $WorkspaceLeaseId -ExpectedRevision $(if($attempt.PSObject.Properties['taskRevision']){[Nullable[int]][int]$attempt.taskRevision}else{$null}))) {
+        [IO.File]::AppendAllText($attemptsPath, (([ordered]@{ type='recovery-superseded'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); reason='A newer task revision or active workflow superseded this recovery before finalization.' } | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+        return [pscustomobject]@{ Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false }
+    }
 
     if ([string]$recovery.status -eq 'repaired') {
         $validation = @(& (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome)
@@ -459,7 +537,7 @@ try {
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
-    elseif ($routedAgentId) {
+    elseif (-not $SuppressTargetedResume -and $routedAgentId) {
         $routingPath = Join-Path $taskRoot 'health-repair-routing.json'
         $taskSnapshot = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $repositoryIds = if ($taskSnapshot.PSObject.Properties['repositoryIds']) { @($taskSnapshot.repositoryIds) } elseif ($taskSnapshot.PSObject.Properties['repositoryId']) { @([string]$taskSnapshot.repositoryId) } else { @() }

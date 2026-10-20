@@ -9,6 +9,10 @@ param(
     [int] $ProcessId,
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $WorkspaceLeaseId,
+    # Guards a status-only update without allowing that update to replace the
+    # controller-owned run or lease fields.
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExpectedWorkspaceLeaseId,
     [switch] $ClearProcessId,
     [string] $Actor = 'ecosystem',
     [switch] $AcknowledgeComments,
@@ -33,6 +37,9 @@ if ($AgentId -and (($ProcessId -gt 0) -or $ExecutionRunId -or $WorkspaceLeaseId 
 }
 if ([bool]$ExecutionRunId -xor [bool]$WorkspaceLeaseId) {
     throw 'ExecutionRunId and WorkspaceLeaseId must be supplied together.'
+}
+if ([bool]$ExpectedExecutionRunId -xor [bool]$ExpectedWorkspaceLeaseId) {
+    throw 'ExpectedExecutionRunId and ExpectedWorkspaceLeaseId must be supplied together.'
 }
 
 $taskLockPath = Join-Path $taskRoot 'task-state.lock'
@@ -71,7 +78,9 @@ $updateTaskState = {
     Write-Utf8NoBomAtomic -Path $taskPath -Content (($document | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     return $document
 }
-$task = if ($ExecutionRunId -and $WorkspaceLeaseId) {
+$guardRunId = if ($ExecutionRunId) { $ExecutionRunId } else { $ExpectedExecutionRunId }
+$guardLeaseId = if ($WorkspaceLeaseId) { $WorkspaceLeaseId } else { $ExpectedWorkspaceLeaseId }
+$task = if ($guardRunId -and $guardLeaseId) {
     $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
     Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
         if (-not (Test-Path -LiteralPath $coordinatorPath -PathType Leaf)) {
@@ -80,12 +89,12 @@ $task = if ($ExecutionRunId -and $WorkspaceLeaseId) {
         $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $activeLease = @($coordinator.leases | Where-Object {
             [string]$_.taskId -eq $TaskId -and
-            [string]$_.runId -eq $ExecutionRunId -and
-            [string]$_.leaseId -eq $WorkspaceLeaseId -and
+            [string]$_.runId -eq $guardRunId -and
+            [string]$_.leaseId -eq $guardLeaseId -and
             [string]$_.lifecycle -eq 'active'
         } | Select-Object -First 1)
         if (-not $activeLease.Count) {
-            throw "Task '$TaskId' does not own active workspace lease '$WorkspaceLeaseId' for run '$ExecutionRunId'."
+            throw "Task '$TaskId' does not own active workspace lease '$guardLeaseId' for run '$guardRunId'."
         }
         Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 -Action $updateTaskState
     }

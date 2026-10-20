@@ -115,6 +115,11 @@ function formatCount(value) {
   return Number.isFinite(number) ? new Intl.NumberFormat().format(number) : '0';
 }
 
+function formatUtcDay(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 function appendMetric(container, label, value, detail = '') {
   const card = document.createElement('article');
   card.className = 'metric-card';
@@ -138,6 +143,49 @@ function appendInsightCell(row, value, className = '') {
   row.append(cell);
 }
 
+function renderDailyTokenChart(items, summary) {
+  const chart = document.querySelector('#dailyTokenChart');
+  const chartSummary = document.querySelector('#dailyTokenChartSummary');
+  const days = Array.isArray(items) ? items : [];
+  chart.replaceChildren();
+  if (!days.length) {
+    chart.className = 'token-chart empty-insight';
+    chart.textContent = 'No timestamped token usage is available for a daily chart.';
+    chartSummary.textContent = `${formatCount(summary.unassignedTokenTimestampRecordCount)} records without a valid timestamp`;
+    return;
+  }
+
+  chart.className = 'token-chart';
+  const peak = Math.max(...days.map(item => Number(item.totalTokens || 0)), 0);
+  const peakDay = days.reduce((current, item) => Number(item.totalTokens || 0) > Number(current.totalTokens || 0) ? item : current, days[0]);
+  chartSummary.textContent = `${formatCount(days.length)} UTC days · peak ${formatCount(peak)} on ${formatUtcDay(peakDay.date)} · ${formatCount(summary.unassignedTokenTimestampRecordCount)} undated records`;
+  const plot = document.createElement('div');
+  plot.className = 'token-chart-plot';
+  plot.setAttribute('role', 'img');
+  plot.setAttribute('aria-label', `Daily token usage for ${days.length} UTC days. Peak ${formatCount(peak)} tokens on ${formatUtcDay(peakDay.date)}.`);
+  days.forEach(item => {
+    const total = Number(item.totalTokens || 0);
+    const column = document.createElement('div');
+    column.className = 'token-chart-column';
+    column.setAttribute('aria-label', `${formatUtcDay(item.date)}: ${formatCount(total)} tokens`);
+    const value = document.createElement('strong');
+    value.textContent = formatCount(total);
+    const barWrap = document.createElement('div');
+    barWrap.className = 'token-chart-bar-wrap';
+    const bar = document.createElement('div');
+    bar.className = 'token-chart-bar';
+    bar.style.height = total > 0 && peak > 0 ? `${Math.max(3, Math.round(total / peak * 100))}%` : '0';
+    bar.title = `${formatUtcDay(item.date)} · ${formatCount(total)} total · ${formatCount(item.inputTokens)} input · ${formatCount(item.outputTokens)} output · ${formatCount(Number(item.cacheReadTokens || 0) + Number(item.cacheWriteTokens || 0))} cache`;
+    const date = document.createElement('span');
+    date.className = 'token-chart-date';
+    date.textContent = formatUtcDay(item.date);
+    barWrap.append(bar);
+    column.append(value, barWrap, date);
+    plot.append(column);
+  });
+  chart.append(plot);
+}
+
 function renderAnalytics(analytics = {}) {
   const summary = analytics.summary || {};
   const summaryGrid = document.querySelector('#analyticsSummary');
@@ -146,6 +194,8 @@ function renderAnalytics(analytics = {}) {
   appendMetric(summaryGrid, 'Recorded errors', formatCount(summary.errorCount), `${formatCount(summary.failedAttemptCount)} failed role attempts`);
   appendMetric(summaryGrid, 'Reported tokens', formatCount(summary.totalTokens), `${formatCount(summary.unavailableTokenRecordCount)} usage records unavailable`);
   appendMetric(summaryGrid, 'Knowledge outcomes', formatCount(summary.knowledgeOutcomeCount), 'Tasks with persisted Knowledge Keeper results');
+
+  renderDailyTokenChart(analytics.tokensByDay, summary);
 
   const modelBody = document.querySelector('#tokensByModel');
   modelBody.replaceChildren();

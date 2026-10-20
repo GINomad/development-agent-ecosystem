@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $root = Get-EcosystemRoot
+$OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $codexSelected = @($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
 $checks = [Collections.Generic.List[object]]::new()
@@ -21,6 +22,87 @@ function Add-Check {
     param([string] $Name, [string] $Detail)
     $checks.Add([pscustomobject]@{ Name=$Name; Status='passed'; Detail=$Detail })
 }
+$atomicWriteFixture = Join-Path $OutputRoot ('atomic-write-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $atomicWriteFixture -Force | Out-Null
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+public static class AtomicWriteTestHelper {
+    public static Timer DisposeAfter(FileStream stream, int milliseconds) {
+        return new Timer(_ => stream.Dispose(), null, milliseconds, Timeout.Infinite);
+    }
+}
+'@
+try {
+    $atomicWriteTarget = Join-Path $atomicWriteFixture 'target.json'
+    Write-Utf8NoBom -Path $atomicWriteTarget -Content 'before'
+    $atomicWriteLock = [IO.File]::Open($atomicWriteTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    # Exceed the former 20 x 75ms retry window so this verifies recovery from a
+    # realistic, bounded task-artifact sharing violation.
+    $atomicWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($atomicWriteLock, 2000)
+    try {
+        Write-Utf8NoBomAtomic -Path $atomicWriteTarget -Content 'after'
+    }
+    finally {
+        $atomicWriteReleaseTimer.Dispose()
+        try { $atomicWriteLock.Dispose() } catch [ObjectDisposedException] { }
+    }
+    if ((Get-Content -LiteralPath $atomicWriteTarget -Raw -Encoding UTF8) -ne 'after') { throw 'Atomic writer did not retry and replace a transiently locked file.' }
+}
+finally {
+    if (Test-Path -LiteralPath $atomicWriteFixture) { Remove-Item -LiteralPath $atomicWriteFixture -Recurse -Force }
+}
+Add-Check -Name 'atomic-writer-transient-lock-retry' -Detail 'Atomic writes retry transient sharing violations before failing.'
+$longAtomicWriteFixture = [IO.Path]::GetFullPath((Join-Path $OutputRoot ('atomic-write-long-path-' + [guid]::NewGuid().ToString('N'))))
+$longAtomicWriteParent = $longAtomicWriteFixture
+$longAtomicWriteLeaf = ('d' * 40) + '.patch'
+while ((Join-Path $longAtomicWriteParent $longAtomicWriteLeaf).Length -lt 300) {
+    $longAtomicWriteParent = Join-Path $longAtomicWriteParent ('p' * 40)
+}
+$longAtomicWriteTarget = Join-Path $longAtomicWriteParent $longAtomicWriteLeaf
+$longPlainWriteTarget = Join-Path $longAtomicWriteParent (('u' * 40) + '.json')
+$longAtomicWriteIoRoot = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteFixture } else { $longAtomicWriteFixture }
+$longAtomicWriteIoParent = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteParent } else { $longAtomicWriteParent }
+$longAtomicWriteIoTarget = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longAtomicWriteTarget } else { $longAtomicWriteTarget }
+$longPlainWriteIoTarget = if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { '\\?\' + $longPlainWriteTarget } else { $longPlainWriteTarget }
+try {
+    [IO.Directory]::CreateDirectory($longAtomicWriteIoParent) | Out-Null
+    Write-Utf8NoBom -Path $longPlainWriteTarget -Content 'long-plain-content'
+    if (-not [IO.File]::Exists($longPlainWriteIoTarget) -or [IO.File]::ReadAllText($longPlainWriteIoTarget) -ne 'long-plain-content') {
+        throw 'UTF-8 writer did not persist content at an extended-length path.'
+    }
+    Write-Utf8NoBomAtomic -Path $longAtomicWriteTarget -Content 'long-path-content'
+    if (-not [IO.File]::Exists($longAtomicWriteIoTarget) -or [IO.File]::ReadAllText($longAtomicWriteIoTarget) -ne 'long-path-content') {
+        throw 'Atomic writer did not persist content at an extended-length path.'
+    }
+    $longAtomicWriteHash = Get-EcosystemFileSha256 -Path $longAtomicWriteTarget
+    if ($longAtomicWriteHash -notmatch '^[a-f0-9]{64}$') { throw 'Extended-length atomic output could not be hashed.' }
+}
+finally {
+    if ([IO.Directory]::Exists($longAtomicWriteIoRoot)) { [IO.Directory]::Delete($longAtomicWriteIoRoot, $true) }
+}
+Add-Check -Name 'utf8-writers-extended-path' -Detail 'Plain and atomic UTF-8 writes plus SHA-256 reads support extended-length task artifact paths on Windows PowerShell 5.1.'
+$appendWriteFixture = Join-Path $OutputRoot ('append-write-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $appendWriteFixture -Force | Out-Null
+try {
+    $appendWriteTarget = Join-Path $appendWriteFixture 'workflow-codex.jsonl'
+    [IO.File]::WriteAllText($appendWriteTarget, '', [Text.UTF8Encoding]::new($false))
+    $appendWriteLock = [IO.File]::Open($appendWriteTarget, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $appendWriteReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($appendWriteLock, 2000)
+try {
+    Add-EcosystemUtf8Line -Path $appendWriteTarget -Line 'recovered-log-line'
+}
+finally {
+    $appendWriteReleaseTimer.Dispose()
+    try { $appendWriteLock.Dispose() } catch [ObjectDisposedException] { }
+}
+if ((Get-Content -LiteralPath $appendWriteTarget -Raw -Encoding UTF8) -ne ('recovered-log-line' + [Environment]::NewLine)) { throw 'Serialized log appender did not retry a transient sharing violation.' }
+}
+finally {
+    if (Test-Path -LiteralPath $appendWriteFixture) { Remove-Item -LiteralPath $appendWriteFixture -Recurse -Force }
+}
+Add-Check -Name 'workflow-log-transient-lock-retry' -Detail 'Workflow log appends serialize writers and retry transient sharing violations.'
 $featureBranchName = New-TaskBranchName -TaskName 'Implement FDPlan sensitivity resultsets' -TaskType 'Product Backlog Item'
 $bugfixBranchName = New-TaskBranchName -TaskName 'Fix FDPlan sensitivity / resultsets' -TaskType 'Bug'
 if ($featureBranchName -ne 'features/implement-fdplan-sensitivity-resultsets' -or $bugfixBranchName -ne 'bugfix/fix-fdplan-sensitivity-resultsets') { throw 'Human-readable task branch naming does not distinguish implementation tasks from bug fixes.' }
@@ -458,6 +540,11 @@ $getTasksScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentTa
 $commentScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Add-TaskComment.ps1') -Raw -Encoding UTF8
 if ($dashboardServer -notmatch 'Get-RequestedRepositoryIds' -or $dashboardClient -notmatch 'selectedRepositoryIds' -or $workflowScript -notmatch "--add-dir" -or $newTaskScript -notmatch 'repositoryIds') { throw 'Multi-repository selection is not wired through dashboard, task persistence, and workflow workspaces.' }
 if ($getTasksScript -notmatch 'openQuestions' -or $commentScript -notmatch 'question-resolved' -or -not (Test-Path -LiteralPath (Join-Path $root 'scripts\Open-AgentQuestion.ps1'))) { throw 'Agent question and targeted answer lifecycle is incomplete.' }
+if ($dashboardServer -notmatch 'Summary=\$true' -or $getTasksScript -notmatch '\[switch\] \$Summary') { throw 'Dashboard task-list requests must use the bounded summary projection.' }
+$summaryProjection = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $recoveryStatusTaskId -IncludeCompleted -Summary -ConfigPath $recoveryStatusConfigPath
+$detailProjection = & (Join-Path $root 'scripts\Get-AgentTasks.ps1') -TaskId $recoveryStatusTaskId -IncludeCompleted -ConfigPath $recoveryStatusConfigPath
+if ($summaryProjection.Tasks[0].PSObject.Properties['events'] -or $summaryProjection.Tasks[0].PSObject.Properties['artifacts'] -or -not $detailProjection.Tasks[0].PSObject.Properties['events'] -or -not $detailProjection.Tasks[0].PSObject.Properties['artifacts']) { throw 'Task summary projection did not omit detail-only event and artifact inventories.' }
+Add-Check -Name 'dashboard-task-summary-projection' -Detail 'Task cards use bounded summary data while the selected task endpoint retains event and artifact detail'
 if ($dashboardClient -notmatch 'taskStateRevision' -or $dashboardClient -notmatch "taskInterventionPanel'\)\.open = false") { throw 'Send comment must invalidate stale polling state, refresh task details, and collapse the intervention panel after success.' }
 if ($dashboardClient -notmatch 'agentCommentDrafts' -or $dashboardClient -notmatch 'required: false' -or $dashboardClient -notmatch 'Comment is optional when restarting') { throw 'Per-agent comment drafts and comment-optional targeted restart are incomplete.' }
 if ($dashboardServer -notmatch 'Get-ObjectPropertyValue' -or $dashboardServer -match '\$body\.(questionId|targetAgentId)') { throw 'Optional comment JSON properties must be read safely under PowerShell strict mode.' }
@@ -766,6 +853,17 @@ if (
     -not $wrongHeartbeatRejected
 ) { throw 'Workspace heartbeat and task status did not enforce exact task/run/lease ownership.' }
 Add-Check -Name 'task-status-lease-ownership' -Detail 'Task status rejects invalid ownership, and heartbeat validation reports bounded expected/actual IDs from one coordinator/task lock window'
+$coordinatorForActiveReconciliation = Get-Content -LiteralPath $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$activeLeaseForReconciliation = @($coordinatorForActiveReconciliation.leases | Where-Object { [string]$_.taskId -eq $taskAId -and [string]$_.leaseId -eq [string]$leaseA.LeaseId } | Select-Object -First 1)[0]
+$activeLeaseForReconciliation | Add-Member -NotePropertyName controllerProcessId -NotePropertyValue $PID -Force
+Write-Utf8NoBom -Path $schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath -Content (($coordinatorForActiveReconciliation | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -AgentId developer -AgentStatus running -ExpectedExecutionRunId ('a' * 32) -ExpectedWorkspaceLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath | Out-Null
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -AgentId health_check -AgentStatus running -Stage health_recovery -Message 'Synthetic stale health recovery.' -ConfigPath $schedulerConfigPath | Out-Null
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskAId -Status interrupted -Stage health_check -Message 'Synthetic stale health finalizer.' -ConfigPath $schedulerConfigPath | Out-Null
+$activeReconciliation = & (Join-Path $root 'scripts\Resolve-RecoveredControlPlaneStatuses.ps1') -TaskId $taskAId -ReconcileActive -ExpectedRunId ('a' * 32) -ExpectedLeaseId ([string]$leaseA.LeaseId) -ConfigPath $schedulerConfigPath
+$taskAAfterActiveReconciliation = Get-Content -LiteralPath $taskAPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$activeReconciliation.Reason -notmatch 'Live .developer. status was restored' -or [string]$taskAAfterActiveReconciliation.status -ne 'running' -or [string]$taskAAfterActiveReconciliation.currentStage -ne 'implementation' -or [string]$taskAAfterActiveReconciliation.agentStatuses.developer.status -ne 'running' -or [string]$taskAAfterActiveReconciliation.agentStatuses.health_check.status -ne 'completed') { throw 'Guarded active reconciliation did not restore the live agent while retaining stale Health history as terminal.' }
+Add-Check -Name 'active-control-plane-reconciliation' -Detail 'A stale Health finalizer can be reconciled only from an exact active lease, live controller PID, and one active non-Health agent'
 $staleManifestPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskAId\workspaces\azure-planningspace-ps-bicep.json"
 $staleManifest = [ordered]@{
     schemaVersion = '2.0.0'
@@ -1095,7 +1193,8 @@ if ((@($delfiPipeline.definitionIds) -join ',') -ne '17' -or $delfiQueueIds.Coun
 $pipelinePolicyTestRoot = Join-Path $OutputRoot 'pipeline-policy'
 New-Item -ItemType Directory -Path $pipelinePolicyTestRoot -Force | Out-Null
 $overlapConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$overlapConfig.pipeline.repositories[0].deploymentDefinitionIds = @($overlapConfig.pipeline.repositories[0].autoQueueDefinitionIds[0])
+$overlapConfig.pipeline.repositories[0].autoQueueDefinitionIds = @(814)
+$overlapConfig.pipeline.repositories[0].deploymentDefinitionIds = @(814)
 $overlapConfigPath = Join-Path $pipelinePolicyTestRoot 'overlap.json'
 Write-Utf8NoBom -Path $overlapConfigPath -Content (($overlapConfig | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
 $overlapRejected = $false
@@ -1682,6 +1781,7 @@ if ($healthTargetedResumeScript -notmatch 'TargetAgentId = \$targetAgentId' -or 
 if ($healthTargetedResumeScript -notmatch 'leaseRenewed' -or $healthTargetedResumeScript -notmatch "Expected lease '.+' for task '.+' is no longer active" -or $healthRecoveryScript -notmatch 'recovery-followup-failed' -or $healthRecoveryScript -notmatch 'TaskProgressRestored') { throw 'Health recovery does not separate repair from resume or renew stale execution ownership.' }
 if ($workflowScript -notmatch 'HealthRecoveryRetry' -or $workflowScript -notmatch '-not \$HealthRecoveryRetry' -or $healthRecoveryScript -notmatch 'Start-HealthTargetedResume.ps1') { throw 'Workflow and Health recovery are not wired to the one-shot targeted retry.' }
 if ($healthRecoveryScript -notmatch 'Resolve-TaskWorkspaceLeaseContext.+-ExpectedRunId \$ExecutionRunId.+-ExpectedLeaseId \$WorkspaceLeaseId.+-RefreshHeartbeat' -or $healthRecoveryScript -match '\$staleLease = \$_\.Exception\.Message') { throw 'Routed Health recovery does not use the canonical atomic lease resolver before reusing a parent workspace lease.' }
+if ($healthRecoveryScript -notmatch 'Test-HealthRecoveryOwnsCurrentRun' -or $healthRecoveryScript -notmatch 'recovery-superseded') { throw 'A stale Health recovery can still overwrite a newer task revision or live workflow state.' }
 if ($healthRecoveryScript -notmatch 'RecoveryDepth' -or $healthRecoveryScript -notmatch 'health_recovery_followup' -or $healthRecoveryScript -notmatch 'Write-AgentFailure.ps1' -or $healthRecoveryScript -notmatch "targetedResume.Status -eq 'failed'") { throw 'A failure exposed by post-repair targeted resume is not returned to bounded Health recovery.' }
 if ($resumeScript -notmatch 'ChangedArtifactNames' -or $resumeScript -notmatch 'resume-artifact-index.json' -or $resumeScript -notmatch 'agentFingerprints' -or $resumeScript -notmatch 'shareableArtifacts' -or $resumeScript -notmatch "-ne 'completed'" -or $workflowScript -notmatch 'Get-AgentResumePlan\.ps1.+-PreserveArtifactIndex') { throw 'Per-agent resume artifact fingerprinting, completed-outcome filtering, or non-consuming bookkeeping is incomplete.' }
 if ($publishOutcomeScript -notmatch 'Test-AgentOutcomeArtifact\.ps1' -or $developerPrompt -notmatch 'New-DeveloperPublicationEvidence\.ps1' -or $developerPrompt -notmatch 'publicationEvidenceId') { throw 'Developer final-command evidence generation or semantic outcome validation is not wired end to end.' }
@@ -1913,10 +2013,56 @@ if ([string]$config.health.automaticRecovery.elevatedFallback.sandboxMode -ne 'd
 $preservationScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Save-EcosystemRecoveryBaseline.ps1') -Raw -Encoding UTF8
 if ($healthRecoveryScript -notmatch 'Save-EcosystemRecoveryBaseline.ps1' -or $healthRecoveryScript -notmatch 'preExistingWorktreeChanges' -or $preservationScript -notmatch 'git -C \$resolvedWorkspace add --all -- \.' -or $preservationScript -notmatch 'preservationCommit') { throw 'Health Check recovery does not commit and expose the complete dirty ecosystem baseline before repair.' }
 if ($healthRecoveryScript -notmatch 'recovery-invalidated' -or $healthRecoveryScript -notmatch 'invalidatedAttemptId' -or $healthRecoveryScript -notmatch 'invalidatedAttemptIds\.Contains') { throw 'Health recovery cannot distinguish a durably invalidated stopped run from a genuine retry attempt.' }
+if ($healthRecoveryScript -notmatch 'existingRepairedResult' -or $healthRecoveryScript -notmatch 'unfinalizedRepairedAttempts' -or $healthRecoveryScript -notmatch 'reuseExistingRepairedResult' -or $healthRecoveryScript -notmatch 'recovery-completed' -or $healthRecoveryScript -notmatch 'preservationCommit') { throw 'Health recovery cannot finalize one interrupted repaired result without consuming a second model attempt.' }
 $tailTokens = $null
 $tailParseErrors = $null
 $tailAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1'), [ref]$tailTokens, [ref]$tailParseErrors)
 if ($tailParseErrors.Count) { throw 'Health recovery bounded-tail helper contains a PowerShell syntax error.' }
+$ownershipFunction = $tailAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-HealthRecoveryOwnsCurrentRun' }, $true)
+if (-not $ownershipFunction) { throw 'Health recovery ownership guard function is missing.' }
+$ownershipTestRoot = Join-Path $OutputRoot 'health-recovery-ownership'
+New-Item -ItemType Directory -Path $ownershipTestRoot -Force | Out-Null
+$ownershipTaskPath = Join-Path $ownershipTestRoot 'task.json'
+$ownershipState = [ordered]@{
+    revision = 1
+    executionRunId = 'active-run'
+    workspaceLeaseId = 'active-lease'
+    agentStatuses = [ordered]@{
+        health_check = [ordered]@{ status='waiting' }
+        developer = [ordered]@{ status='waiting' }
+    }
+}
+function Write-OwnershipTaskFixture {
+    [IO.File]::WriteAllText($ownershipTaskPath, ($ownershipState | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+}
+$ownershipFunctionBlock = [scriptblock]::Create($ownershipFunction.Extent.Text)
+. $ownershipFunctionBlock
+Write-OwnershipTaskFixture
+$matchingRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$missingExpectedRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath
+$ownershipState.revision = 2
+Write-OwnershipTaskFixture
+$mismatchedRevision = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$ownershipState.revision = 1
+$ownershipState.agentStatuses.developer.status = 'running'
+Write-OwnershipTaskFixture
+$activeOtherAgent = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRevision ([Nullable[int]]1)
+$ownershipState.revision = 2
+Write-OwnershipTaskFixture
+$matchingRunAndLease = Test-HealthRecoveryOwnsCurrentRun -TaskPath $ownershipTaskPath -ExpectedRunId 'active-run' -ExpectedLeaseId 'active-lease' -ExpectedRevision ([Nullable[int]]1)
+if (-not $matchingRevision -or -not $missingExpectedRevision -or $mismatchedRevision -or $activeOtherAgent -or -not $matchingRunAndLease) { throw 'Health recovery ownership guard does not safely handle populated or missing expected revisions while preserving run, lease, revision, and active-agent protections.' }
+Add-Check -Name 'health-recovery-ownership-guard' -Detail 'Extracted production guard accepts populated and missing revisions, rejects stale revision or active work, and preserves exact run/lease ownership'
+$routedClauses = @(
+    foreach ($statement in $tailAst.FindAll({ param($node) $node -is [System.Management.Automation.Language.IfStatementAst] }, $true)) {
+        foreach ($clause in $statement.Clauses) {
+            if ($clause.Item1.Extent.Text.Contains('$routedAgentId') -and $clause.Item2.Extent.Text.Contains("Join-Path `$PSScriptRoot 'Start-DevelopmentWorkflow.ps1'")) { $clause }
+        }
+    }
+)
+if ($routedClauses.Count -ne 1) { throw 'Expected exactly one Health recovery routed-owner dispatch condition.' }
+$routedCondition = [scriptblock]::Create('param($SuppressTargetedResume,$routedAgentId) ' + $routedClauses[0].Item1.Extent.Text)
+if (-not (& $routedCondition $false 'developer') -or (& $routedCondition $true 'developer') -or (& $routedCondition $false '')) { throw 'Health recovery routed-owner suppression guard does not preserve the dispatch truth table.' }
+Add-Check -Name 'health-recovery-routed-owner-suppression' -Detail 'Suppressed recovery never dispatches a routed owner; unsuppressed routed recovery still can; empty routes cannot dispatch'
 $tailFunction = $tailAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-BoundedTextTail' }, $true)
 if (-not $tailFunction -or $tailFunction.Extent.Text -match 'Get-Content\s+-LiteralPath\s+\$Path\s+-Tail' -or $tailFunction.Extent.Text -notmatch '\[IO\.File\]::Open' -or $tailFunction.Extent.Text -notmatch 'FileShare\]::ReadWrite') { throw 'Health recovery bounded-tail helper can still materialize a large workflow log or cannot read a live log safely.' }
 $tailTestRoot = Join-Path $OutputRoot 'health-bounded-tail'
@@ -1980,6 +2126,100 @@ if ($knowledgeResponsibilities -notmatch 'every confirmed review comment about c
 if ($globalStandards -notmatch 'Use braces for every `if`' -or $globalStandards -notmatch '`public static`' -or $globalStandards -notmatch '`private static`' -or $globalStandards -notmatch 'f806355b73d3493fbcd171d51fa352ca' -or $globalStandards -notmatch 'a5bae0d26ac94b8e8f1984ce8b361d7c' -or $globalStandards -notmatch 'Business rules, domain behavior, API contracts') { throw 'Global review-derived style standards or their evidence are incomplete.' }
 Add-Check -Name 'review-derived-coding-standards' -Detail 'Every confirmed code-organization/style comment is promoted globally or by technology after implementation and clean review; business/domain/API behavior remains repository-scoped'
 
+# JSON protocol drift must not make the host's failure classifier fail under StrictMode.
+$guardSourcePath = Join-Path $root 'scripts/Invoke-GuardedCodex.ps1'
+$guardAst = [Management.Automation.Language.Parser]::ParseFile($guardSourcePath, [ref]$null, [ref]$null)
+$fingerprintFunction = $guardAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-FailureFingerprint' }, $true)
+if (-not $fingerprintFunction) { throw 'Production failure classifier function is missing.' }
+& {
+    Set-StrictMode -Version Latest
+    $Provider = 'codex'
+    . ([scriptblock]::Create($fingerprintFunction.Extent.Text))
+    foreach ($line in @('{}', '{"message":"x"}', '42', 'null', '[]', '[{"message":"x"}]', '[{"type":"turn.completed"},{"type":"error"}]', '"text"', 'true', '{"type":"item.completed","item":null}', '{"type":"item.completed","item":42}', '{"type":"item.completed","item":[]}', '{"type":"item.completed","item":{"other":"x"}}', '{"type":"turn.started"}')) {
+        if ($null -ne (Get-FailureFingerprint -Line $line)) { throw "Unsupported JSON unexpectedly classified: $line" }
+    }
+    $commandFailure = Get-FailureFingerprint -Line '{"type":"item.completed","item":{"status":"failed","aggregated_output":"compile failed"}}'
+    $capacityFailure = Get-FailureFingerprint -Line '{"type":"error","message":"Selected model is at capacity"}'
+    $quotaFailure = Get-FailureFingerprint -Line 'quota limit reached'
+    if ($commandFailure.Kind -ne 'execution-failure' -or $capacityFailure.Kind -ne 'model-capacity' -or $quotaFailure.Kind -ne 'provider-failure') { throw 'Typed failures or plain-text quota classification changed.' }
+}
+Add-Check -Name 'guard-unsupported-json-shapes' -Detail 'Actual classifier under StrictMode ignores unsupported JSON and nested item shapes while preserving typed failures and quota classification'
+
+$unknownJsonRoot = Join-Path $OutputRoot ('unknown-json-guard-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $unknownJsonRoot -Force | Out-Null
+$unknownJsonCli = Join-Path $unknownJsonRoot 'emit-json.ps1'
+[IO.File]::WriteAllText($unknownJsonCli, @'
+param([int] $NativeCode)
+foreach ($line in @('{}', '{"message":"x"}', '42', 'null', '[]', '[{"type":"turn.completed"},{"type":"error"}]', '{"type":"item.completed","item":null}')) { [Console]::Out.WriteLine($line) }
+Start-Sleep -Milliseconds 250
+exit $NativeCode
+'@, [Text.UTF8Encoding]::new($false))
+foreach ($nativeCode in @(0, 7)) {
+    $caseRoot = Join-Path $unknownJsonRoot ([string]$nativeCode)
+    New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+    $guardPath = Join-Path $caseRoot 'guard.json'
+    $unknownResult = & $guardSourcePath -FilePath (Get-Process -Id $PID).Path -Arguments @('-NoProfile','-File',$unknownJsonCli,'-NativeCode',[string]$nativeCode) -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $caseRoot 'events.jsonl') -GuardArtifactPath $guardPath -MaxRunMinutes 1 -PollMilliseconds 100
+    $persistedGuard = Get-Content -LiteralPath $guardPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($unknownResult.guardTriggered -or $unknownResult.exitCode -ne $nativeCode -or $persistedGuard.exitCode -ne $nativeCode -or $persistedGuard.exitCodeSource -ne 'native' -or $null -ne $persistedGuard.failureKind) { throw "Unsupported JSON lost native exit/artifact behavior for exit $nativeCode." }
+}
+Add-Check -Name 'guard-unsupported-json-native-exits' -Detail 'Actual guard writes artifacts and retains native exits 0 and 7 without a completed event or classifier exception'
+
+$workflowSourcePath = Join-Path $root 'scripts/Start-DevelopmentWorkflow.ps1'
+$workflowAst = [Management.Automation.Language.Parser]::ParseFile($workflowSourcePath, [ref]$null, [ref]$null)
+$hostEvidenceFunction = $workflowAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-WorkflowHostErrorEvidence' }, $true)
+if (-not $hostEvidenceFunction) { throw 'Production host-error evidence function is missing.' }
+$hostFailureCatch = $workflowAst.Find({ param($node) $node -is [Management.Automation.Language.CatchClauseAst] -and $node.Body.Statements.Count -gt 0 -and $node.Body.Statements[0].Extent.Text -eq '$workflowHostError = $_' }, $true)
+if (-not $hostFailureCatch) { throw 'Workflow catch does not capture the original error first.' }
+$prefixEnd = @($hostFailureCatch.Body.Statements | Where-Object { $_.Extent.Text -match '^\$failureMessage\s*=' }) | Select-Object -First 1
+if (-not $prefixEnd) { throw 'Workflow catch message boundary is missing.' }
+$prefixText = $workflowAst.Extent.Text.Substring($hostFailureCatch.Body.Statements[0].Extent.StartOffset, $prefixEnd.Extent.EndOffset - $hostFailureCatch.Body.Statements[0].Extent.StartOffset)
+$diagnosticStatements = @($hostFailureCatch.Body.Statements | Where-Object { $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -in @('$hostDiagnostic', '$lastDiagnostic') })
+if ($diagnosticStatements.Count -ne 2) { throw 'Workflow diagnostic assignments are missing.' }
+$diagnosticScript = [scriptblock]::Create(($diagnosticStatements.Extent.Text -join [Environment]::NewLine))
+& {
+    Set-StrictMode -Version Latest
+    . ([scriptblock]::Create($hostEvidenceFunction.Extent.Text))
+    $TaskId = 'synthetic-task'; $ExecutionRunId = 'synthetic-run'; $WorkspaceLeaseId = 'synthetic-lease'
+    $task = [pscustomobject]@{ TaskRoot = $unknownJsonRoot }
+    $workspaceLease = $null
+    $writeUtf8NoBomAtomic = (Get-Command Write-Utf8NoBomAtomic -ErrorAction Stop).ScriptBlock
+    function Write-CurrentMcpRoleMetric { throw 'secondary metric failure' }
+    $syntheticThrowPath = Join-Path $unknownJsonRoot 'throw-host.ps1'
+    [IO.File]::WriteAllText($syntheticThrowPath, "throw ('synthetic host failure') # COMMAND_TEXT_MARKER", [Text.UTF8Encoding]::new($false))
+    $prefixScript = [scriptblock]::Create($prefixText)
+    try { & $syntheticThrowPath } catch { . $prefixScript }
+    $firstEvidencePath = $workflowHostErrorPath
+    $firstEvidenceContent = [IO.File]::ReadAllText($firstEvidencePath)
+    $persistedHost = $firstEvidenceContent | ConvertFrom-Json
+    if ($failureMessage -ne 'synthetic host failure' -or $workflowHostError.Exception.Message -ne 'synthetic host failure' -or -not $persistedHost.exceptionType -or -not $persistedHost.fullyQualifiedErrorId -or -not $persistedHost.scriptStackTrace -or $persistedHost.scriptLineNumber -ne 1 -or $persistedHost.scriptName -ne $syntheticThrowPath -or $persistedHost.executionRunId -ne $ExecutionRunId -or $persistedHost.workspaceLeaseId -ne $WorkspaceLeaseId -or $persistedHost.taskId -ne $TaskId) { throw 'Actual catch prefix lost original error identity or did not persist run-bound evidence before metric failure.' }
+    if (($persistedHost | ConvertTo-Json -Depth 4) -match 'COMMAND_TEXT_MARKER|providerPayload|commandText|PositionMessage') { throw 'Host evidence included raw invocation text or provider payload.' }
+    $guardResult = $null
+    . $diagnosticScript
+    if ($lastDiagnostic -match 'synthetic-task|synthetic-run|synthetic-lease|timestampUtc|executionRunId|workspaceLeaseId|taskId' -or $lastDiagnostic -notmatch 'fullyQualifiedErrorId|scriptStackTrace') { throw 'Host diagnostic fingerprint contains volatile identity metadata or lacks captured host facts.' }
+    $guardResult = [pscustomobject]@{ guardTriggered=$true; failureDetail='stable provider failure detail' }
+    . $diagnosticScript
+    if ($lastDiagnostic -ne 'stable provider failure detail') { throw 'Recognized guard/provider diagnostic changed.' }
+    $longHostMessage = 'z' * 3000
+    try { throw $longHostMessage } catch { . $prefixScript }
+    $longHostEvidence = Get-Content -LiteralPath $workflowHostErrorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($failureMessage -ne $longHostMessage -or $failureMessage.Length -ne 3000 -or $longHostEvidence.message.Length -ne 2048) { throw 'Catch prefix truncated the original failure summary or failed to bound the artifact message.' }
+    if ($workflowHostErrorPath -eq $firstEvidencePath -or [IO.File]::ReadAllText($firstEvidencePath) -cne $firstEvidenceContent) { throw 'A later exception overwrote the earlier host-error evidence.' }
+    $longError = [Management.Automation.ErrorRecord]::new([Exception]::new(('x' * 3000)), ('f' * 2000), [Management.Automation.ErrorCategory]::NotSpecified, $null)
+    $boundedHost = New-WorkflowHostErrorEvidence -ErrorRecord $longError -TaskId $null -RunId $null -LeaseId $null
+    if ($boundedHost.message.Length -ne 2048 -or $boundedHost.fullyQualifiedErrorId.Length -ne 1024 -or $null -ne $boundedHost.scriptName -or $null -ne $boundedHost.scriptLineNumber -or $boundedHost.scriptStackTrace.Length -gt 8192) { throw 'Host evidence bounds or null invocation metadata handling failed.' }
+    function Invoke-LongHostFailure([int] $Depth) { if ($Depth -eq 0) { throw 'synthetic deep host error' }; Invoke-LongHostFailure ($Depth - 1) }
+    try { Invoke-LongHostFailure 220 } catch { $deepError = $_ }
+    $deepEvidence = New-WorkflowHostErrorEvidence -ErrorRecord $deepError -TaskId ('t' * 200) -RunId ('r' * 200) -LeaseId ('l' * 200)
+    if ($deepError.ScriptStackTrace.Length -le 8192 -or $deepEvidence.scriptStackTrace.Length -ne 8192 -or $deepEvidence.taskId.Length -ne 128 -or $deepEvidence.executionRunId.Length -ne 128 -or $deepEvidence.workspaceLeaseId.Length -ne 128) { throw 'Host evidence failed to bound a real long stack or run identity.' }
+    $originalAtomicWriter = $writeUtf8NoBomAtomic
+    $writeUtf8NoBomAtomic = { throw 'secondary persistence failure' }
+    try { & $syntheticThrowPath } catch { . $prefixScript }
+    if ($workflowHostError.Exception.Message -ne 'synthetic host failure' -or $failureMessage -ne 'synthetic host failure' -or $null -ne $workflowHostErrorPath) { throw 'Evidence persistence failure replaced the original workflow exception.' }
+    $writeUtf8NoBomAtomic = $originalAtomicWriter
+}
+Add-Check -Name 'workflow-host-error-evidence' -Detail 'Actual helper and catch prefix persist bounded original error metadata with task/run/lease identity before fallible metrics and retain the original error if evidence persistence fails'
+
+
 $guardTestRoot = Join-Path $OutputRoot 'execution-guard'
 if (Test-Path -LiteralPath $guardTestRoot) { Remove-Item -LiteralPath $guardTestRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $guardTestRoot -Force | Out-Null
@@ -2014,6 +2254,9 @@ if ([string]$readonlyPidGuardTest.failureCanonical -ne 'powershell-readonly-pid'
 Add-Check -Name 'readonly-pid-guard' -Detail 'A real readonly PID diagnostic remains classified without treating source text as an error'
 $capacityRunner = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-CapacityAwareCodex.ps1') -Raw -Encoding UTF8
 if ($workflowRunner -notmatch 'Invoke-CapacityAwareCodex.ps1' -or $capacityRunner -notmatch 'model-capacity' -or $capacityRunner -notmatch 'MaxCapacityFallbackAttempts' -or -not [bool]$config.modelRouting.capacityFallback.enabled -or [int]$config.modelRouting.capacityFallback.maxAttempts -ne 1) { throw 'Capacity fallback is not restricted to one exact model-capacity retry.' }
+if ($capacityRunner -notmatch 'Add-EcosystemUtf8Line' -or $capacityRunner -match '\[IO\.File\]::AppendAllText\(\$LogPath') { throw 'Capacity-aware Codex provider markers must use the serialized workflow-log append helper.' }
+$taskEventWriter = Get-Content -LiteralPath (Join-Path $root 'scripts\Add-TaskEvent.ps1') -Raw -Encoding UTF8
+if ($taskEventWriter -notmatch 'Add-EcosystemUtf8Line' -or $taskEventWriter -match '\[IO\.File\]::Open\(\$ledgerPath') { throw 'Task ledger events must use the serialized append helper shared by independent hosts.' }
 if ($healthRecoverySchema -match '"allOf"' -or $healthRecoverySchema -match '"if"' -or $healthRecoverySchema -notmatch '"humanIntervention"') { throw 'Health recovery schema is not Structured Outputs compatible.' }
 Add-Check -Name 'capacity-fallback-and-health-schema' -Detail 'One capacity-only retry uses the configured fallback tier; Health Recovery schema contains no unsupported conditionals'
 
@@ -2169,12 +2412,29 @@ if ($reviewWrapper -notmatch 'VerifiedContextPath' -or $reviewWrapper -notmatch 
 $argvProbe = [Diagnostics.ProcessStartInfo]::new()
 $argvProbe.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
 $argvProbe.UseShellExecute = $false; $argvProbe.CreateNoWindow = $true; $argvProbe.RedirectStandardOutput = $true
-$argvProbe.ArgumentList.Add('-NoProfile'); $argvProbe.ArgumentList.Add('-Command'); $argvProbe.ArgumentList.Add('$args[0]')
+$argvProbeScript = Join-Path $OutputRoot 'argv-probe.ps1'
+[IO.File]::WriteAllText($argvProbeScript, 'param([string]$Value) [Console]::Out.Write($Value)', (New-Object Text.UTF8Encoding($false)))
 $argvOverride = 'mcp_servers.ecosystem-read.args=["-NoProfile","-File","C:\\Repos\\development-agent-ecosystem\\scripts\\Start-EcosystemReadMcpServer.ps1"]'
-$argvProbe.ArgumentList.Add($argvOverride)
+$argvProbeArguments = @('-NoProfile','-File',$argvProbeScript,$argvOverride)
+if ($argvProbe.PSObject.Properties['ArgumentList']) {
+    foreach ($argument in $argvProbeArguments) { $argvProbe.ArgumentList.Add([string]$argument) }
+}
+else {
+    # .NET Framework's ProcessStartInfo (Windows PowerShell 5.1) predates
+    # ArgumentList. Apply the same Windows quoting contract so the TOML array
+    # remains one argv element while the compatibility suite exercises it.
+    $argvProbe.Arguments = (@($argvProbeArguments | ForEach-Object {
+        $value = [string]$_
+        if ($value.Length -and $value -notmatch '\s' -and -not $value.Contains([char]34)) { $value }
+        else {
+            $quote = [string][char]34
+            $quote + $value.Replace($quote, ('\' + $quote)) + $quote
+        }
+    }) -join ' ')
+}
 $argvProcess = [Diagnostics.Process]::Start($argvProbe)
 $argvOutput = $argvProcess.StandardOutput.ReadToEnd(); $argvProcess.WaitForExit(); $argvProcess.Dispose()
-if ($argvOutput.Trim() -ne $argvOverride) { throw 'ProcessStartInfo.ArgumentList did not preserve the MCP TOML array as one argv element.' }
+if ($argvOutput.Trim() -ne $argvOverride) { throw 'ProcessStartInfo did not preserve the MCP TOML array as one argv element.' }
 $reviewContextFixture = Join-Path $OutputRoot 'verified-review-context-fixture'; New-Item -ItemType Directory -Path $reviewContextFixture -Force | Out-Null
 $reviewKnowledgeSource = Resolve-EcosystemPath -Value ([string]$config.knowledge.globalStandardsPath) -Config $config -CodexHome $CodexHome
 $validContext = & (Join-Path $root 'scripts\New-PrReviewContextPack.ps1') -RepositoryId azure-planningspace-planningspace -PullRequestId 24065 -SourceCommit 'abcdef0123456789abcdef0123456789abcdef01' -KnowledgePath $reviewKnowledgeSource -OutputPath (Join-Path $reviewContextFixture 'valid.json') -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -2207,7 +2467,7 @@ $pollSelectionRejected = $false; try { & (Join-Path $root 'scripts\Invoke-Enhanc
 Add-Check -Name 'review-monitor-config' -Detail $reviewConfig.ConfigPath
 Add-Check -Name 'per-pr-review-invalidation' -Detail 'Only the changed PR is forced; unprocessed and failed AI review state remains visible'
 Add-Check -Name 'verified-pr-review-context' -Detail 'Prepared managed knowledge/public-artifact context remains distinct from untrusted provider discussion and is retained with SHA-256 provenance'
-Add-Check -Name 'review-monitor-atomic-mcp-argv' -Detail 'MCP TOML array override remains one ProcessStartInfo.ArgumentList argument'
+Add-Check -Name 'review-monitor-atomic-mcp-argv' -Detail 'MCP TOML array override remains one process argument on PowerShell 5.1 and 7'
 Add-Check -Name 'verified-pr-review-context-validation' -Detail 'Executable digest, source-hash, missing, no-key, multi-entry, outside-source, injected-content, private-source, and Poll selection rejection fixtures passed'
 
 $controlPlaneRoot = Join-Path $OutputRoot ('control-plane-request-' + [guid]::NewGuid().ToString('N'))

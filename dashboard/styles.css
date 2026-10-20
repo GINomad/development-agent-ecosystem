@@ -377,6 +377,14 @@ h4 { margin: 22px 0 10px; font-size: .82rem; text-transform: uppercase; color: #
 .insight-panel h3 { margin: 0 0 8px; color: #dbe7f3; font-size: .9rem; }
 .insight-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
 .insight-panel-heading span { color: var(--muted); font-size: .7rem; }
+.token-chart { max-width: 100%; overflow-x: auto; }
+.token-chart-plot { display: flex; align-items: stretch; min-width: 100%; height: 230px; padding: 10px 0 4px; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0, transparent 49px, rgba(127, 145, 165, .12) 50px); }
+.token-chart-column { display: flex; flex: 1 0 68px; flex-direction: column; align-items: center; min-width: 0; color: #91a4b8; text-align: center; }
+.token-chart-column strong { width: 100%; font-size: .62rem; font-variant-numeric: tabular-nums; }
+.token-chart-bar-wrap { display: flex; flex: 1; align-items: flex-end; justify-content: center; width: 100%; min-height: 0; padding: 0 8px; }
+.token-chart-bar { width: 100%; max-width: 42px; min-height: 0; border-radius: 5px 5px 1px 1px; background: linear-gradient(180deg, #8bf0c6, #3d9f83); box-shadow: 0 0 16px rgba(139, 240, 198, .14); transition: height .2s ease; }
+.token-chart-date { width: 100%; min-height: 2.7em; padding-top: 7px; color: #7f91a5; font-size: .59rem; line-height: 1.3; }
+.token-chart.empty-insight { overflow: visible; }
 .insight-table-wrap { max-width: 100%; overflow: auto; }
 .insight-table { width: 100%; border-collapse: collapse; color: #b9c6d4; font-size: .7rem; }
 .insight-table th, .insight-table td { padding: 9px 8px; border-bottom: 1px solid rgba(38, 50, 67, .78); text-align: right; white-space: nowrap; }
