@@ -3,6 +3,7 @@
   "objective": "Measure and adopt selected specification practices inside the existing ecosystem",
   "baselineSourceRevision": "ebf2469b9b8bd18602197f1e52c814d783e121b9",
   "requirements": [
+    { "id": "REQ-DEFAULT", "status": "ready", "scenario": "SCN-DEFAULT", "acceptance": "Every new manual/automated task persists the new practice version; analyst templates default across providers; publication rejects missing or downgraded versions; resume preserves legacy tasks." },
     { "id": "REQ-METRICS", "status": "ready", "scenario": "SCN-METRICS", "acceptance": "Missing data stays null, evidence and final commits are bound, providers and budgets split cohorts, snapshots precede process changes." },
     { "id": "REQ-TEMPLATES", "status": "ready", "scenario": "SCN-TEMPLATES", "acceptance": "Specification, plan and task slices preserve existing requirements-analysis and implementation-plan contracts, stable SCN IDs and held scope." },
     { "id": "REQ-ASSESS", "status": "ready", "scenario": "SCN-ASSESS", "acceptance": "Research-only idea assessment publishes evidence against, alternatives, evidence quality and a constrained decision without implementation or automatic delivery." },

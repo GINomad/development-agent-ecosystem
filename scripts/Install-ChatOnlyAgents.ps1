@@ -92,7 +92,7 @@ switch($Provider){
         if($agentMatches.Count -ne 8){throw "Expected 8 Claude standalone agents, found $($agentMatches.Count)."}
         foreach($match in $agentMatches){
             $content="---`n"+$match.Groups['yaml'].Value.Trim()+"`n---`n`n"+$commonMatch.Groups['body'].Value.Trim()+"`n`n"+$match.Groups['body'].Value.Trim()+"`n"
-            if ($match.Groups['name'].Value -eq 'development-requirements-analyst.md') { $content += "`nUse the installed analyze-requirements skill guides for substantive features and its idea-assessment reference for investment assessment. Return the research verdict inline; a go outcome does not authorize implementation.`n" }
+            if ($match.Groups['name'].Value -eq 'development-requirements-analyst.md') { $content += "`nUse the installed analyze-requirements skill guides by default for every new task, scaled to scope; small fixes may keep relevant sections inline. Preserve existing practice versions on resume. Use its idea-assessment reference for investment assessment. Return the research verdict inline; a go outcome does not authorize implementation.`n" }
             Write-ManagedText -Path (Join-Path $DestinationRoot ('agents\'+$match.Groups['name'].Value)) -Content $content
         }
         foreach($skill in @($portableSkills)+@('analyze-requirements')){Copy-ManagedTree -Source (Join-Path $root ('plugins\development-agent-ecosystem\skills\'+$skill)) -Destination (Join-Path $DestinationRoot ('skills\'+$skill))}

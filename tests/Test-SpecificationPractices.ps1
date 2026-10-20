@@ -21,6 +21,30 @@ function Reject([scriptblock]$Action,[string]$Pattern) {
     if (-not $caught) { throw "Expected rejection: $Pattern" }
 }
 Json $configPath $config
+# New intake is versioned before any model runs, across modes and project scopes.
+$newTaskScript=Join-Path $root 'scripts\New-AgentTask.ps1'
+foreach ($mode in @('manual','automate')) {
+    foreach ($project in @($config.projects | Where-Object enabled)) {
+        foreach ($repository in @($project.repositoryIds)) {
+            $id="default-$mode-$($project.id)-$repository"
+            $created=& $newTaskScript -TaskId $id -TaskSelector 'Default practice test' -Mode $mode -ProjectId $project.id -RepositoryId $repository -ConfigPath $configPath
+            $createdDocument=Get-Content $created.TaskPath -Raw | ConvertFrom-Json
+            if ($createdDocument.practiceVersion -ne 'spec-practices-1.0.0') { throw "New task omitted default practice: $id" }
+            $null=& $newTaskScript -TaskId $id -TaskSelector 'Resume test' -Mode $mode -Resume -ConfigPath $configPath
+            if ((Get-Content $created.TaskPath -Raw | ConvertFrom-Json).practiceVersion -ne 'spec-practices-1.0.0') { throw 'Resume changed the new task practice.' }
+        }
+    }
+}
+$legacyProject=@($config.projects | Where-Object enabled)[0]
+$legacy=& $newTaskScript -TaskId legacy-resume -TaskSelector 'Legacy test' -Mode manual -ProjectId $legacyProject.id -RepositoryId $legacyProject.repositoryIds[0] -ConfigPath $configPath
+$legacyDocument=Get-Content $legacy.TaskPath -Raw | ConvertFrom-Json
+$legacyDocument.practiceVersion='legacy';Json $legacy.TaskPath $legacyDocument
+$null=& $newTaskScript -TaskId legacy-resume -TaskSelector 'Legacy test' -Mode manual -Resume -ConfigPath $configPath
+if ((Get-Content $legacy.TaskPath -Raw | ConvertFrom-Json).practiceVersion -ne 'legacy') { throw 'Resume upgraded legacy practice.' }
+$legacyDocument.PSObject.Properties.Remove('practiceVersion');Json $legacy.TaskPath $legacyDocument
+$legacyBytes=Get-FileHash $legacy.TaskPath -Algorithm SHA256
+$null=& $newTaskScript -TaskId legacy-resume -TaskSelector 'Legacy test' -Mode manual -Resume -ConfigPath $configPath
+if ((Get-FileHash $legacy.TaskPath -Algorithm SHA256).Hash -ne $legacyBytes.Hash) { throw 'Resume rewrote unversioned historical task.' }
 $commit='a'*40
 function New-FixtureTask([string]$Id,[int]$Tokens=100,[string]$Provider='codex',[string]$PracticeVersion='legacy') {
     $path=Join-Path $state ('tasks\'+$Id)
@@ -103,6 +127,15 @@ Lines (Join-Path $assessmentPath 'workflow-routing.jsonl') @(@{executionMode='re
 Json $requirementsPath $requirements
 $validator=Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1'
 & $validator -TaskId assessment -AgentId requirements_analyst -ArtifactName requirements-analysis.json -Path $requirementsPath -TaskRoot $assessmentPath | Out-Null
+# A new task cannot publish an omitted or downgraded analysis version.
+$assessmentTask=Get-Content (Join-Path $assessmentPath 'task.json') -Raw | ConvertFrom-Json
+$assessmentTask | Add-Member practiceVersion 'spec-practices-1.0.0'
+Json (Join-Path $assessmentPath 'task.json') $assessmentTask
+Reject { & $validator -TaskId assessment -AgentId requirements_analyst -ArtifactName requirements-analysis.json -Path $requirementsPath -TaskRoot $assessmentPath } 'must match the persisted task'
+$requirements.PSObject.Properties.Remove('practiceVersion');Json $requirementsPath $requirements
+Reject { & $validator -TaskId assessment -AgentId requirements_analyst -ArtifactName requirements-analysis.json -Path $requirementsPath -TaskRoot $assessmentPath } 'must match the persisted task'
+$requirements | Add-Member practiceVersion 'spec-practices-1.0.0';Json $requirementsPath $requirements
+& $validator -TaskId assessment -AgentId requirements_analyst -ArtifactName requirements-analysis.json -Path $requirementsPath -TaskRoot $assessmentPath | Out-Null
 $research=& $reportScript -TaskIds assessment -CohortLabel fixture -ConfigPath $configPath
 if ($null -ne $research.tasks[0].falseCompletion -or $research.cohorts[0].comparable) { throw 'Research was evaluated as delivery.' }
 $assessment.evidenceQuality='weak';Json $requirementsPath $requirements
@@ -132,4 +165,4 @@ foreach ($provider in @('codex','copilot','claude')) {
     Reject { & (Join-Path $root 'scripts\Install-ChatOnlyAgents.ps1') -Provider $provider -DestinationRoot $installRoot -ConfigPath $configPath } 'Refusing to overwrite'
     if ((Get-Content $editedGuide -Raw) -ne 'User edit') { throw 'Native installation lost a user edit.' }
 }
-[pscustomobject]@{Status='passed';Checks=26;OutputRoot=$fixture}
+[pscustomobject]@{Status='passed';Checks=34;OutputRoot=$fixture}

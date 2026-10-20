@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "id": "specification-practices",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "distribution": "native-ecosystem-plugin",
   "role": "requirements_analyst",
   "executionModeForAssessment": "research-only",
@@ -14,7 +14,7 @@
   "assets": [
     {
       "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md",
-      "sha256": "be303c2f546bf8d24ff7966a493e8b825301ac2212537898b29ee83a868d67ba"
+      "sha256": "0c803c974f0c0561afd61fa2fc99fee34ce89e77bd240db923f79f00286f544b"
     },
     {
       "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/agents/openai.yaml",

@@ -62,6 +62,7 @@ $mutation = Invoke-EcosystemFileLock -LockPath $taskLockPath -TimeoutSeconds 30 
             taskId = $TaskId
             selector = $TaskSelector
             mode = $Mode
+            practiceVersion = 'spec-practices-1.0.0'
             taskName = $resolvedTaskName
             taskType = $resolvedTaskType
             projectId = $ProjectId

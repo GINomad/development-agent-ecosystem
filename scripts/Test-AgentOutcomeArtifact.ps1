@@ -122,6 +122,14 @@ if ($ArtifactName -eq 'requirements-analysis.json') {
     if ($AgentId -ne 'requirements_analyst') { throw 'Only Requirements Analyst may publish requirements-analysis.json.' }
     $requirements = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($requirements.PSObject.Properties['practiceVersion'] -and [string]$requirements.practiceVersion -notin @('legacy','spec-practices-1.0.0')) { throw 'Unsupported requirements practiceVersion.' }
+    $practiceTaskPath = Join-Path $TaskRoot 'task.json'
+    if (Test-Path -LiteralPath $practiceTaskPath -PathType Leaf) {
+        $practiceTask = Get-Content -LiteralPath $practiceTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($practiceTask.PSObject.Properties['practiceVersion'] -and
+            (-not $requirements.PSObject.Properties['practiceVersion'] -or [string]$requirements.practiceVersion -cne [string]$practiceTask.practiceVersion)) {
+            throw 'requirements-analysis.json practiceVersion must match the persisted task practiceVersion.'
+        }
+    }
     Assert-RequiredProperties -Document $requirements -Names @('taskId','requirements','verificationScenarios') -Label 'requirements-analysis.json'
     if ([string]$requirements.taskId -ne $TaskId) { throw "requirements-analysis.json must identify task '$TaskId'." }
     $requirementIds = @($requirements.requirements | ForEach-Object { [string]$_.id })

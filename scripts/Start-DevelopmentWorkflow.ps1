@@ -319,6 +319,7 @@ Task ID: $TaskId
 Mode: $Mode
 Task selector: $TaskSelector
 Task state: $($task.TaskRoot)
+Practice policy: Read task.json in the task state directory. Its practiceVersion is authoritative for requirements-analysis.json; use the analyze-requirements templates for spec-practices-1.0.0. On legacy resumes without a task version, preserve the existing analysis version (or legacy if absent). Never upgrade a resumed task implicitly.
 Validated context pack: $(if ($contextPack) { [string]$contextPack.ContextPath } else { 'prepare-only; not written' })
 Ecosystem root: $(Get-EcosystemRoot)
 Trusted ecosystem configuration: $ConfigPath
