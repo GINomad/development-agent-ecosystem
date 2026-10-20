@@ -192,14 +192,25 @@ if ($ArtifactName -eq 'review-result.json') {
     if (Test-Path -LiteralPath $requirementsPath -PathType Leaf) {
         $requirements = Get-Content -LiteralPath $requirementsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($requirements.PSObject.Properties['verificationScenarios']) {
-            $expectedScenarioIds = @($requirements.verificationScenarios | ForEach-Object { [string]$_.id })
-            $scenarioResults = @($review.requirementTraceability | ForEach-Object { if ($_.PSObject.Properties['scenarioResults']) { @($_.scenarioResults) } })
-            $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
-            if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count) { throw 'review-result.json must verify every acceptance scenario exactly once.' }
             $reviewCommit = if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1] } else { [string]$review.reviewedRevision }
-            foreach ($scenarioResult in $scenarioResults) {
-                Assert-RequiredProperties -Document $scenarioResult -Names @('verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)'"
-                if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne $reviewCommit) { throw "Review scenario '$([string]$scenarioResult.scenarioId)' lacks evidence or is not bound to the reviewed commit." }
+            $requirementIds = @($requirements.requirements | ForEach-Object { [string]$_.id })
+            $traceRequirementIds = @($review.requirementTraceability | ForEach-Object { [string]$_.requirementId })
+            if ($traceRequirementIds.Count -ne $requirementIds.Count -or @($traceRequirementIds | Select-Object -Unique).Count -ne $traceRequirementIds.Count -or @($requirementIds | Where-Object { $_ -notin $traceRequirementIds }).Count -or @($traceRequirementIds | Where-Object { $_ -notin $requirementIds }).Count) {
+                throw 'review-result.json must contain exactly one traceability entry for every requirement.'
+            }
+            foreach ($trace in @($review.requirementTraceability)) {
+                $requirementId = [string]$trace.requirementId
+                $requirement = @($requirements.requirements | Where-Object { [string]$_.id -eq $requirementId }) | Select-Object -First 1
+                $expectedScenarioIds = @($requirement.acceptanceScenarioIds | ForEach-Object { [string]$_ })
+                $scenarioResults = if ($trace.PSObject.Properties['scenarioResults']) { @($trace.scenarioResults) } else { @() }
+                $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
+                if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count -or @($actualScenarioIds | Where-Object { $_ -notin $expectedScenarioIds }).Count) {
+                    throw "review-result.json requirement '$requirementId' must verify each linked acceptance scenario exactly once."
+                }
+                foreach ($scenarioResult in $scenarioResults) {
+                    Assert-RequiredProperties -Document $scenarioResult -Names @('verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)' for requirement '$requirementId'"
+                    if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne $reviewCommit) { throw "Review scenario '$([string]$scenarioResult.scenarioId)' for requirement '$requirementId' lacks evidence or is not bound to the reviewed commit." }
+                }
             }
         }
     }

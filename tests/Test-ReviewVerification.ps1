@@ -97,6 +97,7 @@ function New-Review {
                 evidence = 'The gate is represented at this line.'
             })
             testEvidence = @('Targeted review verification test')
+            scenarioResults = @()
             notes = 'Synthetic contract fixture.'
         })
         reviewCoverage = @(New-CoverageMatrix)
@@ -156,6 +157,60 @@ function New-Verification {
         summary = 'Independent verification completed.'
     }
 }
+
+$scenarioTaskId = 'rv-scenario-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+$scenarioTaskRoot = Join-Path $runRoot $scenarioTaskId
+$scenarioReviewPath = Join-Path $scenarioTaskRoot 'review-result.json'
+$scenarioCommit = '1111111111111111111111111111111111111111'
+$scenarioRequirements = [ordered]@{
+    taskId = $scenarioTaskId
+    requirements = @(
+        [ordered]@{ id='REQ-A'; acceptanceScenarioIds=@('SCN-SHARED','SCN-A') },
+        [ordered]@{ id='REQ-B'; acceptanceScenarioIds=@('SCN-SHARED') }
+    )
+    verificationScenarios = @(
+        [ordered]@{ id='SCN-SHARED'; requirementIds=@('REQ-A','REQ-B') },
+        [ordered]@{ id='SCN-A'; requirementIds=@('REQ-A') }
+    )
+}
+$scenarioReview = New-Review -Revision $scenarioCommit -LifecycleStatus resolved
+$scenarioReview.taskId = $scenarioTaskId
+$scenarioReview.findingLifecycle = @()
+$scenarioReview.requirementTraceability = @(
+    [ordered]@{
+        requirementId='REQ-A'; requirementText='Requirement A'; implementationStatus='verified'; codeReferences=@(); testEvidence=@('Synthetic shared-scenario regression fixture.')
+        scenarioResults=@(
+            [ordered]@{ scenarioId='SCN-SHARED'; verdict='verified'; evidence=@('Shared scenario verified for requirement A.'); commit=$scenarioCommit },
+            [ordered]@{ scenarioId='SCN-A'; verdict='verified'; evidence=@('Scenario A verified.'); commit=$scenarioCommit }
+        )
+        notes='Requirement A links the shared and A-only scenarios.'
+    },
+    [ordered]@{
+        requirementId='REQ-B'; requirementText='Requirement B'; implementationStatus='verified'; codeReferences=@(); testEvidence=@('Synthetic shared-scenario regression fixture.')
+        scenarioResults=@(
+            [ordered]@{ scenarioId='SCN-SHARED'; verdict='verified'; evidence=@('Shared scenario independently verified for requirement B.'); commit=$scenarioCommit }
+        )
+        notes='Requirement B links the same shared scenario.'
+    }
+)
+Write-JsonFile -Path (Join-Path $scenarioTaskRoot 'requirements-analysis.json') -Value $scenarioRequirements
+Write-JsonFile -Path $scenarioReviewPath -Value $scenarioReview
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $scenarioTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $scenarioTaskRoot
+
+$missingLinkedScenarioReview = $scenarioReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$missingLinkedScenarioReview.requirementTraceability[1].scenarioResults = @()
+Write-JsonFile -Path $scenarioReviewPath -Value $missingLinkedScenarioReview
+Assert-Throws -Pattern "requirement 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $scenarioTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $scenarioTaskRoot
+}
+
+$duplicateLinkedScenarioReview = $scenarioReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults = @($duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults) + @($duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults[0])
+Write-JsonFile -Path $scenarioReviewPath -Value $duplicateLinkedScenarioReview
+Assert-Throws -Pattern "requirement 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
+    & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $scenarioTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $scenarioTaskRoot
+}
+Write-JsonFile -Path $scenarioReviewPath -Value $scenarioReview
 
 New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
 $testConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -348,6 +403,7 @@ if (@($verificationFive.findingVerifications).Count -ne 0 -or [string]$verificat
     Snapshots = @((Get-Content -LiteralPath $snapshotOne.IndexPath -Raw -Encoding UTF8 | ConvertFrom-Json).snapshots).Count
     Checks = @(
         'review coverage completeness',
+        'per-requirement shared scenario traceability',
         'full cumulative scope required before exact-SHA-bound incremental review',
         'independent scope rejection returns review rework',
         'new/unchanged/resolved/regressed lifecycle',
