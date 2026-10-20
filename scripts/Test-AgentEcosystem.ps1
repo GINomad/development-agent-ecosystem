@@ -1668,6 +1668,43 @@ catch { $branchRejected = $_.Exception.Message -match 'contradictory branch-dive
 if (-not $countRejected -or -not $branchRejected) { throw 'Developer outcome validation accepted contradictory Pester-count or branch-divergence fields.' }
 Add-Check -Name 'developer-outcome-final-command-evidence' -Detail 'Valid final-command evidence passes; contradictory Pester counts and branch divergence are rejected deterministically'
 
+$scenarioCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+$scenarioRequirements = [ordered]@{
+    taskId = $outcomeTaskId
+    requirements = @(
+        [ordered]@{ id='REQ-SCENARIO-1'; acceptanceScenarioIds=@('SCN-SHARED','SCN-ONE') },
+        [ordered]@{ id='REQ-SCENARIO-2'; acceptanceScenarioIds=@('SCN-SHARED','SCN-TWO') }
+    )
+    verificationScenarios = @(
+        [ordered]@{ id='SCN-SHARED' },
+        [ordered]@{ id='SCN-ONE' },
+        [ordered]@{ id='SCN-TWO' }
+    )
+}
+Write-Utf8NoBom -Path (Join-Path $outcomeTask.TaskRoot 'requirements-analysis.json') -Content (($scenarioRequirements | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
+$scenarioReview = New-SyntheticReviewResult -TaskId $outcomeTaskId -ReviewedRevision $scenarioCommit
+$scenarioReview.requirementTraceability = @(
+    [ordered]@{ requirementId='REQ-SCENARIO-1'; requirementText='First synthetic scenario requirement.'; implementationStatus='verified'; codeReferences=@(); testEvidence=@('Synthetic scenario evidence.'); scenarioResults=@(
+        [ordered]@{ scenarioId='SCN-SHARED'; verdict='verified'; evidence=@('Shared evidence.'); commit=$scenarioCommit },
+        [ordered]@{ scenarioId='SCN-ONE'; verdict='verified'; evidence=@('First requirement evidence.'); commit=$scenarioCommit }
+    ); notes='The shared scenario is evaluated in this requirement trace.' },
+    [ordered]@{ requirementId='REQ-SCENARIO-2'; requirementText='Second synthetic scenario requirement.'; implementationStatus='verified'; codeReferences=@(); testEvidence=@('Synthetic scenario evidence.'); scenarioResults=@(
+        [ordered]@{ scenarioId='SCN-SHARED'; verdict='verified'; evidence=@('Shared evidence.'); commit=$scenarioCommit },
+        [ordered]@{ scenarioId='SCN-TWO'; verdict='verified'; evidence=@('Second requirement evidence.'); commit=$scenarioCommit }
+    ); notes='The shared scenario is evaluated in this requirement trace.' }
+)
+$scenarioReviewPath = Join-Path $outcomeTask.TaskRoot 'review-result.json'
+Write-Utf8NoBom -Path $scenarioReviewPath -Content (($scenarioReview | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $outcomeTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $outcomeTask.TaskRoot
+$duplicateScenarioReview = $scenarioReview | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+$duplicateScenarioReview.requirementTraceability[0].scenarioResults += [pscustomobject]@{ scenarioId='SCN-SHARED'; verdict='verified'; evidence=@('Duplicate synthetic evidence.'); commit=$scenarioCommit }
+Write-Utf8NoBom -Path $scenarioReviewPath -Content (($duplicateScenarioReview | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$duplicateScenarioRejected = $false
+try { & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $outcomeTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $outcomeTask.TaskRoot }
+catch { $duplicateScenarioRejected = $_.Exception.Message -match 'Requirement trace .+ exactly once' }
+if (-not $duplicateScenarioRejected) { throw 'Reviewer outcome validation accepted a duplicate scenario within one requirement trace.' }
+Add-Check -Name 'review-scenario-trace-scoping' -Detail 'A shared acceptance scenario passes once per linked requirement trace; duplicate or missing entries in a trace are rejected'
+
 $fingerprintRoot = Join-Path $OutputRoot ('resume-fingerprint-' + [guid]::NewGuid().ToString('N'))
 $fingerprintConfigPath = Join-Path $fingerprintRoot 'agents.json'
 $fingerprintConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json

@@ -3,11 +3,12 @@
   "title": "Requirements analysis",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "analyzedAtUtc", "requirements", "conflicts", "questions", "plan", "summary", "humanReadable"],
+  "required": ["taskId", "analyzedAtUtc", "requirements", "verificationScenarios", "conflicts", "questions", "plan", "summary", "humanReadable"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "analyzedAtUtc": { "type": "string", "format": "date-time" },
     "requirements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/requirement" } },
+    "verificationScenarios": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/verificationScenario" } },
     "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" } },
     "questions": { "type": "array", "items": { "$ref": "#/$defs/question" } },
     "plan": { "type": "array", "items": { "$ref": "#/$defs/step" } },
@@ -18,14 +19,29 @@
     "requirement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "text", "status", "evidence", "codeAlignment"],
+      "required": ["id", "text", "status", "evidence", "codeAlignment", "acceptanceScenarioIds"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "text": { "type": "string", "minLength": 1 },
         "status": { "enum": ["ready", "held", "rejected", "already-satisfied"] },
         "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
         "codeAlignment": { "enum": ["aligned", "missing", "conflicting", "unknown"] },
+        "acceptanceScenarioIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^SCN-[A-Za-z0-9._-]+$" } },
         "blockingQuestionIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "verificationScenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requirementIds", "acceptanceCriterion", "preconditions", "steps", "expectedOutcome", "evidenceRequired"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^SCN-[A-Za-z0-9._-]+$" },
+        "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "acceptanceCriterion": { "type": "string", "minLength": 1 },
+        "preconditions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "expectedOutcome": { "type": "string", "minLength": 1 },
+        "evidenceRequired": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
       }
     },
     "conflict": {
