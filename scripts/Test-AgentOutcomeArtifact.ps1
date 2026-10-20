@@ -192,6 +192,7 @@ if ($ArtifactName -eq 'review-result.json') {
     if (Test-Path -LiteralPath $requirementsPath -PathType Leaf) {
         $requirements = Get-Content -LiteralPath $requirementsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($requirements.PSObject.Properties['verificationScenarios']) {
+            $scenarioIds = @($requirements.verificationScenarios | ForEach-Object { [string]$_.id })
             $reviewCommit = if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1] } else { [string]$review.reviewedRevision }
             $requirementIds = @($requirements.requirements | ForEach-Object { [string]$_.id })
             $traceRequirementIds = @($review.requirementTraceability | ForEach-Object { [string]$_.requirementId })
@@ -202,13 +203,14 @@ if ($ArtifactName -eq 'review-result.json') {
                 $requirementId = [string]$trace.requirementId
                 $requirement = @($requirements.requirements | Where-Object { [string]$_.id -eq $requirementId }) | Select-Object -First 1
                 $expectedScenarioIds = @($requirement.acceptanceScenarioIds | ForEach-Object { [string]$_ })
+                if (@($expectedScenarioIds | Where-Object { $_ -notin $scenarioIds }).Count) { throw "Requirement '$requirementId' links an unknown acceptance scenario." }
                 $scenarioResults = if ($trace.PSObject.Properties['scenarioResults']) { @($trace.scenarioResults) } else { @() }
                 $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
                 if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count -or @($actualScenarioIds | Where-Object { $_ -notin $expectedScenarioIds }).Count) {
-                    throw "review-result.json requirement '$requirementId' must verify each linked acceptance scenario exactly once."
+                    throw "Requirement trace '$requirementId' must verify each linked acceptance scenario exactly once."
                 }
                 foreach ($scenarioResult in $scenarioResults) {
-                    Assert-RequiredProperties -Document $scenarioResult -Names @('verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)' for requirement '$requirementId'"
+                    Assert-RequiredProperties -Document $scenarioResult -Names @('scenarioId','verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)' for requirement '$requirementId'"
                     if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne $reviewCommit) { throw "Review scenario '$([string]$scenarioResult.scenarioId)' for requirement '$requirementId' lacks evidence or is not bound to the reviewed commit." }
                 }
             }
@@ -231,31 +233,6 @@ if ($ArtifactName -eq 'review-result.json') {
     $reviewedScopeCommit = $null
     if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $reviewedScopeCommit = $Matches[1].ToLowerInvariant() }
     if ($repositoryScopes.Count -eq 1 -and $reviewedScopeCommit -and [string]$repositoryScopes[0].targetRevision -match '^[0-9a-fA-F]{40,64}$' -and $reviewedScopeCommit -ne ([string]$repositoryScopes[0].targetRevision).ToLowerInvariant()) { throw 'reviewScope target revision must match the exact reviewed revision.' }
-
-    $requirementsPath = Join-Path $TaskRoot 'requirements-analysis.json'
-    if (Test-Path -LiteralPath $requirementsPath -PathType Leaf) {
-        $requirements = Get-Content -LiteralPath $requirementsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($requirements.PSObject.Properties['verificationScenarios']) {
-            $scenarioIds = @($requirements.verificationScenarios | ForEach-Object { [string]$_.id })
-            $requirementsById = @{}
-            foreach ($requirement in @($requirements.requirements)) { $requirementsById[[string]$requirement.id] = $requirement }
-            $reviewCommit = if ([string]$review.reviewedRevision -match '^(?:git:)?([0-9a-fA-F]{40,64})(?:;|$)') { $Matches[1] } else { [string]$review.reviewedRevision }
-
-            foreach ($trace in @($review.requirementTraceability)) {
-                $requirementId = [string]$trace.requirementId
-                if (-not $requirementsById.ContainsKey($requirementId)) { throw "review-result.json trace references unknown requirement '$requirementId'." }
-                $expectedScenarioIds = @($requirementsById[$requirementId].acceptanceScenarioIds | ForEach-Object { [string]$_ })
-                if (@($expectedScenarioIds | Where-Object { $_ -notin $scenarioIds }).Count) { throw "Requirement '$requirementId' links an unknown acceptance scenario." }
-                $scenarioResults = if ($trace.PSObject.Properties['scenarioResults']) { @($trace.scenarioResults) } else { @() }
-                $actualScenarioIds = @($scenarioResults | ForEach-Object { [string]$_.scenarioId })
-                if ($actualScenarioIds.Count -ne $expectedScenarioIds.Count -or @($actualScenarioIds | Select-Object -Unique).Count -ne $actualScenarioIds.Count -or @($expectedScenarioIds | Where-Object { $_ -notin $actualScenarioIds }).Count) { throw "Requirement trace '$requirementId' must verify each linked acceptance scenario exactly once." }
-                foreach ($scenarioResult in $scenarioResults) {
-                    Assert-RequiredProperties -Document $scenarioResult -Names @('scenarioId','verdict','evidence','commit') -Label "review scenario '$([string]$scenarioResult.scenarioId)'"
-                    if (-not (Test-NonEmptyStringArray -Value $scenarioResult.evidence) -or [string]$scenarioResult.commit -ne $reviewCommit) { throw "Review scenario '$([string]$scenarioResult.scenarioId)' lacks evidence or is not bound to the reviewed commit." }
-                }
-            }
-        }
-    }
 
     $coverage = @($review.reviewCoverage | Where-Object { $null -ne $_ })
     $coverageDimensions = @($coverage | ForEach-Object { [string]$_.dimension })

@@ -200,14 +200,14 @@ Write-JsonFile -Path $scenarioReviewPath -Value $scenarioReview
 $missingLinkedScenarioReview = $scenarioReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $missingLinkedScenarioReview.requirementTraceability[1].scenarioResults = @()
 Write-JsonFile -Path $scenarioReviewPath -Value $missingLinkedScenarioReview
-Assert-Throws -Pattern "requirement 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
+Assert-Throws -Pattern "Requirement trace 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
     & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $scenarioTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $scenarioTaskRoot
 }
 
 $duplicateLinkedScenarioReview = $scenarioReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults = @($duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults) + @($duplicateLinkedScenarioReview.requirementTraceability[1].scenarioResults[0])
 Write-JsonFile -Path $scenarioReviewPath -Value $duplicateLinkedScenarioReview
-Assert-Throws -Pattern "requirement 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
+Assert-Throws -Pattern "Requirement trace 'REQ-B' must verify each linked acceptance scenario exactly once" -Action {
     & (Join-Path $root 'scripts\Test-AgentOutcomeArtifact.ps1') -TaskId $scenarioTaskId -AgentId reviewer -ArtifactName 'review-result.json' -Path $scenarioReviewPath -TaskRoot $scenarioTaskRoot
 }
 Write-JsonFile -Path $scenarioReviewPath -Value $scenarioReview
