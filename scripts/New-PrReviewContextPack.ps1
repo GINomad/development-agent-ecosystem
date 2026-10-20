@@ -77,7 +77,7 @@ $context = [ordered]@{
         content = $contextContent
     })
 }
-$serialized = $context | ConvertTo-Json -Depth 12
+$serialized = (($context | ConvertTo-Json -Depth 12) | ConvertFrom-Json) | ConvertTo-Json -Depth 12
 $context.pullRequests[0].digest = ([BitConverter]::ToString(([Security.Cryptography.SHA256]::Create()).ComputeHash([Text.Encoding]::UTF8.GetBytes($serialized)))).Replace('-', '').ToLowerInvariant()
 if (-not $OutputPath) {
     $outputRoot = Join-Path $stateRoot 'review-context-packs'
