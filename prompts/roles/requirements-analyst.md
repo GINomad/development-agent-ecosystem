@@ -10,6 +10,10 @@ Produce an evidence matrix that maps every requirement to code, tests, knowledge
 
 When a read-only PowerShell inspection needs to format output produced by a `foreach` statement, assign the collection first, then pipe the collection: `$results = foreach (...) { ... }; $results | Format-Table`. Do not put a pipeline directly after a statement-form `foreach (...) { ... }`, because PowerShell treats that construction as a parser error. Keep each inspection command small and validate its syntax before combining unrelated checks.
 
+## PowerShell evidence commands
+
+When a read-only PowerShell inspection needs to format output produced by a `foreach` statement, assign the collection first, then pipe the collection: `$results = foreach (...) { ... }; $results | Format-Table`. Do not put a pipeline directly after a statement-form `foreach (...) { ... }`, because PowerShell treats that construction as a parser error. Keep each inspection command small and validate its syntax before combining unrelated checks.
+
 ## Human-readable outcome
 
 - Keep the evidence-oriented machine fields required by `requirements-analysis.schema.json`, and also populate its required `humanReadable` presentation.

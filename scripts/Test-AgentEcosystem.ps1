@@ -123,6 +123,7 @@ $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-Agen
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 $reviewVerificationTestScript = Get-Content -LiteralPath (Join-Path $root 'tests\Test-ReviewVerification.ps1') -Raw -Encoding UTF8
 $developerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\developer.md') -Raw -Encoding UTF8
+$reviewVerifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
 if (($codexSelected -and -not (Resolve-CodexCliPath)) -or $healthCliScript -notmatch 'Resolve-CodexCliPath' -or $healthCheckCliScript -notmatch 'Resolve-CodexCliPath') { throw 'Codex-assigned roles require an available CLI, and Codex health hosts must share the PATH-independent resolver.' }
 if ($workflowCliScript -notmatch '\$mcpCodexCliPath\s*=\s*\[string\]\$providerRoute\.command') { throw 'Workflow MCP setup must reuse the validated provider-route executable instead of resolving the Codex CLI again in runner scope.' }
 if ($workflowCliScript -notmatch '\$codexCliPath\s*=\s*\[string\]\$providerRoute\.command') { throw 'Workflow Codex execution must reuse the validated provider-route executable instead of resolving the Codex CLI again in runner scope.' }
@@ -136,6 +137,7 @@ if ($reviewVerificationTestScript -match 'Get-FileHash' -or $reviewVerificationT
 if ($workflowCliScript -notmatch 'Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId') { throw 'Agent prompts must reserve controller identity fields for the trusted workflow host.' }
 if ($workflowCliScript -notmatch 'Trusted ecosystem configuration: \$ConfigPath' -or $workflowCliScript -notmatch 'Do not infer, inspect, or substitute a configuration file from the task-state directory or another workspace') { throw 'Agent prompts must provide and require reuse of the trusted ecosystem configuration path.' }
 if ($developerPrompt -notmatch 'trusted host has already validated the context pack' -or $developerPrompt -notmatch 'instead of recreating hash validation with a nested PowerShell command') { throw 'Developer instructions must consume host-validated context fingerprints without recreating nested PowerShell hash validation.' }
+if ($reviewVerifierPrompt -notmatch 'Get-ReviewVerificationInput\.ps1' -or $reviewVerifierPrompt -notmatch 'Do not place `foreach`, `ForEach-Object`, `if`' -or $reviewVerifierPrompt -notmatch 'first assign its result to a variable') { throw 'Review Verifier instructions must use the canonical typed lifecycle inspection and forbid control-block pipeline construction.' }
 Add-Check -Name 'scheduled-host-codex-cli' -Detail $(if($codexSelected){'Codex is selected and available; Workflow, Health Check, and recovery hosts resolve it consistently'}else{'No role is assigned to Codex; source contracts remain validated without requiring the Codex CLI'})
 
 $heartbeatClosure = & {

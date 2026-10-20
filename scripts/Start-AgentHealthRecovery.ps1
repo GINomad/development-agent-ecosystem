@@ -323,6 +323,7 @@ $arguments = @(
     '--model', [string]$healthAgentDefinition.model,
     '--config', ('model_reasoning_effort="{0}"' -f [string]$healthAgentDefinition.reasoningEffort),
     'exec',
+    '--ignore-user-config',
     '-C', $workspace,
     '-s', $recoverySandboxMode,
     '--json',
