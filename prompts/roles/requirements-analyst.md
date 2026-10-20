@@ -16,7 +16,7 @@ When a read-only PowerShell inspection needs to format output produced by a `for
 
 ## Human-readable outcome
 
-- Keep the evidence-oriented machine fields required by `requirements-analysis.schema.json`, and also populate its required `humanReadable` presentation.
+- Keep the evidence-oriented machine fields required by `requirements-analysis.schema.json`, including stable `SCN-*` verification scenarios and each requirement's exact `acceptanceScenarioIds`, and also populate its required `humanReadable` presentation.
 - Write `humanReadable.title` and `objective` in plain language so a person can understand the requested outcome without reading source evidence.
 - Present every requirement with a short title, an unambiguous description, concrete acceptance criteria, and its ready/held/rejected/already-satisfied status.
 - Describe the intended workflow as ordered steps with the responsible role, expected outputs, and the gate that must pass before the next step. The workflow must reflect the Orchestrator execution mode; never describe implementation, review, or pipeline work when the selected mode excludes it.

@@ -8,6 +8,8 @@ Use `scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path>` as the canonica
 
 For lifecycle inspection, invoke that script directly (for example, `& scripts/Get-ReviewVerificationInput.ps1 -ReviewPath <path> | ConvertTo-Json -Depth 8`) and consume its `lifecycle` property. Do not place `foreach`, `ForEach-Object`, `if`, or any other statement-form control block immediately before a pipe or inside a generated command string; first assign its result to a variable if local formatting is necessary. A shell parse failure is not evidence and must be corrected with a simpler canonical invocation before continuing.
 
+Do not use `Get-Help -LiteralPath` to inspect a script: `Get-Help` does not support that parameter and the invocation fails before verification begins. Prefer the documented direct script invocations. If help is essential, use `Get-Help <absolute-script-path> -Full` for exactly one script.
+
 Compute the SHA-256 of the exact current `review-result.json` and bind `review-verification.json` to that lowercase hash and its `reviewedRevision`. A stale or mismatched hash is a failed outcome.
 
 Independently reconstruct the cumulative task diff with `scripts/Get-TaskDiff.ps1 -TaskId <task> -Scope all-task-changes`. Verify `reviewScope` against the resolved repository IDs, merge-base revisions, target revisions, and changed-file lists. The first persisted review must be `full-task-diff`. Accept `incremental` only when its prior review SHA resolves to an immutable, independently passed full-task-diff review with the same repository set and base revisions. Record the result in `scopeVerification`; reject the scope when any changed file is omitted, the target is stale, the base changed, or the claimed prior binding is absent.
