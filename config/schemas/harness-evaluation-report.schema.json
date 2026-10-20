@@ -1,80 +1,596 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Repeatable harness evaluation report",
+  "title": "Measured practice evaluation v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAtUtc", "projectId", "comparisonPolicy", "summary", "tasks", "cohorts"],
+  "required": [
+    "collectorSha256",
+    "schemaVersion",
+    "generatedAtUtc",
+    "projectId",
+    "practiceVersion",
+    "cohortLabel",
+    "skippedTaskDirectories",
+    "comparisonPolicy",
+    "summary",
+    "tasks",
+    "cohorts"
+  ],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
-    "generatedAtUtc": { "type": "string", "format": "date-time" },
-    "projectId": { "type": ["string", "null"] },
+    "collectorSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "schemaVersion": {
+      "const": "2.0"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "projectId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "practiceVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cohortLabel": {
+      "type": "string"
+    },
+    "skippedTaskDirectories": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "comparisonPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["modelSignature", "budgetSignature", "minimumCohortSize"],
+      "required": [
+        "modelSignature",
+        "budgetSignature",
+        "minimumCohortSize"
+      ],
       "properties": {
-        "modelSignature": { "const": "exact provider/model/reasoning per role" },
-        "budgetSignature": { "const": "configured context limits" },
-        "minimumCohortSize": { "type": "integer", "minimum": 2 }
+        "modelSignature": {
+          "const": "exact provider/model/reasoning per role"
+        },
+        "budgetSignature": {
+          "const": "configured context limits"
+        },
+        "minimumCohortSize": {
+          "type": "integer",
+          "minimum": 2
+        }
       }
     },
-    "summary": { "$ref": "#/$defs/metrics" },
-    "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
-    "cohorts": { "type": "array", "items": { "$ref": "#/$defs/cohort" } }
+    "summary": {
+      "$ref": "#/$defs/metrics"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "cohorts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cohort"
+      }
+    }
   },
   "$defs": {
     "metrics": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskCount", "evaluableTaskCount", "criteriaTotal", "criteriaVerified", "criteriaCompletionRate", "falseCompletionCount", "humanInterventionCount", "failureCount", "recoveryCount", "totalDurationMs", "averageDurationMs", "totalTokens", "unavailableUsageRecordCount"],
+      "required": [
+        "taskCount",
+        "evaluableTaskCount",
+        "criteriaTotal",
+        "criteriaVerified",
+        "falseCompletionCount",
+        "humanInterventionCount",
+        "clarificationCount",
+        "failureCount",
+        "recoveryCount",
+        "totalDurationMs",
+        "totalTokens",
+        "unavailableUsageRecordCount",
+        "requirementCount",
+        "linkedRequirementCount",
+        "reviewReworkCount",
+        "roleAttemptCount",
+        "artifactBytes",
+        "contextBytes",
+        "criteriaCompletionRate",
+        "requirementLinkRate",
+        "averageDurationMs",
+        "observedTaskCounts"
+      ],
       "properties": {
-        "taskCount": { "type": "integer", "minimum": 0 },
-        "evaluableTaskCount": { "type": "integer", "minimum": 0 },
-        "criteriaTotal": { "type": "integer", "minimum": 0 },
-        "criteriaVerified": { "type": "integer", "minimum": 0 },
-        "criteriaCompletionRate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-        "falseCompletionCount": { "type": "integer", "minimum": 0 },
-        "humanInterventionCount": { "type": "integer", "minimum": 0 },
-        "failureCount": { "type": "integer", "minimum": 0 },
-        "recoveryCount": { "type": "integer", "minimum": 0 },
-        "totalDurationMs": { "type": "integer", "minimum": 0 },
-        "averageDurationMs": { "type": ["integer", "null"], "minimum": 0 },
-        "totalTokens": { "type": "integer", "minimum": 0 },
-        "unavailableUsageRecordCount": { "type": "integer", "minimum": 0 }
+        "taskCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evaluableTaskCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "criteriaTotal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "criteriaVerified": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "falseCompletionCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "humanInterventionCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "clarificationCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "failureCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "recoveryCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalDurationMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unavailableUsageRecordCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "requirementCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "linkedRequirementCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reviewReworkCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "roleAttemptCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "artifactBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "contextBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "criteriaCompletionRate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requirementLinkRate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "averageDurationMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "observedTaskCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "criteriaTotal",
+            "criteriaVerified",
+            "falseCompletionCount",
+            "humanInterventionCount",
+            "clarificationCount",
+            "failureCount",
+            "recoveryCount",
+            "totalDurationMs",
+            "totalTokens",
+            "unavailableUsageRecordCount",
+            "requirementCount",
+            "linkedRequirementCount",
+            "reviewReworkCount",
+            "roleAttemptCount",
+            "artifactBytes",
+            "contextBytes"
+          ],
+          "properties": {
+            "criteriaTotal": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "criteriaVerified": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "falseCompletionCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "humanInterventionCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "clarificationCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failureCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recoveryCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalDurationMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalTokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unavailableUsageRecordCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "requirementCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "linkedRequirementCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reviewReworkCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "roleAttemptCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "artifactBytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "contextBytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
       }
     },
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskId", "projectId", "status", "evaluationStatus", "criteriaTotal", "criteriaVerified", "falseCompletion", "humanInterventions", "failures", "recoveries", "durationMs", "totalTokens", "unavailableUsageRecords", "modelSignature", "budgetSignature", "evidence"],
+      "required": [
+        "practiceVersion",
+        "taskId",
+        "projectId",
+        "status",
+        "executionMode",
+        "taskType",
+        "modelSignature",
+        "budgetSignature",
+        "repositoryIds",
+        "evaluationStatus",
+        "criteriaTotal",
+        "criteriaVerified",
+        "requirementCount",
+        "linkedRequirementCount",
+        "humanInterventions",
+        "clarifications",
+        "failures",
+        "recoveries",
+        "reviewReworkCount",
+        "roleAttemptCount",
+        "durationMs",
+        "totalTokens",
+        "unavailableUsageRecords",
+        "artifactBytes",
+        "contextBytes",
+        "falseCompletion",
+        "stageDurations",
+        "evidence",
+        "sourceSha256"
+      ],
       "properties": {
-        "taskId": { "type": "string", "minLength": 1 },
-        "projectId": { "type": "string" },
-        "status": { "type": "string" },
-        "evaluationStatus": { "enum": ["evaluable", "contract-metadata-missing"] },
-        "criteriaTotal": { "type": "integer", "minimum": 0 },
-        "criteriaVerified": { "type": "integer", "minimum": 0 },
-        "falseCompletion": { "type": "boolean" },
-        "humanInterventions": { "type": "integer", "minimum": 0 },
-        "failures": { "type": "integer", "minimum": 0 },
-        "recoveries": { "type": "integer", "minimum": 0 },
-        "durationMs": { "type": "integer", "minimum": 0 },
-        "totalTokens": { "type": "integer", "minimum": 0 },
-        "unavailableUsageRecords": { "type": "integer", "minimum": 0 },
-        "modelSignature": { "type": "string" },
-        "budgetSignature": { "type": "string", "minLength": 1 },
-        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        "practiceVersion": { "type": "string" },
+        "taskId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "executionMode": {
+          "type": "string"
+        },
+        "taskType": {
+          "type": "string"
+        },
+        "modelSignature": {
+          "type": "string"
+        },
+        "budgetSignature": {
+          "type": "string"
+        },
+        "repositoryIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evaluationStatus": {
+          "enum": [
+            "evaluable",
+            "contract-metadata-missing"
+          ]
+        },
+        "criteriaTotal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "criteriaVerified": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "requirementCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "linkedRequirementCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "humanInterventions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "clarifications": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "failures": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "recoveries": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reviewReworkCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "roleAttemptCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unavailableUsageRecords": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "artifactBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "contextBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "falseCompletion": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "stageDurations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "agentId",
+              "attempts",
+              "durationMs"
+            ],
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "attempts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "durationMs": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sourceSha256": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
       }
     },
     "cohort": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "comparable", "taskIds", "metrics"],
+      "required": [
+        "key",
+        "comparable",
+        "taskIds",
+        "metrics"
+      ],
       "properties": {
-        "key": { "type": "string", "minLength": 1 },
-        "comparable": { "type": "boolean" },
-        "taskIds": { "type": "array", "items": { "type": "string" } },
-        "metrics": { "$ref": "#/$defs/metrics" }
+        "key": {
+          "type": "string"
+        },
+        "comparable": {
+          "type": "boolean"
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
       }
     }
   }

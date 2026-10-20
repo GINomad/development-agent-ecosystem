@@ -2522,6 +2522,7 @@ Add-Check -Name 'repository-knowledge-map' -Detail 'Revision-bound structural gr
 Add-Check -Name 'dashboard-insights' -Detail 'Dashboard aggregates task errors, role attempts, model/agent token usage, and task-bound Knowledge Keeper outcomes'
 
 & (Join-Path $root 'tests\Test-HarnessEngineering.ps1') -OutputRoot (Join-Path $OutputRoot 'harness-engineering') | Out-Null
+& (Join-Path $root 'tests\Test-SpecificationPractices.ps1') -OutputRoot (Join-Path $OutputRoot 'specification-practices') | Out-Null
 Add-Check -Name 'harness-engineering-evaluation' -Detail 'Acceptance scenarios bind requirements to commit evidence; comparable cohorts expose completion, false completion, intervention, recovery, duration and token metrics; knowledge freshness is source- and owner-bound'
 
 [pscustomobject]@{

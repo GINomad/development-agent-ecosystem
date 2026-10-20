@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "id": "specification-practices",
+  "version": "1.0.0",
+  "distribution": "native-ecosystem-plugin",
+  "role": "requirements_analyst",
+  "executionModeForAssessment": "research-only",
+  "upstream": {
+    "repository": "https://github.com/github/spec-kit",
+    "release": "v1.2.2",
+    "license": "MIT",
+    "relationship": "Original ecosystem adaptations; no upstream payload vendored."
+  },
+  "assets": [
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/SKILL.md",
+      "sha256": "be303c2f546bf8d24ff7966a493e8b825301ac2212537898b29ee83a868d67ba"
+    },
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/agents/openai.yaml",
+      "sha256": "6ab3301a9819a7b28929d065769055a437ad52591c464c1166553cc2476b750d"
+    },
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/assets/plan.md",
+      "sha256": "59c648c0297da91ce87941ddb543afffb8087e4115eb4df94587ec77a00dc35a"
+    },
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/assets/specification.md",
+      "sha256": "a818505e7e5bd4b30620ae8c0689cd8f1b9c5a56afa98fb6ceb759fbba905fa9"
+    },
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/assets/tasks.md",
+      "sha256": "83c2a62bf105149d35da74c4761cfda788c179b351c2df110414d786507b8569"
+    },
+    {
+      "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/references/idea-assessment.md",
+      "sha256": "8f191296ae6bcb4f0ff2b6f2ef761c402b46f28b88157f4870e056804f77315d"
+    }
+  ]
+}

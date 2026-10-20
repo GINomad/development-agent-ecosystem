@@ -1,6 +1,6 @@
 # Install the agents without the dashboard
 
-The standalone profile installs eight development agents and five portable engineering skills without the dashboard, scheduler, task ledger, or automatic continuation. It is suitable when the agents will be selected directly in a provider chat.
+The standalone profile installs eight development agents, five portable engineering skills and the Requirements Analyst specification/idea-assessment guides without the dashboard, scheduler, task ledger, or automatic continuation. It is suitable when the agents will be selected directly in a provider chat. Assessments return inline in standalone mode; a go verdict does not authorize implementation. See [measured specification practices](docs/spec-kit-practices.md) for the native practice bundle and pilot.
 
 ## File-based installation
 

@@ -1,6 +1,6 @@
 {
   "name": "development-agent-ecosystem",
-  "version": "0.1.0+codex.20260901162508",
+  "version": "0.1.0+codex.20261021010000",
   "description": "Evidence-first multi-agent workflow for requirements, knowledge, implementation, independent review verification, and Azure pipelines.",
   "author": {
     "name": "PlanningSpace Engineering"

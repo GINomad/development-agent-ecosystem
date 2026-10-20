@@ -1,0 +1,20 @@
+{
+  "kind": "ecosystem_recovery",
+  "objective": "Measure and adopt selected specification practices inside the existing ecosystem",
+  "baselineSourceRevision": "ebf2469b9b8bd18602197f1e52c814d783e121b9",
+  "requirements": [
+    { "id": "REQ-METRICS", "status": "ready", "scenario": "SCN-METRICS", "acceptance": "Missing data stays null, evidence and final commits are bound, providers and budgets split cohorts, snapshots precede process changes." },
+    { "id": "REQ-TEMPLATES", "status": "ready", "scenario": "SCN-TEMPLATES", "acceptance": "Specification, plan and task slices preserve existing requirements-analysis and implementation-plan contracts, stable SCN IDs and held scope." },
+    { "id": "REQ-ASSESS", "status": "ready", "scenario": "SCN-ASSESS", "acceptance": "Research-only idea assessment publishes evidence against, alternatives, evidence quality and a constrained decision without implementation or automatic delivery." },
+    { "id": "REQ-PACKAGE", "status": "ready", "scenario": "SCN-PACKAGE", "acceptance": "A versioned native plugin practice manifest pins its local skill assets and upstream provenance without adding a runtime." },
+    { "id": "REQ-PILOT", "status": "held", "scenario": "SCN-PILOT", "acceptance": "Observe 3-5 comparable completed tasks per arm before claiming benefit; real product tasks must come from normal intake." }
+  ],
+  "engineeringChecks": {
+    "dependencyInjection": "Not applicable: PowerShell artifact readers and Markdown templates; no service resolution changes.",
+    "dataAccess": "Not applicable: existing task JSON/JSONL only, no database operations.",
+    "typeLayout": "Not applicable: no declared classes, interfaces or enums are introduced.",
+    "disposableOwnership": "ReadLines enumerators and repository writer helpers own file resources; no returned streams or MemoryStream."
+  },
+  "verification": ["tests/Test-HarnessEngineering.ps1", "tests/Test-SpecificationPractices.ps1", "scripts/Test-AgentEcosystem.ps1"],
+  "delivery": "User explicitly requested commit and push to main on 2026-10-21. Preserve both existing local commits."
+}

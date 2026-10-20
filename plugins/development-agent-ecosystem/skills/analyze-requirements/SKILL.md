@@ -1,9 +1,11 @@
 ---
 name: analyze-requirements
-description: Analyze assigned development tasks and comments against code, tests, and selected knowledge; identify evidence-backed conflicts, questions, ready scope, held scope, and implementation plans. Use before implementing a task or when requirements change or remain ambiguous.
+description: Analyze development requirements and assess whether an idea merits investment using code, tests and evidence. Use for idea assessment, specification and implementation-ready planning.
 ---
 
 # Analyze Requirements
+
+Record practiceVersion in requirements-analysis.json: legacy for ordinary intake, spec-practices-1.0.0 only when the task explicitly enrolls in that pilot. For an enrolled feature, use [specification](assets/specification.md), [plan](assets/plan.md) and [task slices](assets/tasks.md) as drafting guides. Keep the existing JSON contracts authoritative; Markdown is a presentation, not a second completion database. For an explicit idea/investment assessment, read [idea assessment](references/idea-assessment.md) instead and record spec-practices-1.0.0. Small fixes do not need the full set of documents. Do not relabel historical tasks to fill a pilot cohort.
 
 1. Read the complete task description and available comments in chronological order.
 2. Read the knowledge keeper's context pack and verify each cited source and revision.

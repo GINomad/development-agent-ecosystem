@@ -1,0 +1,3 @@
+# Byte-pinned practice assets and collector must survive Windows checkouts unchanged.
+/plugins/development-agent-ecosystem/skills/analyze-requirements/** text eol=lf
+/scripts/New-HarnessEvaluationReport.ps1 text eol=lf

@@ -121,6 +121,7 @@ function Get-EligibleKnowledgeEntries {
 if ($ArtifactName -eq 'requirements-analysis.json') {
     if ($AgentId -ne 'requirements_analyst') { throw 'Only Requirements Analyst may publish requirements-analysis.json.' }
     $requirements = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($requirements.PSObject.Properties['practiceVersion'] -and [string]$requirements.practiceVersion -notin @('legacy','spec-practices-1.0.0')) { throw 'Unsupported requirements practiceVersion.' }
     Assert-RequiredProperties -Document $requirements -Names @('taskId','requirements','verificationScenarios') -Label 'requirements-analysis.json'
     if ([string]$requirements.taskId -ne $TaskId) { throw "requirements-analysis.json must identify task '$TaskId'." }
     $requirementIds = @($requirements.requirements | ForEach-Object { [string]$_.id })
@@ -134,6 +135,34 @@ if ($ArtifactName -eq 'requirements-analysis.json') {
         Assert-RequiredProperties -Document $requirement -Names @('acceptanceScenarioIds') -Label "requirement '$([string]$requirement.id)'"
         $linked = @($requirement.acceptanceScenarioIds)
         if (-not $linked.Count -or @($linked | Where-Object { [string]$_ -notin $scenarioIds }).Count) { throw "Requirement '$([string]$requirement.id)' does not link only to known verification scenarios." }
+    }
+    if ($requirements.PSObject.Properties['ideaAssessment']) {
+        $assessment = $requirements.ideaAssessment
+        Assert-RequiredProperties -Document $assessment -Names @('problem','successCriteria','evidence','evidenceAgainst','alternatives','evidenceQuality','verdict','rationale','handoff') -Label 'ideaAssessment'
+        foreach ($field in @('problem','rationale','handoff')) {
+            if ([string]::IsNullOrWhiteSpace([string]$assessment.$field)) { throw "ideaAssessment requires $field." }
+        }
+        if (-not (Test-NonEmptyStringArray -Value $assessment.successCriteria) -or -not (Test-NonEmptyStringArray -Value $assessment.evidenceAgainst) -or @($assessment.alternatives).Count -lt 2 -or -not @($assessment.evidence).Count) { throw 'ideaAssessment requires success criteria, evidence against and at least two alternatives.' }
+        if ([string]$assessment.verdict -notin @('go','needs-clarification','kill') -or [string]$assessment.evidenceQuality -notin @('adequate','weak','unknown')) { throw 'Invalid ideaAssessment verdict or evidence quality.' }
+        foreach ($item in @($assessment.evidence)) {
+            Assert-RequiredProperties -Document $item -Names @('source','observation','confidence') -Label 'ideaAssessment evidence'
+            if ([string]::IsNullOrWhiteSpace([string]$item.source) -or [string]::IsNullOrWhiteSpace([string]$item.observation) -or [string]$item.confidence -notin @('observed','inference','assumption')) { throw 'Invalid ideaAssessment evidence.' }
+        }
+        foreach ($item in @($assessment.alternatives)) {
+            Assert-RequiredProperties -Document $item -Names @('option','tradeoff','appetite') -Label 'ideaAssessment alternative'
+            foreach ($field in @('option','tradeoff','appetite')) { if ([string]::IsNullOrWhiteSpace([string]$item.$field)) { throw "ideaAssessment alternative requires $field." } }
+        }
+        $routePath = Join-Path $TaskRoot 'workflow-routing.jsonl'
+        if (-not (Test-Path -LiteralPath $routePath -PathType Leaf)) { throw 'ideaAssessment requires persisted research-only routing.' }
+        $routes = @(Get-Content -LiteralPath $routePath -Encoding UTF8 | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+        if (-not $routes.Count -or -not $routes[-1].PSObject.Properties['executionMode'] -or [string]$routes[-1].executionMode -ne 'research-only') { throw 'ideaAssessment requires persisted research-only routing.' }
+        Assert-RequiredProperties -Document $requirements -Names @('plan','humanReadable','questions') -Label 'ideaAssessment requirements'
+        Assert-RequiredProperties -Document $requirements.humanReadable -Names @('implementationPlan') -Label 'ideaAssessment presentation'
+        if (@($requirements.plan).Count -or @($requirements.humanReadable.implementationPlan).Count) { throw 'Research-only ideaAssessment cannot contain an implementation plan.' }
+        if ([string]$assessment.verdict -eq 'go' -and ([string]$assessment.evidenceQuality -ne 'adequate' -or
+            -not @($assessment.evidence | Where-Object { [string]$_.confidence -eq 'observed' }).Count -or
+            @($requirements.requirements | Where-Object { [string]$_.status -eq 'held' }).Count -or
+            @($requirements.questions | Where-Object { [string]$_.status -eq 'open' }).Count)) { throw 'A go verdict requires adequate observed evidence and no unresolved scope.' }
     }
     return
 }

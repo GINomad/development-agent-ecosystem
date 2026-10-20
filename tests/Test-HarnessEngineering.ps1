@@ -11,13 +11,17 @@ function Write-Json([string]$Path,$Value){$parent=Split-Path -Parent $Path;if($p
 function Write-Lines([string]$Path,[object[]]$Values){Write-Utf8NoBom -Path $Path -Content ((@($Values|ForEach-Object{$_|ConvertTo-Json -Compress})-join [Environment]::NewLine)+[Environment]::NewLine)}
 foreach($number in 1..2){
  $taskId="harness-$number";$taskRoot=Join-Path $state "tasks\$taskId";New-Item -ItemType Directory -Path $taskRoot -Force|Out-Null
- Write-Json (Join-Path $taskRoot 'task.json') ([ordered]@{taskId=$taskId;projectId='planning-space';status='completed';createdAtUtc='2026-10-12T10:00:00Z';updatedAtUtc="2026-10-12T1$number`:00:00Z"})
- Write-Json (Join-Path $taskRoot 'requirements-analysis.json') ([ordered]@{verificationScenarios=@([ordered]@{id='SCN-A'},[ordered]@{id='SCN-B'})})
+ Write-Json (Join-Path $taskRoot 'task.json') ([ordered]@{taskId=$taskId;projectId='planning-space';taskType='Task';repositoryIds=@('ecosystem');status='completed';createdAtUtc='2026-10-12T10:00:00Z';updatedAtUtc="2026-10-12T1$number`:00:00Z"})
+ Write-Json (Join-Path $taskRoot 'requirements-analysis.json') ([ordered]@{practiceVersion='legacy';requirements=@([ordered]@{id='REQ-A';status='ready';acceptanceScenarioIds=@('SCN-A','SCN-B')});verificationScenarios=@([ordered]@{id='SCN-A';requirementIds=@('REQ-A')},[ordered]@{id='SCN-B';requirementIds=@('REQ-A')})})
  $secondVerdict=if($number -eq 1){'verified'}else{'failed'}
- Write-Json (Join-Path $taskRoot 'review-result.json') ([ordered]@{requirementTraceability=@([ordered]@{scenarioResults=@([ordered]@{scenarioId='SCN-A';verdict='verified'},[ordered]@{scenarioId='SCN-B';verdict=$secondVerdict})})})
- if($number -eq 1){Write-Json (Join-Path $taskRoot 'task-summary.json') ([ordered]@{taskId=$taskId;status='completed'})}
+ Write-Json (Join-Path $taskRoot 'review-result.json') ([ordered]@{reviewedRevision=$head;requirementTraceability=@([ordered]@{scenarioResults=@([ordered]@{scenarioId='SCN-A';verdict='verified';commit=$head;evidence=@('test A')},[ordered]@{scenarioId='SCN-B';verdict=$secondVerdict;commit=$head;evidence=@('test B')})})})
+ Write-Json (Join-Path $taskRoot 'review-verification.json') ([ordered]@{verificationStatus='passed';reviewedRevision=$head;reviewArtifactSha256=(Get-FileHash (Join-Path $taskRoot 'review-result.json') -Algorithm SHA256).Hash.ToLowerInvariant()})
+ Write-Json (Join-Path $taskRoot 'implementation-result.json') ([ordered]@{headCommit=$head;scenarioResults=@([ordered]@{scenarioId='SCN-A';status='passed';commit=$head;evidence=@('test A')},[ordered]@{scenarioId='SCN-B';status='passed';commit=$head;evidence=@('test B')})})
+ if($number -eq 1){Write-Json (Join-Path $taskRoot 'task-summary.json') ([ordered]@{taskId=$taskId;status='completed';completedAtUtc='2026-10-12T11:00:00Z'})}
  Write-Json (Join-Path $taskRoot 'model-routing.json') ([ordered]@{decisions=@([ordered]@{agentId='developer';model='gpt-test';reasoningEffort='medium';contextBudgetSignature=('a'*64)})})
  Write-Lines (Join-Path $taskRoot 'token-usage.jsonl') @([ordered]@{agentId='developer';provider='codex';model='gpt-test';availability='reported';totalTokens=150})
+ Write-Json (Join-Path $taskRoot 'provider-routing.json') ([ordered]@{decisions=@([ordered]@{agentId='developer';provider='codex';model='gpt-test';reasoningEffort='medium'})})
+ Write-Lines (Join-Path $taskRoot 'workflow-routing.jsonl') @([ordered]@{executionMode='full-delivery'})
  $events=@(if($number -eq 1){@([ordered]@{actor='user';type='review-decision'},[ordered]@{actor='developer';type='agent-failure'},[ordered]@{actor='health_check';type='agent-result'})}else{@()});if($events.Count){Write-Lines (Join-Path $taskRoot 'task-ledger.jsonl') $events}
 }
 $knowledgeRoot=Join-Path $state 'tasks\harness-1'
@@ -26,8 +30,8 @@ Write-Json (Join-Path $knowledgeRoot 'knowledge-update.json') ([ordered]@{entrie
  [ordered]@{id='KN-STALE';owner='platform-team';sourceBindings=@([ordered]@{repositoryId='ecosystem';path='README.md';revision=('0'*40)});revalidation=[ordered]@{lastVerifiedAtUtc='2026-10-12T10:00:00Z';triggers=@('source-revision-changed')}},
  [ordered]@{id='KN-LEGACY'}
 )})
-$evaluation=& (Join-Path $root 'scripts\New-HarnessEvaluationReport.ps1') -ProjectId planning-space -MinimumCohortSize 2 -ConfigPath $configPath
-if($evaluation.summary.taskCount -ne 2 -or $evaluation.summary.criteriaTotal -ne 4 -or $evaluation.summary.criteriaVerified -ne 3 -or $evaluation.summary.falseCompletionCount -ne 1 -or $evaluation.summary.humanInterventionCount -ne 1 -or $evaluation.summary.failureCount -ne 1 -or $evaluation.summary.recoveryCount -ne 1 -or $evaluation.summary.totalTokens -ne 300){throw 'Harness evaluation metrics are incorrect.'}
+$evaluation=& (Join-Path $root 'scripts\New-HarnessEvaluationReport.ps1') -ProjectId planning-space -MinimumCohortSize 2 -CohortLabel fixture -ConfigPath $configPath
+if($evaluation.summary.taskCount -ne 2 -or $evaluation.summary.criteriaTotal -ne 4 -or $evaluation.summary.criteriaVerified -ne 3 -or $evaluation.summary.falseCompletionCount -ne 1 -or $null -ne $evaluation.summary.humanInterventionCount -or $evaluation.tasks[0].humanInterventions -ne 1 -or $evaluation.tasks[0].failures -ne 1 -or $evaluation.tasks[0].recoveries -ne 1 -or $evaluation.summary.totalTokens -ne 300){throw 'Harness evaluation metrics are incorrect.'}
 if(@($evaluation.cohorts).Count -ne 1 -or -not @($evaluation.cohorts)[0].comparable){throw 'Comparable model/budget cohort was not formed.'}
 $freshness=& (Join-Path $root 'scripts\Get-KnowledgeFreshnessReport.ps1') -ProjectId planning-space -RepositoryRoots @{ecosystem=$root} -ConfigPath $configPath
 if($freshness.summary.currentCount -ne 1 -or $freshness.summary.staleCount -ne 1 -or $freshness.summary.metadataMissingCount -ne 1){throw 'Knowledge freshness classification is incorrect.'}
