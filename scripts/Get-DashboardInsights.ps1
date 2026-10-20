@@ -44,6 +44,18 @@ function Get-ObjectValue {
     $property.Value
 }
 
+function Get-UtcDayKey {
+    param($Record)
+    $timestamp = Get-ObjectValue $Record 'timestampUtc'
+    if ($null -eq $timestamp -or [string]::IsNullOrWhiteSpace([string]$timestamp)) { return $null }
+    if ($timestamp -is [DateTimeOffset]) { return $timestamp.ToUniversalTime().ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }
+    if ($timestamp -is [DateTime]) { return $timestamp.ToUniversalTime().ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) }
+    $parsed = [DateTimeOffset]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if (-not [DateTimeOffset]::TryParse([string]$timestamp, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { return $null }
+    $parsed.ToUniversalTime().ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Get-Sum {
     param([object[]] $Records, [Parameter(Mandatory)][string] $Property)
     $sum = 0L
@@ -82,6 +94,23 @@ function New-TokenAggregate {
         $value.models = @($records | ForEach-Object { [string](Get-ObjectValue $_ 'model' '') } | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
     }
     [pscustomobject]$value
+}
+
+function New-DailyTokenAggregate {
+    param([Parameter(Mandatory)] $Group)
+    $records = @($Group.Group)
+    $reported = @($records | Where-Object { [string](Get-ObjectValue $_ 'availability' '') -in @('reported','partial') -and $null -ne (Get-LongValue -Value (Get-ObjectValue $_ 'totalTokens')) })
+    [pscustomobject][ordered]@{
+        date = [string]$Group.Name
+        recordCount = $records.Count
+        reportedRecordCount = $reported.Count
+        unavailableRecordCount = $records.Count - $reported.Count
+        inputTokens = Get-Sum -Records $reported -Property inputTokens
+        outputTokens = Get-Sum -Records $reported -Property outputTokens
+        cacheReadTokens = Get-Sum -Records $reported -Property cacheReadTokens
+        cacheWriteTokens = Get-Sum -Records $reported -Property cacheWriteTokens
+        totalTokens = Get-Sum -Records $reported -Property totalTokens
+    }
 }
 
 $taskRecords = [Collections.Generic.List[object]]::new()
@@ -164,6 +193,8 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
 
 $modelGroups = @($tokenRecords | Group-Object { "$([string](Get-ObjectValue $_ 'provider' 'unknown'))|$([string](Get-ObjectValue $_ 'model' 'unknown'))" } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension model } | Sort-Object totalTokens -Descending)
 $agentGroups = @($tokenRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object { New-TokenAggregate -Group $_ -Dimension agent } | Sort-Object totalTokens -Descending)
+$datedTokenRecords = @($tokenRecords | Where-Object { $null -ne (Get-UtcDayKey -Record $_) })
+$dailyTokenGroups = @($datedTokenRecords | Group-Object { Get-UtcDayKey -Record $_ } | ForEach-Object { New-DailyTokenAggregate -Group $_ } | Sort-Object date)
 $failedAttempts = @($attemptRecords | Where-Object { [string](Get-ObjectValue $_ 'status' '') -eq 'failed' })
 $attemptsByAgent = @($attemptRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object {
     $records = @($_.Group); $failed = @($records | Where-Object { [string](Get-ObjectValue $_ 'status' '') -eq 'failed' }).Count
@@ -183,9 +214,10 @@ $allKnowledgeEntries = @($knowledgeOutcomes | ForEach-Object { @($_.entries) })
             errorCount=$errorRecords.Count; failedAttemptCount=$failedAttempts.Count; attemptCount=$attemptRecords.Count
             totalTokens=Get-Sum -Records $reportedTokens -Property totalTokens
             reportedTokenRecordCount=$reportedTokens.Count; unavailableTokenRecordCount=$tokenRecords.Count-$reportedTokens.Count
+            unassignedTokenTimestampRecordCount=$tokenRecords.Count-$datedTokenRecords.Count
             knowledgeOutcomeCount=$knowledgeOutcomes.Count
         }
-        tokensByModel=$modelGroups; tokensByAgent=$agentGroups; attemptsByAgent=$attemptsByAgent; errorsByAgent=$errorsByAgent
+        tokensByDay=$dailyTokenGroups; tokensByModel=$modelGroups; tokensByAgent=$agentGroups; attemptsByAgent=$attemptsByAgent; errorsByAgent=$errorsByAgent
         recentErrors=@($errorRecords | Sort-Object { if($_.timestampUtc){[DateTime]$_.timestampUtc}else{[DateTime]::MinValue} } -Descending | Select-Object -First $RecentErrorLimit)
     }
     knowledge = [pscustomobject][ordered]@{

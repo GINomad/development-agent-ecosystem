@@ -23,8 +23,9 @@ Write-Utf8NoBom -Path $configPath -Content (($config | ConvertTo-Json -Depth 100
 $task = [ordered]@{ taskId='insight-task'; projectId='planning-space'; selector='Synthetic dashboard insight task'; status='completed'; updatedAtUtc='2026-10-12T12:00:00Z' }
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'task.json') -Content (($task | ConvertTo-Json) + [Environment]::NewLine)
 $tokens = @(
-    [ordered]@{ taskId='insight-task'; agentId='developer'; provider='codex'; model='gpt-test'; availability='reported'; inputTokens=100; outputTokens=50; cacheReadTokens=20; cacheWriteTokens=0; totalTokens=150 },
-    [ordered]@{ taskId='insight-task'; agentId='reviewer'; provider='copilot'; model='copilot-test'; availability='unavailable'; inputTokens=$null; outputTokens=$null; cacheReadTokens=$null; cacheWriteTokens=$null; totalTokens=$null },
+    [ordered]@{ timestampUtc='2026-10-11T22:00:00Z'; taskId='insight-task'; agentId='developer'; provider='codex'; model='gpt-test'; availability='reported'; inputTokens=40; outputTokens=10; cacheReadTokens=20; cacheWriteTokens=0; totalTokens=50 },
+    [ordered]@{ timestampUtc='2026-10-12T23:30:00+00:00'; taskId='insight-task'; agentId='developer'; provider='codex'; model='gpt-test'; availability='partial'; inputTokens=60; outputTokens=40; cacheReadTokens=0; cacheWriteTokens=0; totalTokens=100 },
+    [ordered]@{ timestampUtc='2026-10-12T23:45:00Z'; taskId='insight-task'; agentId='reviewer'; provider='copilot'; model='copilot-test'; availability='unavailable'; inputTokens=$null; outputTokens=$null; cacheReadTokens=$null; cacheWriteTokens=$null; totalTokens=$null },
     [ordered]@{ taskId='insight-task'; agentId='knowledge_keeper'; provider='legacy'; model='legacy-test' }
 )
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'token-usage.jsonl') -Content ((@($tokens | ForEach-Object { $_ | ConvertTo-Json -Compress }) -join [Environment]::NewLine) + [Environment]::NewLine)
@@ -50,15 +51,17 @@ $summary = [ordered]@{ outcomes=@([ordered]@{ agentId='knowledge_keeper'; summar
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'task-summary.json') -Content (($summary | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 
 $result = & (Join-Path $root 'scripts\Get-DashboardInsights.ps1') -ProjectId planning-space -ConfigPath $configPath
-if ([int]$result.analytics.summary.taskCount -ne 1 -or [long]$result.analytics.summary.totalTokens -ne 150 -or [int]$result.analytics.summary.reportedTokenRecordCount -ne 1 -or [int]$result.analytics.summary.unavailableTokenRecordCount -ne 2 -or [int]$result.analytics.summary.attemptCount -ne 3) { throw 'Dashboard analytics did not aggregate cumulative and legacy task metrics exactly once.' }
+if ([int]$result.analytics.summary.taskCount -ne 1 -or [long]$result.analytics.summary.totalTokens -ne 150 -or [int]$result.analytics.summary.reportedTokenRecordCount -ne 2 -or [int]$result.analytics.summary.unavailableTokenRecordCount -ne 2 -or [int]$result.analytics.summary.unassignedTokenTimestampRecordCount -ne 1 -or [int]$result.analytics.summary.attemptCount -ne 3) { throw 'Dashboard analytics did not aggregate cumulative and legacy task metrics exactly once.' }
+if (@($result.analytics.tokensByDay).Count -ne 2 -or [string]$result.analytics.tokensByDay[0].date -ne '2026-10-11' -or [long]$result.analytics.tokensByDay[0].totalTokens -ne 50 -or [long]$result.analytics.tokensByDay[0].cacheReadTokens -ne 20 -or [string]$result.analytics.tokensByDay[1].date -ne '2026-10-12' -or [long]$result.analytics.tokensByDay[1].totalTokens -ne 100 -or [long]$result.analytics.tokensByDay[1].inputTokens -ne 60 -or [long]$result.analytics.tokensByDay[1].outputTokens -ne 40 -or [int]$result.analytics.tokensByDay[1].reportedRecordCount -ne 1 -or [int]$result.analytics.tokensByDay[1].unavailableRecordCount -ne 1) { throw 'Dashboard analytics did not aggregate reported token usage into chronological UTC-day deltas.' }
 if ([int]$result.analytics.summary.errorCount -ne 1 -or [int]$result.analytics.summary.failedAttemptCount -ne 1 -or [string]$result.analytics.recentErrors[0].agentId -ne 'developer') { throw 'Dashboard analytics did not aggregate failures.' }
 if ([int]$result.knowledge.outcomeCount -ne 1 -or [int]$result.knowledge.verifiedEntryCount -ne 1 -or [string]$result.knowledge.outcomes[0].entries[0].id -ne 'KN-1' -or [string]$result.knowledge.outcomes[0].keeperOutcomes[0] -notmatch 'verified fact') { throw 'Dashboard knowledge outcomes are not bound to the source task.' }
 $dashboardServer = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentDashboard.ps1') -Raw -Encoding UTF8
 $dashboardHtml = Get-Content -LiteralPath (Join-Path $root 'dashboard\index.html') -Raw -Encoding UTF8
 $dashboardClient = Get-Content -LiteralPath (Join-Path $root 'dashboard\app.js') -Raw -Encoding UTF8
 $dashboardStyles = Get-Content -LiteralPath (Join-Path $root 'dashboard\styles.css') -Raw -Encoding UTF8
-if ($dashboardServer -notmatch "'/api/insights'" -or $dashboardServer -notmatch 'Get-DashboardInsights\.ps1' -or $dashboardHtml -notmatch 'id="analyticsWorkspace"' -or $dashboardHtml -notmatch 'id="knowledgeWorkspace"' -or $dashboardClient -notmatch '/api/insights' -or $dashboardClient -notmatch 'renderAnalytics' -or $dashboardClient -notmatch 'renderKnowledge') { throw 'Dashboard insights endpoint or analytics/knowledge views are not wired end to end.' }
+if ($dashboardServer -notmatch "'/api/insights'" -or $dashboardServer -notmatch 'Get-DashboardInsights\.ps1' -or $dashboardHtml -notmatch 'id="analyticsWorkspace"' -or $dashboardHtml -notmatch 'id="knowledgeWorkspace"' -or $dashboardHtml -notmatch 'id="dailyTokenChart"' -or $dashboardClient -notmatch '/api/insights' -or $dashboardClient -notmatch 'renderAnalytics' -or $dashboardClient -notmatch 'renderDailyTokenChart' -or $dashboardClient -notmatch 'tokensByDay' -or $dashboardClient -notmatch 'renderKnowledge') { throw 'Dashboard insights endpoint or analytics/knowledge views are not wired end to end.' }
 if ($dashboardStyles -notmatch '\.insights-workspace\.hidden\s*\{\s*display:\s*none;\s*\}') { throw 'Dashboard insights tab panels can override the shared hidden utility and remain visible together.' }
+if ($dashboardStyles -notmatch '\.token-chart-plot' -or $dashboardStyles -notmatch '\.token-chart-bar') { throw 'Dashboard daily token chart is missing its responsive visual contract.' }
 $stdout = Join-Path $fixtureRoot 'dashboard.out.log'
 $stderr = Join-Path $fixtureRoot 'dashboard.err.log'
 $pwshPath = (Get-Command pwsh.exe -ErrorAction Stop | Select-Object -First 1).Source
@@ -75,11 +78,11 @@ try {
     } while (-not $sessionToken -and -not $dashboardProcess.HasExited -and [DateTime]::UtcNow -lt $deadline)
     if (-not $sessionToken) { throw "Dashboard did not start for insights API validation. $((Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue))" }
     $apiResult = Invoke-RestMethod -Uri "http://127.0.0.1:$dashboardPort/api/insights?projectId=planning-space" -Headers @{ 'X-Ecosystem-Token'=$sessionToken }
-    if ([long]$apiResult.analytics.summary.totalTokens -ne 150 -or [string]$apiResult.knowledge.outcomes[0].taskId -ne 'insight-task') { throw 'Dashboard insights HTTP endpoint did not return the aggregated project data.' }
+    if ([long]$apiResult.analytics.summary.totalTokens -ne 150 -or @($apiResult.analytics.tokensByDay).Count -ne 2 -or [long]$apiResult.analytics.tokensByDay[1].totalTokens -ne 100 -or [string]$apiResult.knowledge.outcomes[0].taskId -ne 'insight-task') { throw 'Dashboard insights HTTP endpoint did not return the aggregated project data.' }
     $dashboardProcess.WaitForExit(5000) | Out-Null
 }
 finally {
     if (-not $dashboardProcess.HasExited) { Stop-Process -Id $dashboardProcess.Id -Force -ErrorAction SilentlyContinue }
 }
 
-[pscustomobject]@{ Status='passed'; Checks=6; OutputRoot=$fixtureRoot }
+[pscustomobject]@{ Status='passed'; Checks=8; OutputRoot=$fixtureRoot }
