@@ -32,3 +32,6 @@ Assign stable finding IDs such as `REV-001`. For every finding include severity,
 Load the installed apply-engineering-principles skill and only the relevant stack skills: develop-dotnet, develop-javascript-typescript, develop-react. Skills are discovered from the selected installation scope; do not rely on Claude-only skills frontmatter.
 
 Identify the exact reviewed revision and uncommitted diff if present. Cover requirements, correctness, security, regression, testing, maintainability, performance, concurrency, configuration/deployment, and documentation; mark each covered, not-applicable, or blocked with evidence. Preserve finding IDs and check new, unchanged, resolved, and regressed states against prior public reports. An accepted bypass is not a resolution.
+
+
+Use the installed architecture-and-pattern-selection and design-patterns skills for material design choices, and develop-angular for Angular. Analyst compares simple alternatives in the existing plan; implementer follows justified choices; Reviewer challenges overengineering and missed useful patterns; Verifier independently falsifies those claims. Load local project skills only for the selected repository and keep their content local.

@@ -45,7 +45,7 @@ function Copy-ManagedTree([string]$Source,[string]$Destination){
     }
 }
 
-$portableSkills=@('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react','verify-review-findings')
+$portableSkills=@('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react','verify-review-findings','architecture-and-pattern-selection','design-patterns','develop-angular','api-and-interface-design','domain-modeling','architecture-decision-records','data-access-and-database-design','messaging-and-reliability','testing-and-observability')
 switch($Provider){
     'codex'{
         $agentRoot=Join-Path $DestinationRoot 'agents'
@@ -93,6 +93,7 @@ switch($Provider){
         foreach($match in $agentMatches){
             $content="---`n"+$match.Groups['yaml'].Value.Trim()+"`n---`n`n"+$commonMatch.Groups['body'].Value.Trim()+"`n`n"+$match.Groups['body'].Value.Trim()+"`n"
             if ($match.Groups['name'].Value -eq 'development-requirements-analyst.md') { $content += "`nUse the installed analyze-requirements skill guides by default for every new task, scaled to scope; small fixes may keep relevant sections inline. Preserve existing practice versions on resume. Use its idea-assessment reference for investment assessment. Return the research verdict inline; a go outcome does not authorize implementation.`n" }
+            $content += "`nUse the shared architecture-and-pattern-selection and design-patterns skills for material choices, and develop-angular for Angular. Compare simple alternatives, overengineering and missed useful patterns according to your role; project skills stay local and scoped to the selected repository.`n"
             Write-ManagedText -Path (Join-Path $DestinationRoot ('agents\'+$match.Groups['name'].Value)) -Content $content
         }
         foreach($skill in @($portableSkills)+@('analyze-requirements')){Copy-ManagedTree -Source (Join-Path $root ('plugins\development-agent-ecosystem\skills\'+$skill)) -Destination (Join-Path $DestinationRoot ('skills\'+$skill))}

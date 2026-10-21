@@ -1,5 +1,10 @@
 # Development Agent Ecosystem
 
+Shared engineering/architecture skills and local-only project domain knowledge:
+see [engineering skills](docs/engineering-skills.md). Run the publication boundary
+check before committing; preserve local project knowledge when applying the
+untracking migration to an existing checkout.
+
 The hybrid runtime supports Codex, GitHub Copilot, and Claude per agent, including provider-specific model tiers, provider-owned login, MCP-first context with classic fallback, task-scoped provider switching, and visible provider badges in the dashboard. For a standalone chat-only installation without the dashboard, start with [INSTALL-CHAT-ONLY-AGENTS.md](INSTALL-CHAT-ONLY-AGENTS.md); provider-specific file-only installers remain available for [Copilot](INSTALL-COPILOT-VSCODE-AGENTS.md) and [Claude](INSTALL-CLAUDE-VSCODE-AGENTS.md).
 
 An evidence-first local multi-provider ecosystem for the complete software delivery cycle: requirements analysis, knowledge management, implementation, candidate code review, independent review verification, and Azure Pipelines monitoring.

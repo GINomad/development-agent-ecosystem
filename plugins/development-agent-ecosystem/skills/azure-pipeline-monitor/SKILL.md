@@ -9,7 +9,7 @@ description: Monitor Azure DevOps pipeline runs associated with an exact Git bra
 
 1. Record the UTC time immediately before `git push` when possible.
 2. After a successful push, resolve the repository, branch, and full commit SHA with Git.
-3. Read `references/planning-space.md` when working in `ps-excel-agent` or `ps-bicep`.
+3. Read the selected project's local pipeline policy and integration knowledge; organization-specific references stay outside the published skill.
 4. Run `scripts/watch_pipeline_runs.ps1` with the exact branch and commit. Pass only the ordered build definition IDs from local configuration; the script requires exact-SHA success for each step before it queues and accepts the next one. In the ecosystem, prefer `Invoke-PostPushPipeline.ps1`, which reads this ordered allowlist from canonical JSON.
 5. Stay with every discovered run until it reaches a terminal state. If command execution yields a running cell or session, retain the handle and use the provided wait/resume mechanism until the same watcher command completes. Do not start another watcher or refresh while that handle is live; an `inProgress` result or execution yield is not a failure, and only terminal watcher completion or a real nonzero exit may drive result/failure handling.
 6. Report run IDs, links, source commits, final results, and failed task log excerpts. When a failed run has Azure `validationResults`, diagnose those before requesting a timeline: pre-job validation failures may have no timeline or logs and must still produce a structured infrastructure result.
@@ -21,6 +21,7 @@ Example:
 
 ```powershell
 & "$HOME/.codex/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1" `
+  -Organization '<configured-organization-url>' -Project '<configured-project>' `
   -Branch (git branch --show-current) `
   -Commit (git rev-parse HEAD) `
   -QueuedAfter ((Get-Date).ToUniversalTime().AddMinutes(-5))
@@ -30,6 +31,7 @@ For repositories with an ordered build policy, run the locally approved exact-SH
 
 ```powershell
 & "$HOME/.codex/skills/azure-pipeline-monitor/scripts/watch_pipeline_runs.ps1" `
+  -Organization '<configured-organization-url>' -Project '<configured-project>' `
   -Branch (git branch --show-current) `
   -Commit (git rev-parse HEAD) `
   -AutoQueueDefinitionIds <ordered-build-definition-ids>

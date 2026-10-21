@@ -32,6 +32,15 @@ Treat the directory containing this document as `SOURCE_ROOT`. Read the source f
 - `.github/skills/develop-dotnet/SKILL.md`
 - `.github/skills/develop-javascript-typescript/SKILL.md`
 - `.github/skills/develop-react/SKILL.md`
+- `.github/skills/architecture-and-pattern-selection/SKILL.md`
+- `.github/skills/design-patterns/SKILL.md`
+- `.github/skills/develop-angular/SKILL.md`
+- `.github/skills/api-and-interface-design/SKILL.md`
+- `.github/skills/domain-modeling/SKILL.md`
+- `.github/skills/architecture-decision-records/SKILL.md`
+- `.github/skills/data-access-and-database-design/SKILL.md`
+- `.github/skills/messaging-and-reliability/SKILL.md`
+- `.github/skills/testing-and-observability/SKILL.md`
 - `.github/skills/verify-review-findings/SKILL.md`
 - `.github/copilot-instructions.md` (managed routing block)
 

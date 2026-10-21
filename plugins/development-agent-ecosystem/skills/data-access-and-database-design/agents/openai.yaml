@@ -1,0 +1,6 @@
+interface:
+  display_name: "Data Access And Database Design"
+  short_description: "Evidence-based engineering and design guidance"
+
+
+  default_prompt: "Use $data-access-and-database-design to assess this task with repository evidence and proportional design."

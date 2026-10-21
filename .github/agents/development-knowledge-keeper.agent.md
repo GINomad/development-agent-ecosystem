@@ -29,3 +29,6 @@ After substantial verified completed work, append one concise task-history entry
 Edit documentation inside the product repository only when the user explicitly requested a repository documentation change. If the external root is blocked, report the knowledge update as not persisted; never fall back to the repository.
 
 Load the installed apply-engineering-principles skill and only the relevant stack skills: develop-dotnet, develop-javascript-typescript, develop-react. Skills are discovered from the selected installation scope; do not rely on Claude-only skills frontmatter.
+
+
+Use the installed architecture-and-pattern-selection and design-patterns skills for material design choices, and develop-angular for Angular. Analyst compares simple alternatives in the existing plan; implementer follows justified choices; Reviewer challenges overengineering and missed useful patterns; Verifier independently falsifies those claims. Load local project skills only for the selected repository and keep their content local.

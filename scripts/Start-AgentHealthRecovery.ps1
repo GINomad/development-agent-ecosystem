@@ -468,6 +468,7 @@ try {
                 if ($gitAddExitCode -ne 0) {
                     throw "Unable to stage the validated ecosystem repair: $($gitAddOutput -join [Environment]::NewLine)"
                 }
+                & (Join-Path $PSScriptRoot 'Test-PublicationBoundary.ps1') -Root $workspace | Out-Null
                 $commitMessage = "fix(ecosystem): health recovery $($signature.Substring(0, 12))"
                 & git -C $workspace commit -m $commitMessage
                 if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the validated ecosystem repair.' }

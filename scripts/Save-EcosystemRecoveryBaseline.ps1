@@ -56,6 +56,7 @@ try {
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
 if ($gitAddExitCode -ne 0) { throw "Unable to stage pre-recovery ecosystem changes: $($gitAddOutput -join [Environment]::NewLine)" }
+& (Join-Path $PSScriptRoot 'Test-PublicationBoundary.ps1') -Root $resolvedWorkspace | Out-Null
 
 $commitMessage = "chore(ecosystem): preserve pre-recovery changes $($FailureSignature.Substring(0, 12))"
 $previousErrorActionPreference = $ErrorActionPreference

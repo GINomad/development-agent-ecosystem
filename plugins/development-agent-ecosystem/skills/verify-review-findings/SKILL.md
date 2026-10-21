@@ -14,3 +14,5 @@ description: Independently falsify Reviewer findings, validate the complete revi
 7. Compare every new, unchanged, resolved, or regressed lifecycle claim with prior snapshots and reject unsupported transitions. Treat an item moved out of active findings into linked open bypass debt as unchanged and still observable, never resolved by disposition alone.
 8. Require Reviewer rework when scope, coverage, or lifecycle verification is rejected. Suppress rejected findings from human decisions; never authorize implementation.
 9. Conform to `config/schemas/review-verification.schema.json` and publish only `review-verification.json`.
+
+Independently challenge architectural and pattern-selection claims, including clean reviews: test the simple alternative, actual domain constraints, and at least one failure/evolution counterexample. Record the result in existing coverageVerification dimensions; do not confirm findings merely because a named pattern is preferred.

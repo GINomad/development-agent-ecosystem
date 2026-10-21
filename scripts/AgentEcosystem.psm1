@@ -42,11 +42,21 @@ function Expand-EcosystemValue {
     return [Environment]::ExpandEnvironmentVariables($expanded)
 }
 
+function Resolve-EcosystemConfigPath {
+    param([Parameter(Mandatory)][string] $ConfigPath)
+    $full = [IO.Path]::GetFullPath($ConfigPath)
+    $canonical = [IO.Path]::GetFullPath((Join-Path (Get-EcosystemRoot) 'config/agents.json'))
+    $local = Join-Path (Get-EcosystemRoot) 'config/agents.local.json'
+    if ($full.Equals($canonical, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $local -PathType Leaf)) { return $local }
+    return $full
+}
+
 function Get-EcosystemConfig {
     param(
         [string] $ConfigPath = (Join-Path (Get-EcosystemRoot) 'config\agents.json'),
         [string] $CodexHome
     )
+    $ConfigPath = Resolve-EcosystemConfigPath -ConfigPath $ConfigPath
     if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
         throw "Configuration file was not found: $ConfigPath"
     }
@@ -353,7 +363,8 @@ function New-AgentToml {
     $lines.Add("model_reasoning_effort = $(ConvertTo-TomlString ([string]$Agent.reasoningEffort))")
     $lines.Add("sandbox_mode = $(ConvertTo-TomlString ([string]$Agent.sandboxMode))")
     $lines.Add("developer_instructions = $(ConvertTo-TomlString ($promptSections -join "`n`n"))")
-    foreach ($pathValue in @($Agent.skillPaths)) {
+    $projectSkills = @(& (Join-Path (Get-EcosystemRoot) 'scripts/Get-ProjectSkillPaths.ps1') -Config $Config -AgentId ([string]$Agent.id) -AllProjects -CodexHome $CodexHome)
+    foreach ($pathValue in @($Agent.skillPaths) + $projectSkills) {
         $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $Config -CodexHome $CodexHome
         $lines.Add('')
         $lines.Add('[[skills.config]]')
@@ -608,4 +619,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Get-EcosystemRelativePath, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Resolve-EcosystemConfigPath, Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Get-EcosystemRelativePath, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

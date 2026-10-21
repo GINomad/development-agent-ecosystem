@@ -8,6 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+$ConfigPath = Resolve-EcosystemConfigPath -ConfigPath $ConfigPath
 $root = Get-EcosystemRoot
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -1946,8 +1947,10 @@ if (@($knowledgeAgent.requiredArtifacts) -notcontains 'task-summary.json' -or -n
 if ((Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -Raw -Encoding UTF8) -notmatch "latest exact-SHA pipeline result") { throw 'Final task publication does not reject a non-success latest pipeline result.' }
 Add-Check -Name 'bounded-pull-orchestration' -Detail 'On-demand knowledge, terminal-only outcomes, private checkpoints, batched comments, artifact fingerprints, and bounded health tails'
 
-$quorumRoute = & (Join-Path $root 'scripts\Get-AssignedTaskContext.ps1') -TaskSelector 'https://quorumsoftware.visualstudio.com/Quorum/_workitems/edit/1854726' -ResolveOnly -ConfigPath $ConfigPath -CodexHome $CodexHome
-if ([string]$quorumRoute.SourceId -ne 'quorum-azure-boards' -or [int]$quorumRoute.WorkItemId -ne 1854726 -or [string]$quorumRoute.Organization -ne 'https://dev.azure.com/quorumsoftware' -or [string]$quorumRoute.Project -ne 'Quorum') {
+$routeSource = @($config.taskSources | Where-Object id -eq 'quorum-azure-boards')[0]
+$routeUrl = ([string]$routeSource.organization).TrimEnd('/') + '/' + [string]$routeSource.project + '/_workitems/edit/1854726'
+$quorumRoute = & (Join-Path $root 'scripts\Get-AssignedTaskContext.ps1') -TaskSelector $routeUrl -ResolveOnly -ConfigPath $ConfigPath -CodexHome $CodexHome
+if ([string]$quorumRoute.SourceId -ne 'quorum-azure-boards' -or [int]$quorumRoute.WorkItemId -ne 1854726 -or [string]$quorumRoute.Organization -ne [string]$routeSource.organization -or [string]$quorumRoute.Project -ne [string]$routeSource.project) {
     throw 'Legacy Azure DevOps task URL did not resolve to the configured Quorum task source.'
 }
 $ambiguousIdRejected = $false
@@ -2124,7 +2127,7 @@ $globalStandardsPath = Resolve-EcosystemPath -Value ([string]$config.knowledge.g
 if (-not (Test-Path -LiteralPath $globalStandardsPath -PathType Leaf)) { throw 'Configured global coding standards file is missing.' }
 $globalStandards = Get-Content -LiteralPath $globalStandardsPath -Raw -Encoding UTF8
 if ($knowledgeResponsibilities -notmatch 'every confirmed review comment about code organization' -or $knowledgeResponsibilities -notmatch 'business, domain, API, integration' -or $knowledgePrompt -notmatch 'every confirmed human review comment about code organization' -or $knowledgePrompt -notmatch 'business rules, domain behavior, API contracts' -or $knowledgePrompt -notmatch 'always add the configured global coding standards file and mandatory apply-engineering-principles skill context' -or $knowledgePrompt -notmatch 'Requirements Analyst, Developer, Reviewer, and Review Verifier' -or $knowledgePrompt -notmatch 'configured versioned knowledge roots' -or $knowledgePrompt -notmatch 'bypassed, deferred, rejected, unresolved' -or $knowledgeSkill -notmatch 'global or technology-scoped standard' -or $knowledgeSkill -notmatch 'business, domain, API, integration' -or $developerPrompt -notmatch 'global coding standards to every repository' -or $reviewerPrompt -notmatch 'global coding standards in every repository' -or $workflowRunner -notmatch 'Global coding standards \(apply to every repository\)' -or $workflowRunner -notmatch 'GlobalStandardsPath') { throw 'Knowledge scope classification or global standards delivery is incomplete.' }
-if ($globalStandards -notmatch 'Use braces for every `if`' -or $globalStandards -notmatch '`public static`' -or $globalStandards -notmatch '`private static`' -or $globalStandards -notmatch 'f806355b73d3493fbcd171d51fa352ca' -or $globalStandards -notmatch 'a5bae0d26ac94b8e8f1984ce8b361d7c' -or $globalStandards -notmatch 'Business rules, domain behavior, API contracts') { throw 'Global review-derived style standards or their evidence are incomplete.' }
+if ($globalStandards -notmatch 'Use braces for every `if`' -or $globalStandards -notmatch '`public static`' -or $globalStandards -notmatch '`private static`' -or $globalStandards -notmatch 'knowledge/local/engineering-code-standards-provenance.md' -or $globalStandards -notmatch 'Business rules, domain behavior, API contracts') { throw 'Global standards or their local-only provenance boundary are incomplete.' }
 Add-Check -Name 'review-derived-coding-standards' -Detail 'Every confirmed code-organization/style comment is promoted globally or by technology after implementation and clean review; business/domain/API behavior remains repository-scoped'
 
 # JSON protocol drift must not make the host's failure classifier fail under StrictMode.
@@ -2293,14 +2296,8 @@ $analystPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\requir
 $reviewerPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\reviewer.md') -Raw -Encoding UTF8
 $verifierPrompt = Get-Content -LiteralPath (Join-Path $root 'prompts\roles\review-verifier.md') -Raw -Encoding UTF8
 if ($orchestratorPrompt -notmatch 'not keyword-triggered' -or $analystPrompt -notmatch 'mandatory engineering checks' -or $developerPrompt -notmatch 'mandatory engineering checks' -or $reviewerPrompt -notmatch 'disposable-ownership' -or $verifierPrompt -notmatch 'unapproved exception' -or $knowledgePrompt -notmatch 'dependency-injection, data-access, type-layout, and disposable-ownership') { throw 'Mandatory engineering skill consumption is not enforced across routing, analysis, implementation, review, verification, and knowledge context.' }
-foreach ($requiredTypeLayoutText in @('Interfaces','Implementations','Models','Enums','DTOs','request models','response models','view models','domain data holders','services, providers, factories, stores, builders, and readers','explicit recorded user approval')) {
-    if ($mandatoryEngineeringText -notmatch [regex]::Escape($requiredTypeLayoutText)) { throw "Mandatory type-layout standard is missing: $requiredTypeLayoutText" }
-}
-foreach ($rolePrompt in @($analystPrompt,$developerPrompt,$reviewerPrompt,$verifierPrompt)) {
-    foreach ($requiredFolder in @('Interfaces','Implementations','Models','Enums')) {
-        if ($rolePrompt -notmatch [regex]::Escape($requiredFolder)) { throw "A delivery role prompt is missing mandatory type-layout folder '$requiredFolder'." }
-    }
-}
+if ($mandatoryEngineeringText -notmatch 'optional repository convention' -or $mandatoryEngineeringText -notmatch 'not a universal architecture') { throw 'Type layout must remain evidence-based and project-specific.' }
+& (Join-Path $root 'tests/Test-ArchitectureSkills.ps1') -Root $root | Out-Null
 Add-Check -Name 'mandatory-engineering-skill-and-review-gates' -Detail 'Every new or resumed task routes mandatory DI, data-access, type-layout, and disposable-ownership evidence through analysis, implementation, review, and independent verification'
 Add-Check -Name 'skill-frontmatter' -Detail "$($skillFiles.Count) skills"
 

@@ -15,6 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+$ConfigPath = Resolve-EcosystemConfigPath -ConfigPath $ConfigPath
 $root = Get-EcosystemRoot
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $pipelinePolicySetup = & (Join-Path $PSScriptRoot 'Get-PipelinePolicySetup.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome
@@ -88,7 +89,8 @@ if (-not $SkipPlugin -and $codexSelected) {
     }
     $pluginList = & codex plugin list --json | ConvertFrom-Json
     $installedPlugin = @($pluginList.installed | Where-Object { $_.pluginId -eq 'development-agent-ecosystem@personal' }) | Select-Object -First 1
-    if ($installedPlugin) {
+    $sourcePlugin = Get-Content -LiteralPath (Join-Path $root 'plugins/development-agent-ecosystem/.codex-plugin/plugin.json') -Raw | ConvertFrom-Json
+    if ($installedPlugin -and [string]$installedPlugin.version -eq [string]$sourcePlugin.version) {
         $pluginResult = $installedPlugin
     }
     else {

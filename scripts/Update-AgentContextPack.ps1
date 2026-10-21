@@ -34,11 +34,21 @@ if ($existing -and $existing.PSObject.Properties['artifactSummaries']) {
 }
 
 $selectedSkills = [Collections.Generic.List[string]]::new()
+$sharedSkillSources = [Collections.Generic.List[object]]::new()
 foreach ($skillPath in @($agent.skillPaths)) {
     $normalized = ([string]$skillPath).Replace('/', '\')
     $skillName = Split-Path -Leaf (Split-Path -Parent $normalized)
     if ($skillName -and -not $selectedSkills.Contains($skillName)) { $selectedSkills.Add($skillName) }
+    $resolvedSkill = Resolve-EcosystemPath -Value ([string]$skillPath) -Config $config -CodexHome $CodexHome
+    $sharedSkillSources.Add([ordered]@{kind='knowledge'; location=$resolvedSkill; revision=(Get-EcosystemFileSha256 -Path $resolvedSkill); reason='Configured shared skill; read only when relevant to this task.'})
 }
+$taskDocument = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$repositoryIds = if ($taskDocument.PSObject.Properties['repositoryIds']) { @($taskDocument.repositoryIds) } elseif ($taskDocument.PSObject.Properties['repositoryId']) { @($taskDocument.repositoryId) } else { @() }
+$projectSkillSources = @(& (Join-Path $PSScriptRoot 'Get-ProjectSkillPaths.ps1') -Config $config -AgentId $RecipientAgentId -RepositoryIds $repositoryIds -CodexHome $CodexHome | ForEach-Object {
+    $skillName = Split-Path -Leaf (Split-Path -Parent $_)
+    if (-not $selectedSkills.Contains($skillName)) { $selectedSkills.Add($skillName) }
+    [ordered]@{kind='knowledge'; location=[string]$_; revision=(Get-EcosystemFileSha256 -Path $_); reason='Local project skill matched to task repository scope; apply only its stated repository boundary.'}
+})
 if (-not $selectedSkills.Count) { $selectedSkills.Add([string]$agent.id) }
 
 $artifactSummaries = [Collections.Generic.List[object]]::new()
@@ -170,7 +180,7 @@ $pack = [ordered]@{
     taskId = $TaskId
     recipient = $RecipientAgentId
     createdAtUtc = [DateTime]::UtcNow.ToString('o')
-    sources = @($preservedSources) + @($repositoryMapSources) + @($artifactSources)
+    sources = @($preservedSources | Where-Object { [string]$_.reason -notlike 'Local project skill matched*' -and [string]$_.reason -notlike 'Configured shared skill;*' }) + @($sharedSkillSources) + @($projectSkillSources) + @($repositoryMapSources) + @($artifactSources)
     acceptedKnowledge = @($acceptedKnowledge)
     artifactSummaries = @($artifactSummaries)
     repositoryMaps = @($repositoryMaps)

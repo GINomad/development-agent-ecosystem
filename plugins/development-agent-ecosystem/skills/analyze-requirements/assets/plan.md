@@ -7,3 +7,6 @@ For authorized implementation, map each plan step to ready requirementIds and ob
 Populate requirements-analysis.json.plan and humanReadable.implementationPlan consistently. Research-only has empty implementation plans; its workflow ends at the research outcome. Do not create a fake nonempty implementation-plan.json for research just to satisfy a delivery schema.
 
 Dependency injection, data-access boundaries, type layout and disposable ownership use the existing engineering skill. Record applicability with direct evidence, rather than copying generic architecture into every task.
+
+
+For material architecture or design choices, use architecture-and-pattern-selection and design-patterns. Compare the direct/simple option with justified alternatives; record observed pressure, domain constraints, ownership/consistency boundaries, added complexity, validation and revisit triggers. Link the existing requirementIds and SCN scenarios. Scale this comparison to task size rather than producing additional mandatory documents. Load only repository-matched local project skills; keep their knowledge out of the shared bundle.

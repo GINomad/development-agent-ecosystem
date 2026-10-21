@@ -3,3 +3,11 @@
 *.local.json
 *.log
 
+# Private project knowledge, domain skills and generated task evidence stay local.
+/knowledge/managed/projects/
+/knowledge/local/
+/artifacts/
+/implementation-plan.json
+
+
+/plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/references/planning-space.md

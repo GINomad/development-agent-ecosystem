@@ -1,5 +1,10 @@
 # Interactive developer setup prompt
 
+Keep actual instance settings, organizational URLs, repository locations and
+identities in ignored `config/agents.local.json`. The tracked
+`config/agents.json` is a non-sensitive example. Preserve this separation
+through every setup, update and export; project knowledge stays local.
+
 Give this entire repository directory to an LLM with filesystem and terminal access, then send:
 
 > Read `SETUP_WITH_LLM.md` completely and configure this development-agent ecosystem for me. Conduct the required interview in chat before changing files.

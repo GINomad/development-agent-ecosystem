@@ -1,5 +1,10 @@
 # Configuration
 
+The tracked `config/agents.json` contains examples. Store real organizational
+and repository settings in ignored `config/agents.local.json`; the default
+runtime selects that file when present. Explicit custom configuration paths
+are preserved. Keep private configuration and domain knowledge out of exports.
+
 ## Model routing
 
 `modelRouting` is the live cost/quality policy for every agent execution. The host classifies bounded task evidence deterministically, so classification itself consumes no AI tokens. Four ordered tiers map complexity to a model and reasoning effort; `rolePolicies` define each agent's default, minimum, and maximum tier. The selected decision and its evidence signals are persisted in task-local `model-routing.json` and reused while its input fingerprint remains unchanged.

@@ -42,6 +42,7 @@ function Copy-TestDirectoryTree {
         [IO.Directory]::CreateDirectory((ConvertTo-TestIoPath -Path ([IO.Path]::Combine($destinationRoot, $relativePath)))) | Out-Null
     }
     foreach ($file in [IO.Directory]::EnumerateFiles($sourceRoot, '*', [IO.SearchOption]::AllDirectories)) {
+        if ($file.EndsWith('.local.json', [StringComparison]::OrdinalIgnoreCase)) { continue }
         $relativePath = $file.Substring($sourceRoot.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
         [IO.File]::Copy((ConvertTo-TestIoPath -Path $file), (ConvertTo-TestIoPath -Path ([IO.Path]::Combine($destinationRoot, $relativePath))), $true)
     }

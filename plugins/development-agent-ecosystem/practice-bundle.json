@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "id": "specification-practices",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "distribution": "native-ecosystem-plugin",
   "role": "requirements_analyst",
   "executionModeForAssessment": "research-only",
@@ -22,7 +22,7 @@
     },
     {
       "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/assets/plan.md",
-      "sha256": "59c648c0297da91ce87941ddb543afffb8087e4115eb4df94587ec77a00dc35a"
+      "sha256": "b5da34273b4687355421098d31926011d5cf1871da83c0d94401911c316857b6"
     },
     {
       "path": "plugins/development-agent-ecosystem/skills/analyze-requirements/assets/specification.md",

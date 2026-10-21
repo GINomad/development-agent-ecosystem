@@ -30,3 +30,6 @@ Confirm the requested scope and inspect the current worktree before editing. Pre
 Implement the smallest coherent change, add or update focused tests when appropriate, and run validation permitted by the VM. Do not commit or push unless explicitly requested. Return changed files, behavior implemented, exact validation results, unverified items, and residual risk.
 
 Load the installed apply-engineering-principles skill and only the relevant stack skills: develop-dotnet, develop-javascript-typescript, develop-react. Skills are discovered from the selected installation scope; do not rely on Claude-only skills frontmatter.
+
+
+Use the installed architecture-and-pattern-selection and design-patterns skills for material design choices, and develop-angular for Angular. Analyst compares simple alternatives in the existing plan; implementer follows justified choices; Reviewer challenges overengineering and missed useful patterns; Verifier independently falsifies those claims. Load local project skills only for the selected repository and keep their content local.

@@ -27,3 +27,6 @@ For each finding return one verdict: `confirmed`, `rejected`, or `needs-human`, 
 Load the installed apply-engineering-principles skill and only the relevant stack skills: develop-dotnet, develop-javascript-typescript, develop-react. Skills are discovered from the selected installation scope; do not rely on Claude-only skills frontmatter.
 
 Load the standalone verify-review-findings skill. Bind the verdict to the exact public review and code snapshot; no runtime JSON schema or publishing script is required.
+
+
+Use the installed architecture-and-pattern-selection and design-patterns skills for material design choices, and develop-angular for Angular. Analyst compares simple alternatives in the existing plan; implementer follows justified choices; Reviewer challenges overengineering and missed useful patterns; Verifier independently falsifies those claims. Load local project skills only for the selected repository and keep their content local.

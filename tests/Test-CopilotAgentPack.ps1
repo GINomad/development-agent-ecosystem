@@ -44,8 +44,8 @@ foreach ($name in $roles.Keys) {
     }
     if ($text -match 'Publish-AgentOutcome|\$\{REPO_ROOT\}|~/.claude/|review-verification.schema.json') { throw "Runtime dependency: $name" }
 }
-$skills = @('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react','verify-review-findings')
-if (@(Get-ChildItem (Join-Path $Root '.github/skills') -Directory).Count -ne 5) { throw 'Expected five skills.' }
+$skills = @('apply-engineering-principles','develop-dotnet','develop-javascript-typescript','develop-react','verify-review-findings','architecture-and-pattern-selection','design-patterns','develop-angular','api-and-interface-design','domain-modeling','architecture-decision-records','data-access-and-database-design','messaging-and-reliability','testing-and-observability')
+if (@(Get-ChildItem (Join-Path $Root '.github/skills') -Directory).Count -ne $skills.Count) { throw 'Unexpected portable skill count.' }
 foreach ($skill in $skills) {
     $text = Get-Content (Join-Path $Root ".github/skills/$skill/SKILL.md") -Raw
     if ($text -notmatch "(?m)^name: $([regex]::Escape($skill))\r?$" -or $text -notmatch '(?m)^description: .+') { throw "Invalid skill: $skill" }
@@ -67,4 +67,4 @@ foreach ($name in $roles.Keys) {
 foreach ($skill in $skills) {
     if (-not $installer.Contains(".github/skills/$skill/SKILL.md")) { throw "Missing installer skill: $skill" }
 }
-[pscustomobject]@{ Status = 'passed'; Agents = 8; Skills = 5; LiveCopilot = 'not-tested' }
+[pscustomobject]@{ Status = 'passed'; Agents = 8; Skills = $skills.Count; LiveCopilot = 'not-tested' }

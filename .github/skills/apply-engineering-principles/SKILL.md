@@ -19,9 +19,22 @@ description: Apply and review pragmatic DRY, KISS, SOLID, YAGNI, separation-of-c
 7. Refactor only within ready scope. Preserve behavior with focused tests before structural change.
 8. In review, cite the concrete maintenance, correctness, or testing cost. Do not report principle names as findings without an observable consequence.
 
+## Mandatory repository engineering checks
+
+Apply every check below to every new or resumed task, planning block, implementation block, review, and independent verification. These checks are mandatory even when the task text does not mention them. Record direct repository evidence for each applicable check. A check may be `not-applicable` only when the evidence explains why the changed scope cannot exercise it; an exception requires a recorded user decision, never a silent bypass.
+
+1. **Dependency injection.** Inspect new or changed `IServiceProvider` resolution and service-locator patterns. Prefer constructor injection for consumers, with lifetime and ownership proven against the repository's composition root. Allow `IServiceProvider` only in an evidenced composition-root registration or factory delegate, or at a runtime boundary such as `NoInlining`, reflective/dynamic loading, plugin activation, or equivalent loading fallback; record the concrete boundary, lifetime/ownership, and why direct constructor injection cannot serve that use.
+2. **Data access.** Keep every database operation in the repository's established data-access project and its existing repository/framework abstraction. Do not introduce database access in web, controller, business, or adapter layers. Establish the repository convention from direct code/project evidence before planning or implementation.
+3. **Type layout.** Establish the repository's actual organization of interfaces, implementations, DTOs, request models, response models, view models, domain data holders and enums. Preserve evidenced conventions and one-type-per-file rules where applicable. `Interfaces`, `Implementations`, `Models`, and `Enums` are an optional repository convention, not a universal architecture. Do not create folders, interfaces or injected services solely to satisfy a generic layout. Record justified deviations and compatibility/generated-code constraints; escalate only a conflict with an explicit project requirement.
+4. **Stream and disposable ownership.** Trace `MemoryStream` and every changed `IDisposable` from creator through returned value and consumer. Prove ownership and disposal on success, failure, and cancellation. Do not dispose a returned stream before its consumer has finished; make the owner and disposal point explicit.
+
+In requirements analysis, identify the repository evidence needed to apply these checks and hold only the affected scope when it is absent. In implementation, report the check and outcome with changed-file evidence. In review and verification, publish separate coverage evidence and a distinct falsification attempt for dependency injection, data access, type layout, and disposable ownership.
+
 ## Technology routing
 
 - For C#, .NET, ASP.NET Core, or `.csproj`, also use `develop-dotnet`.
 - For JavaScript, TypeScript, Node, or Office.js, also use `develop-javascript-typescript`.
 - For React components or hooks, use both `develop-javascript-typescript` and `develop-react`.
+- For Angular, use both `develop-javascript-typescript` and `develop-angular`.
+- For architectural or abstraction decisions, use `architecture-and-pattern-selection` and `design-patterns`; compare the simplest alternative and look for both excess complexity and missing useful boundaries.
 - If the stack is uncertain, ask Knowledge Keeper for repository evidence instead of guessing.

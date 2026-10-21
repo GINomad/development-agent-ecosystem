@@ -294,6 +294,9 @@ foreach ($pathValue in @($activeAgent.promptPaths)) {
     $path = Resolve-EcosystemPath -Value ([string]$pathValue) -Config $config -CodexHome $CodexHome
     $activeRolePrompt.Add((Get-Content -LiteralPath $path -Raw).Trim())
 }
+$availableSkillPaths = @($activeAgent.skillPaths | ForEach-Object { Resolve-EcosystemPath -Value ([string]$_) -Config $config -CodexHome $CodexHome })
+$availableSkillPaths += @(& (Join-Path $PSScriptRoot 'Get-ProjectSkillPaths.ps1') -Config $config -AgentId $executedAgentId -RepositoryIds $RepositoryIds -CodexHome $CodexHome)
+$activeRolePrompt.Add("Available skill files (read only those relevant to this task; project skills apply only to their stated repository scope):`n" + ($availableSkillPaths -join "`n"))
 $roleDirectory = @($config.agents | Where-Object { [string]$_.id -ne [string]$config.workflow.orchestration.agentId } | ForEach-Object {
     $responsibilities = @($_.responsibilities | ForEach-Object { [string]$_ }) -join ' | '
     "$([string]$_.id): $([string]$_.description) Responsibilities: $responsibilities"

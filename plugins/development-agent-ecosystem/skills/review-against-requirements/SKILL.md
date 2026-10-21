@@ -17,3 +17,5 @@ description: Review code and developer-agent work against requirements, accepted
 10. Mark all findings `proposed`; do not fix, verify your own findings, or publish them externally.
 11. Treat an explicit human bypass as unresolved tracked debt, not as a fix or false positive. The trusted host must create or reuse the linked task-local `TD-REV-NNN` item before delivery can continue.
 12. Answer every line-level review question and answer follow-up linked by `reviewQuestionId`: inspect the exact line, bounded surrounding evidence, and the parent question/answer when present; persist the answer with `Add-ReviewQuestionResponse.ps1`, and only then acknowledge the source comment. Do not turn a question into a finding or Developer instruction unless independent evidence supports it.
+
+Use architecture-and-pattern-selection and design-patterns to challenge both overengineering and omitted useful patterns. Compare a simpler counter-design and cite concrete impact in existing reviewCoverage dimensions; lack of a pattern name is not a finding. Apply repository-matched local domain skills without publishing their content.
