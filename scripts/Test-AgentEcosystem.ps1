@@ -10,6 +10,10 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $ConfigPath = Resolve-EcosystemConfigPath -ConfigPath $ConfigPath
 $root = Get-EcosystemRoot
+$suiteGitConfig = ([string](& git -C $root rev-parse --git-path config)).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve ecosystem Git configuration for isolation checks.' }
+if (-not [IO.Path]::IsPathRooted($suiteGitConfig)) { $suiteGitConfig = Join-Path $root $suiteGitConfig }
+$suiteGitConfigHash = Get-EcosystemFileSha256 -Path $suiteGitConfig
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $codexSelected = @($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
@@ -235,6 +239,9 @@ if ($workflowCliScript -notmatch 'New-WorkspaceLeaseHeartbeatAction' -or $workfl
     throw 'Workflow heartbeat callback must be created outside the scope of optional validated workflow parameters.'
 }
 Add-Check -Name 'workspace-heartbeat-closure' -Detail 'Heartbeat callback construction ignores unrelated empty validated workflow parameters and preserves exact lease values'
+
+& (Join-Path $root 'tests/Test-GitWorkspaceBoundary.ps1') -Root $root -OutputRoot (Join-Path $OutputRoot 'git-boundary') | Out-Null
+Add-Check -Name 'workspace-git-root-isolation' -Detail 'Incomplete nested clones and inherited Git-root redirection cannot mutate a parent repository; valid clones remain usable'
 
 function Invoke-SchedulerTestGit {
     param([Parameter(Mandatory)][string] $Workspace, [Parameter(Mandatory)][string[]] $Arguments)
@@ -2667,6 +2674,9 @@ Add-Check -Name 'dashboard-insights' -Detail 'Dashboard aggregates task errors, 
 & (Join-Path $root 'tests\Test-HarnessEngineering.ps1') -OutputRoot (Join-Path $OutputRoot 'harness-engineering') | Out-Null
 & (Join-Path $root 'tests\Test-SpecificationPractices.ps1') -OutputRoot (Join-Path $OutputRoot 'specification-practices') | Out-Null
 Add-Check -Name 'harness-engineering-evaluation' -Detail 'Acceptance scenarios bind requirements to commit evidence; comparable cohorts expose completion, false completion, intervention, recovery, duration and token metrics; knowledge freshness is source- and owner-bound'
+
+if ((Get-EcosystemFileSha256 -Path $suiteGitConfig) -ne $suiteGitConfigHash) { throw 'Full suite changed the ecosystem Git configuration; refusing a successful isolation verdict.' }
+Add-Check -Name 'suite-git-config-preserved' -Detail 'The complete suite preserved the exact ecosystem Git configuration, including shared-worktree origin'
 
 [pscustomobject]@{
     Passed = $true

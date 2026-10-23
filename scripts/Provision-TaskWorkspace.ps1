@@ -22,8 +22,26 @@ $taskRepositoryIds = @(if ($task.PSObject.Properties['repositoryIds']) { @($task
 $requestedRepositoryIds = @($RepositoryIds | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique)
 if (-not $taskRepositoryIds.Count -or ($taskRepositoryIds -join '|') -ne ($requestedRepositoryIds -join '|')) { throw "Workspace provisioning for task '$TaskId' must use exactly its persisted repository scope: $($taskRepositoryIds -join ', ')." }
 $RepositoryIds = $taskRepositoryIds
+function Assert-TaskWorkspaceGitRoot {
+    param([Parameter(Mandatory)][string] $WorkingDirectory)
+    $expectedRoot = [IO.Path]::GetFullPath($WorkingDirectory).TrimEnd([char[]]@('\','/'))
+    if (-not (Test-Path -LiteralPath (Join-Path $expectedRoot '.git'))) { throw "Workspace has no own Git metadata: $expectedRoot" }
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $topLevel = @(& git -C $expectedRoot rev-parse --show-toplevel 2>&1)
+        $probeExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $savedPreference }
+    if ($probeExit -ne 0 -or $topLevel.Count -ne 1 -or
+        -not [IO.Path]::GetFullPath([string]$topLevel[0]).TrimEnd([char[]]@('\','/')).Equals($expectedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Workspace Git root does not match the requested directory; refusing parent-repository fallback: $expectedRoot"
+    }
+}
 function Invoke-TaskWorkspaceGit {
     param([Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string[]] $Arguments)
+    # Clone intentionally runs in a destination parent; all other operations
+    # must resolve to the exact owned checkout, not an enclosing repository.
+    if ($Arguments[0] -ne 'clone') { Assert-TaskWorkspaceGitRoot -WorkingDirectory $WorkingDirectory }
     $savedPreference = $ErrorActionPreference
     try { $ErrorActionPreference = 'Continue'; $output = @(& git -C $WorkingDirectory @Arguments 2>&1); $exitCode = $LASTEXITCODE }
     finally { $ErrorActionPreference = $savedPreference }
@@ -32,6 +50,7 @@ function Invoke-TaskWorkspaceGit {
 }
 function Test-TaskWorkspaceGitRef {
     param([Parameter(Mandatory)][string] $WorkingDirectory, [Parameter(Mandatory)][string] $Reference)
+    Assert-TaskWorkspaceGitRoot -WorkingDirectory $WorkingDirectory
     $savedPreference = $ErrorActionPreference
     try { $ErrorActionPreference = 'Continue'; $null = @(& git -C $WorkingDirectory show-ref --verify --quiet $Reference 2>&1); $exitCode = $LASTEXITCODE }
     finally { $ErrorActionPreference = $savedPreference }
@@ -73,6 +92,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         if ($recoverableWorkspaceNeedsProvisioning -and [string]$manifest.lifecycle -eq 'released') { $preservedBrokenClonePath = [string]$manifest.clonePath }
         if (-not $recoverableWorkspaceNeedsProvisioning) {
             if (-not $cloneExists) { throw "Workspace clone is missing: $($manifest.clonePath)" }
+            Assert-TaskWorkspaceGitRoot -WorkingDirectory ([string]$manifest.clonePath)
             $ownedByAnotherRun = [string]$manifest.lifecycle -in @('provisioning','active') -and ([string]$manifest.leaseId -ne $LeaseId -or [string]$manifest.runId -ne $RunId)
             if ($ownedByAnotherRun) { throw "Task '$TaskId' already owns a different active workspace run for '$repositoryId'." }
             $manifest | Add-Member -NotePropertyName runId -NotePropertyValue $RunId -Force
