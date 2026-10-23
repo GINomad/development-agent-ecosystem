@@ -18,6 +18,7 @@ $dashboardRoot = Join-Path $root 'dashboard'
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $runspaceLogPath = Join-Path $stateRoot 'dashboard-runspaces.jsonl'
 $scriptRuns = [Collections.Generic.List[object]]::new()
+$insightRuns = @{}
 $address = [string]$config.ui.listenAddress
 $port = [int]$config.ui.port
 if ($address -ne '127.0.0.1') { throw 'Dashboard is restricted to 127.0.0.1.' }
@@ -53,6 +54,57 @@ function Read-JsonBody {
     try { $raw = $reader.ReadToEnd() } finally { $reader.Dispose() }
     if ([string]::IsNullOrWhiteSpace($raw)) { return [pscustomobject]@{} }
     return $raw | ConvertFrom-Json
+}
+
+function Complete-InsightRequests {
+    foreach ($key in @($insightRuns.Keys)) {
+        $run = $insightRuns[$key]
+        if (-not $run.Async.IsCompleted) { continue }
+        try {
+            $results = $run.PowerShell.EndInvoke($run.Async)
+            if ($run.PowerShell.HadErrors) { throw ($run.PowerShell.Streams.Error | Out-String) }
+            if ($results.Count -ne 1) { throw 'Analytics returned an unexpected result.' }
+            foreach ($waitingResponse in $run.Responses) {
+                try { Send-Json -Response $waitingResponse -Value $results[0] }
+                catch { try { $waitingResponse.Abort() } catch { } }
+            }
+        }
+        catch {
+            $diagnostic = $_.Exception.Message
+            foreach ($waitingResponse in $run.Responses) {
+                try { Send-Json -Response $waitingResponse -Value @{ error=$diagnostic } -StatusCode 500 }
+                catch { try { $waitingResponse.Abort() } catch { } }
+            }
+        }
+        finally {
+            $run.PowerShell.Dispose()
+            $insightRuns.Remove($key)
+        }
+    }
+}
+
+function Start-InsightRequest {
+    param([hashtable] $Parameters, $Response)
+    $key = if ($Parameters.ContainsKey('ProjectId')) { [string]$Parameters.ProjectId } else { '*' }
+    if ($insightRuns.ContainsKey($key)) {
+        if ($insightRuns[$key].Responses.Count -ge 32) {
+            Send-Json -Response $Response -Value @{ error='Too many pending analytics requests.' } -StatusCode 429
+            return
+        }
+        $insightRuns[$key].Responses.Add($Response)
+        return
+    }
+    if ($insightRuns.Count -ge 8) {
+        Send-Json -Response $Response -Value @{ error='Analytics is busy. Retry shortly.' } -StatusCode 429
+        return
+    }
+    $runner = [PowerShell]::Create()
+    $null = $runner.AddCommand((Join-Path $PSScriptRoot 'Get-DashboardInsights.ps1')).AddParameters($Parameters)
+    try { $async = $runner.BeginInvoke() }
+    catch { $runner.Dispose(); throw }
+    $responses = [Collections.Generic.List[object]]::new()
+    $responses.Add($Response)
+    $insightRuns[$key] = [pscustomobject]@{ PowerShell=$runner; Async=$async; Responses=$responses }
 }
 
 function Get-ObjectPropertyValue {
@@ -310,10 +362,20 @@ Write-Output "Development Agent Desk: $url"
 if (-not $NoOpen -and [bool]$config.ui.openBrowser) { Start-Process $url | Out-Null }
 
 $handled = 0
+$pendingContext = $null
 try {
-    while ($listener.IsListening -and ($MaxRequests -eq 0 -or $handled -lt $MaxRequests)) {
-        $context = $listener.GetContext()
+    while ($listener.IsListening) {
+        Complete-InsightRequests
         Clear-CompletedScriptRunspaces
+        if ($MaxRequests -gt 0 -and $handled -ge $MaxRequests) {
+            if ($insightRuns.Count -eq 0) { break }
+            [Threading.Thread]::Sleep(50)
+            continue
+        }
+        if ($null -eq $pendingContext) { $pendingContext = $listener.GetContextAsync() }
+        if (-not $pendingContext.Wait(50)) { continue }
+        $context = $pendingContext.GetAwaiter().GetResult()
+        $pendingContext = $null
         $handled++
         $request = $context.Request
         $response = $context.Response
@@ -360,8 +422,7 @@ try {
                         if (-not @($config.projects | Where-Object { [string]$_.id -eq $requestedProjectId -and [bool]$_.enabled }).Count) { throw 'Project is not enabled or does not exist.' }
                         $insightParameters.ProjectId = $requestedProjectId
                     }
-                    $insights = & (Join-Path $PSScriptRoot 'Get-DashboardInsights.ps1') @insightParameters
-                    Send-Json -Response $response -Value $insights
+                    Start-InsightRequest -Parameters $insightParameters -Response $response
                     continue
                 }
                 if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/external-reviews') {
@@ -933,6 +994,11 @@ try {
             $file = switch ($path) {
                 '/' { Join-Path $dashboardRoot 'index.html' }
                 '/index.html' { Join-Path $dashboardRoot 'index.html' }
+                '/analytics' { Join-Path $dashboardRoot 'analytics.html' }
+                '/analytics.html' { Join-Path $dashboardRoot 'analytics.html' }
+                '/analytics.css' { Join-Path $dashboardRoot 'analytics.css' }
+                '/analytics.js' { Join-Path $dashboardRoot 'analytics.js' }
+                '/api-client.js' { Join-Path $dashboardRoot 'api-client.js' }
                 '/styles.css' { Join-Path $dashboardRoot 'styles.css' }
                 '/app.js' { Join-Path $dashboardRoot 'app.js' }
                 default { $null }
@@ -943,7 +1009,7 @@ try {
             }
             $contentType = if ($file.EndsWith('.css')) { 'text/css; charset=utf-8' } elseif ($file.EndsWith('.js')) { 'application/javascript; charset=utf-8' } else { 'text/html; charset=utf-8' }
             $content = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)
-            if ($file.EndsWith('index.html')) { $content = $content.Replace('__SESSION_TOKEN__', $token) }
+            if ($file.EndsWith('index.html') -or $file.EndsWith('analytics.html')) { $content = $content.Replace('__SESSION_TOKEN__', $token) }
             Send-Bytes -Response $response -Bytes ((New-Object Text.UTF8Encoding($false)).GetBytes($content)) -ContentType $contentType
         }
         catch {
@@ -963,6 +1029,11 @@ try {
     }
 }
 finally {
+    foreach ($run in @($insightRuns.Values)) {
+        try { $run.PowerShell.Stop() } catch { }
+        $run.PowerShell.Dispose()
+        foreach ($waitingResponse in $run.Responses) { try { $waitingResponse.Abort() } catch { } }
+    }
     foreach ($run in @($scriptRuns)) {
         try { $run.PowerShell.Stop() } catch { }
         $run.PowerShell.Dispose()

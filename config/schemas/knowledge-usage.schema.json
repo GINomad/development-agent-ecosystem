@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Knowledge and skill usage metric",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "metricLevel", "eventType", "eventId", "timestampUtc", "taskId", "agentId", "sourceKind", "accessMode", "sourceId", "cacheHit", "evidenceKind", "status"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "metricLevel": { "const": "knowledge" },
+    "eventType": { "const": "knowledge-access" },
+    "eventId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+    "timestampUtc": { "type": "string", "format": "date-time" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": ["string", "null"] },
+    "runId": { "type": ["string", "null"] },
+    "leaseId": { "type": ["string", "null"] },
+    "agentId": { "type": "string", "minLength": 1 },
+    "sourceKind": { "enum": ["skill", "knowledge", "repository-map", "artifact", "context-pack"] },
+    "accessMode": { "enum": ["selected", "read", "used", "reused", "rebuilt", "full-scan", "fallback"] },
+    "sourceId": { "type": "string", "minLength": 1 },
+    "sourceLocation": { "type": ["string", "null"] },
+    "sourceRevision": { "type": ["string", "null"] },
+    "contextPackId": { "type": ["string", "null"] },
+    "repositoryId": { "type": ["string", "null"] },
+    "cacheHit": { "type": "boolean" },
+    "evidenceKind": { "enum": ["observed", "declared", "verified"] },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "status": { "type": "string", "minLength": 1 },
+    "detail": { "type": ["string", "null"] }
+  }
+}

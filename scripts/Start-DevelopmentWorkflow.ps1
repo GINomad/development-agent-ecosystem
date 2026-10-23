@@ -267,10 +267,11 @@ if (Test-Path -LiteralPath $workflowRoutingPath -PathType Leaf) {
 }
 $agentWorkingDirectory = Resolve-AgentWorkingDirectory -ProductWorkspace $Workspace -AgentId $executedAgentId -WorkflowExecutionMode $workflowRouteExecutionMode
 $ecosystemWorkingDirectorySelected = $agentWorkingDirectory.Equals([IO.Path]::GetFullPath((Get-EcosystemRoot)), [StringComparison]::OrdinalIgnoreCase)
+$roleAttemptId = [guid]::NewGuid().ToString('N')
 $contextPack = $null
 if (-not $PrepareOnly) {
     $contextArtifactNames = if ($resumePlan) { @(@($resumePlan.ChangedArtifactNames) + @($resumePlan.UnchangedArtifactNames) | Select-Object -Unique) } else { @() }
-    $contextPack = & (Join-Path $PSScriptRoot 'Update-AgentContextPack.ps1') -TaskId $TaskId -RecipientAgentId $executedAgentId -ArtifactNames $contextArtifactNames -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $contextPack = & (Join-Path $PSScriptRoot 'Update-AgentContextPack.ps1') -TaskId $TaskId -RecipientAgentId $executedAgentId -ArtifactNames $contextArtifactNames -AttemptId $roleAttemptId -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
 $modelRouteParameters = @{
     TaskId = $TaskId
@@ -433,7 +434,6 @@ $mcpCanaryClaimId = $TaskId+'-'+$executedAgentId
 $mcpCanaryCompletionRecorded = $false
 $mcpJsonlFailedServers = @()
 $mcpSession = $null
-$roleAttemptId = [guid]::NewGuid().ToString('N')
 $tokenTaskState=Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $tokenTaskRevision=if($tokenTaskState.PSObject.Properties['revision']){[Nullable[int]][int]$tokenTaskState.revision}else{$null}
 function Complete-CurrentMcpCanary([bool]$Succeeded) {

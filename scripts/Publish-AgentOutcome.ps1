@@ -105,6 +105,16 @@ foreach ($name in $required) {
     $validated.Add($path)
 }
 
+if ($AgentId -eq 'knowledge_keeper') {
+    $mapPublication = & (Join-Path $PSScriptRoot 'Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+    foreach ($repositoryMap in @($mapPublication.RepositoryMaps)) {
+        $publicationEvidence.Add("repository-map:$([string]$repositoryMap.RepositoryId):$([string]$repositoryMap.MapSha256)")
+    }
+    if ([bool]$mapPublication.Skipped) {
+        $publicationEvidence.Add("repository-map-finalization:skipped:$([string]$mapPublication.Reason)")
+    }
+}
+
 if ($AgentId -eq 'reviewer') {
     $snapshot = & (Join-Path $PSScriptRoot 'Save-ReviewArtifactSnapshot.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
     $publicationEvidence.Add([string]$snapshot.IndexPath)

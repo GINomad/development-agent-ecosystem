@@ -3,6 +3,9 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $RecipientAgentId,
     [string[]] $ArtifactNames = @(),
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $AttemptId,
+    [string] $RunId,
+    [string] $LeaseId,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -19,6 +22,23 @@ $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 
 $contextPath = Join-Path $taskRoot 'context-pack.json'
+$knowledgeUsageWriter = Join-Path $PSScriptRoot 'Write-KnowledgeAccessMetric.ps1'
+$contextPackId = if (Test-Path -LiteralPath $contextPath -PathType Leaf) { Get-EcosystemFileSha256 -Path $contextPath } else { $null }
+
+function Write-KnowledgeUsage {
+    param(
+        [Parameter(Mandatory)][ValidateSet('skill','knowledge','repository-map','artifact','context-pack')][string] $SourceKind,
+        [Parameter(Mandatory)][ValidateSet('selected','read','used','reused','rebuilt','full-scan','fallback')][string] $AccessMode,
+        [Parameter(Mandatory)][string] $SourceId,
+        [string] $SourceLocation,
+        [string] $SourceRevision,
+        [string] $RepositoryId,
+        [bool] $CacheHit = $false,
+        [ValidateSet('observed','declared','verified')][string] $EvidenceKind = 'observed',
+        [string] $Detail
+    )
+    & $knowledgeUsageWriter -TaskRoot $taskRoot -TaskId $TaskId -AttemptId $AttemptId -RunId $RunId -LeaseId $LeaseId -AgentId $RecipientAgentId -SourceKind $SourceKind -AccessMode $AccessMode -SourceId $SourceId -SourceLocation $SourceLocation -SourceRevision $SourceRevision -ContextPackId $contextPackId -RepositoryId $RepositoryId -CacheHit:$CacheHit -EvidenceKind $EvidenceKind -Detail $Detail | Out-Null
+}
 $existing = $null
 if (Test-Path -LiteralPath $contextPath -PathType Leaf) {
     try { $existing = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json }
@@ -41,6 +61,7 @@ foreach ($skillPath in @($agent.skillPaths)) {
     if ($skillName -and -not $selectedSkills.Contains($skillName)) { $selectedSkills.Add($skillName) }
     $resolvedSkill = Resolve-EcosystemPath -Value ([string]$skillPath) -Config $config -CodexHome $CodexHome
     $sharedSkillSources.Add([ordered]@{kind='knowledge'; location=$resolvedSkill; revision=(Get-EcosystemFileSha256 -Path $resolvedSkill); reason='Configured shared skill; read only when relevant to this task.'})
+    Write-KnowledgeUsage -SourceKind skill -AccessMode selected -SourceId $skillName -SourceLocation $resolvedSkill -SourceRevision (Get-EcosystemFileSha256 -Path $resolvedSkill) -Detail 'Configured shared skill selected for the context pack.'
 }
 $taskDocument = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $repositoryIds = if ($taskDocument.PSObject.Properties['repositoryIds']) { @($taskDocument.repositoryIds) } elseif ($taskDocument.PSObject.Properties['repositoryId']) { @($taskDocument.repositoryId) } else { @() }
@@ -48,6 +69,7 @@ $projectSkillSources = @(& (Join-Path $PSScriptRoot 'Get-ProjectSkillPaths.ps1')
     $skillName = Split-Path -Leaf (Split-Path -Parent $_)
     if (-not $selectedSkills.Contains($skillName)) { $selectedSkills.Add($skillName) }
     [ordered]@{kind='knowledge'; location=[string]$_; revision=(Get-EcosystemFileSha256 -Path $_); reason='Local project skill matched to task repository scope; apply only its stated repository boundary.'}
+    Write-KnowledgeUsage -SourceKind skill -AccessMode selected -SourceId $skillName -SourceLocation ([string]$_) -SourceRevision (Get-EcosystemFileSha256 -Path $_) -RepositoryId ($repositoryIds -join ',') -Detail 'Repository-scoped skill selected for the context pack.'
 })
 if (-not $selectedSkills.Count) { $selectedSkills.Add([string]$agent.id) }
 
@@ -90,6 +112,7 @@ foreach ($nameValue in @($ArtifactNames | Select-Object -Unique)) {
         summary = $summary
         updatedAtUtc = $updatedAtUtc
     })
+    Write-KnowledgeUsage -SourceKind artifact -AccessMode $(if ($priorSummary) { 'reused' } else { 'read' }) -SourceId $name -SourceLocation $path -SourceRevision $sha256 -CacheHit:([bool]$priorSummary) -Detail $(if ($priorSummary) { 'Reused unchanged artifact summary.' } else { 'Read artifact to create a stable summary.' })
     $artifactSources.Add([pscustomobject][ordered]@{
         kind = 'history'
         location = $path
@@ -168,6 +191,7 @@ foreach ($taskWorkspace in $taskWorkspaces) {
         componentCount = [int]$map.summary.componentCount
         recommendedStart = @($map.recommendedStart | ForEach-Object { [string]$_ })
     })
+    Write-KnowledgeUsage -SourceKind repository-map -AccessMode $(if ($mapResult.Reused) { 'reused' } else { 'rebuilt' }) -SourceId $repositoryId -SourceLocation ([string]$mapResult.MapPath) -SourceRevision ([string]$map.sourceFingerprint) -RepositoryId $repositoryId -CacheHit:([bool]$mapResult.Reused) -Detail $(if ($mapResult.Reused) { 'Content-addressed repository map reused without rebuilding the index.' } else { 'Repository map built for a new revision or dirty-state fingerprint.' })
     $repositoryMapSources.Add([ordered]@{
         kind = 'code'
         location = [string]$mapResult.MapPath
@@ -219,6 +243,7 @@ if ($existing -and [string]$existing.recipient -eq $RecipientAgentId -and
         $actual = @($existing.artifactSummaries | Where-Object { [string]$_.name -eq [string]$expected.name }) | Select-Object -First 1
         if (-not $actual -or [string]$actual.sha256 -ne [string]$expected.sha256) { throw "Reused context pack fingerprint validation failed for '$([string]$expected.name)'." }
     }
+    Write-KnowledgeUsage -SourceKind context-pack -AccessMode reused -SourceId 'context-pack' -SourceLocation $contextPath -SourceRevision (Get-EcosystemFileSha256 -Path $contextPath) -CacheHit:$true -Detail 'Context pack identity and all fingerprints were unchanged.'
     return [pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count; Reused=$true }
 }
 
@@ -239,5 +264,6 @@ foreach ($expected in @($analysisHeldScope)) {
 }
 $contextEvidence = @($artifactSummaries | ForEach-Object { "artifact:$([string]$_.name):$([string]$_.sha256)" }) + @($repositoryMaps | ForEach-Object { "repository-map:$([string]$_.repositoryId):$([string]$_.sha256)" })
 & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type context-issued -Summary "Validated context pack issued to '$RecipientAgentId' with $($artifactSummaries.Count) stable artifact summary item(s) and $($repositoryMaps.Count) repository map(s)." -Artifact $contextPath -Evidence $contextEvidence -TargetAgentId $RecipientAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+Write-KnowledgeUsage -SourceKind context-pack -AccessMode rebuilt -SourceId 'context-pack' -SourceLocation $contextPath -SourceRevision (Get-EcosystemFileSha256 -Path $contextPath) -CacheHit:$false -Detail 'Context pack rebuilt because one or more source fingerprints changed.'
 
 [pscustomobject]@{ TaskId=$TaskId; RecipientAgentId=$RecipientAgentId; ContextPath=$contextPath; ArtifactCount=$artifactSummaries.Count; Reused=$false }

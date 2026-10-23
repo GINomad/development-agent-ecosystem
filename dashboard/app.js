@@ -1,4 +1,5 @@
 const token = document.documentElement.dataset.sessionToken;
+const api = createDashboardApi(token);
 const activity = document.querySelector('#activity');
 const repositoryOptions = document.querySelector('#repositoryOptions');
 const repositorySummary = document.querySelector('#repositorySummary');
@@ -26,9 +27,12 @@ let selectedAgentId = null;
 let selectedOutcomeAgentId = null;
 let selectedOutcomeArtifactName = null;
 let agentLogRequestInFlight = false;
+let agentLogController = null;
+let agentLogRequestKey = '';
 let agentLogRefreshSeconds = 30;
 let taskRefreshInFlight = false;
 let insightsRequestInFlight = false;
+let insightsReloadPending = false;
 let insightsTab = 'analytics';
 let taskStateRevision = 0;
 let schedulerState = { capacity: 0, activeTaskCount: 0, queuedTaskCount: 0 };
@@ -51,20 +55,6 @@ const agentCommentDrafts = new Map();
 function log(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   activity.textContent = `[${new Date().toLocaleTimeString()}] ${text}\n\n${activity.textContent}`;
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Ecosystem-Token': token,
-      ...(options.headers || {})
-    }
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
-  return body;
 }
 
 function selectedRepositoryIds() {
@@ -341,24 +331,36 @@ function renderKnowledge(knowledge = {}) {
 }
 
 async function loadInsights({ silent = false } = {}) {
-  if (insightsRequestInFlight) return;
+  if (insightsRequestInFlight) {
+    if (!silent) {
+      insightsReloadPending = true;
+      document.querySelector('#insightsScope').textContent = `${configuredProjects.find(item => item.id === projectPicker.value)?.name || 'All projects'} · loading...`;
+    }
+    return;
+  }
   insightsRequestInFlight = true;
+  const projectId = projectPicker.value;
+  document.querySelector('#insightsScope').textContent = `${configuredProjects.find(item => item.id === projectId)?.name || 'All projects'} · loading...`;
   const button = document.querySelector('#refreshInsights');
   if (!silent) { button.disabled = true; button.textContent = 'Refreshing...'; }
   try {
-    const projectId = projectPicker.value;
     const result = await api(`/api/insights${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`);
+    if (projectId !== projectPicker.value) { insightsReloadPending = true; return; }
     const project = configuredProjects.find(item => item.id === projectId);
     document.querySelector('#insightsScope').textContent = `${project?.name || 'All projects'} · updated ${formatDate(result.generatedAtUtc)}`;
     renderAnalytics(result.analytics);
     renderKnowledge(result.knowledge);
   } catch (error) {
-    document.querySelector('#insightsScope').textContent = `Insights unavailable: ${error.message}`;
+    if (projectId === projectPicker.value) document.querySelector('#insightsScope').textContent = `Insights unavailable: ${error.message}`;
     if (!silent) log(`Error: ${error.message}`);
   } finally {
     insightsRequestInFlight = false;
     button.disabled = false;
     button.textContent = 'Refresh insights';
+    if (insightsReloadPending) {
+      insightsReloadPending = false;
+      void loadInsights({ silent: true });
+    }
   }
 }
 
@@ -2309,6 +2311,10 @@ async function sendReviewDiffComment({ restart = false } = {}) {
 }
 
 function closeAgentLog() {
+  agentLogController?.abort();
+  agentLogController = null;
+  agentLogRequestInFlight = false;
+  agentLogRequestKey = '';
   selectedAgentId = null;
   const panel = document.querySelector('#agentLogPanel');
   if (panel) panel.classList.add('hidden');
@@ -2408,21 +2414,35 @@ function renderAgentLog(result) {
 }
 
 async function loadAgentLog({ silent = false } = {}) {
-  if (!selectedTaskId || !selectedAgentId || agentLogRequestInFlight) return;
+  if (!selectedTaskId || !selectedAgentId) return;
   const taskId = selectedTaskId;
   const agentId = selectedAgentId;
+  const requestKey = `${taskId}:${agentId}`;
+  if (agentLogRequestInFlight && agentLogRequestKey === requestKey) return;
+  agentLogController?.abort();
+  const controller = new AbortController();
+  agentLogController = controller;
+  agentLogRequestKey = requestKey;
   agentLogRequestInFlight = true;
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
-    const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/log`);
-    if (selectedTaskId !== taskId || selectedAgentId !== agentId) return;
+    const result = await api(`/api/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(agentId)}/log`, { signal: controller.signal });
+    if (agentLogController !== controller || selectedTaskId !== taskId || selectedAgentId !== agentId) return;
     renderAgentLog(result);
   } catch (error) {
-    if (selectedTaskId === taskId && selectedAgentId === agentId) {
-      document.querySelector('#agentLogMeta').textContent = 'Live activity unavailable';
+    if (agentLogController === controller && selectedTaskId === taskId && selectedAgentId === agentId) {
+      document.querySelector('#agentLogMeta').textContent = error.name === 'AbortError'
+        ? 'Live activity request timed out. Retrying on the next refresh.'
+        : `Live activity unavailable: ${error.message}`;
       if (!silent) log(`Error: ${error.message}`);
     }
   } finally {
-    agentLogRequestInFlight = false;
+    window.clearTimeout(timeout);
+    if (agentLogController === controller) {
+      agentLogRequestInFlight = false;
+      agentLogController = null;
+      agentLogRequestKey = '';
+    }
   }
 }
 async function confirmIdleAgentDispatch(taskId, result) {

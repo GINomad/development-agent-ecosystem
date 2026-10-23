@@ -68,6 +68,22 @@ function Get-Sum {
     $sum
 }
 
+function Get-DoubleValue {
+    param($Value)
+    if ($null -eq $Value) { return $null }
+    $parsed = 0.0
+    if ([double]::TryParse([string]$Value, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) { return $parsed }
+    $null
+}
+
+function Get-Percentile {
+    param([object[]] $Records, [string] $Property, [double] $Percentile)
+    $values = @($Records | ForEach-Object { Get-DoubleValue (Get-ObjectValue $_ $Property) } | Where-Object { $null -ne $_ } | Sort-Object)
+    if (-not $values.Count) { return $null }
+    $index = [Math]::Min($values.Count - 1, [Math]::Ceiling($Percentile * $values.Count) - 1)
+    [Math]::Round([double]$values[$index], 2)
+}
+
 function New-TokenAggregate {
     param([Parameter(Mandatory)] $Group, [Parameter(Mandatory)][string] $Dimension)
     $records = @($Group.Group)
@@ -118,6 +134,8 @@ $tokenRecords = [Collections.Generic.List[object]]::new()
 $attemptRecords = [Collections.Generic.List[object]]::new()
 $errorRecords = [Collections.Generic.List[object]]::new()
 $knowledgeOutcomes = [Collections.Generic.List[object]]::new()
+$mcpRecords = [Collections.Generic.List[object]]::new()
+$knowledgeUsageRecords = [Collections.Generic.List[object]]::new()
 
 if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
     foreach ($taskDirectory in @(Get-ChildItem -LiteralPath $tasksRoot -Directory -ErrorAction SilentlyContinue)) {
@@ -139,6 +157,24 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             if ($eventType -ne 'role-attempt-completed' -and -not $legacyRoleAttempt) { continue }
             $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
             $attemptRecords.Add($record)
+        }
+        foreach ($record in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'mcp-metrics.jsonl'))) {
+            $record | Add-Member -NotePropertyName taskId -NotePropertyValue $taskId -Force
+            $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
+            $mcpRecords.Add($record)
+        }
+        foreach ($record in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'knowledge-usage.jsonl'))) {
+            $record | Add-Member -NotePropertyName taskId -NotePropertyValue $taskId -Force
+            $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
+            $knowledgeUsageRecords.Add($record)
+        }
+        foreach ($transcriptRecord in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'workflow-codex.jsonl'))) {
+            if (-not $transcriptRecord.PSObject.Properties['item'] -or $null -eq $transcriptRecord.item -or [string](Get-ObjectValue $transcriptRecord.item 'type' '') -ne 'command_execution') { continue }
+            $command = [string](Get-ObjectValue $transcriptRecord.item 'command' '')
+            if ($command -notmatch '(?i)(rg\s+--files|Get-ChildItem\b[^\r\n]*-Recurse|git\s+ls-files\b|find\s+\.\s|findstr\s+/s|dir\s+/s)') { continue }
+            $knowledgeUsageRecords.Add([pscustomobject][ordered]@{
+                schemaVersion=1; metricLevel='knowledge'; eventType='knowledge-access'; eventId=$null; timestampUtc=[string](Get-ObjectValue $transcriptRecord 'timestampUtc' ''); taskId=$taskId; projectId=$taskProjectId; attemptId=$null; runId=$null; leaseId=$null; agentId=[string](Get-ObjectValue $transcriptRecord 'agentId' 'unknown'); sourceKind='repository-map'; accessMode='full-scan'; sourceId='transcript-scan'; sourceLocation=$null; sourceRevision=$null; contextPackId=$null; repositoryId=$null; cacheHit=$false; evidenceKind='observed'; durationMs=0; status='succeeded'; detail='Heuristic provider-transcript detection of a broad repository enumeration command.'
+            })
         }
         foreach ($event in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'task-ledger.jsonl') | Where-Object { [string]$_.type -eq 'agent-failure' })) {
             $errorRecords.Add([pscustomobject][ordered]@{
@@ -204,6 +240,39 @@ $errorsByAgent = @($errorRecords | Group-Object agentId | ForEach-Object { [pscu
 $reportedTokens = @($tokenRecords | Where-Object { [string](Get-ObjectValue $_ 'availability' '') -in @('reported','partial') -and $null -ne (Get-LongValue -Value (Get-ObjectValue $_ 'totalTokens')) })
 $allKnowledgeEntries = @($knowledgeOutcomes | ForEach-Object { @($_.entries) })
 
+$mcpToolRecords = @($mcpRecords | Where-Object { -not [string]::IsNullOrWhiteSpace([string](Get-ObjectValue $_ 'tool' '')) })
+$mcpTransportRecords = @($mcpRecords | Where-Object { [string]::IsNullOrWhiteSpace([string](Get-ObjectValue $_ 'tool' '')) })
+$mcpSucceeded = @($mcpToolRecords | Where-Object { [string](Get-ObjectValue $_ 'status' '') -in @('succeeded','success','completed') })
+$mcpFailed = @($mcpToolRecords | Where-Object { [string](Get-ObjectValue $_ 'status' '') -notin @('succeeded','success','completed') })
+$mcpTransportFailures = @($mcpTransportRecords | Where-Object { [string](Get-ObjectValue $_ 'status' '') -notin @('succeeded','success','completed') })
+$mcpFallbacks = @($mcpRecords | Where-Object { [bool](Get-ObjectValue $_ 'fallbackUsed' $false) })
+$mcpByTool = @($mcpToolRecords | Group-Object { "$(Get-ObjectValue $_ 'server' 'unknown')|$(Get-ObjectValue $_ 'tool' 'unknown')" } | ForEach-Object {
+    $records = @($_.Group); $success = @($records | Where-Object { [string](Get-ObjectValue $_ 'status' '') -in @('succeeded','success','completed') }).Count
+    [pscustomobject][ordered]@{ server=([string]$_.Name -split '\|',2)[0]; tool=([string]$_.Name -split '\|',2)[1]; calls=$records.Count; succeeded=$success; failed=$records.Count-$success; errorRate=if($records.Count){[Math]::Round(($records.Count-$success)/$records.Count,4)}else{0}; p50LatencyMs=Get-Percentile $records 'durationMs' .50; p95LatencyMs=Get-Percentile $records 'durationMs' .95; responseBytes=Get-Sum -Records $records -Property responseBytes }
+} | Sort-Object @{Expression='calls';Descending=$true}, server, tool)
+$mcpByAgent = @($mcpToolRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object {
+    $records = @($_.Group); $success = @($records | Where-Object { [string](Get-ObjectValue $_ 'status' '') -in @('succeeded','success','completed') }).Count
+    [pscustomobject][ordered]@{ agentId=[string]$_.Name; calls=$records.Count; succeeded=$success; failed=$records.Count-$success; errorRate=if($records.Count){[Math]::Round(($records.Count-$success)/$records.Count,4)}else{0}; p95LatencyMs=Get-Percentile $records 'durationMs' .95 }
+} | Sort-Object @{Expression='calls';Descending=$true}, agentId)
+$knowledgeBySource = @($knowledgeUsageRecords | Group-Object { "$(Get-ObjectValue $_ 'sourceKind' 'unknown')|$(Get-ObjectValue $_ 'sourceId' 'unknown')" } | ForEach-Object {
+    $records = @($_.Group); $parts = [string]$_.Name -split '\|',2; $reused=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'reused' }).Count; $built=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'rebuilt' }).Count; $selected=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'selected' }).Count; $read=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -in @('read','used') }).Count
+    [pscustomobject][ordered]@{ sourceKind=$parts[0]; sourceId=$parts[1]; events=$records.Count; selected=$selected; read=$read; reused=$reused; rebuilt=$built; fullScan=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'full-scan' }).Count; agents=@($records | ForEach-Object { [string](Get-ObjectValue $_ 'agentId' '') } | Where-Object { $_ } | Select-Object -Unique | Sort-Object) }
+} | Sort-Object @{Expression='events';Descending=$true}, sourceKind, sourceId)
+$knowledgeByAgent = @($knowledgeUsageRecords | Group-Object { [string](Get-ObjectValue $_ 'agentId' 'unknown') } | ForEach-Object {
+    $records = @($_.Group); [pscustomobject][ordered]@{ agentId=[string]$_.Name; events=$records.Count; skills=@($records | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'skill' }).Count; knowledge=@($records | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'knowledge' }).Count; mapReused=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'reused' }).Count; mapBuilt=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'rebuilt' }).Count; fullScans=@($records | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'full-scan' }).Count }
+} | Sort-Object @{Expression='events';Descending=$true}, agentId)
+$mapEvents = @($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'repository-map' })
+$mapReusedCount = @($mapEvents | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'reused' }).Count
+$mapBuiltCount = @($mapEvents | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'rebuilt' }).Count
+$fullScanCount = @($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'full-scan' }).Count
+$mapEligibleCount = $mapReusedCount + $mapBuiltCount
+$knowledgeSummary = [pscustomobject][ordered]@{
+    eventCount=$knowledgeUsageRecords.Count; taskCount=@($knowledgeUsageRecords | ForEach-Object { [string](Get-ObjectValue $_ 'taskId' '') } | Where-Object { $_ } | Select-Object -Unique).Count; skillSelectionCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'skill' -and [string](Get-ObjectValue $_ 'accessMode' '') -eq 'selected' }).Count; sourceReadCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -in @('read','used') }).Count; mapReusedCount=$mapReusedCount; mapBuiltCount=$mapBuiltCount; mapReuseRate=if($mapEligibleCount){[Math]::Round($mapReusedCount/$mapEligibleCount,4)}else{$null}; fullScanCount=$fullScanCount; scanAvoidanceRate=if($mapEligibleCount+$fullScanCount){[Math]::Round($mapEligibleCount/($mapEligibleCount+$fullScanCount),4)}else{$null}; scanMeasurement='heuristic-transcript-plus-observed-map-events'; sourceCount=@($knowledgeUsageRecords | ForEach-Object { "$(Get-ObjectValue $_ 'sourceKind' '')|$(Get-ObjectValue $_ 'sourceId' '')" } | Select-Object -Unique).Count
+}
+$mcpSummary = [pscustomobject][ordered]@{
+    callCount=$mcpToolRecords.Count; succeededCount=$mcpSucceeded.Count; failedCount=$mcpFailed.Count; successRate=if($mcpToolRecords.Count){[Math]::Round($mcpSucceeded.Count/$mcpToolRecords.Count,4)}else{$null}; errorRate=if($mcpToolRecords.Count){[Math]::Round($mcpFailed.Count/$mcpToolRecords.Count,4)}else{$null}; fallbackCount=$mcpFallbacks.Count; transportEventCount=$mcpTransportRecords.Count; transportFailureCount=$mcpTransportFailures.Count; transportFailureRate=if($mcpTransportRecords.Count){[Math]::Round($mcpTransportFailures.Count/$mcpTransportRecords.Count,4)}else{$null}; p50LatencyMs=Get-Percentile $mcpToolRecords 'durationMs' .50; p95LatencyMs=Get-Percentile $mcpToolRecords 'durationMs' .95; requestBytes=Get-Sum -Records $mcpToolRecords -Property requestBytes; responseBytes=Get-Sum -Records $mcpToolRecords -Property responseBytes; serverCount=@($mcpToolRecords | ForEach-Object { [string](Get-ObjectValue $_ 'server' '') } | Where-Object { $_ } | Select-Object -Unique).Count; toolCount=@($mcpToolRecords | ForEach-Object { "$(Get-ObjectValue $_ 'server' '')|$(Get-ObjectValue $_ 'tool' '')" } | Select-Object -Unique).Count
+}
+
 [pscustomobject][ordered]@{
     generatedAtUtc = [DateTime]::UtcNow.ToString('o')
     projectId = if($ProjectId){$ProjectId}else{$null}
@@ -219,6 +288,8 @@ $allKnowledgeEntries = @($knowledgeOutcomes | ForEach-Object { @($_.entries) })
         }
         tokensByDay=$dailyTokenGroups; tokensByModel=$modelGroups; tokensByAgent=$agentGroups; attemptsByAgent=$attemptsByAgent; errorsByAgent=$errorsByAgent
         recentErrors=@($errorRecords | Sort-Object { if($_.timestampUtc){[DateTime]$_.timestampUtc}else{[DateTime]::MinValue} } -Descending | Select-Object -First $RecentErrorLimit)
+        mcp=$mcpSummary; mcpByTool=$mcpByTool; mcpByAgent=$mcpByAgent
+        knowledgeUsage=$knowledgeSummary; knowledgeBySource=$knowledgeBySource; knowledgeByAgent=$knowledgeByAgent
     }
     knowledge = [pscustomobject][ordered]@{
         outcomeCount=$knowledgeOutcomes.Count

@@ -28,7 +28,33 @@
       "properties": {
         "structuralStatus": { "const": "indexed" },
         "semanticStatus": { "enum": ["pending", "verified"] },
-        "instructions": { "type": "string", "minLength": 1 }
+        "instructions": { "type": "string", "minLength": 1 },
+        "knowledgeAudit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskId", "taskIds", "updatedAtUtc", "repositoryRevision", "entryIds", "sourceBindings"],
+          "properties": {
+            "taskId": { "type": "string", "minLength": 1 },
+            "taskIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "updatedAtUtc": { "type": "string", "format": "date-time" },
+            "repositoryRevision": { "type": "string", "minLength": 1 },
+            "entryIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "sourceBindings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["knowledgeId", "repositoryId", "path", "revision"],
+                "properties": {
+                  "knowledgeId": { "type": "string", "minLength": 1 },
+                  "repositoryId": { "type": "string", "minLength": 1 },
+                  "path": { "type": "string", "minLength": 1 },
+                  "revision": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": { "type": "array", "items": { "$ref": "#/$defs/component" } },

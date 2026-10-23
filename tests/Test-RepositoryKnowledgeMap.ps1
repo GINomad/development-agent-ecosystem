@@ -60,4 +60,46 @@ $invalidPathMap = & (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Updat
 $invalidPathDocument = Get-Content -LiteralPath $invalidPathMap.MapPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($invalidPathMap.Reused -or $invalidPathDocument.nodes.path -notcontains 'src/invalid:entry.cs') { throw 'Git-relative invalid Windows path was not mapped safely.' }
 
-[pscustomobject]@{ Status='passed'; Checks=7; OutputRoot=$root }
+# A successful Knowledge Keeper publication enriches the current structural map
+# with exact task/repository knowledge evidence and is idempotent on retry.
+$fixtureConfig = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'config/agents.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$fixtureState = Join-Path $root 'state'
+$fixtureConfig.runtime.stateRoot = $fixtureState
+$fixtureConfigPath = Join-Path $root 'agents.json'
+[IO.File]::WriteAllText($fixtureConfigPath, (($fixtureConfig | ConvertTo-Json -Depth 60) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+$taskId = 'map-publication-test'
+$taskRoot = Join-Path $fixtureState "tasks\$taskId"
+$manifestRoot = Join-Path $taskRoot 'workspaces'
+New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
+$taskDocument = [ordered]@{ taskId=$taskId; projectId='planning-space'; repositoryIds=@('planning-space-excel-variable-poc'); repositoryId='planning-space-excel-variable-poc'; status='created' }
+[IO.File]::WriteAllText((Join-Path $taskRoot 'task.json'), (($taskDocument | ConvertTo-Json -Depth 12) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+$commit = ([string](& git -C $workspace rev-parse HEAD)).Trim()
+$manifestPath = Join-Path $manifestRoot 'planning-space-excel-variable-poc.json'
+$manifest = [ordered]@{ schemaVersion='2.0.0'; taskId=$taskId; repositoryId='planning-space-excel-variable-poc'; clonePath=[IO.Path]::GetFullPath($workspace); canonicalOrigin='https://example.invalid/fixture'; baseBranch='main'; baseSha=$commit; branch='feature/map-publication-test'; lifecycle='active'; runId=('a' * 32); leaseId=('b' * 32); createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); manifestPath=$manifestPath }
+[IO.File]::WriteAllText($manifestPath, (($manifest | ConvertTo-Json -Depth 12) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+$knowledgeDocument = [ordered]@{
+    taskId=$taskId
+    entries=@([ordered]@{
+        id='MAP-KNOWLEDGE-001'; status='verified'; statement='The fixture application starts in Program.cs.'; source='fixture'; revision=$commit
+        observedAtUtc=[DateTime]::UtcNow.ToString('o'); observedBy='knowledge_keeper'; targetPath='knowledge/project.md'; owner='fixture-owner'
+        sourceBindings=@([ordered]@{ repositoryId='planning-space-excel-variable-poc'; path='src/App/Program.cs'; revision=$commit })
+        revalidation=[ordered]@{ lastVerifiedAtUtc=[DateTime]::UtcNow.ToString('o'); triggers=@('source-revision-changed') }
+    })
+    humanReadable=[ordered]@{ title='Fixture knowledge'; overview='Fixture knowledge for map publication.'; audience='Tests'; updates=@() }
+}
+$summaryDocument = [ordered]@{ taskId=$taskId; status='completed' }
+[IO.File]::WriteAllText((Join-Path $taskRoot 'knowledge-update.json'), (($knowledgeDocument | ConvertTo-Json -Depth 20) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText((Join-Path $taskRoot 'task-summary.json'), (($summaryDocument | ConvertTo-Json -Depth 12) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+$publishedMap = & (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $taskId -ConfigPath $fixtureConfigPath
+$publishedDocument = Get-Content -LiteralPath $publishedMap.RepositoryMaps[0].MapPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ([string]$publishedDocument.audit.semanticStatus -ne 'verified' -or
+    [string]$publishedDocument.audit.knowledgeAudit.taskId -ne $taskId -or
+    @($publishedDocument.audit.knowledgeAudit.taskIds) -notcontains $taskId -or
+    @($publishedDocument.audit.knowledgeAudit.entryIds) -notcontains 'MAP-KNOWLEDGE-001' -or
+    [string]$publishedDocument.audit.knowledgeAudit.sourceBindings[0].path -ne 'src/App/Program.cs') { throw 'Knowledge Keeper publication did not enrich the repository map with exact knowledge evidence.' }
+$publishedHash = (Get-FileHash -LiteralPath $publishedMap.RepositoryMaps[0].MapPath -Algorithm SHA256).Hash
+$retryMap = & (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $taskId -ConfigPath $fixtureConfigPath
+$retryHash = (Get-FileHash -LiteralPath $retryMap.RepositoryMaps[0].MapPath -Algorithm SHA256).Hash
+if ($publishedHash -ne $retryHash) { throw 'Knowledge Keeper map finalization was not idempotent on retry.' }
+
+[pscustomobject]@{ Status='passed'; Checks=9; OutputRoot=$root }
