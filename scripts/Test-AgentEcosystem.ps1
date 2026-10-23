@@ -1016,11 +1016,63 @@ $taskBSummaryPath = Join-Path $schedulerConfig.runtime.stateRoot "tasks\$taskBId
 Write-Utf8NoBom -Path $taskBSummaryPath -Content (([ordered]@{ taskId=$taskBId; status='completed' } | ConvertTo-Json) + [Environment]::NewLine)
 $cleanupPreview = & (Join-Path $root 'scripts\Remove-CompletedTaskWorkspaces.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath -WhatIf
 if ([string]$cleanupPreview.Status -ne 'planned' -or @($cleanupPreview.Targets) -notcontains $workspaceB -or @($cleanupPreview.Removed).Count -ne 0 -or -not (Test-Path -LiteralPath $workspaceB)) { throw 'Workspace cleanup preview changed state or omitted its eligible target.' }
+
+$cleanupLockFixtureRoot = Join-Path $schedulerRoot ('cleanup-lock-boundary-' + [guid]::NewGuid().ToString('N'))
+$cleanupLockMarker = Join-Path $cleanupLockFixtureRoot 'snapshot-started.marker'
+$cleanupGitWrapperRoot = Join-Path $cleanupLockFixtureRoot 'git-wrapper'
+New-Item -ItemType Directory -Path $cleanupGitWrapperRoot -Force | Out-Null
+$cleanupRealGit = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+$cleanupGitWrapper = Join-Path $cleanupGitWrapperRoot 'git.ps1'
+Write-Utf8NoBom -Path $cleanupGitWrapper -Content ((@(
+    '$ErrorActionPreference = ''Stop''',
+    ('[IO.File]::WriteAllText(''{0}'', ''snapshot-started'')' -f $cleanupLockMarker.Replace("'", "''")),
+    'Start-Sleep -Milliseconds 400',
+    ('& ''{0}'' @args' -f $cleanupRealGit.Replace("'", "''")),
+    'exit $LASTEXITCODE'
+) -join [Environment]::NewLine) + [Environment]::NewLine)
+$previousPath = $env:PATH
+$previousSnapshotMarker = $env:DAE_CLEANUP_SNAPSHOT_MARKER
+$env:PATH = "$cleanupGitWrapperRoot;$previousPath"
+$env:DAE_CLEANUP_SNAPSHOT_MARKER = $cleanupLockMarker
+$cleanupJob = $null
+try {
+    $cleanupJob = Start-Job -ScriptBlock {
+        param($CleanupScript, $CleanupTaskId, $CleanupConfigPath)
+        & $CleanupScript -TaskId $CleanupTaskId -ConfigPath $CleanupConfigPath | ConvertTo-Json -Depth 20 -Compress
+    } -ArgumentList (Join-Path $root 'scripts\Remove-CompletedTaskWorkspaces.ps1'), $taskBId, $schedulerConfigPath
+    $markerDeadline = [DateTime]::UtcNow.AddSeconds(30)
+    while (-not (Test-Path -LiteralPath $cleanupLockMarker -PathType Leaf) -and [DateTime]::UtcNow -lt $markerDeadline) { Start-Sleep -Milliseconds 50 }
+    if (-not (Test-Path -LiteralPath $cleanupLockMarker -PathType Leaf)) { throw 'The cleanup regression did not enter the real Git snapshot path.' }
+    $lockWasAvailableDuringSnapshot = [bool](Invoke-EcosystemFileLock -LockPath "$($schedulerConfig.workflow.workspaceScheduling.coordinatorStatePath).lock" -TimeoutSeconds 2 -Action {
+        $changedManifest = Get-Content -LiteralPath ([string]$leaseB.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
+        $changedManifest.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+        Write-Utf8NoBomAtomic -Path ([string]$leaseB.Workspaces[0].ManifestPath) -Content (($changedManifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+        return $true
+    })
+    if (-not $lockWasAvailableDuringSnapshot) { throw 'The coordinator lock remained held while cleanup generated its dashboard snapshot.' }
+    if (-not (Wait-Job -Job $cleanupJob -Timeout 60)) { throw 'The cleanup regression did not finish after manifest revalidation changed.' }
+    $cleanupRaceOutput = @(Receive-Job -Job $cleanupJob -ErrorAction Stop | ForEach-Object { [string]$_ })
+    $cleanupRaceResult = $cleanupRaceOutput | ConvertFrom-Json
+    if ([string]$cleanupRaceResult.Status -ne 'retained' -or [string]$cleanupRaceResult.Reason -ne 'cleanup-plan-changed' -or -not (Test-Path -LiteralPath $workspaceB)) {
+        throw 'Cleanup did not retain the clone after its released manifest changed during an unlocked snapshot.'
+    }
+}
+finally {
+    if ($cleanupJob) { Remove-Job -Job $cleanupJob -Force -ErrorAction SilentlyContinue }
+    $env:PATH = $previousPath
+    if ($null -eq $previousSnapshotMarker) { Remove-Item Env:DAE_CLEANUP_SNAPSHOT_MARKER -ErrorAction SilentlyContinue } else { $env:DAE_CLEANUP_SNAPSHOT_MARKER = $previousSnapshotMarker }
+}
+Add-Check -Name 'workspace-cleanup-lock-boundary' -Detail 'A real Git snapshot leaves the coordinator lock available; a released manifest changed during that snapshot causes revalidation to retain the clone'
+
 $cleanupResult = & (Join-Path $root 'scripts\Remove-CompletedTaskWorkspaces.ps1') -TaskId $taskBId -ConfigPath $schedulerConfigPath
 $cleanedManifestB = Get-Content -LiteralPath ([string]$leaseB.Workspaces[0].ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$cleanupResult.Status -ne 'cleaned' -or @($cleanupResult.Removed) -notcontains $workspaceB -or (Test-Path -LiteralPath $workspaceB) -or [string]$cleanedManifestB.lifecycle -ne 'cleaned') { throw 'Finally closed task workspace was not deleted and recorded as cleaned.' }
 $workspaceCleanup = Get-Content -LiteralPath (Join-Path $root 'scripts\Remove-CompletedTaskWorkspaces.ps1') -Raw -Encoding UTF8
 if ($workspaceCleanup -notmatch 'Remove-WorkspaceDirectoryWithRetry' -or $workspaceCleanup -notmatch 'MaximumAttempts\s*=\s*5' -or $workspaceCleanup -notmatch 'Start-Sleep\s+-Milliseconds') { throw 'Workspace cleanup does not retry transient recursive deletion failures.' }
+$initialCleanupPlanOffset = $workspaceCleanup.IndexOf('Get-WorkspaceCleanupPlan -CandidateTaskId $candidateTaskId -CandidateTaskPath $taskPath')
+$snapshotOffset = $workspaceCleanup.IndexOf('Save-TaskDiffSnapshot.ps1')
+$revalidationOffset = $workspaceCleanup.LastIndexOf('Get-WorkspaceCleanupPlan -CandidateTaskId $candidateTaskId -CandidateTaskPath $taskPath')
+if ($workspaceCleanup -notmatch 'function Get-WorkspaceCleanupPlan' -or $workspaceCleanup -notmatch 'function Test-WorkspaceCleanupPlanMatches' -or $initialCleanupPlanOffset -lt 0 -or $snapshotOffset -le $initialCleanupPlanOffset -or $revalidationOffset -le $snapshotOffset -or $workspaceCleanup -notmatch "Reason='cleanup-plan-changed'" -or $workspaceCleanup -notmatch 'ManifestSha256') { throw 'Workspace cleanup must snapshot outside the coordinator lock and revalidate unchanged released manifests before deletion.' }
 
 $reopenedB = & (Join-Path $root 'scripts\Reopen-AgentTask.ps1') -TaskId $taskBId -Reason 'Synthetic Reviewer comment after final cleanup.' -ExpectedRevision 1 -ResumeFrom reviewer -ConfigPath $schedulerConfigPath
 $taskBAfterReopen = Get-Content -LiteralPath $taskBPath -Raw -Encoding UTF8 | ConvertFrom-Json
