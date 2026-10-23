@@ -622,6 +622,11 @@
       "mode": "azure-cli",
       "cliPath": "${LOCALAPPDATA}/Codex/development-agent-ecosystem/examples/local-source",
       "environmentVariable": "AZURE_DEVOPS_EXT_PAT"
+    },
+    {
+      "id": "github-default",
+      "provider": "github",
+      "mode": "gh-cli"
     }
   ],
   "repositories": [
@@ -741,6 +746,25 @@
       ],
       "includeAuthors": [],
       "excludeAuthors": []
+    },
+    {
+      "id": "github-strive-lss-replit-v2",
+      "enabled": true,
+      "provider": "github",
+      "repository": "Strive-Capital-Corporation/Strive-Loan-Servicing-System-Replit-v2",
+      "url": "https://github.com/Strive-Capital-Corporation/Strive-Loan-Servicing-System-Replit-v2",
+      "reviewer": "local-review",
+      "credentialProfile": "github-default",
+      "localWorkspace": "C:/Repos/Strive-Loan-Servicing-System-Replit-v2",
+      "allowedExecutionModes": [
+        "local-poc-delivery",
+        "research-only",
+        "requirements-only",
+        "review-only",
+        "knowledge-only"
+      ],
+      "includeAuthors": [],
+      "excludeAuthors": []
     }
   ],
   "projects": [
@@ -766,6 +790,15 @@
         "local-strive-loan-servicing-system"
       ],
       "domainKnowledgeRoot": "${REPO_ROOT}/knowledge/managed/projects/lss"
+    },
+    {
+      "id": "strive-lss",
+      "name": "Strive",
+      "enabled": true,
+      "repositoryIds": [
+        "github-strive-lss-replit-v2"
+      ],
+      "domainKnowledgeRoot": "${REPO_ROOT}/knowledge/managed/projects/strive-lss"
     }
   ],
   "taskSources": [
