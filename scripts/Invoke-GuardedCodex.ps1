@@ -10,6 +10,7 @@ param(
     [ValidateRange(1,10)][int] $MaxIdenticalFailures = 3,
     [ValidateRange(1,1440)][int] $MaxRunMinutes = 120,
     [ValidateRange(100,5000)][int] $PollMilliseconds = 500,
+    [ValidateRange(1,300)][int] $CompletedTurnExitGraceSeconds = 30,
     [scriptblock] $HeartbeatAction,
     [ValidateRange(5,300)][int] $HeartbeatIntervalSeconds = 30
 )
@@ -92,6 +93,17 @@ function Remove-TemporaryFileWithRetry {
     }
 }
 
+function Test-ProviderCompletedEvent {
+    param([string] $Line)
+    try { $event = $Line | ConvertFrom-Json } catch { return $false }
+    if ($null -eq $event -or $event -isnot [pscustomobject] -or -not $event.PSObject.Properties['type']) { return $false }
+    if ($Provider -eq 'codex') { return [string]$event.type -eq 'turn.completed' }
+    return [string]$event.type -eq 'result' -and
+        $event.PSObject.Properties['subtype'] -and [string]$event.subtype -eq 'success' -and
+        $event.PSObject.Properties['terminal_reason'] -and [string]$event.terminal_reason -eq 'completed' -and
+        (-not $event.PSObject.Properties['is_error'] -or -not [bool]$event.is_error)
+}
+
 $encoding = New-Object Text.UTF8Encoding($false)
 $runId = [guid]::NewGuid().ToString('N')
 $promptPath = $LogPath + '.' + $runId + '.stdin.txt'
@@ -118,6 +130,8 @@ $guardReason = $null
 $lastFailure = $null
 $monitorCompleted = $false
 $nativeExitCode = $null
+$completedTurnAtUtc = $null
+$completedTurnExitCleanup = $false
 
 try {
     while (-not $process.HasExited) {
@@ -131,6 +145,9 @@ try {
         while ($lineIndex -lt $lines.Count) {
             $line = [string]$lines[$lineIndex++]
             Add-EcosystemUtf8Line -Path $LogPath -Line $line
+            if ($Provider -eq 'codex' -and $null -eq $completedTurnAtUtc -and (Test-ProviderCompletedEvent -Line $line)) {
+                $completedTurnAtUtc = [DateTime]::UtcNow
+            }
             $failure = Get-FailureFingerprint -Line $line
             if ($failure) {
                 if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
@@ -143,7 +160,14 @@ try {
                 }
             }
         }
-        if (-not $guardTriggered -and ([DateTime]::UtcNow - $startedAtUtc).TotalMinutes -ge $MaxRunMinutes) {
+        # A completed turn can leave the CLI alive during shutdown. Bound only
+        # that shutdown wait; task artifact and continuation gates remain with the caller.
+        if (-not $guardTriggered -and $null -ne $completedTurnAtUtc -and
+            ([DateTime]::UtcNow - $completedTurnAtUtc).TotalSeconds -ge $CompletedTurnExitGraceSeconds -and -not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            $completedTurnExitCleanup = $true
+        }
+        if (-not $guardTriggered -and $null -eq $completedTurnAtUtc -and ([DateTime]::UtcNow - $startedAtUtc).TotalMinutes -ge $MaxRunMinutes) {
             $guardTriggered = $true
             $guardReason = 'Workflow execution timeout reached after {0} minutes.' -f $MaxRunMinutes
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -186,25 +210,10 @@ finally {
 $completedProviderRun = $false
 if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
     foreach ($outputLine in @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8)) {
-        try {
-            $outputEvent = $outputLine | ConvertFrom-Json
-            if ($null -eq $outputEvent -or $outputEvent -isnot [pscustomobject] -or -not $outputEvent.PSObject.Properties['type']) { continue }
-            if ([string]$outputEvent.type -eq 'turn.completed') { $completedProviderRun = $true; break }
-            if (
-                $Provider -eq 'claude' -and
-                [string]$outputEvent.type -eq 'result' -and
-                [string]$outputEvent.subtype -eq 'success' -and
-                [string]$outputEvent.terminal_reason -eq 'completed' -and
-                (-not $outputEvent.PSObject.Properties['is_error'] -or -not [bool]$outputEvent.is_error)
-            ) {
-                $completedProviderRun = $true
-                break
-            }
-        }
-        catch { }
+        if (Test-ProviderCompletedEvent -Line $outputLine) { $completedProviderRun = $true; break }
     }
 }
-$semanticSuccessOverride = -not $guardTriggered -and $Provider -eq 'claude' -and $completedProviderRun
+$semanticSuccessOverride = -not $guardTriggered -and $completedProviderRun -and ($Provider -eq 'claude' -or $completedTurnExitCleanup)
 $resolvedExitCode = if ($guardTriggered) { 1 } elseif ($semanticSuccessOverride) { 0 } elseif ($null -ne $nativeExitCode) { [int]$nativeExitCode } elseif ($completedProviderRun) { 0 } else { 1 }
 
 $result = [ordered]@{
@@ -222,6 +231,8 @@ $result = [ordered]@{
     processId = $processId
     exitCode = $resolvedExitCode
     provider = $Provider
+    completedTurnExitCleanup = $completedTurnExitCleanup
+    completedTurnExitGraceSeconds = $CompletedTurnExitGraceSeconds
     exitCodeSource = if ($semanticSuccessOverride) { $Provider + '-semantic-success-override' } elseif ($null -ne $nativeExitCode) { 'native' } else { $Provider + '-event-fallback' }
     logPath = $LogPath
     stderrPath = $stderrPath

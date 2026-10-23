@@ -2288,6 +2288,25 @@ foreach ($nativeCode in @(0, 7)) {
 }
 Add-Check -Name 'guard-unsupported-json-native-exits' -Detail 'Actual guard writes artifacts and retains native exits 0 and 7 without a completed event or classifier exception'
 
+foreach ($completionMode in @('linger','native-error','late-failure','message-only')) {
+    $completionRoot = Join-Path $OutputRoot ('completed-turn-' + $completionMode)
+    New-Item -ItemType Directory -Path $completionRoot -Force | Out-Null
+    $completionWatch = [Diagnostics.Stopwatch]::StartNew()
+    $completionResult = & $guardSourcePath -FilePath (Get-Process -Id $PID).Path -Arguments @('-NoProfile','-File',(Join-Path $root 'tests/fixtures/Emit-CodexCompletedTurn.ps1'),'-Mode',$completionMode) -Prompt '' -WorkingDirectory $root -LogPath (Join-Path $completionRoot 'events.jsonl') -GuardArtifactPath (Join-Path $completionRoot 'guard.json') -MaxRunMinutes 1 -PollMilliseconds 100 -CompletedTurnExitGraceSeconds 1
+    $completionWatch.Stop()
+    if ($completionMode -eq 'linger') {
+        if ($completionResult.guardTriggered -or $completionResult.exitCode -ne 0 -or -not $completionResult.completedTurnExitCleanup -or $completionResult.exitCodeSource -ne 'codex-semantic-success-override' -or $completionWatch.Elapsed.TotalSeconds -ge 30) { throw 'Completed Codex turn did not bound shutdown without a false timeout.' }
+        if (Get-Process -Id $completionResult.processId -ErrorAction SilentlyContinue) { throw 'Completed Codex child was not reaped.' }
+    } elseif ($completionMode -eq 'late-failure') {
+        if (-not $completionResult.guardTriggered -or $completionResult.exitCode -ne 1) { throw 'Completion suppressed a provider failure.' }
+    } else {
+        if ($completionResult.guardTriggered -or $completionResult.exitCode -ne 7 -or $completionResult.completedTurnExitCleanup) { throw 'Completion cleanup changed a genuine native failure or trusted message text.' }
+    }
+    $completionProof = Get-Content -LiteralPath (Join-Path $completionRoot 'guard.json') -Raw | ConvertFrom-Json
+    if ($completionProof.exitCode -ne $completionResult.exitCode) { throw 'Completion guard artifact disagrees with returned outcome.' }
+}
+Add-Check -Name 'guard-completed-turn-bounded-shutdown' -Detail 'Completed Codex turns reap a lingering child after a grace period; real native failures, provider errors and message-only output remain failures'
+
 $workflowSourcePath = Join-Path $root 'scripts/Start-DevelopmentWorkflow.ps1'
 $workflowAst = [Management.Automation.Language.Parser]::ParseFile($workflowSourcePath, [ref]$null, [ref]$null)
 $hostEvidenceFunction = $workflowAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-WorkflowHostErrorEvidence' }, $true)
