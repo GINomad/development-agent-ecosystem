@@ -1763,8 +1763,70 @@ $orphanEvents = @(
 )
 Write-Utf8NoBom -Path (Join-Path $orphanRoot 'task-ledger.jsonl') -Content ((@($orphanEvents | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }) -join [Environment]::NewLine) + [Environment]::NewLine)
 $orphanRecovery = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $orphanTaskId -ConfigPath $deliveryConfigPath
-if (@($orphanRecovery.Items | Where-Object { [string]$_.Status -eq 'continuation-required' -and [string]$_.CompletedAgentId -eq 'requirements_analyst' }).Count -ne 1) { throw 'Durable continuation recovery did not detect a published outcome whose host exited before handoff.' }
+if (@($orphanRecovery.Items | Where-Object { [string]$_.Status -eq 'continuation-required' -and [string]$_.CompletedAgentId -eq 'requirements_analyst' -and [string]$_.ConfigPath -eq $deliveryConfigPath }).Count -ne 1) { throw 'Durable continuation recovery did not retain the documented canonical configuration fallback for a legacy task without execution identity.' }
 Add-Check -Name 'durable-continuation-recovery' -Detail 'A completed outcome without a live host or downstream scheduling event is detected once; per-task locking prevents duplicate dispatch'
+
+$runtimeRecoveryTaskId = 'runtime-continuation-' + $deliveryFixtureId
+$runtimeRecoveryRoot = Join-Path $deliveryConfig.runtime.stateRoot ('tasks\' + $runtimeRecoveryTaskId)
+$runtimeRecoveryRunId = [guid]::NewGuid().ToString('N')
+$runtimeRecoveryLeaseId = [guid]::NewGuid().ToString('N')
+New-Item -ItemType Directory -Path $runtimeRecoveryRoot -Force | Out-Null
+$runtimeRecoveryTask = [ordered]@{ taskId=$runtimeRecoveryTaskId; projectId='planning-space'; selector='synthetic-runtime-continuation'; mode='manual'; status='interrupted'; repositoryIds=@($deliveryRepositoryId); executionRunId=$runtimeRecoveryRunId; workspaceLeaseId=$runtimeRecoveryLeaseId; agentStatuses=[ordered]@{} }
+Write-Utf8NoBom -Path (Join-Path $runtimeRecoveryRoot 'task.json') -Content (($runtimeRecoveryTask | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+Write-Utf8NoBom -Path (Join-Path $runtimeRecoveryRoot 'task-ledger.jsonl') -Content ([Environment]::NewLine)
+$runtimeSnapshotPath = Join-Path $runtimeRecoveryRoot "execution-config-$runtimeRecoveryRunId.json"
+$runtimeContextPath = Join-Path $runtimeRecoveryRoot "execution-context-$runtimeRecoveryRunId.json"
+$runtimeConfig = Get-Content -LiteralPath $deliveryConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$runtimeConfig.workflow.automaticContinuation.enabled = $false
+$runtimeConfig.pipeline.policy.configurationStatus = 'disabled'
+$runtimeConfig.pipeline.policy.mode = 'disabled'
+$runtimeConfig.pipeline.enabled = $false
+$runtimeConfig.pipeline.delivery.autoPushAfterCleanReview = $false
+$runtimeConfig.pipeline.pullRequests.enabled = $false
+$runtimeConfig.pipeline.postPush.enabled = $false
+$runtimeConfig.pipeline.postPush.autoQueueApprovedBuilds = $false
+foreach ($pipelineRepository in @($runtimeConfig.pipeline.repositories)) { $pipelineRepository.autoQueueDefinitionIds = @() }
+$runtimeConfig.health.automaticRecovery.enabled = $false
+Write-Utf8NoBom -Path $runtimeSnapshotPath -Content (($runtimeConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+$runtimeContext = [ordered]@{ schemaVersion='2.0.0'; taskId=$runtimeRecoveryTaskId; projectId='planning-space'; runId=$runtimeRecoveryRunId; leaseId=$runtimeRecoveryLeaseId; configSnapshotPath=$runtimeSnapshotPath; repositories=@([ordered]@{ repositoryId=$deliveryRepositoryId }) }
+Write-Utf8NoBom -Path $runtimeContextPath -Content (($runtimeContext | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$runtimeRecoveryPlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+if (@($runtimeRecoveryPlan.Items | Where-Object { [string]$_.Status -eq 'disabled' -and [string]$_.ConfigPath -eq $runtimeSnapshotPath -and -not [bool]$_.PipelineEnabled -and -not [bool]$_.AutomaticRecoveryEnabled }).Count -ne 1) { throw 'Continuation recovery did not select the persisted task snapshot or preserve its disabled pipeline and automatic-recovery policy.' }
+$runtimeContext.configSnapshotPath = (Join-Path $deliveryTestRoot 'outside.json')
+Write-Utf8NoBom -Path $runtimeContextPath -Content (($runtimeContext | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$invalidRuntimePlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+if (@($invalidRuntimePlan.Items | Where-Object { [string]$_.Status -eq 'config-unavailable' }).Count -ne 1) { throw 'Continuation recovery did not fail closed when the persisted execution context selected an outside snapshot.' }
+$runtimeContext.configSnapshotPath = $runtimeSnapshotPath
+Write-Utf8NoBom -Path $runtimeContextPath -Content (($runtimeContext | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+Remove-Item -LiteralPath $runtimeSnapshotPath -Force
+$missingRuntimePlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+if (@($missingRuntimePlan.Items | Where-Object { [string]$_.Status -eq 'config-unavailable' }).Count -ne 1) { throw 'Continuation recovery did not fail closed when the persisted task snapshot was missing.' }
+$malformedRuntimeContexts = @('', '[]', '{}')
+foreach ($malformedRuntimeContext in $malformedRuntimeContexts) {
+    Write-Utf8NoBom -Path $runtimeSnapshotPath -Content (($runtimeConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+    Write-Utf8NoBom -Path $runtimeContextPath -Content ($malformedRuntimeContext + [Environment]::NewLine)
+    $malformedRuntimePlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+    if (@($malformedRuntimePlan.Items | Where-Object { [string]$_.Status -eq 'config-unavailable' }).Count -ne 1) { throw 'Continuation recovery accepted a malformed execution context.' }
+}
+$runtimeConfig.workflow.automaticContinuation.enabled = $true
+$runtimeConfig.pipeline.enabled = $false
+$runtimeConfig.health.automaticRecovery.enabled = $false
+Write-Utf8NoBom -Path $runtimeSnapshotPath -Content (($runtimeConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+Write-Utf8NoBom -Path $runtimeContextPath -Content (($runtimeContext | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$runtimeCoordinatorPath = Resolve-EcosystemPath -Value ([string]$runtimeConfig.workflow.workspaceScheduling.coordinatorStatePath) -Config $runtimeConfig
+New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeCoordinatorPath) -Force | Out-Null
+$runtimeProcess = Get-Process -Id $PID
+$runtimeCoordinator = [ordered]@{ leases=@([ordered]@{ taskId=$runtimeRecoveryTaskId; runId=$runtimeRecoveryRunId; leaseId=$runtimeRecoveryLeaseId; controllerProcessId=$PID; controllerStartedAtUtc=$runtimeProcess.StartTime.ToUniversalTime().ToString('o'); heartbeatAtUtc=[DateTime]::UtcNow.ToString('o') }) }
+Write-Utf8NoBom -Path $runtimeCoordinatorPath -Content (($runtimeCoordinator | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$activeRuntimePlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+if (@($activeRuntimePlan.Items | Where-Object { [string]$_.Status -eq 'active-host' -and [string]$_.Detail -eq 'active-controller' -and [string]$_.ConfigPath -eq $runtimeSnapshotPath }).Count -ne 1) { throw 'Continuation recovery did not suppress duplicate dispatch for a matching live coordinator lease when task.workflowProcessId was absent.' }
+$runtimeCoordinator.leases[0].Remove('controllerProcessId')
+$runtimeCoordinator.leases[0].Remove('controllerStartedAtUtc')
+$runtimeCoordinator.leases[0].heartbeatAtUtc = [DateTime]::UtcNow.ToString('o')
+Write-Utf8NoBom -Path $runtimeCoordinatorPath -Content (($runtimeCoordinator | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$freshLeaseRuntimePlan = & (Join-Path $root 'scripts\Repair-AgentContinuations.ps1') -TaskId $runtimeRecoveryTaskId -ConfigPath $deliveryConfigPath
+if (@($freshLeaseRuntimePlan.Items | Where-Object { [string]$_.Status -eq 'active-host' -and [string]$_.Detail -eq 'fresh-lease-heartbeat' }).Count -ne 1) { throw 'Continuation recovery did not conservatively suppress duplicate dispatch for a matching fresh coordinator heartbeat during controller bootstrap.' }
+Add-Check -Name 'task-bound-continuation-config' -Detail 'Execution-identified tasks use only their validated task-root snapshot, preserve task pipeline/recovery policy, and fail closed for outside or missing snapshots; legacy tasks retain canonical fallback'
 
 $legacyResumeTaskId = "legacy-targeted-resume-$deliveryFixtureId"
 $legacyResumeTaskRoot = Join-Path $deliveryConfig.runtime.stateRoot "tasks\$legacyResumeTaskId"
