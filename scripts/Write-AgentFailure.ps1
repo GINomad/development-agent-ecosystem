@@ -7,6 +7,7 @@ param(
     [Nullable[int]] $ExitCode,
     [string] $Diagnostic,
     [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionRunId,
+    [ValidatePattern('^[A-Za-z0-9._-]{12,128}$')][string] $ExecutionAttemptId,
     [ValidatePattern('^[a-z][a-z0-9_]*$')][string] $ExecutionAgentId,
     [ValidatePattern('^[A-Za-z0-9._-]{8,128}$')][string] $CorrelationId,
     [string[]] $Evidence = @(),
@@ -42,7 +43,8 @@ if ($ExecutionRunId -and (Test-Path -LiteralPath $ledgerPath -PathType Leaf)) {
         [string]$_.type -eq 'agent-result' -and
         [string]$_.actor -eq $boundExecutionAgentId -and
         @($_.evidence) -contains "execution-run:$ExecutionRunId" -and
-        @($_.evidence) -contains "agent:$boundExecutionAgentId"
+        @($_.evidence) -contains "agent:$boundExecutionAgentId" -and
+        (-not $ExecutionAttemptId -or @($_.evidence) -contains "execution-attempt:$ExecutionAttemptId")
     } | Sort-Object { [DateTime]$_.timestampUtc } -Descending | Select-Object -First 1)
 }
 $failure = [ordered]@{
@@ -55,6 +57,7 @@ $failure = [ordered]@{
     agentId = $AgentId
     executionAgentId = $boundExecutionAgentId
     executionRunId = if ($ExecutionRunId) { $ExecutionRunId } else { $null }
+    executionAttemptId = if ($ExecutionAttemptId) { $ExecutionAttemptId } else { $null }
     disposition = if ($staleOutcome) { 'stale-superseded' } else { 'active' }
     stage = $Stage
     occurredAtUtc = $occurredAtUtc
@@ -67,6 +70,7 @@ $failurePath = Join-Path $taskRoot "agent-failure-$($occurredAtUtc.Replace(':','
 Write-Utf8NoBom -Path $failurePath -Content (($failure | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 $eventEvidence = @($failure.evidence) + @("execution-agent:$boundExecutionAgentId")
 if ($ExecutionRunId) { $eventEvidence += "execution-run:$ExecutionRunId" }
+if ($ExecutionAttemptId) { $eventEvidence += "execution-attempt:$ExecutionAttemptId" }
 if ($staleOutcome) { $eventEvidence += "superseded-by-result:$([string]$staleOutcome.eventId)" }
 & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-failure -Summary ([string]$failure.summary) -Artifact $failurePath -Evidence $eventEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 if (-not $staleOutcome) {
