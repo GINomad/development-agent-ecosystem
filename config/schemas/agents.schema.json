@@ -1043,7 +1043,12 @@
                   "get_task_state",
                   "get_artifact_summary",
                   "read_artifact_evidence",
-                  "list_pending_comments"
+                  "list_pending_comments",
+                  "get_context_pack",
+                  "list_knowledge",
+                  "read_knowledge",
+                  "list_skills",
+                  "read_skill"
                 ]
               }
             }

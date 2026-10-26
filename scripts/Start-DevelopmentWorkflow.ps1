@@ -297,7 +297,7 @@ foreach ($pathValue in @($activeAgent.promptPaths)) {
 }
 $availableSkillPaths = @($activeAgent.skillPaths | ForEach-Object { Resolve-EcosystemPath -Value ([string]$_) -Config $config -CodexHome $CodexHome })
 $availableSkillPaths += @(& (Join-Path $PSScriptRoot 'Get-ProjectSkillPaths.ps1') -Config $config -AgentId $executedAgentId -RepositoryIds $RepositoryIds -CodexHome $CodexHome)
-$activeRolePrompt.Add("Available skill files (read only those relevant to this task; project skills apply only to their stated repository scope):`n" + ($availableSkillPaths -join "`n"))
+$activeRolePrompt.Add("Fallback skill files (use list_skills/read_skill through MCP first; read only relevant skills within their repository scope):`n" + ($availableSkillPaths -join "`n"))
 $roleDirectory = @($config.agents | Where-Object { [string]$_.id -ne [string]$config.workflow.orchestration.agentId } | ForEach-Object {
     $responsibilities = @($_.responsibilities | ForEach-Object { [string]$_ }) -join ' | '
     "$([string]$_.id): $([string]$_.description) Responsibilities: $responsibilities"
@@ -323,7 +323,7 @@ Task ID: $TaskId
 Mode: $Mode
 Task selector: $TaskSelector
 Task state: $($task.TaskRoot)
-Practice policy: Read task.json in the task state directory. Its practiceVersion is authoritative for requirements-analysis.json; use the analyze-requirements templates for spec-practices-1.0.0. On legacy resumes without a task version, preserve the existing analysis version (or legacy if absent). Never upgrade a resumed task implicitly.
+Practice policy: Obtain the task practiceVersion from get_task_state through MCP when available, otherwise read task.json in the task state directory. Its practiceVersion is authoritative for requirements-analysis.json; use the analyze-requirements templates for spec-practices-1.0.0. On legacy resumes without a task version, preserve the existing analysis version (or legacy if absent). Never upgrade a resumed task implicitly.
 Validated context pack: $(if ($contextPack) { [string]$contextPack.ContextPath } else { 'prepare-only; not written' })
 Ecosystem root: $(Get-EcosystemRoot)
 Trusted ecosystem configuration: $ConfigPath
@@ -357,7 +357,7 @@ Resume rules:
 - Each permitted agent chooses the largest coherent bounded work block that stays inside ready scope, its role, approval gates, and configured context limits. It may execute successive blocks in the same invocation.
 - At the end of every work block, the active agent calls Get-AgentCommentBatch.ps1 once, applies all applicable comments as one batch, acknowledges the processed IDs once, and decides whether another block is necessary. No restart is needed while that agent is still running. A comment addressed to another agent remains pending for that agent.
 - If a batched comment is wholly or partly outside the active agent's configured responsibilities, that agent calls Request-OrchestratorCommentRouting.ps1 once for the affected IDs instead of acting outside its authority. After the agent publishes a successful outcome, dispatch Orchestrator before the normal next role; after Orchestrator routes the remainder, dispatch its earliest eligible target automatically. Do not require a manual restart for this authority handoff.
-- Reuse `context-pack.json` summaries for unchanged artifacts. Read only the listed changed artifacts plus a role's own private checkpoint; reopen an unchanged artifact only for a named evidence gap.
+- Obtain context-pack summaries through MCP get_context_pack first; use `context-pack.json` only under the documented fallback conditions. Reuse summaries for unchanged artifacts. Read only the listed changed artifacts plus a role's own private checkpoint; reopen an unchanged artifact only for a named evidence gap.
 
 Live task control:
 - The persistent ledger is $($task.TaskRoot)\task-ledger.jsonl.
@@ -455,10 +455,20 @@ function Write-CurrentMcpRoleMetric([string]$Outcome,[Nullable[int]]$QualityProx
     if (-not (Get-Variable -Name workflowStartedAtUtc -ErrorAction SilentlyContinue)) { return }
     $configuredMode=if($mcpExecution){[string]$mcpExecution.Mode}else{'classic'}
     $transcriptSummary=& (Join-Path $PSScriptRoot 'Get-McpTranscriptSummary.ps1') -Path $codexLogPath -AttemptId $roleAttemptId
-    $effectiveMode=if($configuredMode -eq 'mcp' -and [int]$transcriptSummary.CallCount -gt 0){'mcp'}elseif($configuredMode -eq 'classic-after-mcp-failure'){'classic-after-mcp-failure'}else{'classic'}
+    $fallbackReasons=@()
+    $activityPath=Join-Path $task.TaskRoot 'agent-activity.jsonl'
+    if(Test-Path -LiteralPath $activityPath){
+        foreach($line in [IO.File]::ReadLines($activityPath)){
+            try{$activity=$line|ConvertFrom-Json}catch{continue}
+            if($activity -and $activity.PSObject.Properties['operation'] -and [string]$activity.operation -eq 'mcp-file-fallback' -and [string]$activity.agentId -eq $executedAgentId -and [DateTime]::Parse([string]$activity.timestampUtc).ToUniversalTime() -ge $workflowStartedAtUtc){$fallbackReasons+=([string]$activity.target+': '+[string]$activity.details)}
+        }
+    }
+    if($configuredMode -eq 'classic-after-mcp-failure'){$fallbackReasons+=([string]$mcpExecution.Reason)}
+    $fallbackUsed=$fallbackReasons.Count -gt 0
+    $effectiveMode=if($configuredMode -eq 'mcp' -and [int]$transcriptSummary.CallCount -gt 0){if($fallbackUsed){'mcp-with-tool-fallback'}else{'mcp'}}elseif($configuredMode -eq 'classic-after-mcp-failure'){'classic-after-mcp-failure'}else{'classic'}
     $qualityObserved=$null -ne $QualityProxy
     $artifactValidation=if(-not $qualityObserved){'not-observed'}elseif([double]$QualityProxy -gt 0){'passed'}else{'failed'}
-    & (Join-Path $PSScriptRoot 'Write-RoleAttemptMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AttemptId $roleAttemptId -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -AgentId $executedAgentId -ConfiguredMode $configuredMode -EffectiveMode $effectiveMode -Status $Outcome -DurationMs ([int]([DateTime]::UtcNow-$workflowStartedAtUtc).TotalMilliseconds) -QualityObserved:$qualityObserved -QualityValue $QualityProxy -QualitySource $(if($qualityObserved){'artifact-validation'}else{$null}) -QualityComparable:$false -ArtifactValidation $artifactValidation -McpCallCount ([int]$transcriptSummary.CallCount) -McpSucceededCallCount ([int]$transcriptSummary.SucceededCallCount) -FallbackUsed:($configuredMode -in @('mcp-with-tool-fallback','classic-after-mcp-failure')) | Out-Null
+    & (Join-Path $PSScriptRoot 'Write-RoleAttemptMetric.ps1') -TaskRoot $task.TaskRoot -TaskId $TaskId -AttemptId $roleAttemptId -RunId ([string]$workspaceLease.RunId) -LeaseId ([string]$workspaceLease.LeaseId) -AgentId $executedAgentId -ConfiguredMode $configuredMode -EffectiveMode $effectiveMode -Status $Outcome -DurationMs ([int]([DateTime]::UtcNow-$workflowStartedAtUtc).TotalMilliseconds) -QualityObserved:$qualityObserved -QualityValue $QualityProxy -QualitySource $(if($qualityObserved){'artifact-validation'}else{$null}) -QualityComparable:$false -ArtifactValidation $artifactValidation -McpCallCount ([int]$transcriptSummary.CallCount) -McpSucceededCallCount ([int]$transcriptSummary.SucceededCallCount) -FallbackUsed:$fallbackUsed -FallbackReasons $fallbackReasons | Out-Null
 }
 function New-McpFailureDiagnostic([string]$Server,[string]$ErrorMessage) {
     $path=Join-Path $task.TaskRoot ('mcp-failure-'+$executedAgentId+'-'+[guid]::NewGuid().ToString('N')+'.json')
@@ -561,12 +571,12 @@ try {
     # Treat that as a transport failure before accepting the agent's terminal artifact.
     if ([string]$mcpExecution.Mode -eq 'mcp' -and (Test-Path -LiteralPath $codexLogPath)) {
         $mcpTranscriptSummary=& (Join-Path $PSScriptRoot 'Get-McpTranscriptSummary.ps1') -Path $codexLogPath -AttemptId $roleAttemptId
-        foreach($serverName in @($mcpTranscriptSummary.FailedServers)) {
+        foreach($serverName in @($mcpTranscriptSummary.TransportFailedServers)) {
             & (Join-Path $PSScriptRoot 'Set-McpCircuitState.ps1') -ServerName $serverName -State open -FailureSignature 'codex-jsonl-mcp-tool-call-failed' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             $diagnosticPath=New-McpFailureDiagnostic $serverName 'Codex JSONL recorded a failed MCP tool call.'
             & (Join-Path $PSScriptRoot 'Start-McpHealthRecovery.ps1') -ServerName $serverName -FailureSignature 'codex-jsonl-mcp-tool-call-failed' -TaskId $TaskId -AgentId $executedAgentId -FailurePath $diagnosticPath -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
-        $mcpJsonlFailedServers=@($mcpTranscriptSummary.FailedServers)
+        $mcpJsonlFailedServers=@($mcpTranscriptSummary.TransportFailedServers)
         if($mcpJsonlFailedServers.Count){ throw ('MCP tool call failed in Codex JSONL for server(s): '+($mcpJsonlFailedServers -join ', ')) }
     }
     $terminalState = & (Join-Path $PSScriptRoot 'Assert-TargetAgentTerminalState.ps1') -TaskId $TaskId -AgentId $executedAgentId -ConfigPath $ConfigPath -CodexHome $CodexHome

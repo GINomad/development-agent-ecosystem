@@ -1,0 +1,13 @@
+# MCP knowledge and skills
+
+All eight workflow roles, including Developer, use `ecosystem-read` as the priority source for task context, knowledge and skills. This is a task/run/lease-bound read-only server, not a code editor or publishing tool. Health recovery explicitly suppresses MCP to avoid depending on the service being repaired.
+
+Start with `get_context_pack`, `list_knowledge`, and `list_skills`. Select the relevant catalog IDs and pass them as `name` to `read_knowledge` or `read_skill`. Catalog calls accept `query`, `offset`, and `limit` (1–50). Reads accept `startLine` and `maxLines` (1–200); follow `nextOffset` or `nextLine` when necessary. Each response includes its source, revision, retrieval time, and truncation state. Sources larger than 4 MiB require a focused entry or an explicit file fallback.
+
+The signed session catalogs configured global knowledge, the domain knowledge of enabled projects matching the task's repositories, and configured role/project skills. Callers cannot supply arbitrary filesystem paths. Reads reject changed source revisions and reparse points. Private checkpoints are not public artifacts; Reviewer cannot access `review-verification.json`, including through context-pack artifact summaries. Existing verification, human approval, comment routing, and publication gates still apply.
+
+If MCP is disabled, unavailable, missing the required source, or unable to return sufficient bounded evidence, log `Write-AgentActivity.ps1 -Operation mcp-file-fallback -Target '<tool/source>' -Details '<specific reason>'` before the narrow file read. Repository code search, edits, tests, and trusted state-changing scripts continue through their existing tools. Recoverable source/tool rejections are counted as failed calls but do not by themselves open the server circuit; transport failures retain the existing recovery path.
+
+Local server call metrics are the authoritative source for actual usage across Codex, Claude, and Copilot. Successful knowledge/skill reads also emit observed `read` events with source revisions to `knowledge-usage.jsonl`; catalog selection alone is not a content read. Role metrics count calls from the current attempt, distinguish configured from effective mode, and include recorded fallback reasons. Merely connecting the server is never counted as a call. Historical role metrics are not rewritten.
+
+Validate with `tests/Test-McpKnowledge.ps1`, `tests/Test-McpResilience.ps1`, and `scripts/Test-AgentEcosystem.ps1`. The knowledge test sends real JSON-RPC calls to a PowerShell server process for all eight roles and checks scoped sources, pagination, revisions, rejected paths, Reviewer isolation, and per-call metrics.
