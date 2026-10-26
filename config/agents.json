@@ -469,12 +469,32 @@
         "get_task_state",
         "get_artifact_summary",
         "read_artifact_evidence",
-        "list_pending_comments"
+        "list_pending_comments",
+        "get_context_pack",
+        "list_knowledge",
+        "read_knowledge",
+        "list_skills",
+        "read_skill"
       ]
     },
     "servers": [],
     "rolePolicies": {
-      "orchestrator": [],
+      "orchestrator": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
+          ]
+        }
+      ],
       "knowledge_keeper": [
         {
           "server": "ecosystem-read",
@@ -482,7 +502,12 @@
             "get_task_state",
             "get_artifact_summary",
             "read_artifact_evidence",
-            "list_pending_comments"
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
           ]
         }
       ],
@@ -493,11 +518,31 @@
             "get_task_state",
             "get_artifact_summary",
             "read_artifact_evidence",
-            "list_pending_comments"
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
           ]
         }
       ],
-      "developer": [],
+      "developer": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
+          ]
+        }
+      ],
       "reviewer": [
         {
           "server": "ecosystem-read",
@@ -505,7 +550,12 @@
             "get_task_state",
             "get_artifact_summary",
             "read_artifact_evidence",
-            "list_pending_comments"
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
           ]
         }
       ],
@@ -516,12 +566,47 @@
             "get_task_state",
             "get_artifact_summary",
             "read_artifact_evidence",
-            "list_pending_comments"
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
           ]
         }
       ],
-      "pipeline_monitor": [],
-      "health_check": []
+      "pipeline_monitor": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
+          ]
+        }
+      ],
+      "health_check": [
+        {
+          "server": "ecosystem-read",
+          "tools": [
+            "get_task_state",
+            "get_artifact_summary",
+            "read_artifact_evidence",
+            "list_pending_comments",
+            "get_context_pack",
+            "list_knowledge",
+            "read_knowledge",
+            "list_skills",
+            "read_skill"
+          ]
+        }
+      ]
     },
     "resilience": {
       "failureThreshold": 2,

@@ -17,7 +17,8 @@ param(
     [ValidateSet('passed','failed','not-observed')][string] $ArtifactValidation = 'not-observed',
     [int] $McpCallCount = 0,
     [int] $McpSucceededCallCount = 0,
-    [switch] $FallbackUsed
+    [switch] $FallbackUsed,
+    [string[]] $FallbackReasons = @()
 )
 
 Set-StrictMode -Version Latest
@@ -48,7 +49,7 @@ try {
         configuredMode = $ConfiguredMode
         effectiveMode = $EffectiveMode
         mode = $EffectiveMode
-        server = if ($EffectiveMode -eq 'mcp') { 'ecosystem-read' } else { 'classic' }
+        server = if ($EffectiveMode -in @('mcp','mcp-with-tool-fallback')) { 'ecosystem-read' } else { 'classic' }
         status = $Status
         durationMs = $DurationMs
         qualityObserved = $QualityObserved
@@ -59,6 +60,7 @@ try {
         mcpCallCount = $McpCallCount
         mcpSucceededCallCount = $McpSucceededCallCount
         fallbackUsed = [bool]$FallbackUsed
+        fallbackReasons = @($FallbackReasons)
     }
     [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
     [pscustomobject]@{ Written=$true; Record=[pscustomobject]$record; Path=[IO.Path]::GetFullPath($path) }

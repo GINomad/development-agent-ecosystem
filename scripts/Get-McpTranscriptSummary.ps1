@@ -9,7 +9,31 @@ $ErrorActionPreference = 'Stop'
 $callCount = 0
 $succeededCount = 0
 $failedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$transportFailedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $insideAttempt = $false
+# The local server records actual calls for every provider, including Claude and
+# Copilot whose transcript formats differ from Codex. Never double-count both.
+$metricsPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($Path))) 'mcp-metrics.jsonl'
+if (Test-Path -LiteralPath $metricsPath -PathType Leaf) {
+    foreach ($line in [IO.File]::ReadLines($metricsPath)) {
+        try { $record = $line | ConvertFrom-Json } catch { continue }
+        if (-not $record -or -not $record.PSObject.Properties['attemptId'] -or
+            [string]$record.attemptId -ne $AttemptId -or -not $record.PSObject.Properties['server'] -or [string]$record.server -ne $Server -or
+            -not $record.PSObject.Properties['tool'] -or -not [string]$record.tool -or
+            -not $record.PSObject.Properties['status'] -or
+            [string]$record.status -notin @('succeeded','failed')) { continue }
+        $callCount++
+        if ([string]$record.status -eq 'succeeded') { $succeededCount++ }
+        else {
+            $null = $failedServers.Add($Server)
+            if ($record.PSObject.Properties['errorClass'] -and [string]$record.errorClass -eq 'transport-or-protocol') { $null = $transportFailedServers.Add($Server) }
+        }
+    }
+}
+$serverCallCount = $callCount
+$serverSucceededCount = $succeededCount
+$callCount = 0
+$succeededCount = 0
 if (Test-Path -LiteralPath $Path -PathType Leaf) {
     foreach ($line in [IO.File]::ReadLines($Path)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -41,4 +65,12 @@ if (Test-Path -LiteralPath $Path -PathType Leaf) {
         else { $succeededCount++ }
     }
 }
-[pscustomobject]@{AttemptId=$AttemptId;Server=$Server;CallCount=$callCount;SucceededCallCount=$succeededCount;FailedCallCount=($callCount-$succeededCount);FailedServers=@($failedServers)}
+$transcriptFailedCount = $callCount - $succeededCount
+$serverFailedCount = $serverCallCount - $serverSucceededCount
+# A client-side failure absent from the server log can be a broken transport.
+# Preserve that failure even if earlier calls reached the local server.
+if ($transcriptFailedCount -gt $serverFailedCount) { $null = $transportFailedServers.Add($Server) }
+$succeededCount = [Math]::Max($succeededCount, $serverSucceededCount)
+$failedCount = [Math]::Max($transcriptFailedCount, $serverFailedCount)
+$callCount = $succeededCount + $failedCount
+[pscustomobject]@{AttemptId=$AttemptId;Server=$Server;CallCount=$callCount;SucceededCallCount=$succeededCount;FailedCallCount=$failedCount;FailedServers=@($failedServers);TransportFailedServers=@($transportFailedServers)}
