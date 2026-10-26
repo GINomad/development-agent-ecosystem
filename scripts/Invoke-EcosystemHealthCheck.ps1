@@ -175,7 +175,17 @@ try {
             $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $taskStatus = [string]$task.status
             $processAlive = $false
-            if ($task.PSObject.Properties['workflowProcessId']) { $processAlive = [bool](Get-Process -Id ([int]$task.workflowProcessId) -ErrorAction SilentlyContinue) }
+            if ($taskStatus -eq 'running' -and $task.PSObject.Properties['executionRunId'] -and $task.PSObject.Properties['workspaceLeaseId']) {
+                $lease = Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId ([string]$task.executionRunId) -ExpectedLeaseId ([string]$task.workspaceLeaseId) -Config $config -ConfigPath $ConfigPath -CodexHome $CodexHome
+                if ($lease -and $lease.PSObject.Properties['controllerProcessId'] -and $lease.PSObject.Properties['controllerStartedAtUtc'] -and [int]$lease.controllerProcessId -gt 0 -and [string]$task.workflowProcessId -eq [string]$lease.controllerProcessId) {
+                    try {
+                        $process = Get-Process -Id ([int]$lease.controllerProcessId) -ErrorAction Stop
+                        $recordedStart = if ($lease.controllerStartedAtUtc -is [DateTime]) { $lease.controllerStartedAtUtc.ToUniversalTime() } elseif ($lease.controllerStartedAtUtc -is [DateTimeOffset]) { $lease.controllerStartedAtUtc.UtcDateTime } else { [DateTimeOffset]::Parse([string]$lease.controllerStartedAtUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime }
+                        $processAlive = [Math]::Abs(($process.StartTime.ToUniversalTime() - $recordedStart).TotalSeconds) -lt 2
+                    }
+                    catch { $processAlive = $false }
+                }
+            }
             if ($taskStatus -eq 'running' -and -not $processAlive) {
                 if ($Repair -and [string]$config.health.repairMode -eq 'safe-deterministic-only') {
                     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_check -Message 'Health check detected a running task without a live workflow process.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

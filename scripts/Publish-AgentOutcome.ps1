@@ -27,6 +27,9 @@ if ($task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhit
 if ($task.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.workspaceLeaseId)) {
     $executionBindingEvidence.Add("workspace-lease:$([string]$task.workspaceLeaseId)")
 }
+if ($task.PSObject.Properties['workflowAttemptId'] -and $task.PSObject.Properties['workflowAttemptAgentId'] -and [string]$task.workflowAttemptAgentId -eq $AgentId -and -not [string]::IsNullOrWhiteSpace([string]$task.workflowAttemptId)) {
+    $executionBindingEvidence.Add("execution-attempt:$([string]$task.workflowAttemptId)")
+}
 if ($AgentId -eq 'knowledge_keeper') {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'

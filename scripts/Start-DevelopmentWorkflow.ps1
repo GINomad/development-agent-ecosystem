@@ -416,6 +416,13 @@ $startStage = if ($TargetAgentId) { $TargetAgentId } else { 'orchestrator' }
 & $statusScript -TaskId $TaskId -Status running -Stage $startStage -Message $startMessage -ProcessId $PID -ExecutionRunId ([string]$workspaceLease.RunId) -WorkspaceLeaseId ([string]$workspaceLease.LeaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 $updateOrchestratorStatus = -not $TargetAgentId -or $TargetAgentId -eq 'orchestrator'
 & $statusScript -TaskId $TaskId -AgentId $executedAgentId -AgentStatus running -Stage $executedAgentId -Message $startMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$attemptTaskPath = Join-Path $task.TaskRoot 'task.json'
+Invoke-EcosystemFileLock -LockPath (Join-Path $task.TaskRoot 'task-state.lock') -TimeoutSeconds 30 -Action {
+    $attemptTask = Get-Content -LiteralPath $attemptTaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $attemptTask | Add-Member -NotePropertyName workflowAttemptId -NotePropertyValue $roleAttemptId -Force
+    $attemptTask | Add-Member -NotePropertyName workflowAttemptAgentId -NotePropertyValue $executedAgentId -Force
+    & $writeUtf8NoBomAtomic -Path $attemptTaskPath -Content (($attemptTask | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
+} | Out-Null
 
 $providerLogName = if ([string]$providerRoute.provider -eq 'codex') { 'workflow-codex.jsonl' } else { 'workflow-' + [string]$providerRoute.provider + '.jsonl' }
 $codexLogPath = Join-Path $task.TaskRoot $providerLogName
@@ -809,7 +816,7 @@ catch {
     } else { [string]$workflowHostError.Exception.Message }
     $lastDiagnostic = if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and $null -ne $guardResult -and [bool]$guardResult.guardTriggered -and -not [string]::IsNullOrWhiteSpace([string]$guardResult.failureDetail)) { [string]$guardResult.failureDetail } else { $hostDiagnostic }
     $failureExitCode = if (Get-Variable -Name codexExitCode -ErrorAction SilentlyContinue) { [Nullable[int]]$codexExitCode } else { $null }
-    $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -ExecutionAgentId $failureAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
+    $failureHandoff = & (Join-Path $PSScriptRoot 'Write-AgentFailure.ps1') -TaskId $TaskId -AgentId $failureAgentId -ExecutionAgentId $failureAgentId -ExecutionRunId ([string]$workspaceLease.RunId) -ExecutionAttemptId $roleAttemptId -Stage failed -Summary $failureMessage -ExitCode $failureExitCode -Diagnostic $lastDiagnostic -Evidence $failureEvidence -ConfigPath $ConfigPath -CodexHome $CodexHome
     if ([bool]$failureHandoff.Stale -and -not $continuationInProgress) {
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level warning -Stage stale_failure_ignored -Summary "Ignored a stale failure superseded by a completed '$failureAgentId' outcome." -Evidence @([string]$failureHandoff.FailurePath, "superseded-by-result:$([string]$failureHandoff.SupersedingResultEventId)") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         return [pscustomobject]@{ Status='stale-superseded'; TaskId=$TaskId; AgentId=$failureAgentId; FailurePath=[string]$failureHandoff.FailurePath; SupersedingResultEventId=[string]$failureHandoff.SupersedingResultEventId }
