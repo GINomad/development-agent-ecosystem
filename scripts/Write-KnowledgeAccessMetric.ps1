@@ -17,7 +17,8 @@ param(
     [ValidateSet('observed','declared','verified')][string] $EvidenceKind = 'observed',
     [int] $DurationMs = 0,
     [string] $Status = 'succeeded',
-    [string] $Detail
+    [string] $Detail,
+    [ValidateRange(1, 300)][int] $LockTimeoutSeconds = 30
 )
 
 Set-StrictMode -Version Latest
@@ -25,8 +26,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $path = Join-Path $TaskRoot 'knowledge-usage.jsonl'
 $lockPath = $path + '.lock'
-Invoke-EcosystemFileLock -LockPath $lockPath -TimeoutSeconds 30 -Action {
-    $record = [ordered]@{
+$record = [ordered]@{
         schemaVersion = 1
         metricLevel = 'knowledge'
         eventType = 'knowledge-access'
@@ -49,7 +49,38 @@ Invoke-EcosystemFileLock -LockPath $lockPath -TimeoutSeconds 30 -Action {
         durationMs = $DurationMs
         status = $Status
         detail = $Detail
-    }
+}
+try {
+    Invoke-EcosystemFileLock -LockPath $lockPath -TimeoutSeconds $LockTimeoutSeconds -Action {
     [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
     [pscustomobject]$record
+    }
+}
+catch {
+    $exception = $_.Exception
+    $isLockContention = $false
+    while ($exception) {
+        if ($exception -is [IO.IOException] -and $exception.Message -match '(?i)(lock|used by another process|sharing violation)') {
+            $isLockContention = $true
+            break
+        }
+        $exception = $exception.InnerException
+    }
+    if (-not $isLockContention) { throw }
+
+    Write-Verbose "Knowledge access metric was deferred because '$lockPath' remained exclusively locked for $LockTimeoutSeconds second(s)."
+    [pscustomobject]([ordered]@{
+        schemaVersion = 1
+        metricLevel = 'knowledge'
+        eventType = 'knowledge-access'
+        eventId = $record.eventId
+        timestampUtc = $record.timestampUtc
+        taskId = $TaskId
+        agentId = $AgentId
+        sourceKind = $SourceKind
+        accessMode = $AccessMode
+        sourceId = $SourceId
+        status = 'deferred-lock-contention'
+        detail = "Knowledge metric was not persisted because its exclusive lock remained unavailable for $LockTimeoutSeconds second(s)."
+    })
 }

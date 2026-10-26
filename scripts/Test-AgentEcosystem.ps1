@@ -86,6 +86,31 @@ finally {
     if (Test-Path -LiteralPath $knowledgeMetricFixture) { Remove-Item -LiteralPath $knowledgeMetricFixture -Recurse -Force }
 }
 Add-Check -Name 'knowledge-metric-transient-lock-retry' -Detail 'Knowledge telemetry waits for a transient exclusive lock instead of failing concurrent agent bookkeeping.'
+
+$knowledgeMetricDeferredFixture = Join-Path $OutputRoot ('knowledge-metric-deferred-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $knowledgeMetricDeferredFixture -Force | Out-Null
+try {
+    $knowledgeMetricDeferredConfigPath = Join-Path $knowledgeMetricDeferredFixture 'agents.json'
+    $knowledgeMetricDeferredConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $knowledgeMetricDeferredConfig.runtime.stateRoot = Join-Path $knowledgeMetricDeferredFixture 'state'
+    Write-Utf8NoBom -Path $knowledgeMetricDeferredConfigPath -Content (($knowledgeMetricDeferredConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+    $knowledgeMetricDeferredTaskId = 'synthetic-persistent-lock'
+    $knowledgeMetricDeferredTaskRoot = Join-Path $knowledgeMetricDeferredConfig.runtime.stateRoot "tasks\$knowledgeMetricDeferredTaskId"
+    New-Item -ItemType Directory -Path $knowledgeMetricDeferredTaskRoot -Force | Out-Null
+    $knowledgeMetricDeferredPath = Join-Path $knowledgeMetricDeferredTaskRoot 'knowledge-usage.jsonl'
+    $knowledgeMetricDeferredLock = [IO.File]::Open(($knowledgeMetricDeferredPath + '.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try {
+        $knowledgeMetricDeferred = & (Join-Path $root 'scripts\Record-AgentKnowledgeUse.ps1') -TaskId $knowledgeMetricDeferredTaskId -AgentId health_check -SourceKind skill -AccessMode used -SourceId 'synthetic-persistent-lock' -LockTimeoutSeconds 1 -ConfigPath $knowledgeMetricDeferredConfigPath
+    }
+    finally {
+        $knowledgeMetricDeferredLock.Dispose()
+    }
+    if ([string]$knowledgeMetricDeferred.status -ne 'deferred-lock-contention' -or (Test-Path -LiteralPath $knowledgeMetricDeferredPath)) { throw 'Knowledge access metric contention escaped into the workflow or wrote without its exclusive lock.' }
+}
+finally {
+    if (Test-Path -LiteralPath $knowledgeMetricDeferredFixture) { Remove-Item -LiteralPath $knowledgeMetricDeferredFixture -Recurse -Force }
+}
+Add-Check -Name 'knowledge-metric-persistent-lock-deferred' -Detail 'Persistent telemetry lock contention is reported as deferred rather than failing workflow continuation.'
 $longAtomicWriteFixture = [IO.Path]::GetFullPath((Join-Path $OutputRoot ('atomic-write-long-path-' + [guid]::NewGuid().ToString('N'))))
 $longAtomicWriteParent = $longAtomicWriteFixture
 $longAtomicWriteLeaf = ('d' * 40) + '.patch'

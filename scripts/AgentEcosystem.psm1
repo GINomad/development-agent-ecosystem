@@ -483,7 +483,7 @@ function Invoke-EcosystemFileLock {
         try { $stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
         catch [IO.IOException] { Start-Sleep -Milliseconds 75 }
     }
-    if (-not $stream) { throw "Timed out waiting for exclusive lock '$LockPath'." }
+    if (-not $stream) { throw [IO.IOException]::new("Timed out waiting for exclusive lock '$LockPath'.") }
     try { return & $Action }
     finally { $stream.Dispose() }
 }
