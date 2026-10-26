@@ -12,6 +12,7 @@ param(
     [string] $RunId,
     [string] $LeaseId,
     [string] $Detail,
+    [ValidateRange(1, 300)][int] $LockTimeoutSeconds = 30,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -22,4 +23,4 @@ Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome) "tasks\$TaskId"
 if (-not (Test-Path -LiteralPath $taskRoot -PathType Container)) { throw "Task '$TaskId' was not found." }
-& (Join-Path $PSScriptRoot 'Write-KnowledgeAccessMetric.ps1') -TaskRoot $taskRoot -TaskId $TaskId -AttemptId $AttemptId -RunId $RunId -LeaseId $LeaseId -AgentId $AgentId -SourceKind $SourceKind -AccessMode $AccessMode -SourceId $SourceId -SourceLocation $SourceLocation -SourceRevision $SourceRevision -RepositoryId $RepositoryId -EvidenceKind declared -Detail $Detail
+& (Join-Path $PSScriptRoot 'Write-KnowledgeAccessMetric.ps1') -TaskRoot $taskRoot -TaskId $TaskId -AttemptId $AttemptId -RunId $RunId -LeaseId $LeaseId -AgentId $AgentId -SourceKind $SourceKind -AccessMode $AccessMode -SourceId $SourceId -SourceLocation $SourceLocation -SourceRevision $SourceRevision -RepositoryId $RepositoryId -EvidenceKind declared -Detail $Detail -LockTimeoutSeconds $LockTimeoutSeconds
