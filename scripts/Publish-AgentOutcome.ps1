@@ -110,7 +110,7 @@ if ($AgentId -eq 'knowledge_keeper') {
     foreach ($repositoryMap in @($mapPublication.RepositoryMaps)) {
         $publicationEvidence.Add("repository-map:$([string]$repositoryMap.RepositoryId):$([string]$repositoryMap.MapSha256)")
     }
-    if ([bool]$mapPublication.Skipped) {
+    if ($mapPublication.PSObject.Properties['Skipped'] -and [bool]$mapPublication.Skipped) {
         $publicationEvidence.Add("repository-map-finalization:skipped:$([string]$mapPublication.Reason)")
     }
 }

@@ -22,10 +22,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
 $path = Join-Path $TaskRoot 'knowledge-usage.jsonl'
 $lockPath = $path + '.lock'
-$lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-try {
+Invoke-EcosystemFileLock -LockPath $lockPath -TimeoutSeconds 30 -Action {
     $record = [ordered]@{
         schemaVersion = 1
         metricLevel = 'knowledge'
@@ -53,4 +53,3 @@ try {
     [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
     [pscustomobject]$record
 }
-finally { $lock.Dispose() }
