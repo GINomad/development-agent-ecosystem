@@ -59,6 +59,33 @@ finally {
     if (Test-Path -LiteralPath $atomicWriteFixture) { Remove-Item -LiteralPath $atomicWriteFixture -Recurse -Force }
 }
 Add-Check -Name 'atomic-writer-transient-lock-retry' -Detail 'Atomic writes retry transient sharing violations before failing.'
+
+$knowledgeMetricFixture = Join-Path $OutputRoot ('knowledge-metric-lock-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $knowledgeMetricFixture -Force | Out-Null
+try {
+    $knowledgeMetricConfigPath = Join-Path $knowledgeMetricFixture 'agents.json'
+    $knowledgeMetricConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $knowledgeMetricConfig.runtime.stateRoot = Join-Path $knowledgeMetricFixture 'state'
+    Write-Utf8NoBom -Path $knowledgeMetricConfigPath -Content (($knowledgeMetricConfig | ConvertTo-Json -Depth 30) + [Environment]::NewLine)
+    $knowledgeMetricTaskId = 'synthetic-lock-contention'
+    $knowledgeMetricTaskRoot = Join-Path $knowledgeMetricConfig.runtime.stateRoot "tasks\$knowledgeMetricTaskId"
+    New-Item -ItemType Directory -Path $knowledgeMetricTaskRoot -Force | Out-Null
+    $knowledgeMetricPath = Join-Path $knowledgeMetricTaskRoot 'knowledge-usage.jsonl'
+    $knowledgeMetricLock = [IO.File]::Open(($knowledgeMetricPath + '.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $knowledgeMetricReleaseTimer = [AtomicWriteTestHelper]::DisposeAfter($knowledgeMetricLock, 2000)
+    try {
+        $knowledgeMetric = & (Join-Path $root 'scripts\Record-AgentKnowledgeUse.ps1') -TaskId $knowledgeMetricTaskId -AgentId health_check -SourceKind skill -AccessMode used -SourceId 'synthetic-lock-contention' -ConfigPath $knowledgeMetricConfigPath
+    }
+    finally {
+        $knowledgeMetricReleaseTimer.Dispose()
+        try { $knowledgeMetricLock.Dispose() } catch [ObjectDisposedException] { }
+    }
+    if ([string]$knowledgeMetric.sourceId -ne 'synthetic-lock-contention' -or @(Get-Content -LiteralPath $knowledgeMetricPath -Encoding UTF8 | Where-Object { $_ }).Count -ne 1) { throw 'Knowledge access metric writer did not wait for a transient lock contention and append exactly one record.' }
+}
+finally {
+    if (Test-Path -LiteralPath $knowledgeMetricFixture) { Remove-Item -LiteralPath $knowledgeMetricFixture -Recurse -Force }
+}
+Add-Check -Name 'knowledge-metric-transient-lock-retry' -Detail 'Knowledge telemetry waits for a transient exclusive lock instead of failing concurrent agent bookkeeping.'
 $longAtomicWriteFixture = [IO.Path]::GetFullPath((Join-Path $OutputRoot ('atomic-write-long-path-' + [guid]::NewGuid().ToString('N'))))
 $longAtomicWriteParent = $longAtomicWriteFixture
 $longAtomicWriteLeaf = ('d' * 40) + '.patch'
