@@ -26,7 +26,8 @@ function Get-SourcePage($Kind,$Arguments) {
     $query=if($Arguments.PSObject.Properties['query']){[string]$Arguments.query}else{''}
     $offset=if($Arguments.PSObject.Properties['offset']){[int]$Arguments.offset}else{0}
     $limit=if($Arguments.PSObject.Properties['limit']){[int]$Arguments.limit}else{30}
-    if($offset -lt 0 -or $limit -lt 1 -or $limit -gt 50){throw 'Catalog offset/limit is out of range.'}
+    if($offset -lt 0 -or $limit -lt 1){throw 'Catalog offset/limit is out of range.'}
+    $limit=[Math]::Min($limit,50)
     $matches=@($session.sources|Where-Object{[string]$_.kind -eq $Kind -and (-not $query -or ([string]$_.id).IndexOf($query,[StringComparison]::OrdinalIgnoreCase) -ge 0)})
     $items=@($matches|Select-Object -Skip $offset -First $limit|ForEach-Object{@{id=$_.id;source=$_.path;revision=$_.sha256}})
     Envelope 'context-pack.json' @{items=$items;total=$matches.Count;nextOffset=$(if($offset+$items.Count -lt $matches.Count){$offset+$items.Count}else{$null})} ($offset+$items.Count -lt $matches.Count)
@@ -42,7 +43,8 @@ function Read-SourcePage($Kind,$Arguments) {
     $lines=@([Text.Encoding]::UTF8.GetString($bytes).TrimStart([char]0xfeff) -split '\r?\n')
     $start=if($Arguments.PSObject.Properties['startLine']){[int]$Arguments.startLine}else{1}
     $count=if($Arguments.PSObject.Properties['maxLines']){[int]$Arguments.maxLines}else{120}
-    if($start -lt 1 -or $count -lt 1 -or $count -gt 200 -or $start -gt $lines.Count){throw 'Source line range is out of bounds.'}
+    if($start -lt 1 -or $count -lt 1 -or $start -gt $lines.Count){throw 'Source line range is out of bounds.'}
+    $count=[Math]::Min($count,200)
     $page=@($lines|Select-Object -Skip ($start-1) -First $count)
     $next=$start+$page.Count
     SourceEnvelope $source @{id=$source.id;startLine=$start;endLine=($next-1);totalLines=$lines.Count;nextLine=$(if($next -le $lines.Count){$next}else{$null});text=($page -join [Environment]::NewLine)} ($next -le $lines.Count)

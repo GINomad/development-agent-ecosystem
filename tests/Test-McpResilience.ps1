@@ -14,6 +14,12 @@ $workflowSource=Get-Content -LiteralPath (Join-Path $root 'scripts\Start-Develop
 Assert-That ($workflowSource -match 'Expand-EcosystemValue -Value \$value.+-StateRoot \$mcpStateRoot') 'Workflow does not expand MCP command arguments before passing them to Codex.'
 Assert-That ($workflowSource -notmatch '@\(\$mcpServer\.arguments \| ForEach-Object \{ \[string\]\$_ \}\) \| ConvertTo-Json') 'Workflow still passes unresolved MCP command arguments to Codex.'
 Assert-That ($workflowSource -notmatch 'if\s*\(@\(\$enabledMcpServerNames\)\.Count\)') 'Classic workflow still skips global MCP disable overrides when its enabled-server list is empty.'
+Assert-That ($workflowSource -match '\$recoveryServers\s*=\s*@\(if\(') 'MCP recovery server selection is not explicitly array-normalized.'
+$singletonRecoveryServers=@(if(@('ecosystem-read').Count){@('ecosystem-read')}else{@()})
+Assert-That ($singletonRecoveryServers.Count -eq 1 -and $singletonRecoveryServers[0] -eq 'ecosystem-read') 'Singleton MCP recovery server selection is not StrictMode-safe.'
+$emptyRecoveryServers=@(if(@().Count){@()}else{@()})
+if(-not $emptyRecoveryServers.Count){$emptyRecoveryServers=@('ecosystem-read')}
+Assert-That ($emptyRecoveryServers.Count -eq 1 -and $emptyRecoveryServers[0] -eq 'ecosystem-read') 'Empty MCP recovery server selection did not use the bounded fallback.'
 foreach($case in @(@{status='completed';success=$true},@{status='waiting';success=$false},@{status='failed';success=$false},@{status='skipped';success=$false})){$outcome=& (Join-Path $root 'scripts\Resolve-McpTerminalOutcome.ps1') -AgentStatus $case.status;Assert-That ([bool]$outcome.Succeeded -eq [bool]$case.success) "Terminal outcome '$($case.status)' has incorrect canary result.";Assert-That ([int]$outcome.QualityProxy -eq $(if($case.success){1}else{0})) "Terminal outcome '$($case.status)' has incorrect quality proxy."}
 function New-RpcFixture {
     $fixture=Join-Path ([IO.Path]::GetTempPath()) ('ecosystem-mcp-test-'+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory -Path $fixture -Force|Out-Null

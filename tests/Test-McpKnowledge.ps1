@@ -15,6 +15,9 @@ $knowledgeRoot=Join-Path $OutputRoot 'global'
 New-Item -ItemType Directory -Path $knowledgeRoot -Force|Out-Null
 $standard=Join-Path $knowledgeRoot 'engineering-code-standards.md'
 [IO.File]::WriteAllText($standard,"# Standards`nUse evidence.`nPreserve boundaries.`n")
+$oversized=Join-Path $knowledgeRoot 'oversized.md'
+[IO.File]::WriteAllText($oversized,((1..250|ForEach-Object{"Line $_"}) -join [Environment]::NewLine)+[Environment]::NewLine)
+foreach($index in 1..51){[IO.File]::WriteAllText((Join-Path $knowledgeRoot ('catalog-{0:D2}.md' -f $index)),"Catalog $index")}
 $config.knowledge.technicalRoot=$knowledgeRoot
 $config.knowledge.globalStandardsPath=$standard
 $config.knowledge.versionedRoots=@($knowledgeRoot)
@@ -77,10 +80,14 @@ foreach($role in $roles){
         Assert-That ($state.data.practiceVersion -eq 'spec-practices-1.0.0') 'Task practice policy missing.'
         $knowledge=Rpc 'list_knowledge' @{limit=1}
         Assert-That ($knowledge.data.items.Count -eq 1 -and $knowledge.data.nextOffset -eq 1 -and $knowledge.truncated) 'Knowledge catalog pagination failed.'
+        $oversizedCatalog=Rpc 'list_knowledge' @{limit=100}
+        Assert-That ($oversizedCatalog.data.items.Count -eq 50 -and $oversizedCatalog.data.nextOffset -eq 50 -and $oversizedCatalog.truncated) 'Oversized catalog request was not safely capped and paginated.'
         $entry=Rpc 'read_knowledge' @{name='global/engineering-code-standards.md';maxLines=1}
         Assert-That ($entry.data.text -eq '# Standards' -and $entry.data.nextLine -eq 2 -and $entry.truncated -and $entry.revision) 'Knowledge read lost content, revision or pagination.'
         $entry2=Rpc 'read_knowledge' @{name='global/engineering-code-standards.md';startLine=2;maxLines=2}
         Assert-That ($entry2.data.text -match 'Use evidence' -and $entry2.data.text -notmatch '# Standards') 'Knowledge continuation returned the wrong lines.'
+        $oversizedRead=Rpc 'read_knowledge' @{name='global/oversized.md';startLine=1;maxLines=1000}
+        Assert-That ($oversizedRead.data.startLine -eq 1 -and $oversizedRead.data.endLine -eq 200 -and $oversizedRead.data.nextLine -eq 201 -and $oversizedRead.truncated) 'Oversized source request was not safely capped and paginated.'
         $skills=Rpc 'list_skills' @{}
         Assert-That ($skills.data.items.Count -gt 0) "No skills supplied to $role."
         $readSkill=Rpc 'read_skill' @{name=$skill.id;maxLines=3}
@@ -89,6 +96,10 @@ foreach($role in $roles){
         Assert-That ($escape.error.message -match 'not allowed') 'Arbitrary knowledge path was accepted.'
         $badRange=Rpc 'read_skill' @{name=$skill.id;startLine=0}
         Assert-That ($badRange.error.message -match 'out of bounds') 'Invalid line range was accepted.'
+        $badCatalog=Rpc 'list_knowledge' @{limit=0}
+        Assert-That ($badCatalog.error.message -match 'out of range') 'Zero catalog limit was accepted.'
+        $badCount=Rpc 'read_knowledge' @{name='global/oversized.md';maxLines=0}
+        Assert-That ($badCount.error.message -match 'out of bounds') 'Zero source line count was accepted.'
         [IO.File]::AppendAllText($standard,'Changed revision.')
         $changed=Rpc 'read_knowledge' @{name='global/engineering-code-standards.md'}
         Assert-That ($changed.error.message -match 'revision changed') 'Changed knowledge was served under an old revision.'
@@ -99,17 +110,17 @@ foreach($role in $roles){
         $process.Dispose()
     }
     $metrics=@(Get-Content -LiteralPath (Join-Path $taskRoot 'mcp-metrics.jsonl')|ForEach-Object{$_|ConvertFrom-Json})
-    Assert-That (@($metrics|Where-Object status -eq 'succeeded').Count -eq 7 -and @($metrics|Where-Object status -eq 'failed').Count -eq 3) "Real MCP call accounting failed for $role."
+    Assert-That (@($metrics|Where-Object status -eq 'succeeded').Count -eq 9 -and @($metrics|Where-Object status -eq 'failed').Count -eq 5) "Real MCP call accounting failed for $role."
     $knowledgeMetrics=@(Get-Content -LiteralPath (Join-Path $taskRoot 'knowledge-usage.jsonl')|ForEach-Object{$_|ConvertFrom-Json})
-    Assert-That ($knowledgeMetrics.Count -eq 3 -and @($knowledgeMetrics|Where-Object{[string]$_.accessMode -ne 'read' -or -not $_.sourceRevision}).Count -eq 0) 'Actual MCP knowledge and skill reads were not recorded with source revisions.'
+    Assert-That ($knowledgeMetrics.Count -eq 4 -and @($knowledgeMetrics|Where-Object{[string]$_.accessMode -ne 'read' -or -not $_.sourceRevision}).Count -eq 0) 'Actual MCP knowledge and skill reads were not recorded with source revisions.'
     $summary=& (Join-Path $root 'scripts\Get-McpTranscriptSummary.ps1') -Path (Join-Path $taskRoot 'workflow-claude.jsonl') -AttemptId $attemptId
-    Assert-That ($summary.CallCount -eq 10 -and $summary.SucceededCallCount -eq 7 -and @($summary.TransportFailedServers).Count -eq 0) 'Provider-independent accounting failed or a bounded source rejection incorrectly tripped server recovery.'
+    Assert-That ($summary.CallCount -eq 14 -and $summary.SucceededCallCount -eq 9 -and @($summary.TransportFailedServers).Count -eq 0) 'Provider-independent accounting failed or a bounded source rejection incorrectly tripped server recovery.'
     $clientLog=Join-Path $taskRoot 'workflow-codex.jsonl'
     $clientEntries=@(@{type='ecosystem-workflow-run';attemptId=$attemptId})
-    for($failure=0;$failure -lt 4;$failure++){$clientEntries+=@{type='item.completed';item=@{type='mcp_tool_call';server='ecosystem-read';status='failed'}}}
+    for($failure=0;$failure -lt 6;$failure++){$clientEntries+=@{type='item.completed';item=@{type='mcp_tool_call';server='ecosystem-read';status='failed'}}}
     [IO.File]::WriteAllLines($clientLog,@($clientEntries|ForEach-Object{$_|ConvertTo-Json -Depth 5 -Compress}))
     $clientSummary=& (Join-Path $root 'scripts\Get-McpTranscriptSummary.ps1') -Path $clientLog -AttemptId $attemptId
-    Assert-That ('ecosystem-read' -in @($clientSummary.TransportFailedServers) -and $clientSummary.CallCount -eq 11) 'A client-side transport failure was hidden by earlier server metrics.'
+    Assert-That ('ecosystem-read' -in @($clientSummary.TransportFailedServers) -and $clientSummary.CallCount -eq 15) 'A client-side transport failure was hidden by earlier server metrics.'
     $roleMetric=& (Join-Path $root 'scripts\Write-RoleAttemptMetric.ps1') -TaskRoot $taskRoot -TaskId $taskId -AgentId $role -RunId $runId -LeaseId $leaseId -AttemptId $attemptId -ConfiguredMode mcp -EffectiveMode mcp-with-tool-fallback -Status succeeded -DurationMs 10 -McpCallCount 10 -McpSucceededCallCount 7 -FallbackUsed -FallbackReasons @('read_knowledge: source revision changed')
     Assert-That ($roleMetric.Record.fallbackUsed -and $roleMetric.Record.fallbackReasons.Count -eq 1 -and $roleMetric.Record.server -eq 'ecosystem-read') 'Fallback reason or MCP server attribution was lost from role metrics.'
     $totalCalls+=$metrics.Count
