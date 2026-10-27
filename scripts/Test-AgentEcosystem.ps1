@@ -2849,6 +2849,8 @@ Add-Check -Name 'agent-token-usage' -Detail 'Per-task iteration/agent usage, act
 & (Join-Path $root 'tests/Test-RepositoryKnowledgeMap.ps1') -OutputRoot (Join-Path $OutputRoot 'repository-knowledge-map') | Out-Null
 Add-Check -Name 'repository-knowledge-map' -Detail 'Revision-bound structural graph indexes files, components, entry points and dependencies, reuses unchanged fingerprints, and invalidates on source changes'
 
+& (Join-Path $root 'tests/Test-RepositoryScanSummary.ps1') -OutputRoot (Join-Path $OutputRoot 'repository-scan-summary') | Out-Null
+Add-Check -Name 'repository-scan-summary' -Detail 'Scan avoidance excludes uninstrumented attempts, deduplicates terminal command events, and separates targeted file searches.'
 & (Join-Path $root 'tests/Test-DashboardInsights.ps1') -OutputRoot (Join-Path $OutputRoot 'dashboard-insights') | Out-Null
 Add-Check -Name 'dashboard-insights' -Detail 'Dashboard aggregates task errors, role attempts, model/agent token usage, and task-bound Knowledge Keeper outcomes'
 
