@@ -82,6 +82,7 @@ if ($AgentId -eq 'knowledge_keeper') {
 $required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
 $validated = [Collections.Generic.List[string]]::new()
 $publicationEvidence = [Collections.Generic.List[string]]::new()
+$taskSummarySha256 = $null
 foreach ($name in $required) {
     if ([IO.Path]::GetFileName($name) -ne $name) { throw "Outcome artifact must be a direct task artifact: $name" }
     $path = Join-Path $taskRoot $name
@@ -98,6 +99,7 @@ foreach ($name in $required) {
             foreach ($propertyName in @('completedAtUtc','repositories','outcomes','decisions','verification','knowledgeUpdates','artifacts','residualItems')) {
                 if (-not $parsedArtifact.PSObject.Properties[$propertyName]) { throw "task-summary.json is missing '$propertyName'." }
             }
+            $taskSummarySha256 = Get-EcosystemFileSha256 -Path $path
         }
     }
     elseif ($name.EndsWith('.jsonl', [StringComparison]::OrdinalIgnoreCase)) {
@@ -109,6 +111,9 @@ foreach ($name in $required) {
 }
 
 if ($AgentId -eq 'knowledge_keeper') {
+    if ($taskSummarySha256) {
+        $publicationEvidence.Add("task-summary-sha256:$taskSummarySha256")
+    }
     $mapPublication = & (Join-Path $PSScriptRoot 'Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
     foreach ($repositoryMap in @($mapPublication.RepositoryMaps)) {
         $publicationEvidence.Add("repository-map:$([string]$repositoryMap.RepositoryId):$([string]$repositoryMap.MapSha256)")

@@ -798,12 +798,18 @@ $localPocKnowledge = [ordered]@{ taskId=$localPocTaskId; entries=@(); humanReada
 $localPocSummary = [ordered]@{
     taskId=$localPocTaskId; status='completed'; completedAtUtc=[DateTime]::UtcNow.ToString('o'); repositories=@('planning-space-excel-variable-poc')
     outcomes=@(); decisions=@('The task used local-poc-delivery.'); verification=@('Requirements, implementation, review, and independent verification completed locally.')
-    knowledgeUpdates=@(); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@()
-    humanReadable=[ordered]@{ title='Synthetic local POC completion'; overview='The local-only POC completed without pipeline delivery.'; audience='Ecosystem maintainers'; delivered=@('Completed the local-only POC.'); decisions=@('Pipeline delivery was excluded by the selected execution mode.'); verification=@('Local review verification passed.'); knowledgeUpdates=@(); residualItems=@() }
+    knowledgeUpdates=@(); artifacts=@('knowledge-update.json','task-summary.json'); residualItems=@('REQ-CELL-INPUT is explicitly deferred outside this completed local POC scope.')
+    humanReadable=[ordered]@{ title='Synthetic local POC completion'; overview='The local-only POC completed without pipeline delivery.'; audience='Ecosystem maintainers'; delivered=@('Completed the local-only POC.'); decisions=@('Pipeline delivery was excluded by the selected execution mode.'); verification=@('Local review verification passed.'); knowledgeUpdates=@(); residualItems=@('REQ-CELL-INPUT is explicitly deferred outside this completed local POC scope.') }
 }
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'knowledge-update.json') -Content (($localPocKnowledge | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'context-pack.json') -Content (([ordered]@{ taskId=$localPocTaskId; artifacts=@() } | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'task-summary.json') -Content (($localPocSummary | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$localPocBoundTask = Get-Content -LiteralPath $localPocTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$localPocBoundTask | Add-Member -NotePropertyName executionRunId -NotePropertyValue ('r' * 32) -Force
+$localPocBoundTask | Add-Member -NotePropertyName workspaceLeaseId -NotePropertyValue ('l' * 32) -Force
+$localPocBoundTask | Add-Member -NotePropertyName workflowAttemptId -NotePropertyValue ('a' * 32) -Force
+$localPocBoundTask | Add-Member -NotePropertyName workflowAttemptAgentId -NotePropertyValue knowledge_keeper -Force
+Write-Utf8NoBom -Path $localPocTask.TaskPath -Content (($localPocBoundTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 # Regression: an explicit user-routed branch endpoint may complete without a queued or discovered pipeline.
 $noRunEndpointRoute = [ordered]@{ routingId=[guid]::NewGuid().ToString('N'); taskId=$localPocTaskId; sourceEventId=[guid]::NewGuid().ToString('N'); sourceType='user-comment'; inputKind='workflow-comment'; targets=@('knowledge_keeper'); rationale='User explicitly chooses the pushed branch endpoint and explicitly prohibits pipeline execution.'; confidence='high'; requiresUserInput=$false; executionMode='knowledge-only'; agentSequence=@('knowledge_keeper'); codeChangesAllowed=$false; continueAutomatically=$false; routedEventIds=@(); preservedDirectTarget=$false; createdAtUtc=[DateTime]::UtcNow.ToString('o') }
 $noRunPipeline = [ordered]@{ taskId=$localPocTaskId; branch='synthetic'; commit='synthetic'; queuedDefinitionIds=@(); runs=@(); overallResult='no-run' }
@@ -815,6 +821,125 @@ $localPocPublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -T
 $publishedLocalPocTask = Get-Content -LiteralPath $localPocTask.TaskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$localPocRoute.Routing.executionMode -ne 'local-poc-delivery' -or [string]$publishedLocalPocTask.agentStatuses.pipeline_monitor.status -ne 'skipped' -or [string]$localPocPublication.AgentId -ne 'knowledge_keeper' -or [string]$publishedLocalPocTask.agentStatuses.knowledge_keeper.status -ne 'completed' -or [string]$laterRecoveryRoute.executionMode -ne 'targeted-recovery') { throw 'Local POC final publication did not retain the explicit user no-run endpoint after a later recovery route.' }
 Add-Check -Name 'execution-mode-aware-final-publication' -Detail 'Knowledge Keeper final publication accepts the latest applicable explicit user no-run endpoint even when a later recovery route follows it'
+$finalPublicationScript = Join-Path $root 'scripts\Test-FinalKnowledgePublication.ps1'
+$localPocTaskStatePath = $localPocTask.TaskPath
+$localPocSummaryPath = Join-Path $localPocTask.TaskRoot 'task-summary.json'
+$localPocLedgerPath = Join-Path $localPocTask.TaskRoot 'task-ledger.jsonl'
+$localPocBaselineTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8
+$localPocBaselineSummary = Get-Content -LiteralPath $localPocSummaryPath -Raw -Encoding UTF8
+$localPocBaselineLedger = Get-Content -LiteralPath $localPocLedgerPath -Raw -Encoding UTF8
+function Restore-LocalPocFinalizationFixture {
+    Write-Utf8NoBom -Path $localPocTaskStatePath -Content $localPocBaselineTask
+    Write-Utf8NoBom -Path $localPocSummaryPath -Content $localPocBaselineSummary
+    Write-Utf8NoBom -Path $localPocLedgerPath -Content $localPocBaselineLedger
+}
+& (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $localPocTaskId -AgentId health_check -AgentStatus waiting -Stage synthetic_historical_health -Message 'Synthetic historical health work remains visible.' -ConfigPath $routingConfigPath | Out-Null
+$resumeWithHistoricalHealth = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $localPocTaskId -PreserveArtifactIndex -ConfigPath $routingConfigPath
+$validFinalPublication = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+$completion = & (Join-Path $root 'scripts\Complete-FinalKnowledgePublication.ps1') -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+$completedFinalizationTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not [bool]$resumeWithHistoricalHealth.HasWork -or -not [bool]$validFinalPublication.Eligible -or [string]$validFinalPublication.Reason -ne 'validated-final-knowledge-publication' -or -not [bool]$completion.Completed -or [string]$completedFinalizationTask.status -ne 'completed' -or [string]$completedFinalizationTask.currentStage -ne 'knowledge_published' -or @($localPocSummary.residualItems) -notcontains 'REQ-CELL-INPUT is explicitly deferred outside this completed local POC scope.') { throw 'A validated final Knowledge Keeper publication did not finalize before historical Health work or preserve deferred scope.' }
+Restore-LocalPocFinalizationFixture
+$gatedTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$gatedTask.status = 'review_pending'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($gatedTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$reviewGateDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$reviewGateDecision.Eligible -or [string]$reviewGateDecision.Reason -ne 'task-status-blocked') { throw 'Final Knowledge Keeper publication bypassed the review-pending gate.' }
+Restore-LocalPocFinalizationFixture
+$missingBindingTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$missingBindingTask.PSObject.Properties.Remove('workspaceLeaseId')
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($missingBindingTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$missingBindingDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$missingBindingDecision.Eligible -or [string]$missingBindingDecision.Reason -ne 'knowledge-publication-binding-missing:workspaceLeaseId') { throw 'An unbound Knowledge Keeper publication was accepted for automatic finalization.' }
+Restore-LocalPocFinalizationFixture
+$attemptMismatchTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$attemptMismatchTask | Add-Member -NotePropertyName workflowAttemptId -NotePropertyValue ('a' * 32) -Force
+$attemptMismatchTask | Add-Member -NotePropertyName workflowAttemptAgentId -NotePropertyValue developer -Force
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($attemptMismatchTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$attemptMismatchDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$attemptMismatchDecision.Eligible -or [string]$attemptMismatchDecision.Reason -ne 'knowledge-publication-binding-mismatch:workflowAttemptId') { throw 'A prior Knowledge Keeper result was accepted for a different current workflow attempt.' }
+Restore-LocalPocFinalizationFixture
+$reopenedTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$reopenedTask | Add-Member -NotePropertyName reopenedAtUtc -NotePropertyValue ([DateTime]::UtcNow.AddMinutes(1).ToString('o')) -Force
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($reopenedTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$reopenedDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$reopenedDecision.Eligible -or [string]$reopenedDecision.Reason -ne 'task-reopened-after-publication') { throw 'Finalization accepted a Knowledge Keeper publication from before the current task revision.' }
+Restore-LocalPocFinalizationFixture
+$changedSummary = Get-Content -LiteralPath $localPocSummaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$changedSummary.decisions += 'Synthetic change after publication.'
+Write-Utf8NoBom -Path $localPocSummaryPath -Content (($changedSummary | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$changedSummaryDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$changedSummaryDecision.Eligible -or [string]$changedSummaryDecision.Reason -ne 'task-summary-not-bound-to-publication') { throw 'Finalization accepted a task summary changed after its validated publication.' }
+Restore-LocalPocFinalizationFixture
+$newInput = & (Join-Path $root 'scripts\Add-TaskEvent.ps1') -TaskId $localPocTaskId -Actor user -Type user-comment -Summary 'Synthetic new user request after final publication.' -ConfigPath $routingConfigPath
+$newInputDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$newInputDecision.Eligible -or [string]$newInputDecision.Reason -ne 'new-user-input-after-publication') { throw 'Finalization ignored unread user input that arrived after final publication.' }
+Restore-LocalPocFinalizationFixture
+$preservedStageTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$preservedStageTask.currentStage = 'awaiting_pull_request'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($preservedStageTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$awaitingPrDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$awaitingPrDecision.Eligible -or [string]$awaitingPrDecision.Reason -ne 'task-stage-preserved:awaiting_pull_request') { throw 'Finalization bypassed the awaiting-pull-request gate.' }
+Restore-LocalPocFinalizationFixture
+$preservedStageTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$preservedStageTask.currentStage = 'pipeline_non_success'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($preservedStageTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$pipelineNonSuccessDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([bool]$pipelineNonSuccessDecision.Eligible -or [string]$pipelineNonSuccessDecision.Reason -ne 'task-stage-preserved:pipeline_non_success') { throw 'Finalization bypassed the pipeline non-success gate.' }
+Restore-LocalPocFinalizationFixture
+Remove-Item -LiteralPath $localPocSummaryPath -Force
+$missingSummaryDecision = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+$incompleteCompletion = & (Join-Path $root 'scripts\Complete-FinalKnowledgePublication.ps1') -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+$incompleteTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$workflowHostLines = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Encoding UTF8
+$fallbackLine = @($workflowHostLines | Where-Object { $_ -match "TargetAgentId -eq 'knowledge_keeper'" -and $_ -match 'knowledgePublication' -and $_ -match 'preserveAwaitingPullRequest' -and $_ -match 'preservePipelineNonSuccess' }) | Select-Object -First 1
+if ([bool]$missingSummaryDecision.Eligible -or [string]$missingSummaryDecision.Reason -ne 'task-summary-missing' -or [bool]$incompleteCompletion.Completed -or [string]$incompleteTask.status -eq 'completed' -or -not $fallbackLine) { throw 'Knowledge curation without a final task summary could complete through the targeted workflow fallback.' }
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'validated-final-knowledge-publication-finalization' -Detail 'Only a current, summary-hash-bound Knowledge Keeper publication can finalize despite historical Health work; review, PR, pipeline, changed-summary, new-input, stale-attempt, and missing-summary gates remain closed while deferred REQ-CELL-INPUT stays visible'
+
+# Begin isolated Knowledge Keeper host-branch regression.
+$hostTokens = $null
+$hostParseErrors = $null
+$hostAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1'), [ref]$hostTokens, [ref]$hostParseErrors)
+$knowledgeFallbackAst = @($hostAst.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.IfStatementAst] -and
+        $node.Clauses[0].Item1.Extent.Text -match 'closureComplete' -and
+        $node.Clauses[0].Item1.Extent.Text -match 'finalKnowledgePublication'
+}, $true))
+if (@($hostParseErrors).Count -or $knowledgeFallbackAst.Count -ne 1) { throw 'Cannot isolate the production Knowledge Keeper finalization branch.' }
+$knowledgeFallbackBlock = [scriptblock]::Create($knowledgeFallbackAst[0].Extent.Text)
+function Assert-KnowledgeCurationHostBranch {
+    param([string] $InitialStage, [AllowNull()][object] $Publication, [bool] $ClosureComplete, [bool] $AwaitingPr, [string] $ExpectedStatus, [string] $ExpectedStage, [bool] $PreserveMessage)
+    Restore-LocalPocFinalizationFixture
+    $TaskId = $localPocTaskId
+    $TargetAgentId = 'knowledge_keeper'
+    $ConfigPath = $routingConfigPath
+    $CodexHome = $null
+    $task = [pscustomobject]@{ TaskRoot=$localPocTask.TaskRoot }
+    $statusScript = Join-Path $root 'scripts\Set-AgentTaskStatus.ps1'
+    $currentStatus = if ($ClosureComplete) { 'completed' } else { 'running' }
+    $originalMessage = 'Synthetic existing delivery gate or curation result.'
+    & $statusScript -TaskId $TaskId -Status $currentStatus -Stage $InitialStage -Message $originalMessage -ConfigPath $ConfigPath | Out-Null
+    if (-not $ClosureComplete) { Remove-Item -LiteralPath $localPocSummaryPath -Force }
+    $currentTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $closureComplete = $ClosureComplete
+    $finalKnowledgePublication = $Publication
+    $preserveAwaitingPullRequest = $AwaitingPr
+    $preservePipelineNonSuccess = $false
+    & $knowledgeFallbackBlock
+    $after = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$after.status -ne $ExpectedStatus -or [string]$after.currentStage -ne $ExpectedStage) { throw "Production Knowledge Keeper branch incorrectly finalized or changed stage '$InitialStage'." }
+    if ($PreserveMessage -and [string]$after.lastMessage -ne $originalMessage) { throw "Production Knowledge Keeper branch replaced the existing '$InitialStage' gate message." }
+}
+Assert-KnowledgeCurationHostBranch -InitialStage curation -Publication ([pscustomobject]@{ Completed=$false }) -ClosureComplete $false -AwaitingPr $false -ExpectedStatus interrupted -ExpectedStage knowledge_publication_incomplete -PreserveMessage $false
+Assert-KnowledgeCurationHostBranch -InitialStage curation -Publication $null -ClosureComplete $false -AwaitingPr $false -ExpectedStatus interrupted -ExpectedStage knowledge_publication_incomplete -PreserveMessage $false
+Assert-KnowledgeCurationHostBranch -InitialStage awaiting_pull_request -Publication ([pscustomobject]@{ Completed=$false }) -ClosureComplete $false -AwaitingPr $true -ExpectedStatus interrupted -ExpectedStage awaiting_pull_request -PreserveMessage $false
+Assert-KnowledgeCurationHostBranch -InitialStage pipeline_non_success -Publication ([pscustomobject]@{ Completed=$false }) -ClosureComplete $false -AwaitingPr $false -ExpectedStatus interrupted -ExpectedStage pipeline_non_success -PreserveMessage $true
+Assert-KnowledgeCurationHostBranch -InitialStage pr_completed -Publication $null -ClosureComplete $true -AwaitingPr $false -ExpectedStatus completed -ExpectedStage pr_completed -PreserveMessage $true
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'knowledge-curation-host-finalization-guards' -Detail 'The real host branch keeps ordinary/null-result curation open, preserves PR/pipeline gates, and leaves explicit closure completed without invoking a workflow host'
+# End isolated Knowledge Keeper host-branch regression.
 
 $schedulerRoot = Join-Path $OutputRoot ('workspace-scheduler-' + [guid]::NewGuid().ToString('N'))
 $schedulerSource = Join-Path $schedulerRoot 'source'

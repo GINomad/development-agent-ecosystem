@@ -655,7 +655,16 @@ try {
             $currentStatus = [string]$currentTask.status
         }
     }
-    if ($Resume -and -not $TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
+    $closurePendingKnowledgeUpdate = $currentTask.PSObject.Properties['closure'] -and [string]$currentTask.closure.status -eq 'knowledge-update-pending'
+    $finalKnowledgePublication = $null
+    if (-not $closurePendingKnowledgeUpdate) {
+        $finalKnowledgePublication = & (Join-Path $PSScriptRoot 'Complete-FinalKnowledgePublication.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        if ([bool]$finalKnowledgePublication.Completed) {
+            $currentStatus = 'completed'
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+    }
+    if ($Resume -and -not $TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending','completed')) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -PreserveArtifactIndex -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage checkpoint_incomplete -Message "Checkpoint run ended with unfinished agents: $(@($remainingPlan.UnfinishedAgentIds) -join ', ')." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -663,7 +672,7 @@ try {
             $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
     }
-    if ($TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending')) {
+    if ($TargetAgentId -and $currentStatus -notin @('failed','waiting_for_input','held','review_pending','completed')) {
         $closureComplete = $TargetAgentId -eq 'knowledge_keeper' -and $currentTask.PSObject.Properties['closure'] -and [string]$currentTask.closure.status -eq 'knowledge-update-pending' -and [string]$currentTask.agentStatuses.knowledge_keeper.status -eq 'completed'
         $preservePipelineNonSuccess = $false
         $targetedPipelinePath = Join-Path $task.TaskRoot 'pipeline-result.json'
@@ -689,7 +698,15 @@ try {
             $currentStatus = 'completed'
             $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         }
-        if (-not $closureComplete -and -not $preserveAwaitingPullRequest -and -not $preservePipelineNonSuccess) {
+        if (-not $closureComplete -and $TargetAgentId -eq 'knowledge_keeper' -and (-not $finalKnowledgePublication -or -not [bool]$finalKnowledgePublication.Completed) -and -not $preserveAwaitingPullRequest -and -not $preservePipelineNonSuccess) {
+            $preservedKnowledgeStage = if ($currentTask.PSObject.Properties['currentStage'] -and [string]$currentTask.currentStage -in @('awaiting_pull_request','pipeline_non_success')) { [string]$currentTask.currentStage } else { 'knowledge_publication_incomplete' }
+            $knowledgeStatusParameters = @{ TaskId=$TaskId; Status='interrupted'; Stage=$preservedKnowledgeStage; ClearProcessId=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+            if ($preservedKnowledgeStage -eq 'knowledge_publication_incomplete') { $knowledgeStatusParameters.Message = 'Knowledge Keeper completed curation without a current validated final task summary; task finalization remains open.' }
+            & $statusScript @knowledgeStatusParameters | Out-Null
+            $currentStatus = 'interrupted'
+            $currentTask = Get-Content -LiteralPath (Join-Path $task.TaskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        elseif (-not $closureComplete -and -not $preserveAwaitingPullRequest -and -not $preservePipelineNonSuccess) {
         $remainingPlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $TaskId -PreserveArtifactIndex -ConfigPath $ConfigPath -CodexHome $CodexHome
         if ([bool]$remainingPlan.HasWork) {
             & $statusScript -TaskId $TaskId -Status interrupted -Stage targeted_agent_completed -Message "Targeted restart for '$TargetAgentId' finished. Remaining agents: $(@($remainingPlan.UnfinishedAgentIds) -join ', ')." -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
