@@ -791,6 +791,8 @@ $localPocTaskId = 'local-poc-publication-' + [guid]::NewGuid().ToString('N')
 $localPocTask = & (Join-Path $root 'scripts\New-AgentTask.ps1') -TaskId $localPocTaskId -TaskSelector synthetic-local-poc-publication -Mode manual -RepositoryIds planning-space-excel-variable-poc -ConfigPath $routingConfigPath
 $localPocCreatedEvent = Get-Content -LiteralPath (Join-Path $localPocTask.TaskRoot 'task-ledger.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object type -eq 'task-created' | Select-Object -First 1
 $localPocRoute = & (Join-Path $root 'scripts\Set-WorkflowInputRoute.ps1') -TaskId $localPocTaskId -SourceEventId ([string]$localPocCreatedEvent.eventId) -InputKind task-intake -TargetAgentIds requirements_analyst -ExecutionMode local-poc-delivery -Rationale 'The synthetic task requires local-only implementation, review, verification, and final publication.' -Confidence high -ConfigPath $routingConfigPath
+$localPocAnalystBatch = & (Join-Path $root 'scripts\Get-AgentCommentBatch.ps1') -TaskId $localPocTaskId -AgentId requirements_analyst -ConfigPath $routingConfigPath
+& (Join-Path $root 'scripts\Acknowledge-AgentCommentBatch.ps1') -TaskId $localPocTaskId -AgentId requirements_analyst -EventIds @($localPocAnalystBatch.eventIds) -ConfigPath $routingConfigPath | Out-Null
 foreach ($completedLocalPocAgentId in @('requirements_analyst','developer','reviewer','review_verifier')) {
     & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $localPocTaskId -AgentId $completedLocalPocAgentId -AgentStatus completed -Stage synthetic_local_poc_completed -Message "Synthetic $completedLocalPocAgentId completed." -ConfigPath $routingConfigPath | Out-Null
 }
@@ -825,13 +827,19 @@ $finalPublicationScript = Join-Path $root 'scripts\Test-FinalKnowledgePublicatio
 $localPocTaskStatePath = $localPocTask.TaskPath
 $localPocSummaryPath = Join-Path $localPocTask.TaskRoot 'task-summary.json'
 $localPocLedgerPath = Join-Path $localPocTask.TaskRoot 'task-ledger.jsonl'
+$localPocKnowledgePath = Join-Path $localPocTask.TaskRoot 'knowledge-update.json'
+$localPocRoutingPath = Join-Path $localPocTask.TaskRoot 'workflow-routing.jsonl'
 $localPocBaselineTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8
 $localPocBaselineSummary = Get-Content -LiteralPath $localPocSummaryPath -Raw -Encoding UTF8
 $localPocBaselineLedger = Get-Content -LiteralPath $localPocLedgerPath -Raw -Encoding UTF8
+$localPocBaselineKnowledge = Get-Content -LiteralPath $localPocKnowledgePath -Raw -Encoding UTF8
+$localPocBaselineRouting = Get-Content -LiteralPath $localPocRoutingPath -Raw -Encoding UTF8
 function Restore-LocalPocFinalizationFixture {
     Write-Utf8NoBom -Path $localPocTaskStatePath -Content $localPocBaselineTask
     Write-Utf8NoBom -Path $localPocSummaryPath -Content $localPocBaselineSummary
     Write-Utf8NoBom -Path $localPocLedgerPath -Content $localPocBaselineLedger
+    Write-Utf8NoBom -Path $localPocKnowledgePath -Content $localPocBaselineKnowledge
+    Write-Utf8NoBom -Path $localPocRoutingPath -Content $localPocBaselineRouting
 }
 & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $localPocTaskId -AgentId health_check -AgentStatus waiting -Stage synthetic_historical_health -Message 'Synthetic historical health work remains visible.' -ConfigPath $routingConfigPath | Out-Null
 $resumeWithHistoricalHealth = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $localPocTaskId -PreserveArtifactIndex -ConfigPath $routingConfigPath
@@ -897,17 +905,162 @@ if ([bool]$missingSummaryDecision.Eligible -or [string]$missingSummaryDecision.R
 Restore-LocalPocFinalizationFixture
 Add-Check -Name 'validated-final-knowledge-publication-finalization' -Detail 'Only a current, summary-hash-bound Knowledge Keeper publication can finalize despite historical Health work; review, PR, pipeline, changed-summary, new-input, stale-attempt, and missing-summary gates remain closed while deferred REQ-CELL-INPUT stays visible'
 
+# On-demand knowledge is valid before delivery closure, but must neither invent a
+# completed task summary nor open the final-publication gate. It still returns to
+# the Orchestrator so an already-routed Developer remediation can be selected.
+Restore-LocalPocFinalizationFixture
+Remove-Item -LiteralPath $localPocSummaryPath -Force
+$partialKnowledgeTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$partialKnowledgeTask.status = 'interrupted'
+$partialKnowledgeTask.currentStage = 'developer_remediation_pending'
+$partialKnowledgeTask.agentStatuses.developer.status = 'pending'
+$partialKnowledgeTask.agentStatuses.knowledge_keeper.status = 'running'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($partialKnowledgeTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+$partialKnowledgePublication = & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $localPocTaskId -AgentId knowledge_keeper -Summary 'Synthetic partial project knowledge published.' -PartialKnowledgePublication -ConfigPath $routingConfigPath
+$partialKnowledgeTaskAfter = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$partialKnowledgeEvents = @(Get-Content -LiteralPath $localPocLedgerPath -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json })
+$partialKnowledgeFinalization = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+$partialKnowledgeResult = @($partialKnowledgeEvents | Where-Object { [string]$_.type -eq 'agent-result' -and [string]$_.actor -eq 'knowledge_keeper' } | Select-Object -Last 1)
+if ([string]$partialKnowledgePublication.AgentId -ne 'knowledge_keeper' -or [string]$partialKnowledgeTaskAfter.agentStatuses.knowledge_keeper.status -ne 'completed' -or (Test-Path -LiteralPath $localPocSummaryPath) -or -not @($partialKnowledgeEvents | Where-Object { [string]$_.type -eq 'knowledge-updated' -and @($_.evidence) -contains 'knowledge-publication:partial' }).Count -or -not @($partialKnowledgeEvents | Where-Object { [string]$_.type -eq 'continuation-requested' -and [string]$_.targetAgentId -eq 'orchestrator' }).Count -or -not $partialKnowledgeResult.Count -or @($partialKnowledgeResult[0].evidence) -notcontains 'knowledge-publication:partial' -or [bool]$partialKnowledgeFinalization.Eligible -or [string]$partialKnowledgeFinalization.Reason -ne 'delivery-agent-not-terminal:developer') { throw 'Partial Knowledge Keeper publication did not preserve the final-summary gate and continuation contract.' }
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'partial-knowledge-publication' -Detail 'Verified partial knowledge validates without task-summary.json, records a nonterminal update, defers final map publication, and requests Orchestrator continuation.'
+
 # Begin isolated Knowledge Keeper host-branch regression.
 $hostTokens = $null
 $hostParseErrors = $null
 $hostAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1'), [ref]$hostTokens, [ref]$hostParseErrors)
+$partialKnowledgeHelperAst = @($hostAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-CurrentPartialKnowledgePublication' }, $true))
+$targetedHostAst = @($hostAst.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.IfStatementAst] -and
+    $node.Clauses[0].Item1.Extent.Text -match '^\$TargetAgentId -and -not \$partialKnowledgePublicationHandled -and \$currentStatus -notin'
+}, $true))
+$partialRecoveryAst = @($hostAst.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.IfStatementAst] -and
+    $node.Clauses[0].Item1.Extent.Text -match '\$TargetAgentId -eq ''knowledge_keeper'' -and -not \$finalKnowledgePublicationCompleted'
+}, $true))
 $knowledgeFallbackAst = @($hostAst.FindAll({
     param($node)
     $node -is [Management.Automation.Language.IfStatementAst] -and
         $node.Clauses[0].Item1.Extent.Text -match 'closureComplete' -and
         $node.Clauses[0].Item1.Extent.Text -match 'finalKnowledgePublication'
 }, $true))
-if (@($hostParseErrors).Count -or $knowledgeFallbackAst.Count -ne 1) { throw 'Cannot isolate the production Knowledge Keeper finalization branch.' }
+if (@($hostParseErrors).Count -or $knowledgeFallbackAst.Count -ne 1 -or $partialKnowledgeHelperAst.Count -ne 1 -or $targetedHostAst.Count -ne 1 -or $partialRecoveryAst.Count -ne 1) { throw 'Cannot isolate the production Knowledge Keeper partial-publication host guards.' }
+. ([scriptblock]::Create($partialKnowledgeHelperAst[0].Extent.Text))
+
+# Exercise the exact helper used by trusted host artifact validation.  A valid
+# current partial event is accepted only for Knowledge Keeper and only while
+# its hash/bindings match; a changed artifact or another role cannot reuse it.
+Restore-LocalPocFinalizationFixture
+Remove-Item -LiteralPath $localPocSummaryPath -Force
+$hostPartialTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$hostPartialTask.status = 'interrupted'
+$hostPartialTask.currentStage = 'developer_remediation_pending'
+$hostPartialTask.agentStatuses.developer.status = 'pending'
+$hostPartialTask.agentStatuses.knowledge_keeper.status = 'running'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($hostPartialTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $localPocTaskId -AgentId knowledge_keeper -Summary 'Synthetic host-bound partial knowledge published.' -PartialKnowledgePublication -ConfigPath $routingConfigPath | Out-Null
+$knowledgeOnlyPartialContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $localPocTaskId -CompletedAgentId knowledge_keeper -PrepareOnly -ConfigPath $routingConfigPath
+# The original fixture's latest route is knowledge-only.  A partial outcome
+# must not widen it to Developer.  Model the real remediation case explicitly
+# with a newer persisted local-poc delivery route that contains Developer.
+$partialRemediationRoute = [ordered]@{ routingId=[guid]::NewGuid().ToString('N'); taskId=$localPocTaskId; sourceEventId=[guid]::NewGuid().ToString('N'); sourceType='workflow-input-routed'; inputKind='approved-remediation'; targets=@('developer'); rationale='Synthetic approved remediation keeps Developer pending after a nonterminal Knowledge Keeper publication.'; confidence='high'; requiresUserInput=$false; executionMode='local-poc-delivery'; agentSequence=@('requirements_analyst','developer','reviewer','review_verifier','knowledge_keeper'); codeChangesAllowed=$true; continueAutomatically=$true; routedEventIds=@(); preservedDirectTarget=$true; createdAtUtc=[DateTime]::UtcNow.ToString('o') }
+[IO.File]::AppendAllText($localPocRoutingPath, (($partialRemediationRoute | ConvertTo-Json -Depth 12 -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+$hostPartialTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$acceptedPartialHostEvidence = Test-CurrentPartialKnowledgePublication -TaskRoot $localPocTask.TaskRoot -Task $hostPartialTask -ExecutedAgentId knowledge_keeper
+$wrongRoleHostEvidence = Test-CurrentPartialKnowledgePublication -TaskRoot $localPocTask.TaskRoot -Task $hostPartialTask -ExecutedAgentId developer
+$partialHostContinuation = & (Join-Path $root 'scripts\Continue-AgentChain.ps1') -TaskId $localPocTaskId -CompletedAgentId knowledge_keeper -PrepareOnly -ConfigPath $routingConfigPath
+$changedHostKnowledge = Get-Content -LiteralPath (Join-Path $localPocTask.TaskRoot 'knowledge-update.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$changedHostKnowledge | Add-Member -NotePropertyName syntheticHostRevision -NotePropertyValue 'changed-after-publication' -Force
+Write-Utf8NoBom -Path (Join-Path $localPocTask.TaskRoot 'knowledge-update.json') -Content (($changedHostKnowledge | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
+$staleHashHostEvidence = Test-CurrentPartialKnowledgePublication -TaskRoot $localPocTask.TaskRoot -Task $hostPartialTask -ExecutedAgentId knowledge_keeper
+$hostSource = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
+$partialHostChecks = [ordered]@{
+    acceptedCurrentHash = [bool]$acceptedPartialHostEvidence.Eligible -and [string]$acceptedPartialHostEvidence.Reason -eq 'validated-current-partial-knowledge-publication'
+    wrongRoleRejected = -not [bool]$wrongRoleHostEvidence.Eligible
+    staleHashRejected = -not [bool]$staleHashHostEvidence.Eligible
+    knowledgeOnlyDoesNotWiden = [string]$knowledgeOnlyPartialContinuation.Status -eq 'completed' -and -not $knowledgeOnlyPartialContinuation.PSObject.Properties['NextAgentId']
+    configuredRemediationSelectsDeveloper = [string]$partialHostContinuation.Status -eq 'prepared' -and [string]$partialHostContinuation.NextAgentId -eq 'developer'
+    hostUsesValidator = $hostSource -match 'Test-CurrentPartialKnowledgePublication -TaskRoot \$task\.TaskRoot'
+    hostExcludesOnlySummary = $hostSource -match '\$requiredArtifacts = @\(\$requiredArtifacts \| Where-Object \{ \$_ -ne ''task-summary\.json'' \}\)'
+    hostPreservesPartialStage = $hostSource -match 'Stage partial_knowledge_published'
+}
+$failedPartialHostChecks = @($partialHostChecks.GetEnumerator() | Where-Object { -not [bool]$_.Value } | ForEach-Object { [string]$_.Key })
+if ($failedPartialHostChecks.Count) { throw ('Trusted host partial-publication regression failed checks: ' + ($failedPartialHostChecks -join ', ') + ". Accepted=$([string]$acceptedPartialHostEvidence.Reason); wrongRole=$([string]$wrongRoleHostEvidence.Reason); staleHash=$([string]$staleHashHostEvidence.Reason); knowledgeOnly=$([string]$knowledgeOnlyPartialContinuation.Status); remediation=$([string]$partialHostContinuation.Status)/$([string]$partialHostContinuation.NextAgentId).") }
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'partial-knowledge-host-artifact-validation' -Detail 'Trusted host accepts only a current hash-bound partial Knowledge Keeper event, preserves task-summary.json for all other outcomes, and returns continuation through the partial stage.'
+
+# A partial publication must never erase an explicit input, review, PR, or
+# pipeline stop gate. Exercise the actual host recovery branch for each gate.
+$partialRecoveryBlock = [scriptblock]::Create($partialRecoveryAst[0].Extent.Text)
+function Assert-PartialKnowledgeGatePreserved {
+    param([string] $InitialStatus, [string] $InitialStage)
+    Restore-LocalPocFinalizationFixture
+    Remove-Item -LiteralPath $localPocSummaryPath -Force
+    $TaskId = $localPocTaskId
+    $TargetAgentId = 'knowledge_keeper'
+    $executedAgentId = 'knowledge_keeper'
+    $ConfigPath = $routingConfigPath
+    $CodexHome = $null
+    $task = [pscustomobject]@{ TaskRoot=$localPocTask.TaskRoot }
+    $statusScript = Join-Path $root 'scripts\Set-AgentTaskStatus.ps1'
+    $message = "Synthetic preserved gate: $InitialStatus/$InitialStage."
+    & $statusScript -TaskId $TaskId -Status $InitialStatus -Stage $InitialStage -Message $message -ConfigPath $ConfigPath | Out-Null
+    $gateTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $gateTask.agentStatuses.knowledge_keeper.status = 'running'
+    Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($gateTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+    & (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $TaskId -AgentId knowledge_keeper -Summary 'Synthetic gate-preserving partial knowledge published.' -PartialKnowledgePublication -ConfigPath $ConfigPath | Out-Null
+    $currentTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $currentStatus = [string]$currentTask.status
+    $finalKnowledgePublication = $null
+    $partialKnowledgePublicationHandled = $false
+    $preservedPartialKnowledgeGate = $false
+    $finalKnowledgePublicationCompleted = $false
+    . $partialRecoveryBlock
+    $after = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $partialKnowledgePublicationHandled -or -not $preservedPartialKnowledgeGate -or [string]$after.status -ne $InitialStatus -or [string]$after.currentStage -ne $InitialStage -or [string]$after.lastMessage -ne $message) { throw "Partial Knowledge Keeper publication changed preserved gate '$InitialStatus/$InitialStage' (handled=$partialKnowledgePublicationHandled; preserved=$preservedPartialKnowledgeGate; status=$([string]$after.status); stage=$([string]$after.currentStage); message=$([string]$after.lastMessage))." }
+}
+Assert-PartialKnowledgeGatePreserved -InitialStatus waiting_for_input -InitialStage awaiting_business_input
+Assert-PartialKnowledgeGatePreserved -InitialStatus held -InitialStage held_scope
+Assert-PartialKnowledgeGatePreserved -InitialStatus review_pending -InitialStage review_decision_required
+Assert-PartialKnowledgeGatePreserved -InitialStatus interrupted -InitialStage awaiting_pull_request
+Assert-PartialKnowledgeGatePreserved -InitialStatus interrupted -InitialStage pipeline_non_success
+if ($hostSource -notmatch '\$preservedPartialKnowledgeGate = \$currentStatus -in' -or $hostSource -notmatch 'TargetAgentId -and -not \$partialKnowledgePublicationHandled' -or $hostSource -notmatch '-not \$preservedPartialKnowledgeGate -and \[bool\]\$config\.workflow\.automaticContinuation\.enabled') { throw 'Partial Knowledge Keeper gate-preservation controls are not wired into target finalization and continuation.' }
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'partial-knowledge-preserves-existing-gates' -Detail 'Validated partial Knowledge Keeper publication preserves input, held-scope, review, PR, and pipeline gates without automatic continuation.'
+
+# Even when every delivery role is already terminal, a valid partial result is
+# not a completion signal. Run the production targeted-host branch directly
+# to prevent its generic no-work fallback from closing the task.
+$targetedHostBlock = [scriptblock]::Create($targetedHostAst[0].Extent.Text)
+Restore-LocalPocFinalizationFixture
+Remove-Item -LiteralPath $localPocSummaryPath -Force
+$allTerminalPartialTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$allTerminalPartialTask.status = 'interrupted'
+$allTerminalPartialTask.currentStage = 'partial_knowledge_published'
+$allTerminalPartialTask.agentStatuses.knowledge_keeper.status = 'running'
+Write-Utf8NoBom -Path $localPocTaskStatePath -Content (($allTerminalPartialTask | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+& (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -TaskId $localPocTaskId -AgentId knowledge_keeper -Summary 'Synthetic all-terminal partial knowledge published.' -PartialKnowledgePublication -ConfigPath $routingConfigPath | Out-Null
+$TaskId = $localPocTaskId
+$TargetAgentId = 'knowledge_keeper'
+$ConfigPath = $routingConfigPath
+$CodexHome = $null
+$task = [pscustomobject]@{ TaskRoot=$localPocTask.TaskRoot }
+$statusScript = Join-Path $root 'scripts\Set-AgentTaskStatus.ps1'
+$currentTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$currentStatus = [string]$currentTask.status
+$closureComplete = $false
+$finalKnowledgePublication = $null
+$partialKnowledgePublicationHandled = $true
+& $targetedHostBlock
+$allTerminalPartialAfter = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$allTerminalPartialPlan = & (Join-Path $root 'scripts\Get-AgentResumePlan.ps1') -TaskId $localPocTaskId -PreserveArtifactIndex -ConfigPath $routingConfigPath
+$allTerminalPartialFinalization = & $finalPublicationScript -TaskId $localPocTaskId -ConfigPath $routingConfigPath
+if ([string]$allTerminalPartialAfter.status -ne 'interrupted' -or [bool]$allTerminalPartialPlan.HasWork -or [bool]$allTerminalPartialFinalization.Eligible -or $hostSource -notmatch 'elseif \(-not \$closureComplete -and -not \$partialKnowledgePublicationHandled') { throw 'A complete delivery chain could close a partial Knowledge Keeper publication without a final task summary.' }
+Restore-LocalPocFinalizationFixture
+Add-Check -Name 'partial-knowledge-host-no-work-noncompletion' -Detail 'A valid partial Knowledge Keeper result remains interrupted and nonterminal even when Get-AgentResumePlan reports no remaining delivery work.'
+
 $knowledgeFallbackBlock = [scriptblock]::Create($knowledgeFallbackAst[0].Extent.Text)
 function Assert-KnowledgeCurationHostBranch {
     param([string] $InitialStage, [AllowNull()][object] $Publication, [bool] $ClosureComplete, [bool] $AwaitingPr, [string] $ExpectedStatus, [string] $ExpectedStage, [bool] $PreserveMessage)
@@ -925,6 +1078,7 @@ function Assert-KnowledgeCurationHostBranch {
     $currentTask = Get-Content -LiteralPath $localPocTaskStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     $closureComplete = $ClosureComplete
     $finalKnowledgePublication = $Publication
+    $partialKnowledgePublicationHandled = $false
     $preserveAwaitingPullRequest = $AwaitingPr
     $preservePipelineNonSuccess = $false
     & $knowledgeFallbackBlock

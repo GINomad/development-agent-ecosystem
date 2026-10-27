@@ -28,7 +28,35 @@ if ($Type -eq 'agent-result' -and $knownAgent) {
     $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $agentState = if ($task.PSObject.Properties['agentStatuses'] -and $task.agentStatuses.PSObject.Properties[$Actor]) { $task.agentStatuses.$Actor } else { $null }
     if (-not $agentState -or [string]$agentState.status -ne 'completed') { throw "Agent '$Actor' cannot publish an outcome before successful completion." }
+    $partialKnowledgeResult = $false
+    if ($Actor -eq 'knowledge_keeper' -and [string]$task.status -ne 'completed' -and
+        (-not $task.PSObject.Properties['closure'] -or [string]$task.closure.status -notin @('knowledge-update-pending','completed')) -and
+        $task.PSObject.Properties['workflowAttemptId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.workflowAttemptId) -and
+        $task.PSObject.Properties['workflowAttemptAgentId'] -and [string]$task.workflowAttemptAgentId -eq 'knowledge_keeper') {
+        $knowledgeUpdatePath = Join-Path $taskRoot 'knowledge-update.json'
+        $ledgerPath = Join-Path $taskRoot 'task-ledger.jsonl'
+        if ((Test-Path -LiteralPath $knowledgeUpdatePath -PathType Leaf) -and (Test-Path -LiteralPath $ledgerPath -PathType Leaf) -and $Artifact -and
+            [IO.Path]::GetFullPath($Artifact).Equals([IO.Path]::GetFullPath($knowledgeUpdatePath),[StringComparison]::OrdinalIgnoreCase)) {
+            $expectedEvidence = [Collections.Generic.List[string]]::new()
+            foreach ($value in @('agent:knowledge_keeper','knowledge-publication:partial','task-summary:not-created','final-publication:deferred',"knowledge-update-sha256:$(Get-EcosystemFileSha256 -Path $knowledgeUpdatePath)","execution-attempt:$([string]$task.workflowAttemptId)")) { $expectedEvidence.Add($value) }
+            if ($task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.executionRunId)) { $expectedEvidence.Add("execution-run:$([string]$task.executionRunId)") }
+            if ($task.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.workspaceLeaseId)) { $expectedEvidence.Add("workspace-lease:$([string]$task.workspaceLeaseId)") }
+            $hasExpectedEvidence = {
+                param([string[]] $CandidateEvidence)
+                foreach ($value in $expectedEvidence) { if ($value -notin @($CandidateEvidence)) { return $false } }
+                return $true
+            }
+            $partialKnowledgeResult = (& $hasExpectedEvidence @($Evidence)) -and @(
+                Get-Content -LiteralPath $ledgerPath -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } | Where-Object {
+                    [string]$_.type -eq 'knowledge-updated' -and [string]$_.actor -eq 'knowledge_keeper' -and $_.artifact -and
+                    [IO.Path]::GetFullPath([string]$_.artifact).Equals([IO.Path]::GetFullPath($knowledgeUpdatePath),[StringComparison]::OrdinalIgnoreCase) -and
+                    (& $hasExpectedEvidence @($_.evidence))
+                }
+            ).Count -gt 0
+        }
+    }
     foreach ($requiredName in @($knownAgent.requiredArtifacts)) {
+        if ($partialKnowledgeResult -and [string]$requiredName -eq 'task-summary.json') { continue }
         $requiredPath = Join-Path $taskRoot ([string]$requiredName)
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) { throw "Agent '$Actor' cannot publish without required artifact '$requiredName'." }
         if ([string]$requiredName -like '*.json') { $null = Get-Content -LiteralPath $requiredPath -Raw -Encoding UTF8 | ConvertFrom-Json }

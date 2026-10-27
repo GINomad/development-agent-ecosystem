@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string] $Summary,
     [string[]] $ArtifactNames = @(),
     [string[]] $Evidence = @(),
+    [switch] $PartialKnowledgePublication,
     [string] $ConfigPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),
     [string] $CodexHome
 )
@@ -19,6 +20,12 @@ $taskRoot = Join-Path (Get-EcosystemStateRoot -Config $config -CodexHome $CodexH
 $taskPath = Join-Path $taskRoot 'task.json'
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$isPartialKnowledgePublication = [bool]$PartialKnowledgePublication
+if ($isPartialKnowledgePublication) {
+    if ($AgentId -ne 'knowledge_keeper') { throw 'Partial knowledge publication is restricted to Knowledge Keeper.' }
+    if ($task.PSObject.Properties['closure'] -and [string]$task.closure.status -in @('knowledge-update-pending','completed')) { throw 'Partial knowledge publication is not permitted during final task closure.' }
+    if ([string]$task.status -eq 'completed') { throw 'Partial knowledge publication is not permitted for a completed task.' }
+}
 $executionBindingEvidence = [Collections.Generic.List[string]]::new()
 $executionBindingEvidence.Add("agent:$AgentId")
 if ($task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhiteSpace([string]$task.executionRunId)) {
@@ -30,7 +37,7 @@ if ($task.PSObject.Properties['workspaceLeaseId'] -and -not [string]::IsNullOrWh
 if ($task.PSObject.Properties['workflowAttemptId'] -and $task.PSObject.Properties['workflowAttemptAgentId'] -and [string]$task.workflowAttemptAgentId -eq $AgentId -and -not [string]::IsNullOrWhiteSpace([string]$task.workflowAttemptId)) {
     $executionBindingEvidence.Add("execution-attempt:$([string]$task.workflowAttemptId)")
 }
-if ($AgentId -eq 'knowledge_keeper') {
+if ($AgentId -eq 'knowledge_keeper' -and -not $isPartialKnowledgePublication) {
     if ([string]$task.status -in @('failed','waiting_for_input','held','review_pending')) { throw 'Knowledge Keeper cannot publish a final task outcome while the task is blocked or failed.' }
     $manualClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'manual' -and [string]$task.closure.status -eq 'knowledge-update-pending'
     $completedPrClosure = $task.PSObject.Properties['closure'] -and [string]$task.closure.kind -eq 'pr-completed' -and [string]$task.closure.status -in @('knowledge-update-pending','completed')
@@ -80,9 +87,17 @@ if ($AgentId -eq 'knowledge_keeper') {
     }
 }
 $required = @(@($agent.requiredArtifacts | ForEach-Object { [string]$_ }) + @($ArtifactNames) | Select-Object -Unique)
+if ($isPartialKnowledgePublication) {
+    # The configured final contract deliberately requires task-summary.json.
+    # This on-demand path validates the same ledger, context and knowledge
+    # artifacts while explicitly excluding that terminal-only artifact.
+    if (@($required) -notcontains 'knowledge-update.json') { throw 'Knowledge Keeper partial publication requires knowledge-update.json in its configured artifact contract.' }
+    $required = @($required | Where-Object { $_ -ne 'task-summary.json' })
+}
 $validated = [Collections.Generic.List[string]]::new()
 $publicationEvidence = [Collections.Generic.List[string]]::new()
 $taskSummarySha256 = $null
+$knowledgeUpdateSha256 = $null
 foreach ($name in $required) {
     if ([IO.Path]::GetFileName($name) -ne $name) { throw "Outcome artifact must be a direct task artifact: $name" }
     $path = Join-Path $taskRoot $name
@@ -101,6 +116,11 @@ foreach ($name in $required) {
             }
             $taskSummarySha256 = Get-EcosystemFileSha256 -Path $path
         }
+        if ($name -eq 'knowledge-update.json') {
+            # A partial publication must be bound to the exact knowledge
+            # artifact that the trusted workflow host will later accept.
+            $knowledgeUpdateSha256 = Get-EcosystemFileSha256 -Path $path
+        }
     }
     elseif ($name.EndsWith('.jsonl', [StringComparison]::OrdinalIgnoreCase)) {
         foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
@@ -114,12 +134,23 @@ if ($AgentId -eq 'knowledge_keeper') {
     if ($taskSummarySha256) {
         $publicationEvidence.Add("task-summary-sha256:$taskSummarySha256")
     }
-    $mapPublication = & (Join-Path $PSScriptRoot 'Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
-    foreach ($repositoryMap in @($mapPublication.RepositoryMaps)) {
-        $publicationEvidence.Add("repository-map:$([string]$repositoryMap.RepositoryId):$([string]$repositoryMap.MapSha256)")
+    if ($isPartialKnowledgePublication) {
+        # Final map semantic publication is a completed-task operation. The
+        # curator can already have refreshed the revision-bound map before this.
+        $publicationEvidence.Add('knowledge-publication:partial')
+        $publicationEvidence.Add("knowledge-update-sha256:$knowledgeUpdateSha256")
+        $publicationEvidence.Add('task-summary:not-created')
+        $publicationEvidence.Add('final-publication:deferred')
+        $publicationEvidence.Add('repository-map-finalization:deferred:partial-publication')
     }
-    if ($mapPublication.PSObject.Properties['Skipped'] -and [bool]$mapPublication.Skipped) {
-        $publicationEvidence.Add("repository-map-finalization:skipped:$([string]$mapPublication.Reason)")
+    else {
+        $mapPublication = & (Join-Path $PSScriptRoot 'Finalize-RepositoryKnowledgeMaps.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        foreach ($repositoryMap in @($mapPublication.RepositoryMaps)) {
+            $publicationEvidence.Add("repository-map:$([string]$repositoryMap.RepositoryId):$([string]$repositoryMap.MapSha256)")
+        }
+        if ($mapPublication.PSObject.Properties['Skipped'] -and [bool]$mapPublication.Skipped) {
+            $publicationEvidence.Add("repository-map-finalization:skipped:$([string]$mapPublication.Reason)")
+        }
     }
 }
 
@@ -131,12 +162,18 @@ if ($AgentId -eq 'reviewer') {
 
 $primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
 $continuationRequest = $null
-if ([bool]$config.workflow.automaticContinuation.enabled -and $AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check')) {
+if ([bool]$config.workflow.automaticContinuation.enabled -and ($AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check') -or $isPartialKnowledgePublication)) {
     $requestId = [guid]::NewGuid().ToString('N')
     $continuationRequest = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type continuation-requested -Summary "Successful '$AgentId' outcome is returned to Orchestrator for the next deterministic decision." -Artifact $primaryArtifact -Evidence @("continuation-request:$requestId", "completed-agent:$AgentId") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
 
-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus completed -Stage "$AgentId-completed" -Message $Summary -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+if ($isPartialKnowledgePublication) {
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type knowledge-updated -Summary 'Knowledge Keeper published verified partial project-local knowledge; final task publication remains gated.' -Artifact (Join-Path $taskRoot 'knowledge-update.json') -Evidence (@('knowledge-publication:partial','task-summary:not-created','final-publication:deferred',"knowledge-update-sha256:$knowledgeUpdateSha256") + @($executionBindingEvidence) | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+
+$outcomeStatusParameters = @{ TaskId=$TaskId; AgentId=$AgentId; AgentStatus='completed'; Message=$Summary; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+if (-not $isPartialKnowledgePublication) { $outcomeStatusParameters.Stage = "$AgentId-completed" }
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') @outcomeStatusParameters | Out-Null
 $continuationEvidence = if ($continuationRequest) { @("continuation-event:$([string]$continuationRequest.eventId)") } else { @() }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($publicationEvidence) + @($Evidence) + @($executionBindingEvidence) + $continuationEvidence | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
