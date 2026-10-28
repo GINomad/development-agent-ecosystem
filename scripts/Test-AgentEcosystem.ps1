@@ -594,6 +594,12 @@ $targetWorkflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start
 if ($targetWorkflowScript -notmatch 'Execute that role''s work yourself in this Codex process' -or $targetWorkflowScript -notmatch 'do not merely announce or simulate a handoff' -or $targetWorkflowScript -notmatch 'Assert-TargetAgentTerminalState.ps1' -or $targetWorkflowScript -notmatch 'executedAgentId' -or $targetWorkflowScript -notmatch 'automaticContinuation.enabled' -or $targetWorkflowScript -match '\$TargetAgentId -and \$ContinueChain') { throw 'Host terminal lifecycle or configuration-driven automatic continuation is incomplete.' }
 Add-Check -Name 'targeted-role-terminal-lifecycle' -Detail 'Targeted roles execute directly in the host Codex run; structured failures become terminal failed state, while running/pending host exits fail closed'
 
+$publishOutcomeScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Publish-AgentOutcome.ps1') -Raw -Encoding UTF8
+$terminalStatusOffset = $publishOutcomeScript.IndexOf('-AgentStatus completed -Stage "$AgentId-completed"')
+$continuationOffset = $publishOutcomeScript.IndexOf('-Type continuation-requested')
+if ($terminalStatusOffset -lt 0 -or $continuationOffset -lt 0 -or $terminalStatusOffset -gt $continuationOffset) { throw 'Outcome publication can request continuation before terminalizing the completed role.' }
+Add-Check -Name 'outcome-terminalizes-before-continuation' -Detail 'A continuation-bookkeeping failure cannot leave an otherwise completed role running at host exit'
+
 $workflowScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
 $newTaskScript = Get-Content -LiteralPath (Join-Path $root 'scripts\New-AgentTask.ps1') -Raw -Encoding UTF8
 $getTasksScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Get-AgentTasks.ps1') -Raw -Encoding UTF8
