@@ -75,6 +75,15 @@ foreach($token in @('Test-ProviderLimitDiagnostic.ps1','individual spend limit',
 if([bool](& $providerLimitClassifier -Diagnostic 'Execution retry limit reached after 3 identical failures: Get-Help -Full -LiteralPath is invalid.')){throw 'Execution retry exhaustion was misclassified as a provider capacity limit.'}
 if(-not [bool](& $providerLimitClassifier -Diagnostic 'Provider rate limit reached.')){throw 'Provider rate-limit diagnostic was not classified for configured fallback.'}
 if(-not [bool](& $providerLimitClassifier -Diagnostic 'Individual spend limit reached.')){throw 'Provider spend-limit diagnostic was not classified for configured fallback.'}
+Write-Utf8NoBom -Path (Join-Path $taskRoot 'context-pack.json') -Content (([ordered]@{
+    taskId=$taskId
+    recipient='reviewer'
+    acceptedKnowledge=@()
+    heldScope=@()
+    openQuestions=@()
+    engineeringGuidance=@{selectedSkills=@('reviewer')}
+    artifactSummaries=@()
+}|ConvertTo-Json -Depth 8)+[Environment]::NewLine)
 $emptyMcpSession=& (Join-Path $root 'scripts\New-McpSession.ps1') -TaskId $taskId -AgentId reviewer -RunId 'run-provider-test' -LeaseId 'lease-provider-test' -TaskRoot $taskRoot -Workspaces @($root) -AllowedTools @() -Config $config -AttemptId 'attempt-provider-test'
 if(@($emptyMcpSession.Session.allowedTools).Count){throw 'An external-only MCP policy was repopulated with local ecosystem-read tools.'}
 
