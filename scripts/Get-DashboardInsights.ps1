@@ -136,6 +136,7 @@ $errorRecords = [Collections.Generic.List[object]]::new()
 $knowledgeOutcomes = [Collections.Generic.List[object]]::new()
 $mcpRecords = [Collections.Generic.List[object]]::new()
 $knowledgeUsageRecords = [Collections.Generic.List[object]]::new()
+$scanSummaries = [Collections.Generic.List[object]]::new()
 
 if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
     foreach ($taskDirectory in @(Get-ChildItem -LiteralPath $tasksRoot -Directory -ErrorAction SilentlyContinue)) {
@@ -163,18 +164,30 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
             $mcpRecords.Add($record)
         }
+        $taskKnowledgeRecords = [Collections.Generic.List[object]]::new()
+        $seenKnowledgeEvents = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         foreach ($record in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'knowledge-usage.jsonl'))) {
+            $eventId = [string](Get-ObjectValue $record 'eventId' '')
+            if ($eventId -and -not $seenKnowledgeEvents.Add($eventId)) { continue }
             $record | Add-Member -NotePropertyName taskId -NotePropertyValue $taskId -Force
             $record | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId -Force
+            $taskKnowledgeRecords.Add($record)
             $knowledgeUsageRecords.Add($record)
         }
-        foreach ($transcriptRecord in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'workflow-codex.jsonl'))) {
-            if (-not $transcriptRecord.PSObject.Properties['item'] -or $null -eq $transcriptRecord.item -or [string](Get-ObjectValue $transcriptRecord.item 'type' '') -ne 'command_execution') { continue }
-            $command = [string](Get-ObjectValue $transcriptRecord.item 'command' '')
-            if ($command -notmatch '(?i)(rg\s+--files|Get-ChildItem\b[^\r\n]*-Recurse|git\s+ls-files\b|find\s+\.\s|findstr\s+/s|dir\s+/s)') { continue }
-            $knowledgeUsageRecords.Add([pscustomobject][ordered]@{
-                schemaVersion=1; metricLevel='knowledge'; eventType='knowledge-access'; eventId=$null; timestampUtc=[string](Get-ObjectValue $transcriptRecord 'timestampUtc' ''); taskId=$taskId; projectId=$taskProjectId; attemptId=$null; runId=$null; leaseId=$null; agentId=[string](Get-ObjectValue $transcriptRecord 'agentId' 'unknown'); sourceKind='repository-map'; accessMode='full-scan'; sourceId='transcript-scan'; sourceLocation=$null; sourceRevision=$null; contextPackId=$null; repositoryId=$null; cacheHit=$false; evidenceKind='observed'; durationMs=0; status='succeeded'; detail='Heuristic provider-transcript detection of a broad repository enumeration command.'
-            })
+        $repositoryRoots = @($config.repositories | ForEach-Object { [string]$_.localWorkspace })
+        $workspacesRoot = Join-Path $taskDirectory.FullName 'workspaces'
+        if (Test-Path -LiteralPath $workspacesRoot -PathType Container) {
+            foreach ($manifestPath in @(Get-ChildItem -LiteralPath $workspacesRoot -File -Filter '*.json')) {
+                $manifest = Read-JsonDocument -Path $manifestPath.FullName
+                if ($manifest) { $repositoryRoots += [string](Get-ObjectValue $manifest 'clonePath' '') }
+            }
+        }
+        $scanSummary = & (Join-Path $PSScriptRoot 'Get-RepositoryScanSummary.ps1') -Path (Join-Path $taskDirectory.FullName 'workflow-codex.jsonl') -KnowledgeRecords @($taskKnowledgeRecords) -RepositoryRoots $repositoryRoots
+        $scanSummaries.Add($scanSummary)
+        foreach ($scanEvent in $scanSummary.Events) {
+            $scanEvent | Add-Member -NotePropertyName taskId -NotePropertyValue $taskId
+            $scanEvent | Add-Member -NotePropertyName projectId -NotePropertyValue $taskProjectId
+            $knowledgeUsageRecords.Add($scanEvent)
         }
         foreach ($event in @(Read-JsonLines -Path (Join-Path $taskDirectory.FullName 'task-ledger.jsonl') | Where-Object { [string]$_.type -eq 'agent-failure' })) {
             $errorRecords.Add([pscustomobject][ordered]@{
@@ -264,10 +277,11 @@ $knowledgeByAgent = @($knowledgeUsageRecords | Group-Object { [string](Get-Objec
 $mapEvents = @($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'repository-map' })
 $mapReusedCount = @($mapEvents | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'reused' }).Count
 $mapBuiltCount = @($mapEvents | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'rebuilt' }).Count
-$fullScanCount = @($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -eq 'full-scan' }).Count
+$fullScanCount = Get-Sum -Records @($scanSummaries) -Property FullScanCount
+$scanMapEventCount = Get-Sum -Records @($scanSummaries) -Property MapEventCount
 $mapEligibleCount = $mapReusedCount + $mapBuiltCount
 $knowledgeSummary = [pscustomobject][ordered]@{
-    eventCount=$knowledgeUsageRecords.Count; taskCount=@($knowledgeUsageRecords | ForEach-Object { [string](Get-ObjectValue $_ 'taskId' '') } | Where-Object { $_ } | Select-Object -Unique).Count; skillSelectionCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'skill' -and [string](Get-ObjectValue $_ 'accessMode' '') -eq 'selected' }).Count; sourceReadCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -in @('read','used') }).Count; mapReusedCount=$mapReusedCount; mapBuiltCount=$mapBuiltCount; mapReuseRate=if($mapEligibleCount){[Math]::Round($mapReusedCount/$mapEligibleCount,4)}else{$null}; fullScanCount=$fullScanCount; scanAvoidanceRate=if($mapEligibleCount+$fullScanCount){[Math]::Round($mapEligibleCount/($mapEligibleCount+$fullScanCount),4)}else{$null}; scanMeasurement='heuristic-transcript-plus-observed-map-events'; sourceCount=@($knowledgeUsageRecords | ForEach-Object { "$(Get-ObjectValue $_ 'sourceKind' '')|$(Get-ObjectValue $_ 'sourceId' '')" } | Select-Object -Unique).Count
+    eventCount=$knowledgeUsageRecords.Count; taskCount=@($knowledgeUsageRecords | ForEach-Object { [string](Get-ObjectValue $_ 'taskId' '') } | Where-Object { $_ } | Select-Object -Unique).Count; skillSelectionCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'sourceKind' '') -eq 'skill' -and [string](Get-ObjectValue $_ 'accessMode' '') -eq 'selected' }).Count; sourceReadCount=@($knowledgeUsageRecords | Where-Object { [string](Get-ObjectValue $_ 'accessMode' '') -in @('read','used') }).Count; mapReusedCount=$mapReusedCount; mapBuiltCount=$mapBuiltCount; mapReuseRate=if($mapEligibleCount){[Math]::Round($mapReusedCount/$mapEligibleCount,4)}else{$null}; fullScanCount=$fullScanCount; scanAvoidanceRate=if($scanMapEventCount+$fullScanCount){[Math]::Round($scanMapEventCount/($scanMapEventCount+$fullScanCount),4)}else{$null}; scanMeasurement='attempt-covered-terminal-command-heuristic'; scanMapEventCount=$scanMapEventCount; scanCoveredAttemptCount=(Get-Sum -Records @($scanSummaries) -Property CoveredAttemptCount); targetedSearchCount=(Get-Sum -Records @($scanSummaries) -Property TargetedSearchCount); scanExcludedCommandCount=(Get-Sum -Records @($scanSummaries) -Property ExcludedCommandCount); scanUnclassifiedCommandCount=(Get-Sum -Records @($scanSummaries) -Property UnclassifiedCommandCount); scanExcludedMapEventCount=(Get-Sum -Records @($scanSummaries) -Property ExcludedMapEventCount); sourceCount=@($knowledgeUsageRecords | ForEach-Object { "$(Get-ObjectValue $_ 'sourceKind' '')|$(Get-ObjectValue $_ 'sourceId' '')" } | Select-Object -Unique).Count
 }
 $mcpSummary = [pscustomobject][ordered]@{
     callCount=$mcpToolRecords.Count; succeededCount=$mcpSucceeded.Count; failedCount=$mcpFailed.Count; successRate=if($mcpToolRecords.Count){[Math]::Round($mcpSucceeded.Count/$mcpToolRecords.Count,4)}else{$null}; errorRate=if($mcpToolRecords.Count){[Math]::Round($mcpFailed.Count/$mcpToolRecords.Count,4)}else{$null}; fallbackCount=$mcpFallbacks.Count; transportEventCount=$mcpTransportRecords.Count; transportFailureCount=$mcpTransportFailures.Count; transportFailureRate=if($mcpTransportRecords.Count){[Math]::Round($mcpTransportFailures.Count/$mcpTransportRecords.Count,4)}else{$null}; p50LatencyMs=Get-Percentile $mcpToolRecords 'durationMs' .50; p95LatencyMs=Get-Percentile $mcpToolRecords 'durationMs' .95; requestBytes=Get-Sum -Records $mcpToolRecords -Property requestBytes; responseBytes=Get-Sum -Records $mcpToolRecords -Property responseBytes; serverCount=@($mcpToolRecords | ForEach-Object { [string](Get-ObjectValue $_ 'server' '') } | Where-Object { $_ } | Select-Object -Unique).Count; toolCount=@($mcpToolRecords | ForEach-Object { "$(Get-ObjectValue $_ 'server' '')|$(Get-ObjectValue $_ 'tool' '')" } | Select-Object -Unique).Count

@@ -11,3 +11,6 @@
 
 
 /plugins/development-agent-ecosystem/skills/azure-pipeline-monitor/references/planning-space.md
+
+# Isolated recovery test fixtures can contain nested Git repositories and private data.
+/.test-output-*/

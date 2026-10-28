@@ -161,19 +161,21 @@ if ($AgentId -eq 'reviewer') {
 }
 
 $primaryArtifact = if ($validated.Count) { $validated[$validated.Count - 1] } else { $null }
+if ($isPartialKnowledgePublication) {
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type knowledge-updated -Summary 'Knowledge Keeper published verified partial project-local knowledge; final task publication remains gated.' -Artifact (Join-Path $taskRoot 'knowledge-update.json') -Evidence (@('knowledge-publication:partial','task-summary:not-created','final-publication:deferred',"knowledge-update-sha256:$knowledgeUpdateSha256") + @($executionBindingEvidence) | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
+
+# Persist completion before continuation bookkeeping; partial knowledge publication
+# preserves the existing task stage and its outstanding delivery gates.
+$outcomeStatusParameters = @{ TaskId=$TaskId; AgentId=$AgentId; AgentStatus='completed'; Message=$Summary; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+if (-not $isPartialKnowledgePublication) { $outcomeStatusParameters.Stage = "$AgentId-completed" }
+& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') @outcomeStatusParameters | Out-Null
+
 $continuationRequest = $null
 if ([bool]$config.workflow.automaticContinuation.enabled -and ($AgentId -in @('orchestrator','requirements_analyst','developer','reviewer','review_verifier','pipeline_monitor','health_check') -or $isPartialKnowledgePublication)) {
     $requestId = [guid]::NewGuid().ToString('N')
     $continuationRequest = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type continuation-requested -Summary "Successful '$AgentId' outcome is returned to Orchestrator for the next deterministic decision." -Artifact $primaryArtifact -Evidence @("continuation-request:$requestId", "completed-agent:$AgentId") -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome
 }
-
-if ($isPartialKnowledgePublication) {
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor knowledge_keeper -Type knowledge-updated -Summary 'Knowledge Keeper published verified partial project-local knowledge; final task publication remains gated.' -Artifact (Join-Path $taskRoot 'knowledge-update.json') -Evidence (@('knowledge-publication:partial','task-summary:not-created','final-publication:deferred',"knowledge-update-sha256:$knowledgeUpdateSha256") + @($executionBindingEvidence) | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-}
-
-$outcomeStatusParameters = @{ TaskId=$TaskId; AgentId=$AgentId; AgentStatus='completed'; Message=$Summary; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
-if (-not $isPartialKnowledgePublication) { $outcomeStatusParameters.Stage = "$AgentId-completed" }
-& (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') @outcomeStatusParameters | Out-Null
 $continuationEvidence = if ($continuationRequest) { @("continuation-event:$([string]$continuationRequest.eventId)") } else { @() }
 $event = & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor $AgentId -Type agent-result -Summary $Summary -Artifact $primaryArtifact -Evidence (@($validated) + @($publicationEvidence) + @($Evidence) + @($executionBindingEvidence) + $continuationEvidence | Select-Object -Unique) -ConfigPath $ConfigPath -CodexHome $CodexHome
 $checkpointPath = Join-Path (Join-Path $taskRoot 'agent-checkpoints') "$AgentId.json"
