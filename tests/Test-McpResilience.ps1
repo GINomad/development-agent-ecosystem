@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string] $ConfigPath=(Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),[string] $CodexHome)
+param([string] $ConfigPath=(Join-Path (Split-Path -Parent $PSScriptRoot) 'config\agents.json'),[string] $CodexHome,[string[]] $KnowledgeTestRoles)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
@@ -15,6 +15,13 @@ Assert-That ($workflowSource -match 'Expand-EcosystemValue -Value \$value.+-Stat
 Assert-That ($workflowSource -notmatch '@\(\$mcpServer\.arguments \| ForEach-Object \{ \[string\]\$_ \}\) \| ConvertTo-Json') 'Workflow still passes unresolved MCP command arguments to Codex.'
 Assert-That ($workflowSource -notmatch 'if\s*\(@\(\$enabledMcpServerNames\)\.Count\)') 'Classic workflow still skips global MCP disable overrides when its enabled-server list is empty.'
 Assert-That ($workflowSource -match '\$recoveryServers\s*=\s*@\(if\(') 'MCP recovery server selection is not explicitly array-normalized.'
+Assert-That ($workflowSource -match 'Test-McpFailureClassification\.ps1') 'Workflow does not classify MCP failures before retrying.'
+Assert-That ($workflowSource -match '-ExecutionRunId \(\[string\]\$workspaceLease\.RunId\) -WorkspaceLeaseId \(\[string\]\$workspaceLease\.LeaseId\)') 'MCP retry does not preserve the active run and workspace lease.'
+$classifier=Join-Path $root 'scripts\Test-McpFailureClassification.ps1'
+$denied=& $classifier -Diagnostic 'MCP request failed: Artifact is not public for this role.'
+Assert-That ($denied.Kind -eq 'access-or-contract' -and -not $denied.Retryable) 'MCP role denial was classified as a retryable transport error.'
+$transport=& $classifier -Diagnostic 'MCP transport connection timeout.'
+Assert-That ($transport.Kind -eq 'transport-or-protocol' -and $transport.Retryable) 'MCP transport failure was not retryable.'
 $singletonRecoveryServers=@(if(@('ecosystem-read').Count){@('ecosystem-read')}else{@()})
 Assert-That ($singletonRecoveryServers.Count -eq 1 -and $singletonRecoveryServers[0] -eq 'ecosystem-read') 'Singleton MCP recovery server selection is not StrictMode-safe.'
 $emptyRecoveryServers=@(if(@().Count){@()}else{@()})
@@ -26,6 +33,7 @@ function New-RpcFixture {
     $taskId='rpc-task';$runId='run-123456789012';$leaseId='lease-123456789012'
     [IO.File]::WriteAllText((Join-Path $fixture 'task.json'),((@{taskId=$taskId;id=$taskId;status='running';currentStage='requirements_analyst';agentStatuses=@{requirements_analyst=@{status='running'}}}|ConvertTo-Json -Depth 8)+[Environment]::NewLine))
     [IO.File]::WriteAllText((Join-Path $fixture ('execution-context-'+$runId+'.json')),((@{runId=$runId;leaseId=$leaseId}|ConvertTo-Json)+[Environment]::NewLine))
+    [IO.File]::WriteAllText((Join-Path $fixture 'context-pack.json'),((@{taskId=$taskId;recipient='requirements_analyst';artifactSummaries=@()}|ConvertTo-Json -Depth 8)+[Environment]::NewLine))
     [pscustomobject]@{Root=$fixture;TaskId=$taskId;RunId=$runId;LeaseId=$leaseId;SessionPath=(Join-Path $fixture 'session.json')}
 }
 function Write-RpcSession { param($Fixture,[string[]]$AllowedTools=@('get_task_state'),[string[]]$PublicArtifacts=@())
@@ -113,5 +121,7 @@ try {
 
     $transcriptPath=Join-Path $testRoot 'transcript.jsonl';$oldAttempt=[guid]::NewGuid().ToString('N');$currentAttempt=[guid]::NewGuid().ToString('N');$lines=@((@{type='ecosystem-workflow-run';attemptId=$oldAttempt}|ConvertTo-Json -Compress),(@{type='item.completed';item=@{type='mcp_tool_call';server='ecosystem-read';status='completed'}}|ConvertTo-Json -Depth 5 -Compress),'', 'null',(@{timestamp='entry-without-type'}|ConvertTo-Json -Compress),(@{type='ecosystem-workflow-run';attemptId=$currentAttempt}|ConvertTo-Json -Compress),(@{type='item.completed';item=$null}|ConvertTo-Json -Compress),(@{type='item.completed';item=@{server='ecosystem-read';status='completed'}}|ConvertTo-Json -Depth 5 -Compress),(@{type='item.completed';item=@{type='mcp_tool_call';server='ecosystem-read';status='completed'}}|ConvertTo-Json -Depth 5 -Compress),(@{type='item.completed';item=@{type='mcp_tool_call';server='ecosystem-read';status='failed';error='synthetic'}}|ConvertTo-Json -Depth 5 -Compress),(@{type='item.completed';item=@{type='mcp_tool_call';server='other';status='completed'}}|ConvertTo-Json -Depth 5 -Compress));[IO.File]::WriteAllLines($transcriptPath,$lines);$summary=& (Join-Path $root 'scripts\Get-McpTranscriptSummary.ps1') -Path $transcriptPath -AttemptId $currentAttempt;Assert-That ($summary.CallCount -eq 2 -and $summary.SucceededCallCount -eq 1 -and @($summary.FailedServers) -contains 'ecosystem-read') 'Effective MCP usage was not bounded to the current attempt and target server, or blank, null, and sparse transcript entries were not ignored safely.'
 } finally { if(Test-Path -LiteralPath $testRoot){Remove-Item -LiteralPath $testRoot -Recurse -Force} }
-& (Join-Path $root 'tests\Test-McpKnowledge.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+$knowledgeArguments=@{ConfigPath=$ConfigPath;CodexHome=$CodexHome}
+if($PSBoundParameters.ContainsKey('KnowledgeTestRoles')){$knowledgeArguments.Roles=$KnowledgeTestRoles}
+& (Join-Path $root 'tests\Test-McpKnowledge.ps1') @knowledgeArguments | Out-Null
 Write-Output 'MCP resilience checks passed: process binding/isolation and exclusive circuit canary behavior.'

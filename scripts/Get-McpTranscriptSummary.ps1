@@ -10,6 +10,7 @@ $callCount = 0
 $succeededCount = 0
 $failedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $transportFailedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$accessDeniedServers = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $insideAttempt = $false
 # The local server records actual calls for every provider, including Claude and
 # Copilot whose transcript formats differ from Codex. Never double-count both.
@@ -27,6 +28,7 @@ if (Test-Path -LiteralPath $metricsPath -PathType Leaf) {
         else {
             $null = $failedServers.Add($Server)
             if ($record.PSObject.Properties['errorClass'] -and [string]$record.errorClass -eq 'transport-or-protocol') { $null = $transportFailedServers.Add($Server) }
+            if ($record.PSObject.Properties['errorClass'] -and [string]$record.errorClass -eq 'access-or-contract') { $null = $accessDeniedServers.Add($Server) }
         }
     }
 }
@@ -61,7 +63,11 @@ if (Test-Path -LiteralPath $Path -PathType Leaf) {
         $callCount++
         $callStatus = if ($call.PSObject.Properties['status']) { [string]$call.status } else { '' }
         $failed = ($callStatus -match '^(failed|error)$') -or [bool]($call.PSObject.Properties['isError'] -and $call.isError) -or [bool]($call.PSObject.Properties['error'] -and $call.error)
-        if ($failed) { if ($serverName) { $null = $failedServers.Add($serverName) } }
+        if ($failed) {
+            if ($serverName) { $null = $failedServers.Add($serverName) }
+            $errorText = if ($call.PSObject.Properties['error'] -and $call.error) { [string]$call.error } else { '' }
+            if ($errorText -match '(?i)(artifact|source|tool) is not (public|allowed) for this role|MCP session .*?(integrity|binding|lease|task)|requested path escapes task root|(artifact|source|context pack) revision changed') { $null = $accessDeniedServers.Add($serverName) }
+        }
         else { $succeededCount++ }
     }
 }
@@ -73,4 +79,4 @@ if ($transcriptFailedCount -gt $serverFailedCount) { $null = $transportFailedSer
 $succeededCount = [Math]::Max($succeededCount, $serverSucceededCount)
 $failedCount = [Math]::Max($transcriptFailedCount, $serverFailedCount)
 $callCount = $succeededCount + $failedCount
-[pscustomobject]@{AttemptId=$AttemptId;Server=$Server;CallCount=$callCount;SucceededCallCount=$succeededCount;FailedCallCount=$failedCount;FailedServers=@($failedServers);TransportFailedServers=@($transportFailedServers)}
+[pscustomobject]@{AttemptId=$AttemptId;Server=$Server;CallCount=$callCount;SucceededCallCount=$succeededCount;FailedCallCount=$failedCount;FailedServers=@($failedServers);TransportFailedServers=@($transportFailedServers);AccessDeniedServers=@($accessDeniedServers)}
