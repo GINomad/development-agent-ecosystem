@@ -450,6 +450,8 @@ async function selectReviewTab(tab) {
 
 function renderTaskList(tasks) {
   tasks = Array.isArray(tasks) ? tasks : [];
+  const projectId = projectPicker.value;
+  tasks = tasks.filter(item => !projectId || !item.projectId || item.projectId === projectId);
   const list = document.querySelector('#taskList');
   list.replaceChildren();
   if (!tasks.length) {
@@ -476,7 +478,7 @@ function renderTaskList(tasks) {
     heading.append(id, badge);
     const selector = document.createElement('span');
     selector.className = 'tracked-task-selector';
-    selector.textContent = `[${item.projectId || 'legacy project'}] ${item.selector}`;
+    selector.textContent = `[${item.projectName || configuredProjects.find(project => project.id === item.projectId)?.name || item.projectId || 'legacy project'}] ${item.selector}`;
     const meta = document.createElement('span');
     meta.className = 'tracked-task-meta';
     const scheduling = item.scheduler || {};
@@ -2991,6 +2993,10 @@ document.querySelector('#approveElevatedRecovery').addEventListener('click', asy
     };
     projectPicker.addEventListener('change', () => {
       renderProjectRepositories();
+      taskStateRevision += 1;
+      selectedTaskId = null;
+      renderEmptyTaskDetail();
+      void loadTaskList({ silent: true });
       void loadInsights();
     });
     renderProjectRepositories();

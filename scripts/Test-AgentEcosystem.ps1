@@ -258,6 +258,7 @@ function New-SyntheticReviewVerification {
 }
 
 $workflowCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-DevelopmentWorkflow.ps1') -Raw -Encoding UTF8
+$moduleScript = Get-Content -LiteralPath (Join-Path $root 'scripts\AgentEcosystem.psm1') -Raw -Encoding UTF8
 $healthCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Start-AgentHealthRecovery.ps1') -Raw -Encoding UTF8
 $healthCheckCliScript = Get-Content -LiteralPath (Join-Path $root 'scripts\Invoke-EcosystemHealthCheck.ps1') -Raw -Encoding UTF8
 $reviewVerificationTestScript = Get-Content -LiteralPath (Join-Path $root 'tests\Test-ReviewVerification.ps1') -Raw -Encoding UTF8
@@ -287,8 +288,17 @@ $heartbeatProbe = & $heartbeatClosure
 if ([string]$heartbeatProbe.TaskId -ne 'heartbeat-closure-test' -or [string]$heartbeatProbe.RunId -ne ('r' * 32) -or [string]$heartbeatProbe.LeaseId -ne ('l' * 32)) {
     throw 'Workspace lease heartbeat callback did not preserve its exact invocation values.'
 }
+if ($heartbeatProbe.PSObject.Properties['Status'] -and [string]$heartbeatProbe.Status -ne 'updated') {
+    throw 'Workspace lease heartbeat callback did not report a successful initial heartbeat.'
+}
 if ($workflowCliScript -notmatch 'New-WorkspaceLeaseHeartbeatAction' -or $workflowCliScript -match '\$leaseHeartbeatAction\s*=\s*\{[^}]+\}\.GetNewClosure\(\)') {
     throw 'Workflow heartbeat callback must be created outside the scope of optional validated workflow parameters.'
+}
+if ($moduleScript -notmatch "deferred-lock-contention" -or $moduleScript -notmatch "Timed out waiting for exclusive lock") {
+    throw 'Workspace heartbeat does not defer only coordinator lock contention.'
+}
+if ($workflowCliScript -notmatch '\$initialHeartbeat\s*=\s*& \$leaseHeartbeatAction' -or $workflowCliScript -notmatch "Initial workspace lease heartbeat was not accepted") {
+    throw 'Workflow initial lease heartbeat is not kept strict while periodic contention is deferred.'
 }
 Add-Check -Name 'workspace-heartbeat-closure' -Detail 'Heartbeat callback construction ignores unrelated empty validated workflow parameters and preserves exact lease values'
 
@@ -3017,6 +3027,11 @@ Add-Check -Name 'dashboard-insights' -Detail 'Dashboard aggregates task errors, 
 & (Join-Path $root 'tests\Test-HarnessEngineering.ps1') -OutputRoot (Join-Path $OutputRoot 'harness-engineering') | Out-Null
 & (Join-Path $root 'tests\Test-SpecificationPractices.ps1') -OutputRoot (Join-Path $OutputRoot 'specification-practices') | Out-Null
 Add-Check -Name 'harness-engineering-evaluation' -Detail 'Acceptance scenarios bind requirements to commit evidence; comparable cohorts expose completion, false completion, intervention, recovery, duration and token metrics; knowledge freshness is source- and owner-bound'
+
+& (Join-Path $root 'tests/Test-DashboardTaskProjects.ps1') -OutputRoot (Join-Path $OutputRoot 'dashboard-task-projects') | Out-Null
+& node (Join-Path $root 'tests/dashboard-task-projects.cjs') | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Dashboard task project behavior tests failed.' }
+Add-Check -Name 'dashboard-task-projects' -Detail 'Summary/detail preserve persisted project identity, task cards use configured project names and filter by selection without reassigning legacy history.'
 
 if ((Get-EcosystemFileSha256 -Path $suiteGitConfig) -ne $suiteGitConfigHash) { throw 'Full suite changed the ecosystem Git configuration; refusing a successful isolation verdict.' }
 Add-Check -Name 'suite-git-config-preserved' -Detail 'The complete suite preserved the exact ecosystem Git configuration, including shared-worktree origin'

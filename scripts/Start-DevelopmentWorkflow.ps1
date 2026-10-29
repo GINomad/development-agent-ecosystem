@@ -582,7 +582,10 @@ try {
     $runHeader = [ordered]@{ type='ecosystem-workflow-run'; taskId=$TaskId; attemptId=$roleAttemptId; startedAtUtc=$workflowStartedAtUtc.ToString('o'); runner=([string]$providerRoute.provider + ' cli'); provider=[string]$providerRoute.provider; providerRouteDecisionId=[string]$providerRoute.decisionId; modelRouteDecisionId=[string]$modelRoute.decisionId; model=[string]$providerRoute.model; reasoningEffort=[string]$providerRoute.reasoningEffort } | ConvertTo-Json -Compress
     Add-EcosystemUtf8Line -Path $codexLogPath -Line $runHeader
     $leaseHeartbeatAction = New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatScriptPath -TaskId $heartbeatTaskId -RunId $heartbeatRunId -LeaseId $heartbeatLeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
-    & $leaseHeartbeatAction | Out-Null
+    $initialHeartbeat = & $leaseHeartbeatAction
+    if ([string]$initialHeartbeat.Status -ne 'updated') {
+        throw "Initial workspace lease heartbeat was not accepted: $([string]$initialHeartbeat.Detail)"
+    }
     try {
     if ([string]$providerRoute.provider -eq 'copilot') {
         $copilotParams=@{ Prompt=$prompt; WorkingDirectory=$agentWorkingDirectory; LogPath=$codexLogPath; FinalResponsePath=$finalResponsePath; GuardArtifactPath=$guardArtifactPath; Model=[string]$providerRoute.model; ReasoningEffort=[string]$providerRoute.reasoningEffort; MaxIdenticalFailures=[int]$config.runtime.executionGuard.maxIdenticalFailures; MaxRunMinutes=[int]$config.runtime.executionGuard.maxRunMinutes; PollMilliseconds=[int]$config.runtime.executionGuard.pollMilliseconds; HeartbeatAction=$leaseHeartbeatAction; HeartbeatIntervalSeconds=[int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds; CliPath=[string]$providerRoute.command; AdditionalDirectories=$additionalDirectories; ReadOnly=([string]$activeAgent.sandboxMode -eq 'read-only'); McpServers=@($mcpExecution.Servers) }

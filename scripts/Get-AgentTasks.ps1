@@ -36,6 +36,9 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
         elseif ($task.PSObject.Properties['repositoryId'] -and $task.repositoryId) { $repositoryIds = @([string]$task.repositoryId) }
         $status = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'created' }
         if (-not $TaskId -and -not $IncludeCompleted -and $status -notin $activeStatuses) { continue }
+        $projectId = if ($task.PSObject.Properties['projectId']) { [string]$task.projectId } else { '' }
+        $project = @($config.projects | Where-Object { [string]$_.id -eq $projectId } | Select-Object -First 1)
+        $projectName = if ($project.Count) { [string]$project[0].name } else { '' }
         $activeLease = @($coordinatorLeases | Where-Object { [string]$_.taskId -eq [string]$task.taskId } | Select-Object -First 1)
         $scheduler = [pscustomobject][ordered]@{ capacity=$capacity; activeTaskCount=$coordinatorLeases.Count; queuePosition=$null; lease=if ($activeLease.Count) { [pscustomobject][ordered]@{ runId=[string]$activeLease[0].runId; leaseId=[string]$activeLease[0].leaseId; lifecycle=[string]$activeLease[0].lifecycle; acquiredAtUtc=[string]$activeLease[0].acquiredAtUtc; heartbeatAtUtc=[string]$activeLease[0].heartbeatAtUtc; controllerProcessId=if ($activeLease[0].PSObject.Properties['controllerProcessId']) { [int]$activeLease[0].controllerProcessId } else { $null }; controllerStartedAtUtc=if ($activeLease[0].PSObject.Properties['controllerStartedAtUtc']) { [string]$activeLease[0].controllerStartedAtUtc } else { $null } } } else { $null } }
         if ($Summary) {
@@ -43,6 +46,8 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
                 taskId = [string]$task.taskId
                 selector = [string]$task.selector
                 mode = [string]$task.mode
+                projectId = $projectId
+                projectName = $projectName
                 repositoryId = if ($repositoryIds.Count) { $repositoryIds[0] } else { '' }
                 repositoryIds = @($repositoryIds)
                 status = $status
@@ -150,6 +155,8 @@ if (Test-Path -LiteralPath $tasksRoot -PathType Container) {
             taskId = [string]$task.taskId
             selector = [string]$task.selector
             mode = [string]$task.mode
+            projectId = $projectId
+            projectName = $projectName
             repositoryId = if ($repositoryIds.Count) { $repositoryIds[0] } else { '' }
             repositoryIds = @($repositoryIds)
             status = $status

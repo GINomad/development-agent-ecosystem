@@ -522,7 +522,27 @@ function New-WorkspaceLeaseHeartbeatAction {
         [AllowEmptyString()][string] $CodexHome
     )
     return {
-        & $HeartbeatScriptPath -TaskId $TaskId -RunId $RunId -LeaseId $LeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        try {
+            & $HeartbeatScriptPath -TaskId $TaskId -RunId $RunId -LeaseId $LeaseId -ConfigPath $ConfigPath -CodexHome $CodexHome
+        }
+        catch [IO.IOException] {
+            # A coordinator lock is held only while its owner updates small JSON
+            # documents.  A periodic liveness signal must not terminate a live
+            # agent solely because that short critical section was unavailable.
+            # Other heartbeat failures (including ownership mismatches) remain
+            # fatal and are never converted to a successful heartbeat.
+            if ($_.Exception.Message -match "^Timed out waiting for exclusive lock '.+'\\.$") {
+                [pscustomobject]@{
+                    Status = 'deferred-lock-contention'
+                    TaskId = $TaskId
+                    RunId = $RunId
+                    LeaseId = $LeaseId
+                    Detail = $_.Exception.Message
+                }
+                return
+            }
+            throw
+        }
     }.GetNewClosure()
 }
 
