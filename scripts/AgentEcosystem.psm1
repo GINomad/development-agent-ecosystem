@@ -27,6 +27,27 @@ function Resolve-CodexCliPath {
     return $null
 }
 
+function Resolve-RipgrepPath {
+    $command = Get-Command rg.exe, rg -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) { return [IO.Path]::GetFullPath([string]$command.Source) }
+
+    # Scheduled hosts do not inherit Codex's application-specific PATH.
+    # Reuse an installed tool instead of depending on a versioned global PATH entry.
+    $codexPath = Resolve-CodexCliPath
+    if ($codexPath) {
+        $sibling = Join-Path (Split-Path -Parent $codexPath) 'rg.exe'
+        if (Test-Path -LiteralPath $sibling -PathType Leaf) { return [IO.Path]::GetFullPath($sibling) }
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$env:LOCALAPPDATA)) {
+        $binRoot = Join-Path $env:LOCALAPPDATA 'OpenAI/Codex/bin'
+        if (Test-Path -LiteralPath $binRoot -PathType Container) {
+            $candidates = @(Get-ChildItem -Path (Join-Path $binRoot '*/rg.exe') -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+            if ($candidates.Count) { return [IO.Path]::GetFullPath([string]$candidates[0].FullName) }
+        }
+    }
+    return $null
+}
+
 function Expand-EcosystemValue {
     param(
         [Parameter(Mandatory)][string] $Value,
@@ -639,4 +660,4 @@ function Get-TaskWorkspaceLayout {
         RepositoryKey = $repositoryKey
     }
 }
-Export-ModuleMember -Function Resolve-EcosystemConfigPath, Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Get-EcosystemRelativePath, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout
+Export-ModuleMember -Function Resolve-EcosystemConfigPath, Get-EcosystemRoot, Get-DefaultCodexHome, Resolve-CodexCliPath, Resolve-RipgrepPath, Expand-EcosystemValue, Get-EcosystemConfig, Get-EcosystemStateRoot, Resolve-EcosystemPath, Test-EcosystemRootInsideProductWorkspace, Resolve-AgentWorkingDirectory, Assert-EcosystemConfig, ConvertTo-TomlString, New-AgentToml, Write-Utf8NoBom, Get-EcosystemFileSha256, Write-Utf8NoBomAtomic, Get-EcosystemRelativePath, Invoke-EcosystemFileLock, Add-EcosystemUtf8Line, New-WorkspaceLeaseHeartbeatAction, Resolve-TaskWorkspaceLeaseContext, New-TaskBranchName, Test-TaskBranchName, Assert-TaskDeliveryBranch, Get-TaskWorkspaceLayout

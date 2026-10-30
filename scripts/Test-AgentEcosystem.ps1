@@ -323,7 +323,13 @@ $sourceExclusions=@(
     [IO.Path]::GetFullPath((Join-Path $root '.test-output')),
     [IO.Path]::GetFullPath($OutputRoot)
 )|Select-Object -Unique
-$powerShellFiles = @(rg --files $root -g '*.ps1' -g '*.psm1' -g '!/.runtime/**' -g '!/.test-output/**' | ForEach-Object { Get-Item -LiteralPath $_ -ErrorAction Stop })
+& (Join-Path $root 'tests/Test-RipgrepResolution.ps1') -OutputRoot (Join-Path $OutputRoot 'ripgrep-resolution') | Out-Null
+Add-Check -Name 'ripgrep-path-independent' -Detail 'Installed ripgrep remains usable in scheduled hosts without a PATH entry; process PATH is preserved.'
+$ripgrepPath = Resolve-RipgrepPath
+if (-not $ripgrepPath) { throw 'ripgrep was not found in PATH or the installed Codex tool locations. Install ripgrep or restore the Codex bundled tools.' }
+$sourcePaths = @(& $ripgrepPath --files $root -g '*.ps1' -g '*.psm1' -g '!/.runtime/**' -g '!/.test-output/**')
+if ($LASTEXITCODE -ne 0) { throw "ripgrep source discovery failed with exit code $LASTEXITCODE." }
+$powerShellFiles = @($sourcePaths | ForEach-Object { Get-Item -LiteralPath $_ -ErrorAction Stop })
 $parseErrors = [Collections.Generic.List[object]]::new()
 foreach ($file in $powerShellFiles) {
     $tokens = $null
