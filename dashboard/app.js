@@ -1678,9 +1678,10 @@ function renderReviewCoverage() {
   const verificationEntries = Array.isArray(reviewVerification?.coverageVerification) ? reviewVerification.coverageVerification : [];
   const rejected = verificationEntries.filter(item => item?.verdict === 'rejected').length;
   const blocked = coverage.filter(item => item?.status === 'blocked').length;
+  const pendingDownstream = coverage.filter(item => item?.status === 'pending-downstream').length;
   const verificationState = reviewVerificationStale ? 'stale verifier artifact ignored' : (reviewVerification?.verificationStatus || 'awaiting verifier');
   summary.textContent = coverage.length
-    ? `${coverage.length} dimension(s); ${rejected} rejected by verifier; ${blocked} blocked; ${verificationState}.`
+    ? `${coverage.length} dimension(s); ${rejected} rejected by verifier; ${blocked} blocked; ${pendingDownstream} pending downstream; ${verificationState}.`
     : `Review coverage matrix is not available; ${verificationState}.`;
   if (!coverage.length) {
     const empty = document.createElement('p');
@@ -1703,6 +1704,7 @@ function renderReviewCoverage() {
     card.append(header);
     appendReviewerFeedbackField(card, 'Reviewer evidence', entry?.evidence);
     appendReviewerFeedbackField(card, 'Reviewer notes', entry?.notes);
+    appendReviewerFeedbackField(card, 'Downstream obligation', entry?.downstreamObligation && Object.entries(entry.downstreamObligation).map(([key, value]) => `${key}: ${value}`));
     appendReviewerFeedbackField(card, 'Verifier evidence', verification?.evidence);
     appendReviewerFeedbackField(card, 'Falsification', verification?.falsificationAttempts);
     appendReviewerFeedbackField(card, 'Verifier notes', verification?.notes);

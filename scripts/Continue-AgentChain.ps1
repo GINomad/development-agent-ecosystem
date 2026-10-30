@@ -322,9 +322,10 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 $nextAgentId = 'reviewer'
                 break
             }
-            $blockedCoverage = @($review.reviewCoverage | Where-Object { [string]$_.status -eq 'blocked' })
-            if ($blockedCoverage.Count) {
-                $message = "Independent verification confirmed $($blockedCoverage.Count) blocked review coverage dimension(s). Supply the missing evidence and rerun Reviewer."
+            $coverageRepositoryId = if (@($review.reviewScope.repositories).Count -eq 1) { [string]$review.reviewScope.repositories[0].repositoryId } else { '' }
+            $coverageGate = if ($coverageRepositoryId) { & (Join-Path $PSScriptRoot 'Test-PrePushReviewCoverage.ps1') -Review $review -Verification $verification -RepositoryId $coverageRepositoryId } else { [pscustomobject]@{ Allowed=$false; BlockingReasons=@('review scope is not a single delivery repository') } }
+            if (-not [bool]$coverageGate.Allowed) {
+                $message = "Independent verification confirmed blocking review coverage: $(@($coverageGate.BlockingReasons) -join ', '). Supply the missing evidence and rerun Reviewer."
                 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status review_pending -Stage review_coverage_blocked -Message $message -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
                 return [pscustomobject]@{ Status='review-pending'; Reason=$message; StartedAgents=@($started) }
             }

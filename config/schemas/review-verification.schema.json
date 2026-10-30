@@ -52,11 +52,24 @@
       "required": ["dimension", "claimedStatus", "verdict", "evidence", "falsificationAttempts", "notes"],
       "properties": {
         "dimension": { "$ref": "#/$defs/reviewDimension" },
-        "claimedStatus": { "enum": ["covered", "not-applicable", "blocked"] },
+        "claimedStatus": { "enum": ["covered", "not-applicable", "blocked", "pending-downstream"] },
+        "downstreamObligation": { "$ref": "#/$defs/downstreamObligation" },
         "verdict": { "enum": ["confirmed", "rejected"] },
         "evidence": { "$ref": "#/$defs/verificationEvidence" },
         "falsificationAttempts": { "$ref": "#/$defs/verificationEvidence" },
         "notes": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "claimedStatus": { "const": "pending-downstream" } }, "required": ["claimedStatus"] }, "then": { "required": ["downstreamObligation"] }, "else": { "not": { "required": ["downstreamObligation"] } } }
+      ]
+    },
+    "downstreamObligation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidenceKind", "phase", "repositoryId", "reviewedCommit", "responsibleProducer", "state"],
+      "properties": {
+        "evidenceKind": { "enum": ["ci-build", "docker-build", "signing"] }, "phase": { "const": "post-push" },
+        "repositoryId": { "type": "string", "minLength": 1 }, "reviewedCommit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "responsibleProducer": { "const": "pipeline_monitor" }, "state": { "const": "pending" }
       }
     },
     "findingVerification": {

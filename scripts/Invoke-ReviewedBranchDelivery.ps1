@@ -34,7 +34,8 @@ $review = Get-Content -LiteralPath $reviewPath -Raw -Encoding UTF8 | ConvertFrom
 $verification = Get-Content -LiteralPath $verificationPath -Raw -Encoding UTF8 | ConvertFrom-Json
 & (Join-Path $PSScriptRoot 'Test-AgentOutcomeArtifact.ps1') -TaskId $TaskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot
 if ([string]$verification.verificationStatus -ne 'passed') { throw 'Review coverage or lifecycle verification requires Reviewer rework before delivery.' }
-if (@($review.reviewCoverage | Where-Object { [string]$_.status -eq 'blocked' }).Count) { throw 'Blocked review coverage dimensions prevent delivery.' }
+$coverageGate = & (Join-Path $PSScriptRoot 'Test-PrePushReviewCoverage.ps1') -Review $review -Verification $verification -RepositoryId $RepositoryId
+if (-not [bool]$coverageGate.Allowed) { throw "Blocked review coverage dimensions prevent delivery: $(@($coverageGate.BlockingReasons) -join ', ')." }
 $reviewArtifactSha256 = Get-EcosystemFileSha256 -Path $reviewPath
 $verificationById = @{}
 foreach ($entry in @($verification.findingVerifications)) { $verificationById[[string]$entry.findingId] = [string]$entry.verdict }
@@ -95,6 +96,7 @@ $plan = [pscustomobject][ordered]@{
     reviewPath=$reviewPath; reviewVerificationPath=$verificationPath; reviewArtifactSha256=$reviewArtifactSha256
     reviewDecisionsPath=if (Test-Path -LiteralPath $decisionsPath) { $decisionsPath } else { $null }
     techDebtItemsPath=if (Test-Path -LiteralPath $debtPath) { $debtPath } else { $null }
+    pendingDownstreamObligations=@($coverageGate.PendingObligations)
     preparedAtUtc=[DateTime]::UtcNow.ToString('o')
 }
 if ($PrepareOnly -or -not $PSCmdlet.ShouldProcess("origin/$branch", "push reviewed commit $commit and monitor its build")) { return $plan }

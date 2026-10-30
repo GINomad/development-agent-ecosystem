@@ -278,9 +278,15 @@ if ($ArtifactName -eq 'review-result.json') {
     }
     foreach ($entry in $coverage) {
         Assert-RequiredProperties -Document $entry -Names @('dimension','status','evidence','falsificationAttempts','notes') -Label "reviewCoverage '$([string]$entry.dimension)'"
-        if ([string]$entry.status -notin @('covered','not-applicable','blocked') -or -not (Test-NonEmptyStringArray -Value $entry.evidence) -or -not (Test-NonEmptyStringArray -Value $entry.falsificationAttempts) -or [string]::IsNullOrWhiteSpace([string]$entry.notes)) {
+        if ([string]$entry.status -notin @('covered','not-applicable','blocked','pending-downstream') -or -not (Test-NonEmptyStringArray -Value $entry.evidence) -or -not (Test-NonEmptyStringArray -Value $entry.falsificationAttempts) -or [string]::IsNullOrWhiteSpace([string]$entry.notes)) {
             throw "reviewCoverage '$([string]$entry.dimension)' lacks a supported status, evidence, falsification attempt, or notes."
         }
+        if ([string]$entry.status -eq 'pending-downstream') {
+            Assert-RequiredProperties -Document $entry -Names @('downstreamObligation') -Label "reviewCoverage '$([string]$entry.dimension)'"
+            Assert-RequiredProperties -Document $entry.downstreamObligation -Names @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state') -Label "reviewCoverage '$([string]$entry.dimension)' downstream obligation"
+            if ([string]$entry.dimension -ne 'configuration-deployment' -or [string]$entry.downstreamObligation.phase -ne 'post-push' -or [string]$entry.downstreamObligation.responsibleProducer -ne 'pipeline_monitor' -or [string]$entry.downstreamObligation.state -ne 'pending' -or [string]$entry.downstreamObligation.evidenceKind -notin @('ci-build','docker-build','signing') -or [string]$entry.downstreamObligation.reviewedCommit -notmatch '^[0-9a-fA-F]{40}$') { throw "reviewCoverage '$([string]$entry.dimension)' has an invalid pending downstream obligation." }
+        }
+        elseif ($entry.PSObject.Properties['downstreamObligation']) { throw "reviewCoverage '$([string]$entry.dimension)' may only include a downstream obligation when pending." }
     }
 
     $productFindings = @($review.findings | Where-Object { $null -ne $_ })
@@ -447,6 +453,13 @@ if ($ArtifactName -eq 'review-verification.json') {
         $dimension = [string]$entry.dimension
         if (-not $coverageByDimension.ContainsKey($dimension) -or [string]$entry.claimedStatus -ne [string]$coverageByDimension[$dimension].status) { throw "coverageVerification '$dimension' does not match the Reviewer claim." }
         if ([string]$entry.verdict -notin @('confirmed','rejected') -or -not (Test-NonEmptyStringArray -Value $entry.evidence) -or -not (Test-NonEmptyStringArray -Value $entry.falsificationAttempts) -or [string]::IsNullOrWhiteSpace([string]$entry.notes)) { throw "coverageVerification '$dimension' lacks a supported verdict or independent evidence." }
+        $claimedPending = [string]$entry.claimedStatus -eq 'pending-downstream'
+        if ($claimedPending) {
+            Assert-RequiredProperties -Document $entry -Names @('downstreamObligation') -Label "coverageVerification '$dimension'"
+            $reviewObligation = $coverageByDimension[$dimension].downstreamObligation; $verificationObligation = $entry.downstreamObligation
+            if ($null -eq $reviewObligation -or $null -eq $verificationObligation -or @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state') | Where-Object { [string]$reviewObligation.$_ -ne [string]$verificationObligation.$_ }) { throw "coverageVerification '$dimension' must independently bind the exact pending downstream obligation." }
+        }
+        elseif ($entry.PSObject.Properties['downstreamObligation']) { throw "coverageVerification '$dimension' may only include a downstream obligation for a pending claim." }
     }
 
     $productIds = @($review.findings | ForEach-Object { [string]$_.id })

@@ -396,6 +396,26 @@ if (@($verificationFive.findingVerifications).Count -ne 0 -or [string]$verificat
     throw 'Open bypass debt must remain lifecycle-auditable without re-entering active finding verification.'
 }
 
+$pendingCommit = '2222222222222222222222222222222222222222'
+$pendingReview = New-Review -Revision $pendingCommit -LifecycleStatus resolved
+$pendingReview.findings = @(); $pendingReview.findingLifecycle = @()
+$pendingReview.reviewScope.repositories[0].targetRevision = $pendingCommit
+$pendingCoverage = @($pendingReview.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' })[0]
+$pendingCoverage.status = 'pending-downstream'
+$pendingCoverage.downstreamObligation = [ordered]@{ evidenceKind='ci-build'; phase='post-push'; repositoryId='synthetic'; reviewedCommit=$pendingCommit; responsibleProducer='pipeline_monitor'; state='pending' }
+$pendingVerification = New-Verification -Review $pendingReview
+$pendingVerification.coverageVerification | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object { $_.claimedStatus='pending-downstream'; $_.downstreamObligation=$pendingCoverage.downstreamObligation }
+$pendingGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $pendingReview -Verification $pendingVerification -RepositoryId synthetic
+if (-not [bool]$pendingGate.Allowed -or @($pendingGate.PendingObligations).Count -ne 1) { throw 'A verifier-confirmed exact-SHA pending CI obligation must permit only pre-push progression.' }
+$legacyBlockedReview = $pendingReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$legacyBlockedReview.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object { $_.status='blocked'; $_.PSObject.Properties.Remove('downstreamObligation') }
+$legacyBlockedGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $legacyBlockedReview -Verification $pendingVerification -RepositoryId synthetic
+if ([bool]$legacyBlockedGate.Allowed) { throw 'Legacy blocked coverage must remain a delivery blocker.' }
+$malformedPendingReview = $pendingReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+$malformedPendingReview.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object { $_.downstreamObligation.repositoryId='wrong-repository' }
+$malformedPendingGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $malformedPendingReview -Verification $pendingVerification -RepositoryId synthetic
+if ([bool]$malformedPendingGate.Allowed) { throw 'Wrong-repository pending evidence must not permit delivery.' }
+
 [pscustomobject][ordered]@{
     Status = 'passed'
     TaskId = $taskId
@@ -414,5 +434,6 @@ if (@($verificationFive.findingVerifications).Count -ne 0 -or [string]$verificat
         'reviewer/verifier/pipeline control-plane routing',
         'open bypass debt remains unchanged, not falsely resolved',
         'legacy bypass debt exact-SHA migration and explicit reopen'
+        'exact-SHA-bound pending downstream CI permits only pre-push progression while legacy and malformed coverage remain blocked'
     )
 }
