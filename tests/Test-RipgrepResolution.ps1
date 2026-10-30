@@ -2,7 +2,7 @@
 param([Parameter(Mandatory)][string] $OutputRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/AgentEcosystem.psm1') -Force
+$ecosystemModule = Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/AgentEcosystem.psm1') -Force -PassThru
 $installed = Resolve-RipgrepPath
 if (-not $installed) { throw 'An installed ripgrep is required for source validation.' }
 $originalPath = $env:PATH
@@ -22,9 +22,21 @@ try {
     if ($LASTEXITCODE -ne 0 -or $version[0] -notmatch '^ripgrep ') { throw 'Resolved ripgrep did not execute.' }
     $files = @(& $resolved --files $fixture -g '*.ps1')
     if ($LASTEXITCODE -ne 0 -or -not @($files | Where-Object { (Split-Path -Leaf $_) -eq 'probe.ps1' }).Count) { throw 'PATH-independent source enumeration failed.' }
-    $desktopResolved = & (Get-Module AgentEcosystem) {
-        function Resolve-CodexCliPath { return $null }
-        Resolve-RipgrepPath
+    # A long-lived workflow can load another module with the same name.
+    # Bind the probe to the canonical import, never a name-based module array.
+    $foreignPath = Join-Path $fixture 'foreign/AgentEcosystem.psm1'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $foreignPath) -Force | Out-Null
+    'Export-ModuleMember' | Set-Content -LiteralPath $foreignPath -Encoding UTF8
+    $foreignModule = Import-Module $foreignPath -Force -PassThru
+    try {
+        if (@(Get-Module AgentEcosystem).Count -lt 2) { throw 'Duplicate module-name fixture was not established.' }
+        $desktopResolved = & $ecosystemModule {
+            function Resolve-CodexCliPath { return $null }
+            Resolve-RipgrepPath
+        }
+    }
+    finally {
+        Remove-Module -ModuleInfo $foreignModule -Force
     }
     if ($desktopResolved -ne (Join-Path $bin 'rg.exe')) { throw 'Desktop bundled ripgrep fallback did not resolve the fixture installation.' }
     if ($env:PATH -ne (Join-Path $fixture 'no-path-tools')) { throw 'Resolver unexpectedly changed process PATH.' }
