@@ -302,6 +302,27 @@ if ($workflowCliScript -notmatch '\$initialHeartbeat\s*=\s*& \$leaseHeartbeatAct
 }
 Add-Check -Name 'workspace-heartbeat-closure' -Detail 'Heartbeat callback construction ignores unrelated empty validated workflow parameters and preserves exact lease values'
 
+$heartbeatFailureFixture = Join-Path $root 'tests\fixtures\Mock-WorkspaceLeaseHeartbeatFailure.ps1'
+$heartbeatFailureFactory = {
+    param([Parameter(Mandatory)][string] $TaskId)
+    New-WorkspaceLeaseHeartbeatAction -HeartbeatScriptPath $heartbeatFailureFixture -TaskId $TaskId -RunId ('r' * 32) -LeaseId ('l' * 32) -ConfigPath $ConfigPath -CodexHome ''
+}.GetNewClosure()
+$lockContentionAction = & $heartbeatFailureFactory 'heartbeat-lock-contention'
+$lockContention = & $lockContentionAction
+if ([string]$lockContention.Status -ne 'deferred-lock-contention' -or $lockContention.Detail -ne "Timed out waiting for exclusive lock 'C:\synthetic\workspace-coordinator.json.lock'.") {
+    throw 'Workspace heartbeat did not defer the exact coordinator lock-timeout IOException.'
+}
+foreach ($fatalHeartbeatTask in @('heartbeat-ownership-failure', 'heartbeat-io-failure')) {
+    $heartbeatFailureWasFatal = $false
+    try {
+        $fatalHeartbeatAction = & $heartbeatFailureFactory $fatalHeartbeatTask
+        $null = & $fatalHeartbeatAction
+    }
+    catch { $heartbeatFailureWasFatal = $true }
+    if (-not $heartbeatFailureWasFatal) { throw "Workspace heartbeat incorrectly deferred '$fatalHeartbeatTask'." }
+}
+Add-Check -Name 'workspace-heartbeat-contention-classification' -Detail 'Only the exact coordinator lock-timeout IOException is deferred; ownership and unrelated I/O failures remain fatal.'
+
 & (Join-Path $root 'tests/Test-GitWorkspaceBoundary.ps1') -Root $root -OutputRoot (Join-Path $OutputRoot 'git-boundary') | Out-Null
 Add-Check -Name 'workspace-git-root-isolation' -Detail 'Incomplete nested clones and inherited Git-root redirection cannot mutate a parent repository; valid clones remain usable'
 

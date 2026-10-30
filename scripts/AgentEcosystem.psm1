@@ -552,7 +552,7 @@ function New-WorkspaceLeaseHeartbeatAction {
             # agent solely because that short critical section was unavailable.
             # Other heartbeat failures (including ownership mismatches) remain
             # fatal and are never converted to a successful heartbeat.
-            if ($_.Exception.Message -match "^Timed out waiting for exclusive lock '.+'\\.$") {
+            if ($_.Exception.Message -match "^Timed out waiting for exclusive lock '.+'\.$") {
                 [pscustomobject]@{
                     Status = 'deferred-lock-contention'
                     TaskId = $TaskId
