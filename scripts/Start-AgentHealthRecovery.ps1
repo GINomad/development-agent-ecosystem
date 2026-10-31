@@ -16,6 +16,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+. (Join-Path $PSScriptRoot 'Publish-VerifiedHealthRepair.ps1')
 $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 if ([bool]$config.health.automaticRecovery.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 
@@ -62,7 +63,7 @@ function Get-BoundedTextTail {
     return $prefix + $encoding.GetString($bytes, $offset, $bytes.Length - $offset)
 }
 
-function Publish-VerifiedHealthRepair {
+function Publish-VerifiedHealthRepairBranch {
     param(
         [Parameter(Mandatory)][string] $Workspace,
         [Parameter(Mandatory)][string] $Commit,
@@ -457,8 +458,11 @@ try {
     }
 
     if ([string]$recovery.status -eq 'repaired') {
+        $validationSourceBefore = & (Join-Path $PSScriptRoot 'Get-EcosystemSourceFingerprint.ps1') -Root $workspace
         $validation = @(& (Join-Path $PSScriptRoot 'Test-AgentEcosystem.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome)
         if ($validation.Count -ne 1 -or -not [bool]$validation[0].Passed) { throw 'Complete ecosystem validation did not return exactly one Passed=true result.' }
+        $validationSourceAfter = & (Join-Path $PSScriptRoot 'Get-EcosystemSourceFingerprint.ps1') -Root $workspace
+        if ([string]$validationSourceBefore.Fingerprint -ne [string]$validationSourceAfter.Fingerprint) { throw 'Complete ecosystem validation changed source content; the repair must be revalidated before publication.' }
         if ([bool]$config.health.automaticRecovery.commitVerifiedRepairs) {
             $postValidationChanges = @(git -C $workspace status --porcelain)
             if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the validated ecosystem repair before commit.' }
@@ -495,10 +499,19 @@ try {
         $recoveryCommit = ([string](& git -C $workspace rev-parse HEAD)).Trim()
         if ($LASTEXITCODE -ne 0 -or $recoveryCommit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to bind Health recovery delivery to the validated Git HEAD.' }
         if ($recoveryCommit -and -not $SuppressExternalDelivery -and [bool]$config.health.automaticRecovery.pushVerifiedRepairs) {
-            $recoveryPush = Publish-VerifiedHealthRepair -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
+            $validationProof = [pscustomobject]@{ Passed=[bool]$validation[0].Passed; Commit=$recoveryCommit; Fingerprint=[string]$validationSourceAfter.Fingerprint }
+            $mergeVerifiedRepairsToMain = -not $config.health.automaticRecovery.PSObject.Properties['mergeVerifiedRepairsToMain'] -or [bool]$config.health.automaticRecovery.mergeVerifiedRepairsToMain
+            $recoveryPush = if ($mergeVerifiedRepairsToMain) {
+                Invoke-VerifiedHealthRepairPublication -Workspace $workspace -Commit $recoveryCommit -ValidationProof $validationProof -Policy $config.health.automaticRecovery
+            }
+            else {
+                Publish-VerifiedHealthRepairBranch -Workspace $workspace -Commit $recoveryCommit -TaskId $TaskId -FailureSignature $signature -Policy $config.health.automaticRecovery
+            }
             $recoveryDeliveryPath = Join-Path $taskRoot 'health-recovery-delivery.json'
             Write-Utf8NoBom -Path $recoveryDeliveryPath -Content (($recoveryPush | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
-            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair pushed to {0}/{1} at {2}.' -f $recoveryPush.remote,$recoveryPush.branch,$recoveryCommit) -Details ('Trusted host verified that remote commit {0} contains validated repair commit {1} after a normal non-force, non-tag delivery.' -f $recoveryPush.deliveredCommit,$recoveryCommit) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+            $deliveryBranch = if ($recoveryPush.PSObject.Properties['targetBranch']) { [string]$recoveryPush.targetBranch } else { [string]$recoveryPush.branch }
+            $deliveryCommit = if ($recoveryPush.PSObject.Properties['deliveredMainCommit']) { [string]$recoveryPush.deliveredMainCommit } else { [string]$recoveryPush.deliveredCommit }
+            & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId health_check -Level success -Stage health_recovery_push -Summary ('Validated ecosystem repair published to {0}/{1} at {2}.' -f $recoveryPush.remote,$deliveryBranch,$recoveryCommit) -Details ('Trusted host verified remote commit {0} contains validated repair commit {1} after a normal non-force, non-tag delivery.' -f $deliveryCommit,$recoveryCommit) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
             & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor health_check -Type external-action -Summary ('Health Check published verified ecosystem repair {0}.' -f $recoveryCommit) -Artifact $recoveryDeliveryPath -Evidence @($resultPath) -TargetAgentId health_check -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -Status interrupted -Stage health_recovered -Message 'Health recovery passed validation. Preparing the configured one-shot targeted retry.' -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

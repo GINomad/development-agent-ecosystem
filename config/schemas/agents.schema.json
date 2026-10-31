@@ -824,11 +824,17 @@
             "pushVerifiedRepairs": {
               "type": "boolean"
             },
+            "mergeVerifiedRepairsToMain": {
+              "type": "boolean"
+            },
             "pushRemote": {
               "const": "origin"
             },
             "pushRemoteUrl": {
               "const": "https://github.com/GINomad/development-agent-ecosystem.git"
+            },
+            "targetBranch": {
+              "const": "main"
             },
             "repairBranchPrefix": {
               "type": "string",
