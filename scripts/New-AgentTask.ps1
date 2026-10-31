@@ -137,4 +137,7 @@ elseif ([bool]$mutation.ScopeChanged) {
 if (-not [bool]$mutation.Created -and [bool]$mutation.BranchMetadataChanged) {
     & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor 'workflow_host' -Type 'workflow-status' -Summary "Legacy task branch metadata migrated to '$([string]$mutation.BranchName)'." -Artifact $taskPath -Evidence @('legacy-task-branch-migration') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
 }
+if ([bool]$mutation.Created) {
+    & (Join-Path $PSScriptRoot 'Write-TaskConfigBinding.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+}
 [pscustomobject]@{ TaskId = $TaskId; TaskRoot = $taskRoot; TaskPath = $taskPath; Resumed = [bool]$Resume; RepositoryIds=@($selectedRepositoryIds) }

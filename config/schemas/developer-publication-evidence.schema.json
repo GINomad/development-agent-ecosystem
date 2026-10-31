@@ -3,7 +3,7 @@
   "title": "Developer publication evidence",
   "type": "object",
   "additionalProperties": false,
-  "required": ["taskId", "generatedAtUtc", "workspace", "branch", "upstream", "headCommit", "worktreeClean", "branchDivergence", "pester"],
+  "required": ["taskId", "generatedAtUtc", "workspace", "branch", "upstream", "headCommit", "worktreeClean", "branchDivergence", "upstreamDivergence", "pester"],
   "properties": {
     "taskId": { "type": "string", "minLength": 1 },
     "generatedAtUtc": { "type": "string", "format": "date-time" },
@@ -15,9 +15,22 @@
     "branchDivergence": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["evidenceId", "baseRef", "command", "behindCount", "aheadCount", "rawResult"],
+      "properties": {
+        "evidenceId": { "const": "git-task-base-divergence" },
+        "baseRef": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 },
+        "behindCount": { "type": "integer", "minimum": 0 },
+        "aheadCount": { "type": "integer", "minimum": 0 },
+        "rawResult": { "type": "string", "minLength": 1 }
+      }
+    },
+    "upstreamDivergence": {
+      "type": "object",
+      "additionalProperties": false,
       "required": ["evidenceId", "command", "behindCount", "aheadCount", "rawResult"],
       "properties": {
-        "evidenceId": { "const": "git-branch-divergence" },
+        "evidenceId": { "const": "git-upstream-divergence" },
         "command": { "type": "string", "minLength": 1 },
         "behindCount": { "type": "integer", "minimum": 0 },
         "aheadCount": { "type": "integer", "minimum": 0 },

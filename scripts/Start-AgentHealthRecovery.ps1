@@ -415,7 +415,9 @@ try {
         # Preserve the configured Health Check model through explicit arguments above.
         $execIndex = [Array]::IndexOf($arguments, 'exec')
         if ($execIndex -lt 0) { throw 'Recovery arguments are missing the exec command.' }
-        $arguments = @($arguments[0..$execIndex] + @('--ignore-user-config') + $arguments[($execIndex + 1)..($arguments.Count - 1)])
+        if ($arguments -notcontains '--ignore-user-config') {
+            $arguments = @($arguments[0..$execIndex] + @('--ignore-user-config') + $arguments[($execIndex + 1)..($arguments.Count - 1)])
+        }
     }
     $tokenRunId=if($ExecutionRunId){$ExecutionRunId}else{[string]$attempt.attemptId}
     $tokenState=Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8|ConvertFrom-Json

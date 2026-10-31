@@ -271,7 +271,7 @@ if ($healthCheckCliScript -notmatch 'Get-AgentDefinitionDrift' -or $healthCheckC
 if ($healthCheckCliScript -notmatch '\$agentDefinitionDrift\s*=\s*@\(\)' -or $healthCheckCliScript -notmatch '\$agentDefinitionDrift\s*=\s*@\(Get-AgentDefinitionDrift\)') { throw 'Health Check must preserve zero, one, or many generated-agent drift records as an array.' }
 if ($workflowCliScript -notmatch "'notify=\[\]'" -or $healthCliScript -notmatch "'notify=\[\]'") { throw 'Internal Codex hosts must disable the legacy notify command to avoid Windows command-line overflow on long agent turns.' }
 if ($healthCliScript -notmatch "'--ignore-user-config'" -or $healthCliScript -match "mcp_servers\.\{0\}\.enabled=false") { throw 'Suppressed Health recovery must use the supported no-user-config mode instead of constructing invalid MCP transport overrides.' }
-if ($healthCliScript -notmatch 'healthAgentDefinition' -or $healthCliScript -notmatch 'model_reasoning_effort' -or $healthCliScript -notmatch '\[Array\]::IndexOf\(\$arguments, ''exec''\)') { throw 'Health recovery must preserve its configured model route and insert no-user-config after the exec command.' }
+if ($healthCliScript -notmatch 'healthAgentDefinition' -or $healthCliScript -notmatch 'model_reasoning_effort' -or $healthCliScript -notmatch '\[Array\]::IndexOf\(\$arguments, ''exec''\)' -or $healthCliScript -notmatch '\$arguments -notcontains ''--ignore-user-config''') { throw 'Health recovery must preserve its configured model route and add no-user-config at most once after the exec command.' }
 if ($workflowCliScript -notmatch 'Start-NextQueuedTask\.ps1.+-ConfigPath\s+\$sourceConfigPath') { throw 'Queued task dispatch must reload canonical configuration instead of inheriting the previous task snapshot.' }
 if ($reviewVerificationTestScript -match 'Get-FileHash' -or $reviewVerificationTestScript -notmatch 'Get-EcosystemFileSha256') { throw 'Recovery validation tests must use the module-independent ecosystem SHA-256 helper in long-lived dashboard runspaces.' }
 if ($workflowCliScript -notmatch 'Agent-owned status updates must never pass ProcessId, ExecutionRunId, WorkspaceLeaseId, or ClearProcessId') { throw 'Agent prompts must reserve controller identity fields for the trusted workflow host.' }
@@ -2324,6 +2324,9 @@ Add-Check -Name 'manifest-base-task-diff' -Detail 'All-task diff uses the verifi
 $generatedEvidence = & (Join-Path $root 'scripts\New-DeveloperPublicationEvidence.ps1') -TaskId $outcomeTaskId -Workspace $outcomeGitRoot -PesterPath @('tests\Synthetic.Tests.ps1') -ConfigPath $outcomeConfigPath
 $publicationEvidencePath = [string]$generatedEvidence.EvidencePath
 $publicationEvidence = Get-Content -LiteralPath $publicationEvidencePath -Raw -Encoding UTF8 | ConvertFrom-Json
+$publicationEvidenceSchemaPath = Join-Path $root 'config\schemas\developer-publication-evidence.schema.json'
+if (-not (Test-Json -Json (Get-Content -LiteralPath $publicationEvidencePath -Raw -Encoding UTF8) -SchemaFile $publicationEvidenceSchemaPath)) { throw 'Generated developer publication evidence does not satisfy its JSON schema.' }
+if ([string]$publicationEvidence.branchDivergence.evidenceId -ne 'git-task-base-divergence' -or [string]$publicationEvidence.branchDivergence.baseRef -ne "manifest-baseSha:$outcomeBaseCommit" -or [string]$publicationEvidence.upstreamDivergence.evidenceId -ne 'git-upstream-divergence') { throw 'Generated developer publication evidence does not preserve task-base and upstream divergence contracts.' }
 $liveBranch = [string]$publicationEvidence.branch
 $liveHead = [string]$publicationEvidence.headCommit
 $liveParts = @([int]$publicationEvidence.branchDivergence.behindCount,[int]$publicationEvidence.branchDivergence.aheadCount)
@@ -3059,6 +3062,10 @@ Add-Check -Name 'harness-engineering-evaluation' -Detail 'Acceptance scenarios b
 & node (Join-Path $root 'tests/dashboard-task-projects.cjs') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Dashboard task project behavior tests failed.' }
 Add-Check -Name 'dashboard-task-projects' -Detail 'Summary/detail preserve persisted project identity, task cards use configured project names and filter by selection without reassigning legacy history.'
+
+
+& (Join-Path $root 'tests/Test-TaskConfigBinding.ps1') | Out-Null
+Add-Check -Name 'task-config-binding' -Detail 'Dashboard resume uses a hash-bound task configuration, preserves selected repository order, rejects tampering, and retains only validated host fallback for legacy tasks'
 
 if ((Get-EcosystemFileSha256 -Path $suiteGitConfig) -ne $suiteGitConfigHash) { throw 'Full suite changed the ecosystem Git configuration; refusing a successful isolation verdict.' }
 Add-Check -Name 'suite-git-config-preserved' -Detail 'The complete suite preserved the exact ecosystem Git configuration, including shared-worktree origin'

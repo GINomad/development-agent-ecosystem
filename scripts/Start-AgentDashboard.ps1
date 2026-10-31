@@ -233,7 +233,8 @@ function Open-CompletedTaskRevisionForTargetedResume {
     param(
         [Parameter(Mandatory)][string] $TaskId,
         [Parameter(Mandatory)][string] $AgentId,
-        [Parameter(Mandatory)] $Task
+        [Parameter(Mandatory)] $Task,
+        [Parameter(Mandatory)][string] $TaskConfigPath
     )
 
     $closureStatus = if ($Task.PSObject.Properties['closure'] -and $Task.closure) { [string]$Task.closure.status } else { '' }
@@ -251,7 +252,7 @@ function Open-CompletedTaskRevisionForTargetedResume {
         Reason="Process pending comments addressed to '$AgentId' after revision $currentRevision was completed."
         ResumeFrom=$AgentId
         ExpectedRevision=$currentRevision
-        ConfigPath=$ConfigPath
+        ConfigPath=$TaskConfigPath
         CodexHome=$CodexHome
     }
     if ($Task.PSObject.Properties['executionRunId'] -and -not [string]::IsNullOrWhiteSpace([string]$Task.executionRunId)) { $reopenParameters.ExpectedRunId = [string]$Task.executionRunId }
@@ -269,7 +270,8 @@ function Start-TargetedAgentResume {
         [bool] $ElevatedApproved = $false
     )
 
-    $revisionTransition = Open-CompletedTaskRevisionForTargetedResume -TaskId $TaskId -AgentId $AgentId -Task $Task
+    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $TaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+    $revisionTransition = Open-CompletedTaskRevisionForTargetedResume -TaskId $TaskId -AgentId $AgentId -Task $Task -TaskConfigPath ([string]$launchConfig.ConfigPath)
     $Task = $revisionTransition.Task
     Assert-TaskControllerIsIdle -Task $Task
     $repositoryIds = @(Get-RequestedRepositoryIds -Source $Task -Required)
@@ -277,13 +279,13 @@ function Start-TargetedAgentResume {
         Mode=[string]$Task.mode; TaskSelector=[string]$Task.selector; TaskId=$TaskId
         RepositoryIds=$repositoryIds; TargetAgentId=$AgentId
         UserInstruction=$Instruction
-        Resume=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+        Resume=$true; ContinueChain=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome
     }
     if ($ElevatedApproved) { $parameters.ElevatedApproved = $true }
     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $TaskId -Parameters $parameters
-    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$AgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$AgentId'." -TargetAgentId $AgentId -Artifact (Join-Path $stateRoot "tasks\$TaskId\task.json") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    $executionMode = if ($ElevatedApproved -or [bool]$config.runtime.elevatedFallback.useByDefault) { 'elevated-approved' } else { 'sandboxed' }
+    & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId $AgentId -AgentStatus pending -Stage targeted_agent_scheduled -Message "Targeted restart scheduled for '$AgentId'; workspace lease selection will set the task to running or queued." -Actor user -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome | Out-Null
+    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $TaskId -Actor user -Type workflow-status -Summary "Targeted restart requested for '$AgentId'." -TargetAgentId $AgentId -Artifact (Join-Path $stateRoot "tasks\$TaskId\task.json") -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome | Out-Null
+    $executionMode = if ($ElevatedApproved -or [bool]$launchConfig.Config.runtime.elevatedFallback.useByDefault) { 'elevated-approved' } else { 'sandboxed' }
     $reopened = $null -ne $revisionTransition.Reopen
     $revision = if ($Task.PSObject.Properties['revision']) { [int]$Task.revision } else { 1 }
     $message = if ($reopened) { "Task reopened as revision $revision and '$AgentId' was scheduled with its downstream chain." } else { "Only '$AgentId' was scheduled; it will run when this task owns the workspace lease." }
@@ -592,7 +594,6 @@ try {
                     if ($mode -notin @('manual','automate')) { throw 'Mode must be manual or automate.' }
                     if ($mode -eq 'manual' -and [string]::IsNullOrWhiteSpace([string]$body.taskSelector)) { throw 'Manual mode requires a task selector.' }
                     $repositoryIds = @(Get-RequestedRepositoryIds -Source $body -Required)
-                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
                     $resolvedTaskId = Resolve-RequestedTaskId -Mode $mode -TaskSelector ([string]$body.taskSelector) -TaskId ([string]$body.taskId)
                     $existingTaskPath = Join-Path $stateRoot "tasks\$resolvedTaskId\task.json"
                     $resume = Test-Path -LiteralPath $existingTaskPath -PathType Leaf
@@ -605,17 +606,24 @@ try {
                         }
                     }
                     $resumePlan = $null
+                    $launchConfig = $null
                     if ($resume) {
-                        $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $resolvedTaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+                        $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $resolvedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                        $repositories = @(Get-EnabledRepositories -Config $launchConfig.Config -RepositoryIds $repositoryIds)
+                        $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $resolvedTaskId -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome
                         if (-not [bool]$resumePlan.HasWork) {
                             Send-Json -Response $response -Value @{ status='already-complete'; taskId=$resolvedTaskId; resumed=$false; pendingAgents=@(); message='No unfinished agents remain. Nothing was restarted.' }
                             continue
                         }
                     }
+                    else {
+                        $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
+                    }
                     $taskName = [string](Get-ObjectPropertyValue -Source $body -Name 'taskName')
                     $taskType = [string](Get-ObjectPropertyValue -Source $body -Name 'taskType')
                     if ($taskName.Length -gt 512) { throw 'Task name is too long.' }
                     if ($taskType.Length -gt 128) { throw 'Task type is too long.' }
+                    $workflowConfigPath = if ($launchConfig) { [string]$launchConfig.ConfigPath } else { $ConfigPath }
                     $workflowParameters = @{
                         Mode=$mode
                         TaskSelector=[string]$body.taskSelector
@@ -626,12 +634,13 @@ try {
                         RepositoryIds=$repositoryIds
                         UserInstruction=[string]$body.instruction
                         Resume=$resume
-                        ConfigPath=$ConfigPath
+                        ConfigPath=$workflowConfigPath
                         CodexHome=$CodexHome
                     }
                     $elevatedRequested = [bool](Get-ObjectPropertyValue -Source $body -Name 'elevated')
+                    $executionConfig = if ($launchConfig) { $launchConfig.Config } else { $config }
                     if ($elevatedRequested) {
-                        if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
+                        if (-not [bool]$executionConfig.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                         $workflowParameters.ElevatedApproved = $true
                     }
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $resolvedTaskId -Parameters $workflowParameters
@@ -655,6 +664,7 @@ try {
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     $taskRoot = Join-Path $stateRoot "tasks\$requestedTaskId"
                     $reviewPath = Join-Path $taskRoot 'review-result.json'
@@ -683,7 +693,7 @@ try {
                     if (Test-TaskWorkflowActive -Task $persistedTask) {
                         $dispatch = [pscustomobject][ordered]@{ status='queued-for-checkpoint'; agentId='developer'; reason='The approval was recorded for this exact review artifact. The active workflow will consume it at the next checkpoint; no duplicate restart was created.' }
                     }
-                    elseif ([bool]$config.runtime.elevatedFallback.requiresDashboardApproval) {
+                    elseif ([bool]$launchConfig.Config.runtime.elevatedFallback.requiresDashboardApproval) {
                         $dispatch = [pscustomobject][ordered]@{ status='approval-required'; agentId='developer'; reason='The approval was recorded, but this execution policy requires separate dashboard approval before Developer can start.' }
                     }
                     else {
@@ -737,14 +747,15 @@ try {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     $requestedAgentId = [Uri]::UnescapeDataString($Matches[2])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not @($config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                    if (-not @($launchConfig.Config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before restarting one agent." }
                     $elevated = [bool]$body.elevated
-                    if ($elevated -and -not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
+                    if ($elevated -and -not [bool]$launchConfig.Config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                     $dispatch = Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId $requestedAgentId -Task $persistedTask -Instruction "Restart only agent '$requestedAgentId'. Process its unacknowledged targeted and general comments; preserve completed upstream agents." -ElevatedApproved:$elevated
                     Send-Json -Response $response -Value $dispatch
                     continue
@@ -754,19 +765,20 @@ try {
                     $requestedAgentId = [Uri]::UnescapeDataString($Matches[2])
                     $requestedProvider = [string](Get-ObjectPropertyValue -Source $body -Name 'provider')
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not @($config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
-                    if ($requestedProvider -notin @($config.providerRouting.providers.PSObject.Properties.Name)) { throw 'Provider was not found.' }
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                    if (-not @($launchConfig.Config.agents | Where-Object { [string]$_.id -eq $requestedAgentId }).Count) { throw 'Agent was not found.' }
+                    if ($requestedProvider -notin @($launchConfig.Config.providerRouting.providers.PSObject.Properties.Name)) { throw 'Provider was not found.' }
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running') { throw "Stop task '$requestedTaskId' before switching one agent." }
-                    $switchResult=& (Join-Path $PSScriptRoot 'Switch-TaskAgentProvider.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -Provider $requestedProvider -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $switchResult=& (Join-Path $PSScriptRoot 'Switch-TaskAgentProvider.ps1') -TaskId $requestedTaskId -AgentId $requestedAgentId -Provider $requestedProvider -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome
                     $dispatch=$null
                     if ([bool](Get-ObjectPropertyValue -Source $body -Name 'resume')) {
                         $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
                         $elevated = [bool](Get-ObjectPropertyValue -Source $body -Name 'elevated')
-                        if ($elevated -and -not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
+                        if ($elevated -and -not [bool]$launchConfig.Config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                         $dispatch=Start-TargetedAgentResume -TaskId $requestedTaskId -AgentId $requestedAgentId -Task $persistedTask -Instruction "Restart only agent '$requestedAgentId' using provider '$requestedProvider'. Preserve completed upstream agents and artifacts." -ElevatedApproved:$elevated
                     }
                     Send-Json -Response $response -Value @{ status=if($dispatch){'scheduled'}else{'switched'}; switch=$switchResult; dispatch=$dispatch; message="Agent '$requestedAgentId' now uses '$requestedProvider' for this task." }
@@ -779,14 +791,15 @@ try {
                     if ([string]::IsNullOrWhiteSpace($reason) -or $reason.Trim().Length -lt 5) { throw 'A closure reason of at least 5 characters is required.' }
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
-                    $closure = & (Join-Path $PSScriptRoot 'Request-TaskClosure.ps1') -TaskId $requestedTaskId -Reason $reason -Kind manual -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                    $closure = & (Join-Path $PSScriptRoot 'Request-TaskClosure.ps1') -TaskId $requestedTaskId -Reason $reason -Kind manual -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
                     $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
                     $parameters = @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
                         RepositoryIds=$repositoryIds; TargetAgentId='knowledge_keeper'
                         UserInstruction='Process the explicit manual closure request. Update verified knowledge and publish the final task summary; do not restart delivery agents.'
-                        Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                        Resume=$true; ElevatedApproved=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome
                     }
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters $parameters
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; closure=$closure; runId=$run.runId; executionMode='elevated-approved'; targetAgentId='knowledge_keeper'; message='Manual closure saved. Knowledge Keeper is updating evidence-backed knowledge and the final task summary.' }
@@ -802,10 +815,11 @@ try {
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -ne 'completed') { throw 'Only a completed task can be reopened.' }
                     Assert-TaskControllerIsIdle -Task $persistedTask
-                    $reopenParameters = @{ TaskId=$requestedTaskId; Reason=$reason; ResumeFrom=$resumeFrom; ExpectedRevision=[int](Get-ObjectPropertyValue -Source $body -Name 'expectedRevision'); ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    $reopenParameters = @{ TaskId=$requestedTaskId; Reason=$reason; ResumeFrom=$resumeFrom; ExpectedRevision=[int](Get-ObjectPropertyValue -Source $body -Name 'expectedRevision'); ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome }
                     $expectedRunId = [string](Get-ObjectPropertyValue -Source $body -Name 'runId')
                     $expectedLeaseId = [string](Get-ObjectPropertyValue -Source $body -Name 'leaseId')
                     if ($expectedRunId) { $reopenParameters.ExpectedRunId = $expectedRunId }
@@ -815,7 +829,7 @@ try {
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId; RepositoryIds=@($persistedTask.repositoryIds)
                         UserInstruction="Task revision $([int]$persistedTask.revision) was reopened: $reason"; Resume=$true; TargetAgentId=$resumeFrom
-                        ElevatedApproved=$true; ContinueChain=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                        ElevatedApproved=$true; ContinueChain=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome
                     }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; revision=$reopen.Revision; resumeFrom=$resumeFrom; runId=$run.runId; message="Task reopened as revision $($reopen.Revision). '$resumeFrom' and its downstream chain were scheduled." }
                     continue
@@ -853,29 +867,30 @@ try {
                 if ($path -match '^/api/tasks/([^/]+)/workflow/elevated$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not [bool]$config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                     $taskPath = Join-Path $stateRoot "tasks\$requestedTaskId\task.json"
                     if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw 'Task was not found.' }
                     $persistedTask = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                    if (-not [bool]$launchConfig.Config.runtime.elevatedFallback.enabled) { throw 'Elevated workflow execution is not enabled.' }
                     Assert-TaskViewIsCurrent -Task $persistedTask -Body $body
                     if ([string]$persistedTask.status -eq 'running' -and $persistedTask.PSObject.Properties['workflowProcessId']) {
                         $runningProcess = Get-Process -Id ([int]$persistedTask.workflowProcessId) -ErrorAction SilentlyContinue
                         if ($runningProcess) { throw "Task '$requestedTaskId' already has a running workflow." }
                     }
                     $repositoryIds = @(Get-RequestedRepositoryIds -Source $persistedTask -Required)
-                    $repositories = @(Get-EnabledRepositories -Config $config -RepositoryIds $repositoryIds)
-                    $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $requestedTaskId -ConfigPath $ConfigPath -CodexHome $CodexHome
+                    $repositories = @(Get-EnabledRepositories -Config $launchConfig.Config -RepositoryIds $repositoryIds)
+                    $resumePlan = & (Join-Path $PSScriptRoot 'Get-AgentResumePlan.ps1') -TaskId $requestedTaskId -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome
                     if (-not [bool]$resumePlan.HasWork) {
                         Send-Json -Response $response -Value @{ status='already-complete'; taskId=$requestedTaskId; pendingAgents=@(); message='No unfinished agents remain. Nothing was restarted.' }
                         continue
                     }
-                    if ([string]$config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Unsupported elevated workflow launch strategy.' }
-                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary 'Elevated workflow resume requested from the dashboard.' -Artifact $taskPath -TargetAgentId orchestrator -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+                    if ([string]$launchConfig.Config.runtime.elevatedFallback.launchStrategy -ne 'in-process-runspace') { throw 'Unsupported elevated workflow launch strategy.' }
+                    & (Join-Path $PSScriptRoot 'Add-TaskEvent.ps1') -TaskId $requestedTaskId -Actor user -Type workflow-status -Summary 'Elevated workflow resume requested from the dashboard.' -Artifact $taskPath -TargetAgentId orchestrator -ConfigPath ([string]$launchConfig.ConfigPath) -CodexHome $CodexHome | Out-Null
                     $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-DevelopmentWorkflow.ps1') -TaskId $requestedTaskId -Parameters @{
                         Mode=[string]$persistedTask.mode; TaskSelector=[string]$persistedTask.selector; TaskId=$requestedTaskId
                         RepositoryIds=$repositoryIds
                         UserInstruction='Resume after an OS-level execution denial. Process all unacknowledged comments before the next handoff.'
-                        Resume=$true; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome
+                        Resume=$true; ElevatedApproved=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome
                     }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; executionMode='elevated-approved'; launchStrategy='in-process-runspace'; pendingAgents=@($resumePlan.UnfinishedAgentIds); message="Elevated checkpoint resume started only for: $(@($resumePlan.UnfinishedAgentIds) -join ', ')." }
                     continue
@@ -891,9 +906,10 @@ try {
                 if ($path -match '^/api/tasks/([^/]+)/health-recovery/elevated$') {
                     $requestedTaskId = [Uri]::UnescapeDataString($Matches[1])
                     if ($requestedTaskId -notmatch '^[A-Za-z0-9._-]+$') { throw 'Task ID contains unsupported characters.' }
-                    if (-not [bool]$config.health.automaticRecovery.elevatedFallback.enabled) { throw 'Elevated recovery is not enabled.' }
                     $taskRoot = Join-Path $stateRoot "tasks\$requestedTaskId"
                     if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'task.json') -PathType Leaf)) { throw 'Task was not found.' }
+                    $launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $requestedTaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+                    if (-not [bool]$launchConfig.Config.health.automaticRecovery.elevatedFallback.enabled) { throw 'Elevated recovery is not enabled.' }
                     $failurePath = Get-ChildItem -LiteralPath $taskRoot -Filter 'agent-failure-*.json' -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1 -ExpandProperty FullName
                     if (-not $failurePath) { throw 'No failure artifact is available for elevated recovery.' }
                     $failure = Get-Content -LiteralPath $failurePath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -928,11 +944,11 @@ try {
                         }
                     }
                     if ($recoveryEvidencePath) {
-                        $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; RecoveryEvidencePath=$recoveryEvidencePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                        $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; RecoveryEvidencePath=$recoveryEvidencePath; ElevatedApproved=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome }
                         Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="Validated repair is ready. Health Check started only '$([string]$failure.agentId)' in the approved elevated profile." }
                         continue
                     }
-                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
+                    $run = Start-ScriptRunspace -ScriptPath (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') -TaskId $requestedTaskId -Parameters @{ TaskId=$requestedTaskId; FailurePath=$failurePath; ElevatedApproved=$true; ConfigPath=[string]$launchConfig.ConfigPath; CodexHome=$CodexHome }
                     Send-Json -Response $response -Value @{ status='started'; taskId=$requestedTaskId; processId=$PID; runId=$run.runId; targetAgentId=[string]$failure.agentId; message="One elevated Health Check repair attempt was approved, including preservation-aware work over the current ecosystem worktree. After validation it will restart only '$([string]$failure.agentId)'." }
                     continue
                 }

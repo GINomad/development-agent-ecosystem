@@ -72,7 +72,16 @@ foreach($token in @('agentProviderSelect','switchAgentProvider','Switch-TaskAgen
 
 $providerLimitClassifier=Join-Path $root 'scripts\Test-ProviderLimitDiagnostic.ps1'
 foreach($token in @('Test-ProviderLimitDiagnostic.ps1','individual spend limit','execution retry limit reached')){if(($workflow+$providerLimitClassifierSource) -notmatch [regex]::Escape($token)){throw "Provider-limit classifier integration is missing '$token'."}}
+$providerExecutionResolver=Join-Path $root 'scripts\Resolve-ProviderExecutionFailure.ps1'
+if($workflow -notmatch [regex]::Escape('Resolve-ProviderExecutionFailure.ps1')){throw 'Workflow does not delegate provider failure handling to the exit-aware resolver.'}
 if([bool](& $providerLimitClassifier -Diagnostic 'Execution retry limit reached after 3 identical failures: Get-Help -Full -LiteralPath is invalid.')){throw 'Execution retry exhaustion was misclassified as a provider capacity limit.'}
+if([bool](& $providerLimitClassifier -Diagnostic '{"taskId":"fixture","agentStatuses":{"developer":{"status":"failed"}},"message":"configured capacity is 2"}')){throw 'Serialized task state was misclassified as a provider capacity limit.'}
+foreach($historicalDetail in @('prefix {"taskId":"fixture","agentStatuses":{"developer":{"status":"failed"}},"message":"configured capacity is 2"}','{"taskId":"fixture","agentStatuses":{"developer":{"status":"failed"}},"message":"configured capacity is 2"'.PadRight(2048,' '),'{"taskId":"first","agentStatuses":{}} {"taskId":"second","agentStatuses":{"developer":{"status":"failed"}},"message":"configured capacity is 2"}')){
+    $successfulRun=& $providerExecutionResolver -ExitCode 0 -Provider codex -LogPath 'fixture.log' -FailureDetail $historicalDetail -Reason ''
+    if([bool]$successfulRun.ShouldThrow -or [bool]$successfulRun.IsProviderLimit){throw 'Successful provider execution was classified from historical diagnostic text.'}
+}
+$limitedRun=& $providerExecutionResolver -ExitCode 1 -Provider codex -LogPath 'fixture.log' -FailureDetail 'Provider rate limit reached.' -Reason ''
+if(-not [bool]$limitedRun.ShouldThrow -or -not [bool]$limitedRun.IsProviderLimit -or [string]$limitedRun.Message -ne 'Provider rate limit reached.'){throw 'A genuine non-zero provider quota failure was not retained for fallback classification.'}
 if(-not [bool](& $providerLimitClassifier -Diagnostic 'Provider rate limit reached.')){throw 'Provider rate-limit diagnostic was not classified for configured fallback.'}
 if(-not [bool](& $providerLimitClassifier -Diagnostic 'Individual spend limit reached.')){throw 'Provider spend-limit diagnostic was not classified for configured fallback.'}
 Write-Utf8NoBom -Path (Join-Path $taskRoot 'context-pack.json') -Content (([ordered]@{

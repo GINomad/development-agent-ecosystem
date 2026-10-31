@@ -635,9 +635,8 @@ try {
     }
     $codexExitCode = [int]$guardResult.exitCode
     if ([bool]$guardResult.guardTriggered) { throw [string]$guardResult.reason }
-    $providerFailureDetail = (@([string]$guardResult.failureDetail,[string]$guardResult.reason) | Where-Object { $_ }) -join ' '
-    if (& (Join-Path $PSScriptRoot 'Test-ProviderLimitDiagnostic.ps1') -Diagnostic $providerFailureDetail) { throw $providerFailureDetail }
-    if ($codexExitCode -ne 0) { throw "$($providerRoute.provider) exited with code $codexExitCode. See $codexLogPath" }
+    $providerExecutionFailure = & (Join-Path $PSScriptRoot 'Resolve-ProviderExecutionFailure.ps1') -ExitCode $codexExitCode -Provider ([string]$providerRoute.provider) -LogPath $codexLogPath -FailureDetail ([string]$guardResult.failureDetail) -Reason ([string]$guardResult.reason)
+    if ([bool]$providerExecutionFailure.ShouldThrow) { throw [string]$providerExecutionFailure.Message }
     # Codex can return exit 0 while its JSONL transcript contains a rejected MCP tool call.
     # Treat that as a transport failure before accepting the agent's terminal artifact.
     if ([string]$mcpExecution.Mode -eq 'mcp' -and (Test-Path -LiteralPath $codexLogPath)) {

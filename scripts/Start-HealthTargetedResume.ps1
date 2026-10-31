@@ -14,17 +14,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
-$config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$hostConfig = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
+$stateRoot = Get-EcosystemStateRoot -Config $hostConfig -CodexHome $CodexHome
+$taskRoot = Join-Path $stateRoot "tasks\$TaskId"
+$taskPath = Join-Path $taskRoot 'task.json'
+if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
+$launchConfig = & (Join-Path $PSScriptRoot 'Resolve-TaskLaunchConfig.ps1') -TaskId $TaskId -HostConfigPath $ConfigPath -CodexHome $CodexHome
+$ConfigPath = [string]$launchConfig.ConfigPath
+$config = $launchConfig.Config
 if ([bool]$config.runtime.elevatedFallback.useByDefault) { $ElevatedApproved = $true }
 $targetedConfig = $config.health.automaticRecovery.targetedResume
 if (-not [bool]$targetedConfig.enabled) {
     return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId; TargetAgentId=$null }
 }
-
-$stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
-$taskRoot = Join-Path $stateRoot "tasks\$TaskId"
-$taskPath = Join-Path $taskRoot 'task.json'
-if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 
 function Resolve-TaskArtifactPath {
     param([Parameter(Mandatory)][string] $Path)
@@ -123,6 +125,8 @@ if ($attemptCount -ge $maximumAttempts) {
 }
 
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$taskConfigPath = $ConfigPath
+$taskConfig = $config
 if ([string]$task.status -eq 'running' -and $task.PSObject.Properties['workflowProcessId']) {
     $activeProcess = Get-Process -Id ([int]$task.workflowProcessId) -ErrorAction SilentlyContinue
     if ($activeProcess) {
@@ -131,7 +135,7 @@ if ([string]$task.status -eq 'running' -and $task.PSObject.Properties['workflowP
 }
 $activeExecutionRunId = $ExecutionRunId
 $activeWorkspaceLeaseId = $WorkspaceLeaseId
-$activeRecoveryLease = if ($activeExecutionRunId -and $activeWorkspaceLeaseId) { Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $config -ConfigPath $ConfigPath -CodexHome $CodexHome } else { $null }
+$activeRecoveryLease = if ($activeExecutionRunId -and $activeWorkspaceLeaseId) { Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $taskConfig -ConfigPath $taskConfigPath -CodexHome $CodexHome } else { $null }
 if (-not $activeRecoveryLease) {
     $activeExecutionRunId = $null
     $activeWorkspaceLeaseId = $null
@@ -179,7 +183,7 @@ $workflowParameters = @{
     TargetAgentId = $targetAgentId
     HealthRecoveryRetry = $true
     ContinueChain = $true
-    ConfigPath = $ConfigPath
+    ConfigPath = $taskConfigPath
     CodexHome = $CodexHome
 }
 if ($activeExecutionRunId) { $workflowParameters.ExecutionRunId = $activeExecutionRunId }
@@ -189,7 +193,7 @@ $leaseRenewed = $false
 
 try {
     if ($activeExecutionRunId -and $activeWorkspaceLeaseId) {
-        $refreshedLease = Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $config -ConfigPath $ConfigPath -CodexHome $CodexHome -RefreshHeartbeat
+        $refreshedLease = Resolve-TaskWorkspaceLeaseContext -TaskId $TaskId -ExpectedRunId $activeExecutionRunId -ExpectedLeaseId $activeWorkspaceLeaseId -Config $taskConfig -ConfigPath $taskConfigPath -CodexHome $CodexHome -RefreshHeartbeat
         if (-not $refreshedLease) {
             $workflowParameters.Remove('ExecutionRunId')
             $workflowParameters.Remove('WorkspaceLeaseId')
