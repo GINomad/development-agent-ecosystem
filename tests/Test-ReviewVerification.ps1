@@ -400,6 +400,10 @@ $originalTaskId=$taskId; $originalTaskRoot=$taskRoot; $originalReviewPath=$revie
 $taskId=$originalTaskId+'-pending'; $taskRoot=Join-Path $stateRoot "tasks\$taskId"
 $reviewPath=Join-Path $taskRoot 'review-result.json'; $verificationPath=Join-Path $taskRoot 'review-verification.json'
 & (Join-Path $root 'scripts/New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'synthetic-pending-publication' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath | Out-Null
+$pendingTask = Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$pendingTask.repositoryId = 'synthetic'
+$pendingTask.repositoryIds = @('synthetic','unchanged-companion')
+Write-JsonFile -Path (Join-Path $taskRoot 'task.json') -Value $pendingTask
 $pendingCommit = '2222222222222222222222222222222222222222'
 $pendingReview = New-Review -Revision $pendingCommit -LifecycleStatus resolved
 $pendingReview.findings = @(); $pendingReview.findingLifecycle = @()
@@ -452,6 +456,45 @@ $malformedPendingReview.reviewCoverage | Where-Object { [string]$_.dimension -eq
 $malformedPendingGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $malformedPendingReview -Verification $pendingVerification -RepositoryId synthetic
 if ([bool]$malformedPendingGate.Allowed) { throw 'Wrong-repository pending evidence must not permit delivery.' }
 
+# A full-task review may include an unchanged companion repository. Exercise the
+# real trusted continuation wrapper, not a source-text condition, so only the
+# selected changed primary can advance to the pre-push Pipeline Monitor gate.
+function Invoke-MultiScopePrepareOnly {
+    param([Parameter(Mandatory)][object[]] $Scopes, [Parameter(Mandatory)][bool] $ExpectedAllowed, [string] $TaskPrimaryRepositoryId = 'synthetic')
+    $candidate = $pendingReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+    $candidate.reviewScope.repositories = @($Scopes)
+    Write-JsonFile -Path $reviewPath -Value $candidate
+    $candidateVerification = New-Verification -Review $candidate
+    $candidateVerification.coverageVerification | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object {
+        $_.claimedStatus = 'pending-downstream'
+        $_.downstreamObligation = @($candidate.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' })[0].downstreamObligation
+    }
+    Write-JsonFile -Path $verificationPath -Value $candidateVerification
+    $candidateTask = Get-Content -LiteralPath (Join-Path $taskRoot 'task.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $candidateTask.repositoryId = $TaskPrimaryRepositoryId
+    Write-JsonFile -Path (Join-Path $taskRoot 'task.json') -Value $candidateTask
+    & (Join-Path $root 'scripts\Set-AgentTaskStatus.ps1') -TaskId $taskId -Status review_pending -AgentId review_verifier -AgentStatus completed -Stage verification_completed -Message 'Synthetic multi-scope verification completed.' -ConfigPath $testConfigPath | Out-Null
+    $prepared = & (Join-Path $root 'scripts\Invoke-OrchestratorContinuation.ps1') -TaskId $taskId -CompletedAgentId review_verifier -PrepareOnly -ConfigPath $testConfigPath
+    $nextAgentId = if ($prepared.PSObject.Properties['NextAgentId']) { [string]$prepared.NextAgentId } else { '' }
+    if ($ExpectedAllowed) {
+        if ([string]$prepared.Status -ne 'prepared' -or $nextAgentId -ne 'pipeline_monitor') { throw "An unchanged companion scope must prepare Pipeline Monitor, got '$($prepared.Status)' / '$nextAgentId': $($prepared | ConvertTo-Json -Compress -Depth 6)" }
+    }
+    elseif ([string]$prepared.Status -ne 'review-pending') {
+        throw "An ambiguous multi-repository delivery scope must remain review-pending, got '$($prepared.Status)'."
+    }
+}
+
+$primaryScope = [ordered]@{ repositoryId='synthetic'; baseRevision='base-rev'; targetRevision=$pendingCommit; changedFiles=@('src/example.ps1') }
+$unchangedCompanion = [ordered]@{ repositoryId='unchanged-companion'; baseRevision='same-rev'; targetRevision='same-rev'; changedFiles=@() }
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,$unchangedCompanion) -ExpectedAllowed $true
+Invoke-MultiScopePrepareOnly -Scopes @($unchangedCompanion,$primaryScope) -ExpectedAllowed $true
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,[ordered]@{ repositoryId='second-changed'; baseRevision='base-2'; targetRevision='target-2'; changedFiles=@('src/second.ps1') }) -ExpectedAllowed $false
+Invoke-MultiScopePrepareOnly -Scopes @([ordered]@{ repositoryId='non-primary'; baseRevision='base-2'; targetRevision='target-2'; changedFiles=@('src/non-primary.ps1') },$unchangedCompanion) -ExpectedAllowed $false
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,[ordered]@{ repositoryId='revision-mismatch-companion'; baseRevision='base-3'; targetRevision='target-3'; changedFiles=@() }) -ExpectedAllowed $false
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,[ordered]@{ repositoryId='synthetic'; baseRevision='same-primary'; targetRevision='same-primary'; changedFiles=@() }) -ExpectedAllowed $false
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,[ordered]@{ repositoryId='SYNTHETIC'; baseRevision='case-variant-primary'; targetRevision='case-variant-primary'; changedFiles=@() }) -ExpectedAllowed $false
+Invoke-MultiScopePrepareOnly -Scopes @($primaryScope,$unchangedCompanion) -ExpectedAllowed $false -TaskPrimaryRepositoryId 'missing-primary'
+
 $taskId=$originalTaskId; $taskRoot=$originalTaskRoot; $reviewPath=$originalReviewPath; $verificationPath=$originalVerificationPath
 
 [pscustomobject][ordered]@{
@@ -476,5 +519,6 @@ $taskId=$originalTaskId; $taskRoot=$originalTaskRoot; $reviewPath=$originalRevie
         'actual pending schema, Reviewer publication and independent Verifier publication',
         'each of six obligation mismatches plus null and missing fields rejected',
         'original precedence defect fails against the same valid pending documents in an isolated validator copy'
+        'actual Invoke-OrchestratorContinuation permits one changed primary with unchanged companions and blocks ambiguous, duplicate-primary including case aliases, and missing-primary multi-repository delivery scopes'
     )
 }

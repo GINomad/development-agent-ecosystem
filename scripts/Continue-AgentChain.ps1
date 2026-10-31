@@ -322,7 +322,24 @@ for ($step = 1; $step -le [int]$chainConfig.maxChainSteps; $step++) {
                 $nextAgentId = 'reviewer'
                 break
             }
-            $coverageRepositoryId = if (@($review.reviewScope.repositories).Count -eq 1) { [string]$review.reviewScope.repositories[0].repositoryId } else { '' }
+            $repositoryScopes = @($review.reviewScope.repositories)
+            $coverageRepositoryId = if ($repositoryScopes.Count -eq 1) {
+                [string]$repositoryScopes[0].repositoryId
+            }
+            else {
+                $primaryRepositoryId = if ($task.PSObject.Properties['repositoryId']) { [string]$task.repositoryId } else { '' }
+                $scopeRepositoryIds = @($repositoryScopes | ForEach-Object { [string]$_.repositoryId })
+                $primaryScopes = @($repositoryScopes | Where-Object { [string]$_.repositoryId -eq $primaryRepositoryId })
+                $changedScopes = @($repositoryScopes | Where-Object { @($_.changedFiles).Count -gt 0 })
+                $unchangedCompanions = @($repositoryScopes | Where-Object {
+                    @($_.changedFiles).Count -eq 0 -and [string]$_.baseRevision -eq [string]$_.targetRevision
+                })
+                $hasUniqueScopeRepositoryIds = $scopeRepositoryIds.Count -eq $repositoryScopes.Count -and @($scopeRepositoryIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0 -and @($scopeRepositoryIds | Select-Object -Unique).Count -eq $scopeRepositoryIds.Count
+                if ($hasUniqueScopeRepositoryIds -and $primaryRepositoryId -and $primaryScopes.Count -eq 1 -and $changedScopes.Count -eq 1 -and [string]$changedScopes[0].repositoryId -eq $primaryRepositoryId -and $unchangedCompanions.Count -eq ($repositoryScopes.Count - 1)) {
+                    $primaryRepositoryId
+                }
+                else { '' }
+            }
             $coverageGate = if ($coverageRepositoryId) { & (Join-Path $PSScriptRoot 'Test-PrePushReviewCoverage.ps1') -Review $review -Verification $verification -RepositoryId $coverageRepositoryId } else { [pscustomobject]@{ Allowed=$false; BlockingReasons=@('review scope is not a single delivery repository') } }
             if (-not [bool]$coverageGate.Allowed) {
                 $message = "Independent verification confirmed blocking review coverage: $(@($coverageGate.BlockingReasons) -join ', '). Supply the missing evidence and rerun Reviewer."
