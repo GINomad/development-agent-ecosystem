@@ -29,6 +29,8 @@ $plannedWorkspaces = @($repositoryIds | ForEach-Object {
     [pscustomobject][ordered]@{ RepositoryId=$requestedRepositoryId; Path=[string]$layout.ClonePath; Branch=[string]$layout.Branch; BaseSha=$null; Lifecycle='planned'; CanonicalOrigin=[string]$repository.url; RunId=$RunId; LeaseId=$null; ManifestPath=(Join-Path $taskRoot "workspaces\$requestedRepositoryId.json") }
 })
 $coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
+$lockMetricsPath = Join-Path $stateRoot 'health\lock-metrics.jsonl'
+$lockCorrelationId = "$TaskId/$RunId"
 $controllerProcess = Get-Process -Id $PID -ErrorAction Stop
 $controllerStartedAtUtc = $controllerProcess.StartTime.ToUniversalTime().ToString('o')
 if (-not $PrepareOnly) {
@@ -54,8 +56,42 @@ function Get-QueuePosition {
     }
     return $null
 }
+function Get-FirstQueuedTaskId {
+    # This is a deliberately advisory snapshot.  Admission's coordinator lock
+    # remains the authority for lease capacity; the filesystem walk must never
+    # be performed while it is held.
+    $queued = [Collections.Generic.List[object]]::new()
+    $leasedTaskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) {
+        try {
+            $snapshotCoordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($lease in @($snapshotCoordinator.leases)) { $null = $leasedTaskIds.Add([string]$lease.taskId) }
+        }
+        catch { }
+    }
+    foreach ($taskFile in @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter task.json -File -Recurse -ErrorAction SilentlyContinue)) {
+        try { $candidate = Get-Content -LiteralPath $taskFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+        if ([string]$candidate.status -eq 'queued' -and -not $leasedTaskIds.Contains([string]$candidate.taskId)) { $queued.Add($candidate) }
+    }
+    $first = @($queued | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}} | Select-Object -First 1)
+    if ($first.Count) { return [string]$first[0].taskId }
+    return $null
+}
+function Get-TerminalQueuedTaskSnapshots {
+    param([object[]] $Entries)
+    $terminal = [Collections.Generic.List[object]]::new()
+    foreach ($entry in @($Entries)) {
+        $candidatePath = Join-Path $stateRoot ("tasks\\$([string]$entry.taskId)\\task.json")
+        if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) { continue }
+        try { $candidate = Get-Content -LiteralPath $candidatePath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+        $queuedAt = try { [DateTime]::Parse([string]$entry.queuedAtUtc).ToUniversalTime() } catch { [DateTime]::MinValue }
+        $updatedAt = try { [DateTime]::Parse([string]$candidate.updatedAtUtc).ToUniversalTime() } catch { [DateTime]::MinValue }
+        if ([string]$candidate.status -in @('completed','failed','cancelled') -and $updatedAt -ge $queuedAt) { $terminal.Add([pscustomobject]@{ taskId=[string]$entry.taskId; queuedAtUtc=[string]$entry.queuedAtUtc }) }
+    }
+    return @($terminal)
+}
 function Set-TaskQueued {
-    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
         $current = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $current.status = 'queued'; $current.currentStage = 'workspace_queued'; $current.lastMessage = 'Task queued awaiting an independent workspace lease.'; $current.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
         Write-Utf8NoBomAtomic -Path $taskPath -Content (($current | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
@@ -63,7 +99,7 @@ function Set-TaskQueued {
 }
 function Set-TaskWorkspaceActive {
     param([Parameter(Mandatory)][string] $LeaseId)
-    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+    Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'task-state.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
         $current = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $now = [DateTime]::UtcNow.ToString('o')
         $current | Add-Member -NotePropertyName status -NotePropertyValue 'running' -Force
@@ -76,12 +112,27 @@ function Set-TaskWorkspaceActive {
         Write-Utf8NoBomAtomic -Path $taskPath -Content (($current | ConvertTo-Json -Depth 24) + [Environment]::NewLine)
     } | Out-Null
 }
-$admission = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+$firstQueuedTaskIdSnapshot = Get-FirstQueuedTaskId
+$queueCoordinatorSnapshot = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) { try { Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } } else { $null }
+$terminalQueuedSnapshots = if ($queueCoordinatorSnapshot -and $queueCoordinatorSnapshot.PSObject.Properties['queuedTasks']) { @(Get-TerminalQueuedTaskSnapshots -Entries @($queueCoordinatorSnapshot.queuedTasks)) } else { @() }
+$admission = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
     $coordinator = if (Test-Path -LiteralPath $coordinatorPath -PathType Leaf) { Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject][ordered]@{ schemaVersion='2.0.0'; leases=@(); updatedAtUtc=$null } }
     if (-not $coordinator.PSObject.Properties['leases']) { $coordinator | Add-Member -NotePropertyName leases -NotePropertyValue @() -Force }
+    if (-not $coordinator.PSObject.Properties['queuedTasks']) { $coordinator | Add-Member -NotePropertyName queuedTasks -NotePropertyValue @() -Force }
+    foreach ($terminalSnapshot in $terminalQueuedSnapshots) {
+        $coordinator.queuedTasks = @($coordinator.queuedTasks | Where-Object { -not ([string]$_.taskId -eq [string]$terminalSnapshot.taskId -and [string]$_.queuedAtUtc -eq [string]$terminalSnapshot.queuedAtUtc) })
+    }
+    $queueCreatedAtUtc = if ($task.PSObject.Properties['createdAtUtc']) { [string]$task.createdAtUtc } else { [DateTime]::UtcNow.ToString('o') }
+    $queueEntry = [pscustomobject][ordered]@{ taskId=$TaskId; runId=$RunId; createdAtUtc=$queueCreatedAtUtc; queuedAtUtc=[DateTime]::UtcNow.ToString('o') }
+    $persistQueued = {
+        $coordinator.queuedTasks = @($coordinator.queuedTasks | Where-Object { [string]$_.taskId -ne $TaskId }) + @($queueEntry)
+        $coordinator.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+        if (-not $PrepareOnly) { Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine) }
+    }
     $existing = $coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId } | Select-Object -First 1
     $capacity = [int]$config.workflow.workspaceScheduling.maxActiveTasks
     if ($null -ne $existing) {
+        $coordinator.queuedTasks = @($coordinator.queuedTasks | Where-Object { [string]$_.taskId -ne $TaskId })
         $leasedRepositoryIds = @($existing.repositories | ForEach-Object { [string]$_ } | Where-Object { $_ } | Select-Object -Unique)
         if (($leasedRepositoryIds -join '|') -ne ($repositoryIds -join '|')) { throw "Task '$TaskId' active workspace lease scope does not match its persisted repository scope." }
         if (-not $ExpectedLeaseId) { throw "Task '$TaskId' already has an active controller." }
@@ -90,19 +141,13 @@ $admission = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -Timeout
     }
     if ($ExpectedLeaseId) { throw "Expected lease '$ExpectedLeaseId' for task '$TaskId' is no longer active." }
     $activeCount = @($coordinator.leases).Count
-    $leasedTaskIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($lease in @($coordinator.leases)) { $null = $leasedTaskIds.Add([string]$lease.taskId) }
-    $waitingTasks = [Collections.Generic.List[object]]::new()
-    foreach ($taskFile in @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'tasks') -Filter task.json -File -Recurse -ErrorAction SilentlyContinue)) {
-        try { $waitingTask = Get-Content -LiteralPath $taskFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-        if ([string]$waitingTask.status -eq 'queued' -and -not $leasedTaskIds.Contains([string]$waitingTask.taskId)) { $waitingTasks.Add($waitingTask) }
-    }
-    $firstWaitingTask = @($waitingTasks | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}} | Select-Object -First 1)
-    if ($firstWaitingTask.Count -and [string]$firstWaitingTask[0].taskId -ne $TaskId) { return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
-    if ($activeCount -ge $capacity) { return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
+    $registeredQueueWithCandidate = @(@($coordinator.queuedTasks | Where-Object { [string]$_.taskId -ne $TaskId }) + @($queueEntry))
+    $firstRegisteredQueuedTask = @($registeredQueueWithCandidate | Sort-Object @{Expression={ try { [DateTime]::Parse([string]$_.createdAtUtc).ToUniversalTime() } catch { [DateTime]::MaxValue } }}, @{Expression={[string]$_.taskId}} | Select-Object -First 1)
+    if (($firstQueuedTaskIdSnapshot -and $firstQueuedTaskIdSnapshot -ne $TaskId) -or ($firstRegisteredQueuedTask.Count -and [string]$firstRegisteredQueuedTask[0].taskId -ne $TaskId)) { & $persistQueued; return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
+    if ($activeCount -ge $capacity) { & $persistQueued; return [pscustomobject]@{ Status='queue'; Capacity=$capacity; ActiveTaskCount=$activeCount } }
     $leaseId = [guid]::NewGuid().ToString('N')
     $lease = [pscustomobject][ordered]@{ taskId=$TaskId; runId=$RunId; leaseId=$leaseId; lifecycle='provisioning'; acquiredAtUtc=[DateTime]::UtcNow.ToString('o'); heartbeatAtUtc=[DateTime]::UtcNow.ToString('o'); controllerProcessId=$PID; controllerStartedAtUtc=$controllerStartedAtUtc; repositories=@($repositoryIds) }
-    $coordinator.leases = @($coordinator.leases) + @($lease); $coordinator.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    $coordinator.leases = @($coordinator.leases) + @($lease); $coordinator.queuedTasks = @($coordinator.queuedTasks | Where-Object { [string]$_.taskId -ne $TaskId }); $coordinator.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
     if (-not $PrepareOnly) { Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine) }
     return [pscustomobject]@{ Status=if($PrepareOnly){'would-admit'}else{'admitted'}; Lease=$lease; Capacity=$capacity; ActiveTaskCount=($activeCount+1) }
 }
@@ -122,7 +167,7 @@ if ($PrepareOnly) { return [pscustomobject]@{ Status='would-admit'; TaskId=$Task
 try {
     & (Join-Path $PSScriptRoot 'Repair-LegacyTaskWorkspaceBranches.ps1') -TaskId $TaskId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     $workspaces = @(& (Join-Path $PSScriptRoot 'Provision-TaskWorkspace.ps1') -TaskId $TaskId -RepositoryIds $repositoryIds -RunId $RunId -LeaseId ([string]$admission.Lease.leaseId) -ConfigPath $ConfigPath -CodexHome $CodexHome)
-    Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -Action {
+    Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
         $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $lease = $coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.leaseId -eq [string]$admission.Lease.leaseId } | Select-Object -First 1
         if ($null -eq $lease) { throw "Workspace lease for '$TaskId' was released during provisioning." }
@@ -130,9 +175,19 @@ try {
         Write-Utf8NoBomAtomic -Path $coordinatorPath -Content (($coordinator | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
     } | Out-Null
     foreach ($workspace in $workspaces) {
-        $manifest = Get-Content -LiteralPath $workspace.ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $manifest.lifecycle = 'active'; $manifest.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
-        Write-Utf8NoBomAtomic -Path $workspace.ManifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+        Invoke-EcosystemFileLock -LockPath (Join-Path $taskRoot 'workspace-manifests.lock') -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
+            $manifest = Get-Content -LiteralPath $workspace.ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ([string]$manifest.runId -ne $RunId -or [string]$manifest.leaseId -ne [string]$admission.Lease.leaseId) { throw "Workspace manifest for '$($workspace.RepositoryId)' changed ownership during activation." }
+            $committed = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
+                $currentCoordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $currentLease = @($currentCoordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.runId -eq $RunId -and [string]$_.leaseId -eq [string]$admission.Lease.leaseId })
+                if ($currentLease.Count -ne 1) { return $false }
+                $manifest.lifecycle = 'active'; $manifest.updatedAtUtc = [DateTime]::UtcNow.ToString('o')
+                Write-Utf8NoBomAtomic -Path $workspace.ManifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+                return $true
+            }
+            if (-not $committed) { throw "Workspace lease for '$TaskId' was replaced during manifest activation." }
+        } | Out-Null
         $workspace.Lifecycle = 'active'
     }
     Set-TaskWorkspaceActive -LeaseId ([string]$admission.Lease.leaseId)

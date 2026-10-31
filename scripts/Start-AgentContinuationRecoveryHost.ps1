@@ -14,7 +14,11 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $hostLockPath = Join-Path $stateRoot 'continuation-recovery-host.lock'
 $hostLogPath = Join-Path $stateRoot 'continuation-recovery-host.jsonl'
+$healthRoot = Join-Path $stateRoot 'health'
+$resultPath = Join-Path $healthRoot 'continuation-recovery-result.json'
 New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $healthRoot -Force | Out-Null
+$cycleErrors = [Collections.Generic.List[object]]::new()
 
 function Write-RecoveryHostError {
     param(
@@ -29,6 +33,20 @@ function Write-RecoveryHostError {
         message = $ErrorRecord.Exception.Message
     } | ConvertTo-Json -Compress
     [IO.File]::AppendAllText($hostLogPath, $record + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+    $cycleErrors.Add([pscustomobject]@{ component=$Component; message=$ErrorRecord.Exception.Message })
+}
+
+function Write-RecoveryHostResult {
+    param([string]$ContinuationRepairStatus,[string]$WorkspaceCleanupStatus)
+    $result = [ordered]@{
+        schemaVersion = '1.0.0'
+        checkedAtUtc = [DateTime]::UtcNow.ToString('o')
+        status = if ($cycleErrors.Count) { 'degraded' } else { 'healthy' }
+        continuationRepairStatus = $ContinuationRepairStatus
+        workspaceCleanupStatus = $WorkspaceCleanupStatus
+        errors = @($cycleErrors)
+    }
+    Write-Utf8NoBomAtomic -Path $resultPath -Content (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine)
 }
 
 try {
@@ -41,12 +59,16 @@ catch [IO.IOException] {
 try {
     $intervalMinutes = [int]$config.workflow.automaticContinuation.recoveryPollIntervalMinutes
     while ($true) {
+        $cycleErrors.Clear()
+        $continuationRepairStatus = 'completed'
+        $workspaceCleanupStatus = 'completed'
         try {
             $parameters = @{ Repair=$true; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
             if ($ElevatedApproved -or [bool]$config.workflow.automaticContinuation.useElevatedExecution) { $parameters.ElevatedApproved=$true }
             & (Join-Path $PSScriptRoot 'Repair-AgentContinuations.ps1') @parameters | Out-Null
         }
         catch {
+            $continuationRepairStatus = 'failed'
             Write-RecoveryHostError -Component 'continuation-repair' -ErrorRecord $_
         }
 
@@ -54,6 +76,7 @@ try {
             & (Join-Path $PSScriptRoot 'Remove-CompletedTaskWorkspaces.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
         catch {
+            $workspaceCleanupStatus = 'failed'
             Write-RecoveryHostError -Component 'workspace-cleanup' -ErrorRecord $_
         }
 
@@ -66,6 +89,7 @@ try {
         catch {
             Write-RecoveryHostError -Component 'config-reload' -ErrorRecord $_
         }
+        Write-RecoveryHostResult -ContinuationRepairStatus $continuationRepairStatus -WorkspaceCleanupStatus $workspaceCleanupStatus
 
         if ($RunOnce) { break }
         $remainingSeconds = [Math]::Max(1, $intervalMinutes * 60)

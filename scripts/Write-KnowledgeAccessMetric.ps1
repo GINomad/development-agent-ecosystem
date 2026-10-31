@@ -6,7 +6,8 @@ param(
     [string] $RunId,
     [string] $LeaseId,
     [Parameter(Mandatory)][string] $AgentId,
-    [Parameter(Mandatory)][ValidateSet('skill','knowledge','repository-map','artifact','context-pack')][string] $SourceKind,
+    [Parameter(Mandatory)][ValidateSet('skill','knowledge','repository-map','artifact','context-pack','project-skill','project-knowledge')][string] $SourceKind,
+    [ValidateSet('project-skill','project-knowledge')][string] $SourceKindAlias,
     [Parameter(Mandatory)][ValidateSet('selected','read','used','reused','rebuilt','full-scan','fallback')][string] $AccessMode,
     [Parameter(Mandatory)][string] $SourceId,
     [string] $SourceLocation,
@@ -24,6 +25,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+$canonicalSourceKind = switch ($SourceKind) { 'project-skill' { 'skill' } 'project-knowledge' { 'knowledge' } default { $SourceKind } }
+$effectiveSourceKindAlias = if ($SourceKindAlias) { $SourceKindAlias } elseif ($canonicalSourceKind -ne $SourceKind) { $SourceKind } else { $null }
 $path = Join-Path $TaskRoot 'knowledge-usage.jsonl'
 $lockPath = $path + '.lock'
 $record = [ordered]@{
@@ -37,7 +40,8 @@ $record = [ordered]@{
         runId = $RunId
         leaseId = $LeaseId
         agentId = $AgentId
-        sourceKind = $SourceKind
+        sourceKind = $canonicalSourceKind
+        sourceKindAlias = $effectiveSourceKindAlias
         accessMode = $AccessMode
         sourceId = $SourceId
         sourceLocation = $SourceLocation
@@ -77,7 +81,8 @@ catch {
         timestampUtc = $record.timestampUtc
         taskId = $TaskId
         agentId = $AgentId
-        sourceKind = $SourceKind
+        sourceKind = $canonicalSourceKind
+        sourceKindAlias = $effectiveSourceKindAlias
         accessMode = $AccessMode
         sourceId = $SourceId
         status = 'deferred-lock-contention'

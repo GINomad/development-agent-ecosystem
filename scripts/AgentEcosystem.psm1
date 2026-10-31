@@ -494,8 +494,13 @@ function Invoke-EcosystemFileLock {
     param(
         [Parameter(Mandatory)][string] $LockPath,
         [Parameter(Mandatory)][scriptblock] $Action,
-        [int] $TimeoutSeconds = 30
+        [int] $TimeoutSeconds = 30,
+        [string] $MetricsPath,
+        [string] $CorrelationId
     )
+    $waitTimer = [Diagnostics.Stopwatch]::StartNew()
+    $holdTimer = [Diagnostics.Stopwatch]::new()
+    $lockStatus = 'timed-out'
     $parent = Split-Path -Parent $LockPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -504,9 +509,30 @@ function Invoke-EcosystemFileLock {
         try { $stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
         catch [IO.IOException] { Start-Sleep -Milliseconds 75 }
     }
-    if (-not $stream) { throw [IO.IOException]::new("Timed out waiting for exclusive lock '$LockPath'.") }
-    try { return & $Action }
-    finally { $stream.Dispose() }
+    $waitTimer.Stop()
+    try {
+        if (-not $stream) { throw [IO.IOException]::new("Timed out waiting for exclusive lock '$LockPath'.") }
+        $holdTimer.Start()
+        $lockStatus = 'action-failed'
+        & $Action
+        $lockStatus = 'completed'
+    }
+    finally {
+        $holdTimer.Stop()
+        if ($stream) { $stream.Dispose() }
+        # Emit only after releasing the target lock; diagnostics never acquire another
+        # workflow lock or replace the original error/result.
+        if ($MetricsPath) {
+            $metricLock = $null
+            try {
+                $null = [IO.Directory]::CreateDirectory((Split-Path -Parent $MetricsPath))
+                $metricLock = [IO.File]::Open(($MetricsPath + '.metrics.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+                $metric = [ordered]@{schemaVersion=1;eventId=[guid]::NewGuid().ToString('N');eventType='lock-acquisition';timestampUtc=[DateTime]::UtcNow.ToString('o');correlationId=$CorrelationId;lockName=[IO.Path]::GetFileName($LockPath);waitMs=$waitTimer.Elapsed.TotalMilliseconds;holdMs=$holdTimer.Elapsed.TotalMilliseconds;status=$lockStatus}
+                [IO.File]::AppendAllText($MetricsPath,(($metric|ConvertTo-Json -Compress)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+            } catch { }
+            finally { if ($metricLock) { $metricLock.Dispose() } }
+        }
+    }
 }
 
 function Add-EcosystemUtf8Line {

@@ -396,6 +396,10 @@ if (@($verificationFive.findingVerifications).Count -ne 0 -or [string]$verificat
     throw 'Open bypass debt must remain lifecycle-auditable without re-entering active finding verification.'
 }
 
+$originalTaskId=$taskId; $originalTaskRoot=$taskRoot; $originalReviewPath=$reviewPath; $originalVerificationPath=$verificationPath
+$taskId=$originalTaskId+'-pending'; $taskRoot=Join-Path $stateRoot "tasks\$taskId"
+$reviewPath=Join-Path $taskRoot 'review-result.json'; $verificationPath=Join-Path $taskRoot 'review-verification.json'
+& (Join-Path $root 'scripts/New-AgentTask.ps1') -TaskId $taskId -TaskSelector 'synthetic-pending-publication' -Mode manual -RepositoryIds azure-planningspace-ps-excel-agent -ConfigPath $testConfigPath | Out-Null
 $pendingCommit = '2222222222222222222222222222222222222222'
 $pendingReview = New-Review -Revision $pendingCommit -LifecycleStatus resolved
 $pendingReview.findings = @(); $pendingReview.findingLifecycle = @()
@@ -403,8 +407,40 @@ $pendingReview.reviewScope.repositories[0].targetRevision = $pendingCommit
 $pendingCoverage = @($pendingReview.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' })[0]
 $pendingCoverage.status = 'pending-downstream'
 $pendingCoverage.downstreamObligation = [ordered]@{ evidenceKind='ci-build'; phase='post-push'; repositoryId='synthetic'; reviewedCommit=$pendingCommit; responsibleProducer='pipeline_monitor'; state='pending' }
+Write-JsonFile -Path $reviewPath -Value $pendingReview
 $pendingVerification = New-Verification -Review $pendingReview
 $pendingVerification.coverageVerification | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object { $_.claimedStatus='pending-downstream'; $_.downstreamObligation=$pendingCoverage.downstreamObligation }
+Write-JsonFile -Path $verificationPath -Value $pendingVerification
+foreach ($schemaArtifact in @('review-result','review-verification')) {
+    if (-not (Get-Content -LiteralPath (Join-Path $taskRoot ($schemaArtifact+'.json')) -Raw | Test-Json -SchemaFile (Join-Path $root ('config/schemas/'+$schemaArtifact+'.schema.json')) -ErrorAction Stop)) { throw 'Pending publication schema rejected valid evidence.' }
+}
+& (Join-Path $root 'scripts/Publish-AgentOutcome.ps1') -TaskId $taskId -AgentId reviewer -Summary 'Pending downstream review publication validated.' -ArtifactNames 'review-result.json' -ConfigPath $testConfigPath | Out-Null
+& (Join-Path $root 'scripts/Publish-AgentOutcome.ps1') -TaskId $taskId -AgentId review_verifier -Summary 'Independent exact pending obligation publication validated.' -ArtifactNames 'review-verification.json' -ConfigPath $testConfigPath | Out-Null
+foreach ($field in @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state')) {
+    $wrong=$pendingVerification|ConvertTo-Json -Depth 30|ConvertFrom-Json
+    $entry=@($wrong.coverageVerification|Where-Object dimension -eq 'configuration-deployment')[0]
+    $entry.downstreamObligation.$field='different-value'
+    Write-JsonFile -Path $verificationPath -Value $wrong
+    Assert-Throws -Pattern 'exact pending downstream obligation' -Action { & (Join-Path $root 'scripts/Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot }
+}
+$missing=$pendingVerification|ConvertTo-Json -Depth 30|ConvertFrom-Json
+@($missing.coverageVerification|Where-Object dimension -eq 'configuration-deployment')[0].downstreamObligation=$null
+Write-JsonFile -Path $verificationPath -Value $missing
+Assert-Throws -Pattern 'exact pending downstream obligation' -Action { & (Join-Path $root 'scripts/Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot }
+$missingField=$pendingVerification|ConvertTo-Json -Depth 30|ConvertFrom-Json
+@($missingField.coverageVerification|Where-Object dimension -eq 'configuration-deployment')[0].downstreamObligation.PSObject.Properties.Remove('state')
+Write-JsonFile -Path $verificationPath -Value $missingField
+Assert-Throws -Pattern 'missing.*state' -Action { & (Join-Path $root 'scripts/Test-AgentOutcomeArtifact.ps1') -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot }
+Write-JsonFile -Path $verificationPath -Value $pendingVerification
+# Counterfactual: reinsert the original precedence defect in an isolated copy of
+# the actual validator and prove that the same valid published documents fail.
+$validatorText=Get-Content -LiteralPath (Join-Path $root 'scripts/Test-AgentOutcomeArtifact.ps1') -Raw
+$legacyCondition='if ($null -eq $reviewObligation -or $null -eq $verificationObligation -or @(''evidenceKind'',''phase'',''repositoryId'',''reviewedCommit'',''responsibleProducer'',''state'') | Where-Object { [string]$reviewObligation.$_ -ne [string]$verificationObligation.$_ })'
+$validatorText=$validatorText.Replace('if (@($mismatchedObligationFields).Count -gt 0)',$legacyCondition)
+$validatorText=$validatorText.Replace("Import-Module (Join-Path `$PSScriptRoot 'AgentEcosystem.psm1') -Force",("Import-Module '"+(Join-Path $root 'scripts/AgentEcosystem.psm1')+"' -Force"))
+$legacyValidator=Join-Path $runRoot 'legacy-pending-validator.ps1'
+Write-Utf8NoBom -Path $legacyValidator -Content $validatorText
+Assert-Throws -Pattern "property 'True'" -Action { & $legacyValidator -TaskId $taskId -AgentId review_verifier -ArtifactName 'review-verification.json' -Path $verificationPath -TaskRoot $taskRoot }
 $pendingGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $pendingReview -Verification $pendingVerification -RepositoryId synthetic
 if (-not [bool]$pendingGate.Allowed -or @($pendingGate.PendingObligations).Count -ne 1) { throw 'A verifier-confirmed exact-SHA pending CI obligation must permit only pre-push progression.' }
 $legacyBlockedReview = $pendingReview | ConvertTo-Json -Depth 30 | ConvertFrom-Json
@@ -415,6 +451,8 @@ $malformedPendingReview = $pendingReview | ConvertTo-Json -Depth 30 | ConvertFro
 $malformedPendingReview.reviewCoverage | Where-Object { [string]$_.dimension -eq 'configuration-deployment' } | ForEach-Object { $_.downstreamObligation.repositoryId='wrong-repository' }
 $malformedPendingGate = & (Join-Path $root 'scripts\Test-PrePushReviewCoverage.ps1') -Review $malformedPendingReview -Verification $pendingVerification -RepositoryId synthetic
 if ([bool]$malformedPendingGate.Allowed) { throw 'Wrong-repository pending evidence must not permit delivery.' }
+
+$taskId=$originalTaskId; $taskRoot=$originalTaskRoot; $reviewPath=$originalReviewPath; $verificationPath=$originalVerificationPath
 
 [pscustomobject][ordered]@{
     Status = 'passed'
@@ -434,6 +472,9 @@ if ([bool]$malformedPendingGate.Allowed) { throw 'Wrong-repository pending evide
         'reviewer/verifier/pipeline control-plane routing',
         'open bypass debt remains unchanged, not falsely resolved',
         'legacy bypass debt exact-SHA migration and explicit reopen'
-        'exact-SHA-bound pending downstream CI permits only pre-push progression while legacy and malformed coverage remain blocked'
+        'exact-SHA-bound pending downstream CI permits only pre-push progression while legacy and malformed coverage remain blocked',
+        'actual pending schema, Reviewer publication and independent Verifier publication',
+        'each of six obligation mismatches plus null and missing fields rejected',
+        'original precedence defect fails against the same valid pending documents in an isolated validator copy'
     )
 }

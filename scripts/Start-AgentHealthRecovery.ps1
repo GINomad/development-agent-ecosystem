@@ -157,7 +157,7 @@ function Publish-VerifiedHealthRepair {
         verifiedAtUtc = [DateTime]::UtcNow.ToString('o')
     }
 }
-if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ Status='disabled'; TaskId=$TaskId } }
+if (-not [bool]$config.health.automaticRecovery.enabled) { return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='disabled'; TaskId=$TaskId; ResultPath=$null; RecoveryCommit=$null; TargetedResume=$null } }
 if (-not (Test-Path -LiteralPath $FailurePath -PathType Leaf)) { throw "Failure artifact was not found: $FailurePath" }
 
 $workspace = Resolve-EcosystemPath -Value ([string]$config.health.automaticRecovery.workspace) -Config $config -CodexHome $CodexHome
@@ -212,6 +212,15 @@ function Test-HealthRecoveryOwnsCurrentRun {
 $failure = Get-Content -LiteralPath $FailurePath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ([string]$failure.taskId -ne $TaskId) { throw 'Failure artifact task ID does not match the requested task.' }
 $signature = [string]$failure.failureSignature
+$providerDiagnostic = @(
+    if ($failure.PSObject.Properties['summary']) { [string]$failure.summary }
+    if ($failure.PSObject.Properties['diagnostic']) { [string]$failure.diagnostic }
+    if ($failure.PSObject.Properties['failureCanonical']) { [string]$failure.failureCanonical }
+) -join ' '
+$providerFailure = & (Join-Path $PSScriptRoot 'Get-ProviderFailureClassification.ps1') -Diagnostic $providerDiagnostic
+if ([bool]$providerFailure.IsExternal) {
+    return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='external-dependency'; EcosystemRepairStatus='not-applicable'; TaskId=$TaskId; FailureSignature=$signature; ResultPath=$null; RecoveryCommit=$null; TargetedResume=$null; ExternalCategory=[string]$providerFailure.Category }
+}
 
 $attemptsPath = Join-Path $taskRoot 'health-recovery-attempts.jsonl'
 $attempts = [Collections.Generic.List[object]]::new()
@@ -235,7 +244,7 @@ if ($successfulAttempt.Count) {
         if ($ElevatedApproved) { $targetedParameters.ElevatedApproved = $true }
         $targetedResume = & (Join-Path $PSScriptRoot 'Start-HealthTargetedResume.ps1') @targetedParameters
     }
-    return [pscustomobject]@{ Status='already-repaired'; EcosystemRepairStatus='repaired'; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$successfulResultPath; TargetedResume=$targetedResume }
+    return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='already-repaired'; EcosystemRepairStatus='repaired'; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$successfulResultPath; TargetedResume=$targetedResume }
 }
 $invalidatedAttemptIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($record in @($attempts | Where-Object { [string]$_.type -eq 'recovery-invalidated' -and [string]$_.failureSignature -eq $signature })) {
@@ -284,7 +293,7 @@ if ($attemptCount -ge $maximumAttempts) {
     $message = "Automatic recovery limit reached for failure signature $signature."
     & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus waiting -Stage health_check -Message $message -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & (Join-Path $PSScriptRoot 'Save-AgentCheckpoint.ps1') -TaskId $TaskId -AgentId health_check -Status waiting -Summary $message -NextStep 'A human must inspect or approve the next bounded recovery action.' -EvidenceRefs @($FailurePath, $attemptsPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
-    return [pscustomobject]@{ Status='attempt-limit'; TaskId=$TaskId; FailureSignature=$signature; Attempts=$attemptCount }
+    return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='attempt-limit'; TaskId=$TaskId; FailureSignature=$signature; Attempts=$attemptCount; ResultPath=$null; RecoveryCommit=$null; TargetedResume=$null }
 }
 
 $preservationPath = Join-Path $taskRoot 'health-recovery-preservation.json'
@@ -309,7 +318,7 @@ if ($preservationCommit) {
 
 if (-not (Test-HealthRecoveryOwnsCurrentRun -TaskPath $taskPath -ExpectedRunId $ExecutionRunId -ExpectedLeaseId $WorkspaceLeaseId -ExpectedRevision $(if($attempt.PSObject.Properties['taskRevision']){[Nullable[int]][int]$attempt.taskRevision}else{$null}))) {
     [IO.File]::AppendAllText($attemptsPath, (([ordered]@{ type='recovery-superseded'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); reason='A newer task revision or active workflow owns the task state.' } | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
-    return [pscustomobject]@{ Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false }
+    return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false; ResultPath=$null; RecoveryCommit=$null; TargetedResume=$null }
 }
 
 & (Join-Path $PSScriptRoot 'Set-AgentTaskStatus.ps1') -TaskId $TaskId -AgentId health_check -AgentStatus running -Stage health_recovery -Message "Health Check Agent is repairing failure $signature." -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
@@ -444,7 +453,7 @@ try {
 
     if (-not (Test-HealthRecoveryOwnsCurrentRun -TaskPath $taskPath -ExpectedRunId $ExecutionRunId -ExpectedLeaseId $WorkspaceLeaseId -ExpectedRevision $(if($attempt.PSObject.Properties['taskRevision']){[Nullable[int]][int]$attempt.taskRevision}else{$null}))) {
         [IO.File]::AppendAllText($attemptsPath, (([ordered]@{ type='recovery-superseded'; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); reason='A newer task revision or active workflow superseded this recovery before finalization.' } | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
-        return [pscustomobject]@{ Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false }
+        return [pscustomobject]@{ SchemaVersion='1.0.0'; Status='superseded'; TaskId=$TaskId; FailureSignature=$signature; TaskProgressRestored=$false; ResultPath=$null; RecoveryCommit=$null; TargetedResume=$null }
     }
 
     if ([string]$recovery.status -eq 'repaired') {
@@ -575,7 +584,7 @@ try {
             return & (Join-Path $PSScriptRoot 'Start-AgentHealthRecovery.ps1') @followupParameters
         }
     }
-    [pscustomobject]@{ Status=[string]$recovery.status; EcosystemRepairStatus=[string]$recovery.status; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; PreservationCommit=$preservationCommit; RecoveryCommit=$recoveryCommit; RecoveryPush=$recoveryPush; TargetedResume=$targetedResume }
+    [pscustomobject]@{ SchemaVersion='1.0.0'; Status=[string]$recovery.status; EcosystemRepairStatus=[string]$recovery.status; TargetedResumeStatus=if($targetedResume){[string]$targetedResume.Status}else{$null}; TaskProgressRestored=[bool]($targetedResume -and [string]$targetedResume.Status -eq 'completed'); TaskId=$TaskId; FailureSignature=$signature; ResultPath=$resultPath; LogPath=$logPath; PreservationCommit=$preservationCommit; RecoveryCommit=$recoveryCommit; RecoveryPush=$recoveryPush; TargetedResume=$targetedResume }
 }
 catch {
     $failedAttempt = [ordered]@{ type=if($repairTerminalRecorded){'recovery-followup-failed'}else{'recovery-failed'}; attemptId=$attempt.attemptId; failureSignature=$signature; timestampUtc=[DateTime]::UtcNow.ToString('o'); ecosystemRepairStatus=if($repairTerminalRecorded){[string]$recovery.status}else{$null}; error=$_.Exception.Message }

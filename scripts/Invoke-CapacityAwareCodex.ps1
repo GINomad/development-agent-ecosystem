@@ -13,6 +13,8 @@ param(
     [ValidateRange(1,10)][int] $MaxIdenticalFailures = 3,
     [ValidateRange(1,1440)][int] $MaxRunMinutes = 120,
     [ValidateRange(100,5000)][int] $PollMilliseconds = 500,
+    [ValidateRange(1,20)][int] $MaxTransportFailures = 3,
+    [ValidateRange(1,3600)][int] $TransportNoProgressSeconds = 300,
     [scriptblock] $HeartbeatAction,
     [ValidateRange(5,300)][int] $HeartbeatIntervalSeconds = 30
 )
@@ -33,6 +35,8 @@ function Invoke-Attempt {
         MaxIdenticalFailures = $MaxIdenticalFailures
         MaxRunMinutes = $MaxRunMinutes
         PollMilliseconds = $PollMilliseconds
+        MaxTransportFailures = $MaxTransportFailures
+        TransportNoProgressSeconds = $TransportNoProgressSeconds
         HeartbeatIntervalSeconds = $HeartbeatIntervalSeconds
     }
     if ($HeartbeatAction) { $attemptParameters.HeartbeatAction = $HeartbeatAction }

@@ -18,20 +18,40 @@ param(
     [int] $McpCallCount = 0,
     [int] $McpSucceededCallCount = 0,
     [switch] $FallbackUsed,
-    [string[]] $FallbackReasons = @()
+    [string[]] $FallbackReasons = @(),
+    [ValidateRange(1,300)][int] $LockTimeoutSeconds = 30,
+    [AllowNull()][string] $ExecutionBundleManifestPath = $null,
+    [AllowNull()][string] $ExecutionBundleManifestSha256 = $null,
+    [AllowNull()][string] $ExecutionBundleFingerprint = $null
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $path = Join-Path $TaskRoot 'role-metrics.jsonl'
 $lockPath = $path + '.lock'
-$lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+Import-Module (Join-Path $PSScriptRoot 'AgentEcosystem.psm1') -Force
+if ([string]::IsNullOrWhiteSpace($ExecutionBundleManifestPath) -or [string]::IsNullOrWhiteSpace($ExecutionBundleManifestSha256)) {
+    $contextPath = Join-Path $TaskRoot ('execution-context-' + $RunId + '.json')
+    if (Test-Path -LiteralPath $contextPath -PathType Leaf) {
+        try {
+            $context = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ([string]::IsNullOrWhiteSpace($ExecutionBundleManifestPath) -and $context.PSObject.Properties['launchBundlePath']) { $ExecutionBundleManifestPath = [string]$context.launchBundlePath }
+            $expectedManifestPath = [IO.Path]::GetFullPath((Join-Path $TaskRoot ("execution-bundles\$RunId\manifest.json")))
+            if ($ExecutionBundleManifestPath -and [IO.Path]::GetFullPath($ExecutionBundleManifestPath) -eq $expectedManifestPath -and (Test-Path -LiteralPath $expectedManifestPath -PathType Leaf)) {
+                if ([string]::IsNullOrWhiteSpace($ExecutionBundleManifestSha256)) { $ExecutionBundleManifestSha256 = Get-EcosystemFileSha256 -Path $expectedManifestPath }
+                if ($context.PSObject.Properties['launchBundleFingerprint']) { $ExecutionBundleFingerprint = [string]$context.launchBundleFingerprint }
+            }
+        } catch { }
+    }
+}
 try {
+Invoke-EcosystemFileLock -LockPath $lockPath -TimeoutSeconds $LockTimeoutSeconds -Action {
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         foreach ($line in [IO.File]::ReadAllLines($path)) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             try { $existing = $line | ConvertFrom-Json } catch { continue }
-            if ([string]$existing.attemptId -eq $AttemptId -and [string]$existing.eventType -eq 'role-attempt-completed') {
+            if (-not $existing.PSObject.Properties['taskId'] -or -not $existing.PSObject.Properties['runId'] -or -not $existing.PSObject.Properties['attemptId'] -or -not $existing.PSObject.Properties['eventType']) { continue }
+            if ([string]$existing.taskId -eq $TaskId -and [string]$existing.runId -eq $RunId -and [string]$existing.attemptId -eq $AttemptId -and [string]$existing.eventType -eq 'role-attempt-completed') {
                 return [pscustomobject]@{ Written=$false; Existing=$existing; Path=[IO.Path]::GetFullPath($path) }
             }
         }
@@ -62,7 +82,15 @@ try {
         fallbackUsed = [bool]$FallbackUsed
         fallbackReasons = @($FallbackReasons)
     }
+    if (-not [string]::IsNullOrWhiteSpace($ExecutionBundleManifestPath)) { $record.executionBundleManifestPath = $ExecutionBundleManifestPath }
+    if (-not [string]::IsNullOrWhiteSpace($ExecutionBundleManifestSha256)) { $record.executionBundleManifestSha256 = $ExecutionBundleManifestSha256 }
+    if (-not [string]::IsNullOrWhiteSpace($ExecutionBundleFingerprint)) { $record.executionBundleFingerprint = $ExecutionBundleFingerprint }
     [IO.File]::AppendAllText($path, (($record | ConvertTo-Json -Compress) + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
     [pscustomobject]@{ Written=$true; Record=[pscustomobject]$record; Path=[IO.Path]::GetFullPath($path) }
 }
-finally { $lock.Dispose() }
+}
+catch [IO.IOException] {
+    # Telemetry must not turn a completed role into a failed workflow when a peer
+    # holds the metric lock beyond the bounded retry window.
+    [pscustomobject]@{ Written=$false; Deferred=$true; Reason='lock-contention'; Path=[IO.Path]::GetFullPath($path) }
+}

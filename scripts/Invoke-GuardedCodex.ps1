@@ -11,6 +11,8 @@ param(
     [ValidateRange(1,1440)][int] $MaxRunMinutes = 120,
     [ValidateRange(100,5000)][int] $PollMilliseconds = 500,
     [ValidateRange(1,300)][int] $CompletedTurnExitGraceSeconds = 30,
+    [ValidateRange(1,20)][int] $MaxTransportFailures = 3,
+    [ValidateRange(1,3600)][int] $TransportNoProgressSeconds = 300,
     [scriptblock] $HeartbeatAction,
     [ValidateRange(5,300)][int] $HeartbeatIntervalSeconds = 30
 )
@@ -29,7 +31,8 @@ function ConvertTo-WindowsArgument {
 function Get-FailureFingerprint {
     param([string] $Line)
     try { $event = $Line | ConvertFrom-Json } catch {
-        if ($Line -notmatch '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|authentication|unauthorized|not logged') { return $null }
+        $classification = & (Join-Path (Get-EcosystemRoot) 'scripts/Get-ProviderFailureClassification.ps1') -Diagnostic $Line
+        if ([string]$classification.Category -notin @('provider-limit','provider-authentication')) { return $null }
         $canonical = (($Line -replace '\s+', ' ').Trim())
         $sha = [Security.Cryptography.SHA256]::Create()
         try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
@@ -50,6 +53,12 @@ function Get-FailureFingerprint {
             $sha = [Security.Cryptography.SHA256]::Create()
             try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
             return [pscustomobject]@{ Signature=$signature; Canonical=$canonical; Detail=$detail; Kind='model-capacity' }
+        }
+        $classified = & (Join-Path (Get-EcosystemRoot) 'scripts/Get-ProviderFailureClassification.ps1') -Diagnostic $Line
+        if ([string]$classified.Category -in @('provider-limit','provider-authentication')) {
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $signature = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($detail)))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+            return [pscustomobject]@{Signature=$signature;Canonical=$detail;Detail=$detail;Kind='provider-failure'}
         }
         return $null
     }
@@ -109,12 +118,14 @@ $runId = [guid]::NewGuid().ToString('N')
 $promptPath = $LogPath + '.' + $runId + '.stdin.txt'
 $stdoutPath = $LogPath + '.' + $runId + '.stdout.tmp'
 $stderrPath = $LogPath + '.' + $runId + '.stderr.log'
+$process = $null
+try {
 [IO.File]::WriteAllText($promptPath, $Prompt, $encoding)
 foreach ($temporaryPath in @($stdoutPath,$stderrPath)) {
     if (Test-Path -LiteralPath $temporaryPath) { Remove-Item -LiteralPath $temporaryPath -Force }
 }
 $argumentLine = (@($Arguments | ForEach-Object { ConvertTo-WindowsArgument -Value ([string]$_) }) -join ' ')
-$process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -RedirectStandardInput $promptPath -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -NoNewWindow -PassThru
+$process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -RedirectStandardInput $promptPath -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
 # PowerShell 5.1 can lose the native handle when a short-lived child exits before
 # Process.Handle has ever been requested. Force handle acquisition immediately so
 # ExitCode remains available after the process terminates.
@@ -132,6 +143,9 @@ $monitorCompleted = $false
 $nativeExitCode = $null
 $completedTurnAtUtc = $null
 $completedTurnExitCleanup = $false
+$stderrLineIndex = 0
+$transportFailureCount = 0
+$firstTransportFailureAtUtc = $null
 
 try {
     while (-not $process.HasExited) {
@@ -148,6 +162,12 @@ try {
             if ($Provider -eq 'codex' -and $null -eq $completedTurnAtUtc -and (Test-ProviderCompletedEvent -Line $line)) {
                 $completedTurnAtUtc = [DateTime]::UtcNow
             }
+            try {
+                $progressEvent = $line | ConvertFrom-Json -ErrorAction Stop
+                if ($progressEvent.PSObject.Properties['type'] -and [string]$progressEvent.type -in @('item.started','item.updated','item.completed','turn.completed') -and (-not $progressEvent.PSObject.Properties['item'] -or -not $progressEvent.item.PSObject.Properties['status'] -or [string]$progressEvent.item.status -ne 'failed')) {
+                    $transportFailureCount = 0; $firstTransportFailureAtUtc = $null
+                }
+            } catch { }
             $failure = Get-FailureFingerprint -Line $line
             if ($failure) {
                 if ($failure.Signature -eq $lastFailureSignature) { $identicalFailureCount++ } else { $lastFailureSignature = $failure.Signature; $identicalFailureCount = 1 }
@@ -158,6 +178,24 @@ try {
                     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
                     break
                 }
+            }
+        }
+        if (-not $guardTriggered -and (Test-Path -LiteralPath $stderrPath -PathType Leaf)) {
+            $stderrLines = @(Get-Content -LiteralPath $stderrPath -Encoding UTF8)
+            while ($stderrLineIndex -lt $stderrLines.Count) {
+                $stderrLine = [string]$stderrLines[$stderrLineIndex++]
+                $transport = & (Join-Path $PSScriptRoot 'Get-ProviderFailureClassification.ps1') -Diagnostic $stderrLine
+                if ([string]$transport.Category -eq 'provider-transport') {
+                    $transportFailureCount++
+                    Add-EcosystemUtf8Line -Path $LogPath -Line (([ordered]@{type='ecosystem-transport-retry';category='provider-transport';count=$transportFailureCount;timestampUtc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Compress))
+                    if ($null -eq $firstTransportFailureAtUtc) { $firstTransportFailureAtUtc = [DateTime]::UtcNow }
+                }
+            }
+            if ($null -eq $completedTurnAtUtc -and $null -ne $firstTransportFailureAtUtc -and ($transportFailureCount -ge $MaxTransportFailures -or ([DateTime]::UtcNow - $firstTransportFailureAtUtc).TotalSeconds -ge $TransportNoProgressSeconds)) {
+                $guardTriggered = $true
+                $guardReason = 'Provider transport unavailable without progress; bounded retry budget exhausted.'
+                $lastFailure = [pscustomobject]@{Signature='provider-transport-unavailable';Canonical='provider-transport-unavailable';Detail=$guardReason;Kind='provider-transport'}
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             }
         }
         # A completed turn can leave the CLI alive during shutdown. Bound only
@@ -231,6 +269,9 @@ $result = [ordered]@{
     processId = $processId
     exitCode = $resolvedExitCode
     provider = $Provider
+    transportFailureCount = $transportFailureCount
+    maxTransportFailures = $MaxTransportFailures
+    transportNoProgressSeconds = $TransportNoProgressSeconds
     completedTurnExitCleanup = $completedTurnExitCleanup
     completedTurnExitGraceSeconds = $CompletedTurnExitGraceSeconds
     exitCodeSource = if ($semanticSuccessOverride) { $Provider + '-semantic-success-override' } elseif ($null -ne $nativeExitCode) { 'native' } else { $Provider + '-event-fallback' }
@@ -238,8 +279,15 @@ $result = [ordered]@{
     stderrPath = $stderrPath
 }
 [IO.File]::WriteAllText($GuardArtifactPath, (($result | ConvertTo-Json -Depth 8) + [Environment]::NewLine), $encoding)
-$process.Dispose()
-foreach ($temporaryPath in @($promptPath,$stdoutPath)) {
-    Remove-TemporaryFileWithRetry -Path $temporaryPath
-}
 [pscustomobject]$result
+}
+finally {
+    if ($null -ne $process) {
+        try { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; $process.WaitForExit() } } catch { }
+        $process.Dispose()
+    }
+    foreach ($temporaryPath in @($promptPath,$stdoutPath)) {
+        try { Remove-TemporaryFileWithRetry -Path $temporaryPath }
+        catch { Write-Warning 'Provider temporary file cleanup was deferred.' }
+    }
+}

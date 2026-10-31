@@ -118,7 +118,46 @@ try {
 
     $agentDefinitionDrift = @()
     if($codexSelected){$agentDefinitionDrift = @(Get-AgentDefinitionDrift)}
-    if(-not $codexSelected){
+    $taskLaunchBundle = $null
+    $taskLaunchBundleDrift = [Collections.Generic.List[object]]::new()
+    if ($TaskId -and (Test-Path -LiteralPath $taskPath -PathType Leaf)) {
+        try {
+            $taskForBundle = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $runIdForBundle = if ($taskForBundle.PSObject.Properties['executionRunId']) { [string]$taskForBundle.executionRunId } else { '' }
+            $executionContextPath = if ($runIdForBundle) { Join-Path $taskRoot "execution-context-$runIdForBundle.json" } else { $null }
+            if ($executionContextPath -and (Test-Path -LiteralPath $executionContextPath -PathType Leaf)) {
+                $executionContext = Get-Content -LiteralPath $executionContextPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($executionContext.PSObject.Properties['launchBundlePath'] -and -not [string]::IsNullOrWhiteSpace([string]$executionContext.launchBundlePath)) {
+                    $bundlePath = [IO.Path]::GetFullPath([string]$executionContext.launchBundlePath)
+                    $allowedBundleRoot = [IO.Path]::GetFullPath((Join-Path $taskRoot 'execution-bundles'))
+                    if (-not $bundlePath.StartsWith($allowedBundleRoot.TrimEnd('\\') + '\\', [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) {
+                        $taskLaunchBundleDrift.Add([pscustomobject]@{ path=$bundlePath; reason='missing-or-outside-task' })
+                    }
+                    else {
+                        $taskLaunchBundle = Get-Content -LiteralPath $bundlePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                        foreach ($file in @($taskLaunchBundle.agentFiles)) {
+                            $filePath = [string]$file.path
+                            if (-not $filePath -or -not (Test-Path -LiteralPath $filePath -PathType Leaf)) { $taskLaunchBundleDrift.Add([pscustomobject]@{ path=$filePath; reason='missing' }); continue }
+                            if ((Get-EcosystemFileSha256 -Path $filePath) -ne [string]$file.sha256) { $taskLaunchBundleDrift.Add([pscustomobject]@{ path=$filePath; reason='hash-mismatch' }) }
+                        }
+                    }
+                }
+            }
+        }
+        catch { $taskLaunchBundleDrift.Add([pscustomobject]@{ path=$taskPath; reason='invalid-launch-bundle:' + $_.Exception.Message }) }
+    }
+    if ($taskLaunchBundle -or $taskLaunchBundleDrift.Count) {
+        if (-not $taskLaunchBundle -or $taskLaunchBundleDrift.Count) {
+            Add-HealthCheck -Id 'installed-agents' -Status failed -Summary "Task launch bundle is invalid: $($taskLaunchBundleDrift.reason -join ', ')." -Evidence @($taskLaunchBundleDrift.path)
+            Add-Repair -Id 'sync-agent-definitions' -Status requires-approval -Summary 'The immutable task launch bundle is missing or has changed; resume requires a new task run.'
+        }
+        else {
+            Add-HealthCheck -Id 'installed-agents' -Status passed -Summary 'Task launch bundle agent definitions match their persisted hashes.' -Evidence @($taskLaunchBundle.agentFiles.path)
+            Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'Task uses immutable task-local agent definitions.'
+            if ($agentDefinitionDrift.Count) { Add-HealthCheck -Id 'global-agent-definitions' -Status warning -Summary 'Global generated agent profiles differ from the active task bundle; no global overwrite was attempted.' -Evidence @($agentDefinitionDrift.path) }
+        }
+    }
+    elseif(-not $codexSelected){
         Add-HealthCheck -Id 'installed-agents' -Status passed -Summary 'Codex agent definitions are not required because no role is assigned to Codex.'
         Add-Repair -Id 'sync-agent-definitions' -Status not-applicable -Summary 'No Codex agent definitions are required.'
     }
@@ -321,7 +360,7 @@ try {
             & (Join-Path $PSScriptRoot 'Publish-AgentOutcome.ps1') -TaskId $TaskId -AgentId health_check -Summary ([string]$result.summary) -Evidence @($resultPath) -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         }
     }
-    [pscustomobject]@{ ResultPath=$resultPath; Result=[pscustomobject]$result }
+    [pscustomobject]@{ SchemaVersion='1.0.0'; Status=[string]$result.status; ResultPath=$resultPath; Result=[pscustomobject]$result }
 }
 catch {
     $originalError = $_

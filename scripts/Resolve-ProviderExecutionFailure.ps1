@@ -14,10 +14,13 @@ if ($ExitCode -eq 0) {
 }
 
 $diagnostic = (@($FailureDetail, $Reason) | Where-Object { $_ }) -join ' '
-$isProviderLimit = [bool](& (Join-Path $PSScriptRoot 'Test-ProviderLimitDiagnostic.ps1') -Diagnostic $diagnostic)
+$classification = & (Join-Path $PSScriptRoot 'Get-ProviderFailureClassification.ps1') -Diagnostic $diagnostic
+$isProviderLimit = [bool]$classification.IsProviderLimit
 
 [pscustomobject]@{
     ShouldThrow = $true
     IsProviderLimit = $isProviderLimit
-    Message = if ($isProviderLimit) { $diagnostic } else { "$Provider exited with code $ExitCode. See $LogPath" }
+    IsExternal = [bool]$classification.IsExternal
+    FailureCategory = [string]$classification.Category
+    Message = if ([bool]$classification.IsExternal) { $diagnostic } else { "$Provider exited with code $ExitCode. See $LogPath" }
 }

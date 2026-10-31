@@ -12,7 +12,9 @@
     "executionGuard": {
       "maxIdenticalFailures": 3,
       "maxRunMinutes": 120,
-      "pollMilliseconds": 500
+      "pollMilliseconds": 500,
+      "maxTransportFailures": 3,
+      "transportNoProgressSeconds": 300
     },
     "contextLimits": {
       "maxSourceFiles": 80,

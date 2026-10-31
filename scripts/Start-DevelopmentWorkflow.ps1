@@ -263,9 +263,9 @@ $bootstrap = Invoke-EcosystemFileLock -LockPath $bootstrapLockPath -TimeoutSecon
     if (-not (Test-Path -LiteralPath $standardsPath -PathType Leaf)) { throw "Configured global coding standards were not found: $standardsPath" }
     $codexSelected=@($config.agents|Where-Object{[string]$_.provider -eq 'codex'}).Count -gt 0
     if($codexSelected){
-        $syncParameters = @{ ConfigPath=$ConfigPath; CodexHome=$CodexHome; Install=$true }
+        $syncParameters = @{ TaskRoot=$task.TaskRoot; RunId=$ExecutionRunId; ConfigPath=$ConfigPath; CodexHome=$CodexHome }
         if ($ElevatedApproved) { $syncParameters.IncludeHostCompatibilityProfile = $true }
-        $syncResult = & (Join-Path $PSScriptRoot 'Sync-AgentDefinitions.ps1') @syncParameters
+        $syncResult = & (Join-Path $PSScriptRoot 'New-AgentLaunchBundle.ps1') @syncParameters
     }else{
         $syncResult=[pscustomobject]@{Installed=$false;OutputDirectory=$null;AgentFiles=@();Reason='No agent is assigned to Codex.'}
     }
@@ -300,6 +300,10 @@ if (-not $PrepareOnly) {
             technicalKnowledgeRoot = Resolve-EcosystemPath -Value ([string]$config.knowledge.technicalRoot) -Config $config -CodexHome $CodexHome
             domainKnowledgeRoot = [string]$knowledgeImport.ManagedRoot
             agentFiles = @($sync.AgentFiles)
+            configSha256 = if ($sync.PSObject.Properties['ConfigSha256']) { [string]$sync.ConfigSha256 } else { $null }
+            launchBundlePath = if ($sync.PSObject.Properties['ManifestPath']) { [string]$sync.ManifestPath } else { $null }
+            sourceTreeFingerprint = if ($sync.PSObject.Properties['ManifestPath']) { [string](Get-Content -LiteralPath $sync.ManifestPath -Raw | ConvertFrom-Json).sourceTreeFingerprint } else { $null }
+            launchBundleFingerprint = if ($sync.PSObject.Properties['Fingerprint']) { [string]$sync.Fingerprint } else { $null }
             repositories = @($workspaceRecords | ForEach-Object { [ordered]@{ repositoryId=[string]$_.RepositoryId; path=[string]$_.Path; canonicalOrigin=[string]$_.CanonicalOrigin; baseSha=[string]$_.BaseSha; branch=[string]$_.Branch; manifestPath=[string]$_.ManifestPath } })
         }
         & $writeUtf8NoBomAtomic -Path $executionContextPath -Content (($executionContextDocument | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
@@ -497,8 +501,15 @@ $codexLogPath = Join-Path $task.TaskRoot $providerLogName
 
 $finalResponsePath = Join-Path $task.TaskRoot 'workflow-final-response.md'
 $guardArtifactPath = Join-Path $task.TaskRoot 'workflow-execution-guard.json'
+$transportGuardParameters = @{
+    MaxTransportFailures = if ($config.runtime.executionGuard.PSObject.Properties['maxTransportFailures']) { [int]$config.runtime.executionGuard.maxTransportFailures } else { 3 }
+    TransportNoProgressSeconds = if ($config.runtime.executionGuard.PSObject.Properties['transportNoProgressSeconds']) { [int]$config.runtime.executionGuard.transportNoProgressSeconds } else { 300 }
+}
 $arguments = [Collections.Generic.List[string]]::new()
 foreach ($argument in @('-a', $workflowApprovalPolicy, '--model', [string]$providerRoute.model, '--config', ('model_reasoning_effort="' + [string]$providerRoute.reasoningEffort + '"'), '--config', 'notify=[]', 'exec', '-C', $agentWorkingDirectory)) { $arguments.Add([string]$argument) }
+if ($sync.PSObject.Properties['Overrides']) {
+    foreach ($profileOverride in @($sync.Overrides)) { $arguments.Add('--config'); $arguments.Add([string]$profileOverride) }
+}
 # Every role must be able to consume its validated task artifacts.  Product roles do
 # not run from the task-state directory, so include only this task's directory in
 # their explicit provider allowlist as well as their secondary workspaces.
@@ -619,12 +630,12 @@ try {
             }
         }
         foreach($directory in $additionalDirectories){$claudeArguments.Add('--add-dir');$claudeArguments.Add([IO.Path]::GetFullPath([string]$directory))}
-        $guardResult=& (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') -Provider claude -FilePath ([string]$providerRoute.command) -Arguments @($claudeArguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+        $guardResult=& (Join-Path $PSScriptRoot 'Invoke-GuardedCodex.ps1') @transportGuardParameters -Provider claude -FilePath ([string]$providerRoute.command) -Arguments @($claudeArguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
         if (-not [bool]$guardResult.guardTriggered -and [int]$guardResult.exitCode -eq 0){& (Join-Path $PSScriptRoot 'Export-ClaudeResult.ps1') -LogPath $codexLogPath -OutputPath $finalResponsePath|Out-Null}
     } else {
     $codexCliPath = [string]$providerRoute.command
     if (-not $codexCliPath) { throw 'Codex CLI was not found.' }
-    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
+    $guardResult = & (Join-Path $PSScriptRoot 'Invoke-CapacityAwareCodex.ps1') @transportGuardParameters -FilePath $codexCliPath -Arguments @($arguments) -Prompt $prompt -WorkingDirectory $agentWorkingDirectory -LogPath $codexLogPath -GuardArtifactPath $guardArtifactPath -CapacityFallbackEnabled ([bool]$capacityFallback.enabled) -FallbackModel ([string]$capacityFallbackTier.model) -FallbackReasoningEffort ([string]$capacityFallbackTier.reasoningEffort) -MaxCapacityFallbackAttempts ([int]$capacityFallback.maxAttempts) -MaxIdenticalFailures ([int]$config.runtime.executionGuard.maxIdenticalFailures) -MaxRunMinutes ([int]$config.runtime.executionGuard.maxRunMinutes) -PollMilliseconds ([int]$config.runtime.executionGuard.pollMilliseconds) -HeartbeatAction $leaseHeartbeatAction -HeartbeatIntervalSeconds ([int]$config.workflow.workspaceScheduling.leaseHeartbeatSeconds)
     }
     } finally {
         $tokenUsagePath=$null
@@ -948,6 +959,15 @@ catch {
     if ([bool]$failureHandoff.Stale -and -not $continuationInProgress) {
         & (Join-Path $PSScriptRoot 'Write-AgentActivity.ps1') -TaskId $TaskId -AgentId $failureAgentId -Level warning -Stage stale_failure_ignored -Summary "Ignored a stale failure superseded by a completed '$failureAgentId' outcome." -Evidence @([string]$failureHandoff.FailurePath, "superseded-by-result:$([string]$failureHandoff.SupersedingResultEventId)") -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
         return [pscustomobject]@{ Status='stale-superseded'; TaskId=$TaskId; AgentId=$failureAgentId; FailurePath=[string]$failureHandoff.FailurePath; SupersedingResultEventId=[string]$failureHandoff.SupersedingResultEventId }
+    }
+    $externalClassification = & (Join-Path $PSScriptRoot 'Get-ProviderFailureClassification.ps1') -Diagnostic $failureMessage
+    if ((Get-Variable -Name guardResult -ErrorAction SilentlyContinue) -and $guardResult -and [string]$guardResult.failureKind -eq 'provider-transport') {
+        $externalClassification = [pscustomobject]@{ IsExternal=$true; Category='provider-transport' }
+    }
+    if ([bool]$externalClassification.IsExternal) {
+        & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus waiting -Stage provider_unavailable -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        & $statusScript -TaskId $TaskId -Status interrupted -Stage provider_unavailable -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+        return [pscustomobject]@{ Status='interrupted'; TaskId=$TaskId; AgentId=$failureAgentId; Category=[string]$externalClassification.Category; FailurePath=[string]$failureHandoff.FailurePath; SourceRecoverySkipped=$true }
     }
     & $statusScript -TaskId $TaskId -AgentId $failureAgentId -AgentStatus failed -Stage failed -Message $failureMessage -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
     & $statusScript -TaskId $TaskId -Status failed -Stage failed -Message $failureMessage -ClearProcessId -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null

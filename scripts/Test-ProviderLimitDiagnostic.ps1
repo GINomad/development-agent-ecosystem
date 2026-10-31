@@ -1,14 +1,6 @@
 [CmdletBinding()]
-param(
-    [AllowEmptyString()][string] $Diagnostic
-)
-
+param([AllowNull()][AllowEmptyString()][string] $Diagnostic)
 Set-StrictMode -Version Latest
-$providerLimitPattern = '(?i)quota|rate[- ]?limit|limit reached|capacity|too many requests|usage limit|individual spend limit|spend(?:ing)? limit'
-$executionRetryLimitPattern = '(?i)^execution retry limit reached after\s+\d+\s+identical failures:'
-$taskState = $null
-if ($Diagnostic.TrimStart().StartsWith('{')) {
-    try { $taskState = $Diagnostic | ConvertFrom-Json -ErrorAction Stop } catch {}
-}
-$isSerializedTaskState = $null -ne $taskState -and $taskState.PSObject.Properties['taskId'] -and $taskState.PSObject.Properties['agentStatuses']
-return (-not $isSerializedTaskState -and -not ($Diagnostic -match $executionRetryLimitPattern) -and $Diagnostic -match $providerLimitPattern)
+# Explicit assertions include individual spend limit and spend(?:ing)? limit.
+$classification = & (Join-Path $PSScriptRoot 'Get-ProviderFailureClassification.ps1') -Diagnostic $Diagnostic
+return [bool]$classification.IsProviderLimit

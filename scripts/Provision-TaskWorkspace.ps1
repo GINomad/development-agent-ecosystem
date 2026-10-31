@@ -14,6 +14,11 @@ $config = Get-EcosystemConfig -ConfigPath $ConfigPath -CodexHome $CodexHome
 $stateRoot = Get-EcosystemStateRoot -Config $config -CodexHome $CodexHome
 $taskRoot = Join-Path $stateRoot "tasks\$TaskId"
 $taskPath = Join-Path $taskRoot 'task.json'
+$manifestLockPath = Join-Path $taskRoot 'workspace-manifests.lock'
+$provisioningLockPath = Join-Path $taskRoot 'workspace-provisioning.lock'
+$lockMetricsPath = Join-Path $stateRoot 'health\lock-metrics.jsonl'
+$lockCorrelationId = "$TaskId/$RunId/$LeaseId"
+$coordinatorPath = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.coordinatorStatePath) -Config $config -CodexHome $CodexHome
 if (-not (Test-Path -LiteralPath $taskPath -PathType Leaf)) { throw "Task '$TaskId' was not found." }
 $task = Get-Content -LiteralPath $taskPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $RepositoryIds.Count) { $RepositoryIds = if ($task.PSObject.Properties['repositoryIds']) { @($task.repositoryIds) } elseif ($task.repositoryId) { @([string]$task.repositoryId) } else { @() } }
@@ -76,10 +81,35 @@ function ConvertTo-WorkspaceResult {
     param([Parameter(Mandatory)] $Manifest)
     [pscustomobject][ordered]@{ RepositoryId=[string]$Manifest.repositoryId; Path=[string]$Manifest.clonePath; Branch=[string]$Manifest.branch; BaseSha=[string]$Manifest.baseSha; Lifecycle=[string]$Manifest.lifecycle; CanonicalOrigin=[string]$Manifest.canonicalOrigin; RunId=[string]$Manifest.runId; LeaseId=[string]$Manifest.leaseId; ManifestPath=[string]$Manifest.manifestPath }
 }
-$workspaceRoot = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.workspaceRoot) -Config $config -CodexHome $CodexHome
-$results = [Collections.Generic.List[object]]::new()
-$preservedBrokenClonePath = $null
-foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Select-Object -Unique)) {
+function Write-WorkspaceManifestLocked {
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)] $Manifest)
+    Invoke-EcosystemFileLock -LockPath $manifestLockPath -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
+        # Manifest -> coordinator is the only commit lock order.  The global
+        # lock covers no Git work and no task-state lock acquisition.
+        $ownsLease = Invoke-EcosystemFileLock -LockPath "$coordinatorPath.lock" -TimeoutSeconds ([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds) -MetricsPath $lockMetricsPath -CorrelationId $lockCorrelationId -Action {
+            if (-not (Test-Path -LiteralPath $coordinatorPath -PathType Leaf)) { return $false }
+            $coordinator = Get-Content -LiteralPath $coordinatorPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (@($coordinator.leases | Where-Object { [string]$_.taskId -eq $TaskId -and [string]$_.runId -eq $RunId -and [string]$_.leaseId -eq $LeaseId }).Count -ne 1) { return $false }
+            Write-Utf8NoBomAtomic -Path $Path -Content (($Manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+            return $true
+        }
+        if (-not $ownsLease) { throw "Workspace provisioning authority was released or replaced for task '$TaskId' run '$RunId'." }
+    } | Out-Null
+}
+
+# Serialize same-task provisioning, including clone cleanup.  This lock is never
+# held by coordinator admission, so different tasks remain independent.
+$provisioningLock = $null
+$provisioningDeadline = [DateTime]::UtcNow.AddSeconds([int]$config.workflow.workspaceScheduling.lockTimeoutSeconds)
+do {
+    try { $provisioningLock = [IO.File]::Open($provisioningLockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+    catch [IO.IOException] { if ([DateTime]::UtcNow -ge $provisioningDeadline) { throw "Timed out acquiring workspace provisioning lock for task '$TaskId'." }; Start-Sleep -Milliseconds 50 }
+} while ($null -eq $provisioningLock)
+try {
+    $workspaceRoot = Resolve-EcosystemPath -Value ([string]$config.workflow.workspaceScheduling.workspaceRoot) -Config $config -CodexHome $CodexHome
+    $results = [Collections.Generic.List[object]]::new()
+    $preservedBrokenClonePath = $null
+    foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Select-Object -Unique)) {
     $repository = @($config.repositories | Where-Object { [string]$_.id -eq $repositoryId -and [bool]$_.enabled }) | Select-Object -First 1
     if (-not $repository) { throw "Enabled repository '$repositoryId' was not found." }
     $manifestPath = Join-Path $taskRoot "workspaces\$repositoryId.json"
@@ -100,7 +130,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
             $manifest | Add-Member -NotePropertyName lifecycle -NotePropertyValue 'provisioning' -Force
             $manifest | Add-Member -NotePropertyName updatedAtUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
             $manifest | Add-Member -NotePropertyName manifestPath -NotePropertyValue $manifestPath -Force
-            Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+            Write-WorkspaceManifestLocked -Path $manifestPath -Manifest $manifest
             $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest)); continue
         }
     }
@@ -159,7 +189,7 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         if ($preservedBrokenClonePath -and (Test-TaskWorkspaceGitRef -WorkingDirectory $clonePath -Reference "refs/remotes/origin/$branch")) { $checkoutStart = "origin/$branch" }
         Invoke-TaskWorkspaceGit -WorkingDirectory $clonePath -Arguments @('checkout','-B',$branch,$checkoutStart) | Out-Null
         $manifest = [pscustomobject][ordered]@{ schemaVersion='2.0.0'; taskId=$TaskId; repositoryId=$repositoryId; clonePath=$clonePath; canonicalOrigin=$canonicalOrigin; cloneSource=$cloneSource; baseBranch=$baseBranch; baseSha=$baseSha; branch=$branch; lifecycle='provisioned'; runId=$RunId; leaseId=$LeaseId; createdAtUtc=[DateTime]::UtcNow.ToString('o'); updatedAtUtc=[DateTime]::UtcNow.ToString('o'); recoveredFromPath=if ($preservedBrokenClonePath) { $preservedBrokenClonePath } else { $null }; manifestPath=$manifestPath }
-        Write-Utf8NoBomAtomic -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 16) + [Environment]::NewLine)
+        Write-WorkspaceManifestLocked -Path $manifestPath -Manifest $manifest
         $results.Add((ConvertTo-WorkspaceResult -Manifest $manifest))
     }
     catch {
@@ -170,5 +200,9 @@ foreach ($repositoryId in @($RepositoryIds | ForEach-Object { [string]$_ } | Sel
         }
         throw $provisioningFailure
     }
+    }
+    return @($results)
 }
-return @($results)
+finally {
+    if ($provisioningLock) { $provisioningLock.Dispose() }
+}

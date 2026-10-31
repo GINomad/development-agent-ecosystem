@@ -3067,6 +3067,18 @@ Add-Check -Name 'dashboard-task-projects' -Detail 'Summary/detail preserve persi
 & (Join-Path $root 'tests/Test-TaskConfigBinding.ps1') | Out-Null
 Add-Check -Name 'task-config-binding' -Detail 'Dashboard resume uses a hash-bound task configuration, preserves selected repository order, rejects tampering, and retains only validated host fallback for legacy tasks'
 
+& (Join-Path $root 'tests/Test-LaunchAndTransportStability.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'launch-transport-stability') | Out-Null
+Add-Check -Name 'launch-transport-stability' -Detail 'Immutable per-run profiles, provenance and tamper rejection; precise provider classification; real transport/no-progress recovery and child cancellation; nonblocking lock diagnostics'
+& (Join-Path $root 'tests/Test-StabilityContracts.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'stability-contracts') -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'stability-contracts' -Detail 'Truthful health/recovery contracts, expected external auth without source recovery, stale/completed filtering, scheduler heartbeat and actual pending-downstream semantic validation'
+& (Join-Path $root 'tests/Test-StabilityOperations.ps1') -ConfigPath $ConfigPath -CodexHome $CodexHome | Out-Null
+Add-Check -Name 'stability-operations' -Detail 'Multiprocess metric idempotency, real scheduled wrapper success/failure/redaction and evidenced stability metrics'
+& (Join-Path $root 'tests/Test-WorkspaceStabilityRaces.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'workspace-stability') | Out-Null
+Add-Check -Name 'workspace-stability-races' -Detail 'Deterministic contention, missing lease/dead controller, PID identity, superseded run and manifest protection, durable FIFO registration'
+
+& (Join-Path $root 'tests/Test-ProvisioningAndQueueRaces.ps1') -ConfigPath $ConfigPath -OutputRoot (Join-Path $OutputRoot 'provision-queue-races') | Out-Null
+Add-Check -Name 'provision-queue-races' -Detail 'Real offline clones, three-task FIFO drain without starvation, and explicit-barrier old provisioning cleanup versus replacement run'
+
 if ((Get-EcosystemFileSha256 -Path $suiteGitConfig) -ne $suiteGitConfigHash) { throw 'Full suite changed the ecosystem Git configuration; refusing a successful isolation verdict.' }
 Add-Check -Name 'suite-git-config-preserved' -Detail 'The complete suite preserved the exact ecosystem Git configuration, including shared-worktree origin'
 

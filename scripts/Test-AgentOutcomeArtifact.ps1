@@ -457,7 +457,10 @@ if ($ArtifactName -eq 'review-verification.json') {
         if ($claimedPending) {
             Assert-RequiredProperties -Document $entry -Names @('downstreamObligation') -Label "coverageVerification '$dimension'"
             $reviewObligation = $coverageByDimension[$dimension].downstreamObligation; $verificationObligation = $entry.downstreamObligation
-            if ($null -eq $reviewObligation -or $null -eq $verificationObligation -or @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state') | Where-Object { [string]$reviewObligation.$_ -ne [string]$verificationObligation.$_ }) { throw "coverageVerification '$dimension' must independently bind the exact pending downstream obligation." }
+            if ($null -eq $reviewObligation -or $null -eq $verificationObligation) { throw "coverageVerification '$dimension' must independently bind the exact pending downstream obligation." }
+            Assert-RequiredProperties -Document $verificationObligation -Names @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state') -Label "coverageVerification '$dimension' downstream obligation"
+            $mismatchedObligationFields = @('evidenceKind','phase','repositoryId','reviewedCommit','responsibleProducer','state') | Where-Object { [string]$reviewObligation.$_ -ne [string]$verificationObligation.$_ }
+            if (@($mismatchedObligationFields).Count -gt 0) { throw "coverageVerification '$dimension' must independently bind the exact pending downstream obligation." }
         }
         elseif ($entry.PSObject.Properties['downstreamObligation']) { throw "coverageVerification '$dimension' may only include a downstream obligation for a pending claim." }
     }

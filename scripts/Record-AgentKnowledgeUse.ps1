@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]+$')][string] $TaskId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]*$')][string] $AgentId,
-    [Parameter(Mandatory)][ValidateSet('skill','knowledge','repository-map','artifact','context-pack')][string] $SourceKind,
+    [Parameter(Mandatory)][ValidateSet('skill','knowledge','repository-map','artifact','context-pack','project-skill','project-knowledge')][string] $SourceKind,
     [Parameter(Mandatory)][ValidateSet('read','used','full-scan')][string] $AccessMode,
     [Parameter(Mandatory)][string] $SourceId,
     [string] $SourceLocation,
